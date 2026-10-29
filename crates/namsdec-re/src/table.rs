@@ -36,6 +36,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         3 => ("close", &["fd"]),
         4 => ("stat", &["chemin", "statbuf"]),
         5 => ("fstat", &["fd", "statbuf"]),
+        6 => ("lstat", &["chemin", "statbuf"]),
         7 => ("poll", &["descripteurs", "nombre", "délai"]),
         8 => ("lseek", &["fd", "décalage", "origine"]),
         9 => (
@@ -46,10 +47,12 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         11 => ("munmap", &["adresse", "taille"]),
         12 => ("brk", &["rupture"]),
         13 => ("rt_sigaction", &["signal", "action", "ancienne"]),
+        15 => ("rt_sigreturn", &[]),
         14 => ("rt_sigprocmask", &["comment", "masque", "ancien", "taille"]),
         16 => ("ioctl", &["fd", "requête", "argument"]),
         19 => ("readv", &["fd", "vecteur", "nombre"]),
         20 => ("writev", &["fd", "vecteur", "nombre"]),
+        21 => ("access", &["chemin", "mode"]),
         22 => ("pipe", &["tubes"]),
         23 => (
             "select",
@@ -96,6 +99,7 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         228 => ("clock_gettime", &["horloge", "temps"]),
         262 => ("newfstatat", &["dossier", "chemin", "statbuf", "options"]),
         267 => ("readlinkat", &["dossier", "chemin", "buf", "taille"]),
+        269 => ("faccessat", &["dossier", "chemin", "mode"]),
         273 => ("set_robust_list", &["liste", "taille"]),
         302 => ("prlimit64", &["pid", "ressource", "nouvelle", "ancienne"]),
         334 => ("rseq", &["rseq", "taille", "options", "signature"]),
@@ -116,12 +120,21 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         // rien changer au monde, et sur lesquels s'arrêter empêcherait
         // seulement le programme d'avancer. Et ceux du **démarrage**
         // d'une bibliothèque C — `arch_prctl` pour installer la base FS,
-        // `fstat` pour choisir comment tamponner la sortie, `prlimit64`
-        // pour connaître sa pile : un binaire lié statiquement en fait
+        // `fstat` pour choisir comment tamponner la sortie, `lseek` pour
+        // savoir si l'entrée se rembobine, `prlimit64` pour connaître sa
+        // pile : un binaire lié statiquement en fait
         // une vingtaine avant d'arriver à `main`, et il suffit d'un seul
         // manquant pour qu'il n'y arrive jamais.
         //
-        // S'y ajoute depuis peu une quatrième famille : celle de
+        // ET UNE CINQUIÈME : les FICHIERS. `open`, `openat`, `stat`,
+        // `access` répondent « introuvable », ce qui est la vérité — il
+        // n'y a pas de système de fichiers derrière namsdec. Simulé ne
+        // veut pas dire exaucé : l'appel a lieu, il reçoit la réponse
+        // d'un noyau qui n'a pas le fichier, et le programme suit sa
+        // branche d'erreur au lieu de s'arrêter devant la question. La
+        // console le dit la première fois.
+        //
+        // S'y ajoute une famille de plus : celle de
         // l'**anti-débogage**. `prctl`, `fork` et `ptrace` forment le
         // montage par lequel un programme vérifie qu'on ne le regarde
         // pas — et namsdec répond, parce qu'un outil fait pour observer
@@ -135,18 +148,24 @@ pub fn syscall(number: u64) -> Option<Syscall> {
         simulated: matches!(
             number,
             0 | 1
+                | 2
                 | 3
+                | 4
                 | 5
+                | 6
                 | 7
+                | 8
                 | 9
                 | 10
                 | 11
                 | 12
                 | 13
                 | 14
+                | 15
                 | 16
                 | 19
                 | 20
+                | 21
                 | 24
                 | 35
                 | 39
@@ -174,8 +193,10 @@ pub fn syscall(number: u64) -> Option<Syscall> {
                 | 218
                 | 228
                 | 231
+                | 257
                 | 262
                 | 267
+                | 269
                 | 273
                 | 302
                 | 318
@@ -272,11 +293,15 @@ mod tests {
     #[test]
     fn unsimulated_calls_say_so() {
         assert!(is_simulated(1) && is_simulated(60));
-        // Ce qui demanderait un vrai système : un système de fichiers,
-        // d'autres processus, un réseau.
-        assert!(!is_simulated(2), "ouvrir un fichier n'est pas simulé");
-        assert!(!is_simulated(59), "execve non plus");
-        assert!(syscall(2).is_some(), "mais ils sont nommés");
+        // Ouvrir un fichier RÉPOND — « introuvable », ce qui est la
+        // vérité ici — comme `fopen` : s'arrêter empêchait de voir la
+        // branche d'erreur, qui est souvent la moitié intéressante.
+        assert!(is_simulated(2) && is_simulated(257), "ouvrir répond");
+        // Ce qui demanderait un vrai système, en revanche, n'a pas de
+        // réponse vraie : d'autres processus, un réseau.
+        assert!(!is_simulated(59), "execve n'est pas simulé");
+        assert!(!is_simulated(41), "socket non plus");
+        assert!(syscall(59).is_some(), "mais ils sont nommés");
         // Ceux du démarrage d'une bibliothèque C, eux, le sont.
         assert!(is_simulated(158), "arch_prctl installe la base FS");
         assert!(is_simulated(9), "mmap donne de la mémoire");

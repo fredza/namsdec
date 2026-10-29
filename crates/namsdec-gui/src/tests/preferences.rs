@@ -385,19 +385,75 @@ fn both_keymap_presets_are_offered_in_the_preferences() {
 ///
 /// Ce contrôle-ci garde la cause plutôt que le symptôme : il ouvre
 /// chaque page, et aucune ne doit bouger.
+///
+/// IL INTERROGEAIT LA MACHINE EN LE FAISANT, et il a bronché une fois
+/// pour cela, sous charge, le 28 octobre 2026. Ouvrir la fenêtre des
+/// préférences JETTE le relevé des outils par conception — on a pu en
+/// installer un dans un terminal depuis la dernière fois —, et l'image
+/// suivante le refait en lançant VRAIMENT un processus par outil. Ce
+/// contrôle mesurait donc une convergence pendant qu'il lançait des
+/// processus, et ce que ces processus répondent n'appartient pas au
+/// dépôt.
+///
+/// `no_control_asks_the_machine_what_it_should_be_checking` ne
+/// l'attrapait pas : il cherche les contrôles qui APPELLENT
+/// `tool_availability` et consorts, et ici c'est l'application qui
+/// l'appelle pour lui. La règle valait quand même, et son remède est
+/// celui qu'elle prescrit : semer l'état, après chaque image, puisque
+/// c'est l'ouverture qui le jette.
 #[test]
 fn no_preferences_page_grows_by_itself() {
+    /// L'état des outils, posé plutôt que demandé : tous absents, ce
+    /// qui est le cas d'une machine nue et le seul qui ne dépende de
+    /// rien. La page les peint alors tous de la même façon, et sa
+    /// hauteur ne dépend plus que du dépôt.
+    fn semence() -> std::collections::BTreeMap<String, namsdec_disasm::known::Availability> {
+        let mut semés: std::collections::BTreeMap<_, _> = namsdec_disasm::known::all()
+            .into_iter()
+            .map(|outil| {
+                (
+                    outil.plugin.id.clone(),
+                    namsdec_disasm::known::Availability::Missing,
+                )
+            })
+            .collect();
+        // upx ne désassemble rien, donc il n'est pas dans `all()` — mais
+        // la page le montre, et un relevé qui l'oublie le ferait
+        // redemander à la machine.
+        semés.insert(
+            "upx".to_owned(),
+            namsdec_disasm::known::Availability::Missing,
+        );
+        semés
+    }
+
     for onglet in PreferencesTab::ALL {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp::default();
         app.apply_theme(&ctx);
         app.show_preferences = true;
         app.preferences_tab = onglet;
+        // UNE HORLOGE POSÉE, et non celle qu'egui se donne. Sans
+        // `time`, egui avance la sienne de `predicted_dt` à chaque
+        // image ; c'est reproductible, mais rien ne l'écrit, et ce
+        // contrôle mesure précisément une CONVERGENCE — c'est-à-dire la
+        // seule chose qu'une animation puisse troubler. Posée, l'image
+        // numéro n tombe toujours au même instant.
+        const PAS: f64 = 1.0 / 60.0;
         let entrée = écran_du_banc();
 
         let mut hauteurs: Vec<f32> = Vec::new();
-        for _ in 0..20 {
-            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for image in 0..20 {
+            // AVANT chaque image : l'ouverture de la fenêtre jette le
+            // relevé pendant le dessin, et la page le redemanderait à
+            // l'image suivante.
+            app.tools_ready = semence();
+            let entrée = egui::RawInput {
+                time: Some(image as f64 * PAS),
+                predicted_dt: PAS as f32,
+                ..entrée.clone()
+            };
+            let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
             sortie.textures_delta.clear();
             if let Some(rect) =
                 egui::AreaState::load(&ctx, egui::Id::new("preferences_window")).map(|a| a.rect())

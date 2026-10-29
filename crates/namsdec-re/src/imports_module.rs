@@ -10,7 +10,13 @@
 use crate::behaviour::{self, Family};
 use crate::imports::{self, Import};
 use crate::libc;
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
+
+/// Le préfixe de l'action qui déplie une fiche : le nom de la fonction
+/// suit. Une constante, pour que l'écriture et la relecture ne puissent
+/// pas diverger en silence.
+const ACTION_FICHE: &str = "imports:fiche:";
 
 #[derive(Default)]
 pub struct ImportsModule {
@@ -46,12 +52,42 @@ impl ImportsModule {
     }
 }
 
+/// Le même portrait, dit plutôt que peint.
+///
+/// Chaque famille porte sa CLÉ et non sa couleur : le module range
+/// « réseau » dans une catégorie, l'interface décide de la teinte.
+/// C'est la règle de P7, et c'est ce qui permettra à
+/// `Family::color()` de quitter `behaviour.rs` — qui n'a rien à faire
+/// d'egui — quand `syscalls.rs`, dernier appelant de la version
+/// peinte, sera porté à son tour.
+pub(crate) fn portrait_en_blocs(ctx: &ReContext, comptes: &[(Family, usize)]) -> Vec<Bloc> {
+    if comptes.is_empty() {
+        return Vec::new();
+    }
+    let mut fragments = vec![Fragment::dit(
+        ctx.t("Ce qu'il sait faire", "What it can do"),
+    )];
+    for (famille, combien) in comptes {
+        fragments.push(
+            Fragment::dit(format!(" {} ({combien})", famille.label(ctx.lang)))
+                .fort()
+                .étiquette(famille.clé())
+                .survol(famille.why(ctx.lang)),
+        );
+    }
+    vec![Bloc::Texte(fragments.into())]
+}
+
 /// La ligne de familles : ce que le binaire sait faire, d'un coup d'œil.
 ///
 /// Dessinée avant la liste, parce que c'est la question qu'on pose
 /// d'abord. Chaque case porte le nombre de fonctions qui l'ont nommée —
 /// une famille tenue par un seul appel ne dit pas la même chose qu'une
 /// famille tenue par quinze.
+///
+/// Celle-ci PEINT ; `portrait_en_blocs` dit la même chose sans savoir
+/// comment on la peint. Les deux existent le temps que `syscalls.rs`,
+/// dernier appelant de celle-ci, passe la frontière à son tour.
 pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, usize)]) {
     if comptes.is_empty() {
         return;
@@ -64,6 +100,25 @@ pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, u
                 .on_hover_text(famille.why(ctx.lang));
         }
     });
+}
+
+impl ImportsModule {
+    /// Ouvre ou referme la fiche que cette action désigne.
+    ///
+    /// À part de `ui()` pour être éprouvée sans peindre : c'est le
+    /// comportement, pas le dessin, et le vérifier en comptant des
+    /// galères de texte revenait à mesurer la fenêtre pour savoir ce
+    /// que le module retient.
+    fn bascule_fiche(&mut self, action: &str) {
+        let Some(nom) = action.strip_prefix(ACTION_FICHE) else {
+            return;
+        };
+        // Un second clic referme : c'est la même touche qui ouvre et
+        // qui ferme, comme partout ailleurs. Et une seule fiche à la
+        // fois — une liste de cinquante entrées dont dix sont dépliées
+        // ne se parcourt plus.
+        self.ouverte = (self.ouverte.as_deref() != Some(nom)).then(|| nom.to_owned());
+    }
 }
 
 impl ReModule for ImportsModule {
@@ -146,32 +201,47 @@ impl ReModule for ImportsModule {
             .collect();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.imports.is_empty() {
-            ui.weak(ctx.t(
-                "Aucune : ce programme n'emprunte rien: il est statique, ou il ne parle \
-                 qu'au noyau.",
-                "None: this program borrows nothing — it is static, or it only talks to \
-                 the kernel.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Aucune : ce programme n'emprunte rien: il est statique, ou il ne parle \
+                     qu'au noyau.",
+                        "None: this program borrows nothing — it is static, or it only talks to \
+                     the kernel.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
-        ui.strong(format!(
-            "{} {}",
-            self.imports.len(),
-            ctx.t("fonctions importées", "imported functions")
-        ));
-        ui.weak(ctx.t(
-            "Chaque entrée est une petite fonction qui saute là où l'éditeur de liens \
-             aura écrit la vraie adresse. C'est pour cela qu'un `call` vers la \
-             bibliothèque C passe par le programme lui-même.",
-            "Each entry is a small function jumping to wherever the linker will have \
-             written the real address. That is why a call into the C library goes \
-             through the program itself.",
-        ));
-        // Le portrait avant la liste : « qu'est-ce que ce binaire fait »
-        // se répond en six cases, là où cinquante noms demandent de les
-        // connaître un par un.
+        let mut blocs = vec![
+            Bloc::Texte(
+                Fragment::dit(format!(
+                    "{} {}",
+                    self.imports.len(),
+                    ctx.t("fonctions importées", "imported functions")
+                ))
+                .fort()
+                .into(),
+            ),
+            Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Chaque entrée est une petite fonction qui saute là où l'éditeur de liens \
+                     aura écrit la vraie adresse. C'est pour cela qu'un `call` vers la \
+                     bibliothèque C passe par le programme lui-même.",
+                    "Each entry is a small function jumping to wherever the linker will have \
+                     written the real address. That is why a call into the C library goes \
+                     through the program itself.",
+                ))
+                .faible()
+                .into(),
+            ),
+        ];
+
+        // Le portrait avant la liste : « qu'est-ce que ce binaire
+        // fait » se répond en six cases, là où cinquante noms demandent
+        // de les connaître un par un.
         let comptes: Vec<(Family, usize)> = behaviour::ALL
             .into_iter()
             .filter_map(|famille| {
@@ -183,11 +253,7 @@ impl ReModule for ImportsModule {
                 (combien > 0).then_some((famille, combien))
             })
             .collect();
-        if !comptes.is_empty() {
-            ui.add_space(4.0);
-            portrait(ui, ctx, &comptes);
-        }
-        ui.add_space(4.0);
+        blocs.extend(portrait_en_blocs(ctx, &comptes));
 
         // Par nombre d'appels : ce qui sert partout d'abord, le reste
         // par ordre alphabétique pour s'y retrouver.
@@ -197,109 +263,108 @@ impl ReModule for ImportsModule {
                 .cmp(&self.appels[a])
                 .then_with(|| self.imports[a].name.cmp(&self.imports[b].name))
         });
-        // Relevé pendant le dessin, posé après : la liste emprunte
-        // `self`, et le module ne peut donc pas s'écrire dedans.
-        let mut demande: Option<ReRequest> = None;
-        let mut bascule: Option<String> = None;
+
         for rang in rangs {
             let import = &self.imports[rang];
             let appels = self.appels[rang];
             let note = libc::explain(&import.name);
             let ouverte = self.ouverte.as_deref() == Some(import.name.as_str());
-            ui.horizontal_wrapped(|ui| {
-                if let Some(cible) = clickable_address(ui, ctx, import.plt) {
-                    demande = Some(ReRequest::GoTo {
-                        addr: import.plt,
-                        target: cible,
-                    });
-                }
+
+            let mut ligne = vec![
+                Fragment::dit(format!("{:#010x} ", import.plt)).mène_à(import.plt),
                 // LE NOM EST UN LIEN : on le clique, sa fiche se
                 // déplie.
                 //
                 // Une liste de noms suppose qu'on les connaisse — c'est
                 // vrai de `malloc`, beaucoup moins de `__cxa_finalize`
                 // ou de `_Unwind_Resume`, qui sont pourtant les deux
-                // seules entrées d'un binaire Rust ordinaire. La phrase
-                // existait déjà pour les plus courantes, posée sous la
-                // ligne ; elle manquait partout ailleurs, et rien ne
-                // disait qu'il y avait quelque chose à lire.
-                //
-                // Le survol donne la phrase, le clic donne la fiche :
-                // la signature, le registre qui porte chaque argument,
-                // et ce qu'il faut surveiller.
-                let couleur = ui.visuals().hyperlink_color;
-                let réponse = crate::clickable_label(
-                    ui,
-                    egui::Label::new(egui::RichText::new(&import.name).strong().color(couleur)),
-                )
-                .on_hover_text(match note {
-                    Some(note) => note.text(ctx.lang).to_owned(),
-                    None => match libc::family_hint(&import.name) {
-                        Some((fr, en)) => {
-                            if ctx.lang.starts_with("fr") {
-                                fr.to_owned()
-                            } else {
-                                en.to_owned()
+                // seules entrées d'un binaire Rust ordinaire. Le survol
+                // donne la phrase, le clic donne la fiche : la
+                // signature, le registre qui porte chaque argument, et
+                // ce qu'il faut surveiller.
+                Fragment::dit(&import.name)
+                    .fort()
+                    .agit(format!("{ACTION_FICHE}{}", import.name))
+                    .survol(match note {
+                        Some(note) => note.text(ctx.lang).to_owned(),
+                        None => match libc::family_hint(&import.name) {
+                            Some((fr, en)) => {
+                                if ctx.lang.starts_with("fr") {
+                                    fr.to_owned()
+                                } else {
+                                    en.to_owned()
+                                }
                             }
-                        }
-                        None => ctx
-                            .t(
-                                "Cliquer pour ce que namsdec en sait",
-                                "Click for what namsdec knows about it",
-                            )
-                            .to_owned(),
-                    },
-                });
-                if réponse.clicked() {
-                    bascule = Some(import.name.clone());
-                }
-                if appels > 0 {
-                    ui.weak(format!(
-                        "{appels} {}",
+                            None => ctx
+                                .t(
+                                    "Cliquer pour ce que namsdec en sait",
+                                    "Click for what namsdec knows about it",
+                                )
+                                .to_owned(),
+                        },
+                    }),
+            ];
+            if appels > 0 {
+                ligne.push(
+                    Fragment::dit(format!(
+                        " {appels} {}",
                         if appels > 1 {
                             ctx.t("appels", "calls")
                         } else {
                             ctx.t("appel", "call")
                         }
-                    ));
-                }
-                // Ce qu'on cherche vraiment en lisant la liste : par où
-                // une entrée peut-elle déborder ? Ce n'est pas un
-                // verdict sur le programme, c'est l'endroit qu'on
-                // regarde en premier.
-                if note.is_some_and(|note| note.watch) {
-                    ui.label(
-                        egui::RichText::new(ctx.t("à regarder", "worth a look"))
-                            .color(egui::Color32::from_rgb(0xd7, 0xba, 0x7d)),
-                    );
-                }
-                // Et sa famille de comportement, quand elle en a une :
-                // c'est ce qui relie une ligne au portrait du dessus.
-                if let Some(famille) = behaviour::family_of(&import.name) {
-                    ui.label(egui::RichText::new(famille.label(ctx.lang)).color(famille.color()))
-                        .on_hover_text(famille.why(ctx.lang));
-                }
-            });
+                    ))
+                    .faible(),
+                );
+            }
+            // Ce qu'on cherche vraiment en lisant la liste : par où une
+            // entrée peut-elle déborder ? Ce n'est pas un verdict sur
+            // le programme, c'est l'endroit qu'on regarde en premier.
+            if note.is_some_and(|note| note.watch) {
+                ligne.push(
+                    Fragment::dit(format!(" {}", ctx.t("à regarder", "worth a look")))
+                        .ton(Ton::Attention),
+                );
+            }
+            // Et sa famille de comportement, quand elle en a une :
+            // c'est ce qui relie une ligne au portrait du dessus.
+            if let Some(famille) = behaviour::family_of(&import.name) {
+                ligne.push(
+                    Fragment::dit(format!(" {}", famille.label(ctx.lang)))
+                        .étiquette(famille.clé())
+                        .survol(famille.why(ctx.lang)),
+                );
+            }
+            blocs.push(Bloc::Texte(ligne.into()));
+
             // La phrase reste sous la ligne, dépliée ou non : c'est
             // elle qu'on lit en parcourant, et la cacher derrière un
             // clic serait reprendre d'une main ce qu'on donne de
             // l'autre.
             if let Some(note) = note {
-                ui.indent(&import.name, |ui| ui.weak(note.text(ctx.lang)));
+                blocs.push(Bloc::Retrait(vec![Bloc::Texte(
+                    Fragment::dit(note.text(ctx.lang)).faible().into(),
+                )]));
             }
             if ouverte {
-                ui.indent(("fiche", &import.name), |ui| {
-                    fiche(ui, ctx, &import.name, note);
-                });
+                blocs.push(Bloc::Retrait(fiche_en_blocs(ctx, &import.name, note)));
             }
         }
-        if demande.is_some() {
-            self.demande = demande;
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
         }
-        if let Some(nom) = bascule {
-            // Un second clic referme : c'est la même touche qui ouvre
-            // et qui ferme, comme partout ailleurs.
-            self.ouverte = (self.ouverte.as_deref() != Some(nom.as_str())).then_some(nom);
+        for action in &gestes.actions {
+            self.bascule_fiche(action);
         }
     }
 }
@@ -318,83 +383,100 @@ impl ReModule for ImportsModule {
 ///   qui se tait laisse croire qu'il n'y a rien à dire ; ici il dit ce
 ///   que le NOM apprend — un préfixe appartient à une convention — et
 ///   s'arrête là plutôt que de deviner.
-fn fiche(ui: &mut egui::Ui, ctx: &ReContext, nom: &str, note: Option<libc::Note>) {
+fn fiche_en_blocs(ctx: &ReContext, nom: &str, note: Option<libc::Note>) -> Vec<Bloc> {
     let fr = ctx.lang.starts_with("fr");
-    if let Some(note) = note {
-        if !note.params.is_empty() {
-            ui.horizontal_wrapped(|ui| {
-                ui.monospace(format!("{nom}({})", note.params.join(", ")));
-            });
-            ui.add_space(2.0);
-            egui::Grid::new(("fiche_params", nom))
-                .num_columns(2)
-                .min_col_width(0.0)
-                .striped(true)
-                .show(ui, |ui| {
-                    for (rang, param) in note.params.iter().enumerate() {
-                        // Au-delà du sixième, la convention passe par la
-                        // pile : on ne nomme pas un registre qui ne
-                        // porte rien.
-                        let Some(registre) = libc::ARGUMENT_REGISTERS.get(rang) else {
-                            break;
-                        };
-                        if *param == "..." {
-                            ui.weak(ctx.t("… et la suite, variable", "… and the rest, variable"));
-                            ui.weak(ctx.t(
-                                "le nombre d'arguments dépend du format",
-                                "how many arguments depends on the format",
-                            ));
-                            ui.end_row();
-                            continue;
-                        }
-                        ui.monospace(*param);
-                        ui.monospace(
-                            egui::RichText::new(*registre).color(ui.visuals().hyperlink_color),
-                        );
-                        ui.end_row();
-                    }
-                });
-            ui.add_space(2.0);
-        }
-        if note.watch {
-            ui.colored_label(
-                egui::Color32::from_rgb(0xd7, 0xba, 0x7d),
-                ctx.t(
-                    "À regarder : elle écrit sans connaître la taille de la destination, ou \
-                     exécute ce qu'on lui donne. Ce n'est pas un verdict sur le programme — \
-                     c'est l'endroit qu'on regarde en premier.",
-                    "Worth a look: it writes without knowing the size of the destination, or \
-                     runs what it is given. That is not a verdict on the program — it is \
-                     where one looks first.",
+    let Some(note) = note else {
+        // Pas de fiche : on dit ce que le nom apprend, et rien de plus.
+        return match libc::family_hint(nom) {
+            Some((texte_fr, texte_en)) => vec![
+                Bloc::Texte(
+                    Fragment::dit(if fr { texte_fr } else { texte_en })
+                        .faible()
+                        .into(),
                 ),
-            );
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "namsdec n'a pas de fiche pour cette fonction-là : ce qui précède se \
+                         lit dans son nom, pas dans son code.",
+                        "namsdec has no entry for this particular function: what precedes is \
+                         read from its name, not from its code.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+            ],
+            None => vec![Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "namsdec n'a pas de fiche pour celle-ci. La table ne porte que les \
+                     fonctions qu'on rencontre partout et celles dont l'usage demande de \
+                     l'attention : ce qui n'y figure pas n'est pas deviné. `man` et la page \
+                     de la bibliothèque le diront mieux.",
+                    "namsdec has no entry for this one. The table only holds the functions \
+                     one meets everywhere and those whose use calls for care: what is not in \
+                     it is not guessed. `man` and the library's own page will say it better.",
+                ))
+                .faible()
+                .into(),
+            )],
+        };
+    };
+
+    let mut blocs = Vec::new();
+    if !note.params.is_empty() {
+        blocs.push(Bloc::Texte(
+            Fragment::dit(format!("{nom}({})", note.params.join(", ")))
+                .code()
+                .into(),
+        ));
+        let mut rangées = Vec::new();
+        for (rang, param) in note.params.iter().enumerate() {
+            // Au-delà du sixième, la convention passe par la pile : on
+            // ne nomme pas un registre qui ne porte rien.
+            let Some(registre) = libc::ARGUMENT_REGISTERS.get(rang) else {
+                break;
+            };
+            if *param == "..." {
+                rangées.push(vec![
+                    Fragment::dit(ctx.t("… et la suite, variable", "… and the rest, variable"))
+                        .faible()
+                        .into(),
+                    Fragment::dit(ctx.t(
+                        "le nombre d'arguments dépend du format",
+                        "how many arguments depends on the format",
+                    ))
+                    .faible()
+                    .into(),
+                ]);
+                continue;
+            }
+            rangées.push(vec![
+                Fragment::dit(*param).code().into(),
+                // Le registre à la couleur d'un lien : c'est le mot
+                // qu'on va chercher dans le bandeau du processeur.
+                Fragment::dit(*registre).code().ton(Ton::Repère).into(),
+            ]);
         }
-        return;
+        blocs.push(Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées,
+            rayé: true,
+        });
     }
-    // Pas de fiche : on dit ce que le nom apprend, et rien de plus.
-    match libc::family_hint(nom) {
-        Some((texte_fr, texte_en)) => {
-            ui.weak(if fr { texte_fr } else { texte_en });
-            ui.add_space(2.0);
-            ui.weak(ctx.t(
-                "namsdec n'a pas de fiche pour cette fonction-là : ce qui précède se lit \
-                 dans son nom, pas dans son code.",
-                "namsdec has no entry for this particular function: what precedes is read \
-                 from its name, not from its code.",
-            ));
-        }
-        None => {
-            ui.weak(ctx.t(
-                "namsdec n'a pas de fiche pour celle-ci. La table ne porte que les \
-                 fonctions qu'on rencontre partout et celles dont l'usage demande de \
-                 l'attention : ce qui n'y figure pas n'est pas deviné. `man` et la page \
-                 de la bibliothèque le diront mieux.",
-                "namsdec has no entry for this one. The table only holds the functions one \
-                 meets everywhere and those whose use calls for care: what is not in it is \
-                 not guessed. `man` and the library's own page will say it better.",
-            ));
-        }
+    if note.watch {
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "À regarder : elle écrit sans connaître la taille de la destination, ou \
+                 exécute ce qu'on lui donne. Ce n'est pas un verdict sur le programme — \
+                 c'est l'endroit qu'on regarde en premier.",
+                "Worth a look: it writes without knowing the size of the destination, or \
+                 runs what it is given. That is not a verdict on the program — it is where \
+                 one looks first.",
+            ))
+            .ton(Ton::Attention)
+            .into(),
+        ));
     }
+    blocs
 }
 
 #[cfg(test)]
@@ -517,21 +599,17 @@ mod tests {
             names: None,
             patches: &[],
         };
-        let egui_ctx = egui::Context::default();
-        let mut vus: Vec<String> = Vec::new();
-        for _ in 0..2 {
-            vus.clear();
-            let mut sortie = egui_ctx.run_ui(Default::default(), |ui| {
-                fiche(ui, &ctx, "__cxa_guard_acquire", None)
-            });
-            for clipped in &sortie.shapes {
-                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
-                    vus.push(texte.galley.text().to_owned());
-                }
-            }
-            sortie.textures_delta.clear();
-        }
-        let tout = vus.join(" | ");
+        // LU, ET NON PEINT. Ce contrôle demandait un contexte egui,
+        // deux images et la collecte des formes de texte pour vérifier
+        // ce qu'une fiche DIT. Depuis P7, la fiche se lit.
+        let tout = fiche_en_blocs(&ctx, "__cxa_guard_acquire", None)
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Texte(ligne) => Some(ligne.texte_nu()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
         assert!(
             tout.contains("C++"),
             "la famille se lit dans le nom : {tout}"
@@ -544,6 +622,105 @@ mod tests {
         // Les deux du crackme : l'une a sa fiche, l'autre son préfixe.
         assert!(libc::explain("_Unwind_Resume").is_some());
         assert!(libc::explain("__cxa_finalize").is_some());
+    }
+
+    /// Le dépliage d'une fiche, éprouvé **sans peindre**.
+    ///
+    /// C'est le comportement le plus risqué du portage de P7 : le nom
+    /// d'une fonction était un `clickable_label` qui écrivait dans
+    /// `self.ouverte` pendant le dessin. Il est devenu une **action
+    /// nommée**, que le module relit après coup. Ce contrôle suit le
+    /// chemin entier — la vue propose l'action, la bascule l'applique,
+    /// la vue suivante porte la fiche — sans qu'aucun pixel soit peint.
+    #[test]
+    fn une_fiche_se_deplie_par_son_action_et_se_referme_de_meme() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        // Un import posé à la main : ce contrôle porte sur le
+        // dépliage, pas sur la lecture d'un ELF — et il doit tourner
+        // là où `/bin/ls` n'existe pas.
+        let module = ImportsModule {
+            imports: vec![Import {
+                name: "memcpy".to_owned(),
+                plt: 0x401020,
+                got: 0x404018,
+            }],
+            appels: vec![3],
+            ..ImportsModule::default()
+        };
+        let mut module = module;
+
+        // 1. La vue propose l'action, et la fiche n'est pas là.
+        let actions: Vec<String> = fragments(&module.vue(&ctx).expect("une vue"))
+            .filter_map(|f| f.action.clone())
+            .collect();
+        assert_eq!(
+            actions,
+            vec![format!("{ACTION_FICHE}memcpy")],
+            "le nom porte l'action qui déplie sa fiche"
+        );
+        assert!(
+            !dit(&module, &ctx).contains("memcpy(dest"),
+            "rien n'est déplié tant qu'on n'a rien demandé"
+        );
+
+        // 2. La bascule l'applique, et la fiche paraît — signature et
+        // registre compris, ce qu'une page de manuel donne en premier.
+        module.bascule_fiche(&actions[0]);
+        let ouverte = dit(&module, &ctx);
+        assert!(ouverte.contains("memcpy(dest"), "la signature : {ouverte}");
+        assert!(
+            ouverte.contains("RDI"),
+            "et le registre du premier argument : {ouverte}"
+        );
+
+        // 3. La même action referme : une seule touche ouvre et ferme.
+        module.bascule_fiche(&actions[0]);
+        assert!(
+            !dit(&module, &ctx).contains("memcpy(dest"),
+            "un second clic referme"
+        );
+    }
+
+    /// Tous les fragments d'une vue, dans l'ordre où ils paraissent.
+    fn fragments(vue: &Vue) -> impl Iterator<Item = &crate::vue::Fragment> {
+        fn dedans<'a>(blocs: &'a [Bloc], vus: &mut Vec<&'a crate::vue::Fragment>) {
+            for bloc in blocs {
+                match bloc {
+                    Bloc::Texte(ligne) | Bloc::Attente(ligne) => vus.extend(&ligne.fragments),
+                    Bloc::Retrait(dedans_là) => dedans(dedans_là, vus),
+                    Bloc::Section { blocs, .. } | Bloc::Repliable { blocs, .. } => {
+                        dedans(blocs, vus)
+                    }
+                    Bloc::Tableau { rangées, .. } => {
+                        vus.extend(rangées.iter().flatten().flat_map(|l| &l.fragments))
+                    }
+                    Bloc::Jauge { texte, .. } => vus.extend(&texte.fragments),
+                    // Le code n'a pas de fragments : son texte est
+                    // la donnée, d'un bloc.
+                    Bloc::Code(_) | Bloc::Trait => {}
+                }
+            }
+        }
+        let mut vus = Vec::new();
+        dedans(&vue.blocs, &mut vus);
+        vus.into_iter()
+    }
+
+    /// Tout ce que le panneau dit, d'un bloc.
+    fn dit(module: &ImportsModule, ctx: &ReContext) -> String {
+        fragments(&module.vue(ctx).expect("une vue"))
+            .map(|f| f.texte.as_str())
+            .collect::<Vec<_>>()
+            .join(" | ")
     }
 
     /// Sur un vrai binaire, le module nomme ce qui est emprunté *et*

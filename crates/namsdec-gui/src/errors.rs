@@ -69,14 +69,20 @@ pub fn emu(lang: Lang, error: &EmuError) -> String {
                 format!("the {backend} interpreter does not support {bytes}-byte memory operands")
             }
         }
-        // Le numéro brut plutôt qu'un nom : c'est lui que l'utilisateur a
-        // mis dans RAX, et c'est sous ce numéro qu'il le retrouvera dans
-        // la table des appels système.
+        // Le numéro d'abord : c'est lui que l'utilisateur a mis dans RAX,
+        // et c'est sous ce numéro qu'il le retrouvera dans la table des
+        // appels système. Mais le numéro SEUL n'apprend rien — « l'appel
+        // système 8 » laisse chercher, « lseek » dit tout de suite de
+        // quoi il s'agit et donne la page de manuel à lire. Les deux,
+        // donc, quand la table connaît le nom.
         EmuError::UnsupportedSyscall { backend, number } => {
+            let nom = namsdec_re::table::syscall(*number)
+                .map(|call| format!(" ({})", call.name))
+                .unwrap_or_default();
             if fr {
-                format!("l'interpréteur {backend} ne simule pas l'appel système {number}")
+                format!("l'interpréteur {backend} ne simule pas l'appel système {number}{nom}")
             } else {
-                format!("the {backend} interpreter does not simulate syscall {number}")
+                format!("the {backend} interpreter does not simulate syscall {number}{nom}")
             }
         }
         // Les deux fautes de division. Le message dit *pourquoi* le
@@ -209,13 +215,26 @@ pub fn advice(lang: Lang, error: &EmuError) -> Option<&'static str> {
                  an unsigned 64-bit division — or use `cqo` for a signed one."
             }
         }
+        // Cette aide a nommé quatre appels — `read`, `write`, `brk`,
+        // `exit` — pendant tout le temps où l'interpréteur en a simulé
+        // quarante-huit. Une liste écrite dans une phrase ne suit pas le
+        // code qui la dément : elle n'énumère donc plus rien, elle dit
+        // la LIGNE DE PARTAGE, qui, elle, ne bouge pas.
         EmuError::UnsupportedSyscall { .. } => {
             if fr {
                 "namsdec ne simule pas cet appel système : il n'y a pas de vrai noyau \
-                 derrière. Les appels simulés sont `read`, `write`, `brk` et `exit`."
+                 derrière. Ce qu'il sait rendre, c'est ce qu'un programme demande pour \
+                 tourner seul — lire, écrire, prendre de la mémoire, se renseigner sur \
+                 lui-même. Ce qui manque touche au dehors : les fichiers, le réseau, \
+                 les autres processus. La liste des appels système, dans l'analyse du \
+                 binaire, dit pour chacun s'il est simulé."
             } else {
                 "namsdec does not simulate this system call: there is no real kernel \
-                 behind it. The simulated ones are `read`, `write`, `brk` and `exit`."
+                 behind it. What it can answer is what a program needs to run on its \
+                 own — reading, writing, taking memory, asking about itself. What is \
+                 missing reaches outside: files, the network, other processes. The \
+                 system call list, in the binary analysis, says for each one whether \
+                 it is simulated."
             }
         }
         // Le piège du vieux tutoriel : `int 0x80` est l'interface des
@@ -364,6 +383,31 @@ pub fn asm(lang: Lang, error: &AsmError) -> String {
                 format!("linking failed: {message}")
             }
         }
+        // Le délai, et ce qu'on en fait. Nommer l'outil ET le temps
+        // accordé, parce que les deux répondent à la question qu'on se
+        // pose : qui a été arrêté, et à partir de quand.
+        AsmError::TooLong { tool, seconds } => {
+            if fr {
+                format!(
+                    "{tool} a dépassé les {seconds} secondes accordées et a été \
+                     arrêté. Une directive comme `times` peut décrire un programme \
+                     énorme en une ligne."
+                )
+            } else {
+                format!(
+                    "{tool} went past the {seconds} seconds it was given and was \
+                     stopped. A directive such as `times` can describe a huge program \
+                     in one line."
+                )
+            }
+        }
+        AsmError::Cancelled => {
+            if fr {
+                "assemblage arrêté à la demande".to_owned()
+            } else {
+                "assembly stopped on request".to_owned()
+            }
+        }
         AsmError::UnreadableProgram => {
             if fr {
                 "le programme lié n'a pas pu être relu (ELF inattendu).".to_owned()
@@ -497,6 +541,73 @@ mod tests {
         let en = emu(Lang::En, &error);
         assert!(en.contains("namsdec") && en.contains("Cpuid"), "{en}");
         assert_ne!(fr, en, "les deux langues doivent donner deux phrases");
+    }
+
+    /// Un appel système refusé se nomme, et pas seulement par son
+    /// numéro.
+    ///
+    /// « l'appel système 8 » laisse chercher dans une table ; « lseek »
+    /// dit tout de suite de quoi il s'agit, et donne la page de manuel
+    /// à lire. Le numéro reste, parce que c'est lui qu'on a mis dans
+    /// RAX.
+    #[test]
+    fn un_appel_systeme_refuse_se_nomme() {
+        let error = EmuError::UnsupportedSyscall {
+            backend: "namsdec",
+            number: 2,
+        };
+
+        let fr = emu(Lang::Fr, &error);
+        assert!(fr.contains('2') && fr.contains("open"), "{fr}");
+        let en = emu(Lang::En, &error);
+        assert!(en.contains('2') && en.contains("open"), "{en}");
+
+        // Un numéro que la table ignore ne doit pas inventer de nom, ni
+        // laisser une parenthèse vide derrière lui.
+        let inconnu = EmuError::UnsupportedSyscall {
+            backend: "namsdec",
+            number: 999,
+        };
+        let fr = emu(Lang::Fr, &inconnu);
+        assert!(fr.contains("999") && !fr.contains('('), "{fr}");
+    }
+
+    /// L'aide d'un appel système refusé n'énumère pas à moitié.
+    ///
+    /// Elle a nommé quatre appels — `read`, `write`, `brk` et `exit` —
+    /// pendant tout le temps où l'interpréteur en simulait quarante-
+    /// huit. C'est la façon dont un texte ment sans que personne mente :
+    /// il était vrai le jour où il fut écrit, et le quarante-neuvième
+    /// appel s'ajoutera sans que son auteur revienne relire la phrase.
+    ///
+    /// Donc : ou bien l'aide n'énumère rien, ou bien elle les cite TOUS.
+    /// La première branche est celle qu'on a choisie ; l'invariant
+    /// n'interdit pas l'autre, il interdit l'entre-deux.
+    #[test]
+    fn l_aide_d_un_appel_refuse_n_enumere_pas_a_moitie() {
+        let error = EmuError::UnsupportedSyscall {
+            backend: "namsdec",
+            number: 2,
+        };
+        for lang in [Lang::Fr, Lang::En] {
+            let aide = advice(lang, &error).expect("un appel refusé appelle un conseil");
+            let simulés: Vec<&str> = (0..=400)
+                .filter_map(namsdec_re::table::syscall)
+                .filter(|call| call.simulated)
+                .map(|call| call.name)
+                .collect();
+            let cités: Vec<&str> = simulés
+                .iter()
+                .copied()
+                .filter(|nom| aide.contains(&format!("`{nom}`")))
+                .collect();
+            assert!(
+                cités.is_empty() || cités.len() == simulés.len(),
+                "l'aide cite {} appels simulés sur {} : {cités:?}",
+                cités.len(),
+                simulés.len(),
+            );
+        }
     }
 
     /// Une erreur d'exécution ne se contente pas de constater : elle dit

@@ -6,8 +6,14 @@
 //! qu'on suit en lisant du code qu'on n'a pas écrit : commencer par ce
 //! qui sert partout, puis remonter.
 
+use crate::vue::{Bloc, Fragment, Vue};
 use crate::xrefs::{self, Kind, Xrefs};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
+
+/// Le préfixe de l'action qui déplie une cible : son adresse en
+/// hexadécimal suit. Une constante, pour que l'écriture et la relecture
+/// ne puissent pas diverger en silence.
+const ACTION_DÉPLIER: &str = "xrefs:déplier:";
 
 #[derive(Default)]
 pub struct XrefsModule {
@@ -19,6 +25,23 @@ pub struct XrefsModule {
 }
 
 impl XrefsModule {
+    /// Ouvre ou referme la cible que cette action désigne.
+    ///
+    /// À part de `ui()` pour être éprouvée sans peindre : c'est le
+    /// comportement, pas le dessin.
+    fn bascule(&mut self, action: &str) {
+        let Some(hexa) = action.strip_prefix(ACTION_DÉPLIER) else {
+            return;
+        };
+        let Ok(addr) = u64::from_str_radix(hexa, 16) else {
+            return;
+        };
+        // Un second clic referme, et une seule à la fois : c'est ce que
+        // `Option` dit déjà, et ce que le panneau faisait avant la
+        // frontière.
+        self.ouverte = (self.ouverte != Some(addr)).then_some(addr);
+    }
+
     /// Les références relevées, pour qui veut les lire sans l'interface.
     pub fn xrefs(&self) -> &Xrefs {
         &self.xrefs
@@ -59,87 +82,99 @@ impl ReModule for XrefsModule {
         self.ouverte = None;
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.xrefs.is_empty() {
-            ui.weak(ctx.t(
-                "Aucune référence : le programme n'appelle rien et ne pointe nulle part.",
-                "No references: this program calls nothing and points nowhere.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Aucune référence : le programme n'appelle rien et ne pointe nulle part.",
+                        "No references: this program calls nothing and points nowhere.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
+        let mut blocs = Vec::new();
 
         let fonctions = self.xrefs.functions();
         if !fonctions.is_empty() {
-            ui.strong(format!(
-                "{} ({})",
-                ctx.t("Fonctions appelées", "Called functions"),
-                fonctions.len()
+            blocs.push(Bloc::Texte(
+                Fragment::dit(format!(
+                    "{} ({})",
+                    ctx.t("Fonctions appelées", "Called functions"),
+                    fonctions.len()
+                ))
+                .fort()
+                .into(),
             ));
-            ui.weak(ctx.t(
-                "Une adresse qu'un `call` désigne est une fonction, même sans son nom. \
-                 Cliquez l'adresse pour y aller ; le triangle déplie d'où elle est appelée.",
-                "An address a `call` points at is a function, even without its name. \
-                 Click the address to go there; the triangle unfolds where it is called from.",
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Une adresse qu'un `call` désigne est une fonction, même sans son nom. \
+                     Cliquez l'adresse pour y aller ; le signe déplie d'où elle est appelée.",
+                    "An address a `call` points at is a function, even without its name. \
+                     Click the address to go there; the sign unfolds where it is called from.",
+                ))
+                .faible()
+                .into(),
             ));
-            let mut demande: Option<ReRequest> = None;
             for (addr, appels) in &fonctions {
                 let ouverte = self.ouverte == Some(*addr);
-                ui.horizontal(|ui| {
-                    // Le triangle déplie ; l'adresse mène. Deux gestes
-                    // distincts, car ce sont deux intentions : lire d'où
-                    // une fonction est appelée, ou aller la voir.
-                    // « − » et « + », et non deux triangles : ceux-ci
-                    // n'existent pas dans les polices qu'egui embarque
-                    // et se peignaient en carré vide, si bien que rien
-                    // ne disait que la ligne se dépliait.
-                    let marque = if ouverte { "\u{2212}" } else { "+" };
-                    if crate::clickable_label(ui, egui::Label::new(marque))
-                        .on_hover_text(ctx.t("D'où est-ce appelé ?", "Called from where?"))
-                        .clicked()
-                    {
-                        self.ouverte = (!ouverte).then_some(*addr);
-                    }
-                    if let Some(cible) = clickable_address(ui, ctx, *addr) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: *addr,
-                            target: cible,
-                        });
-                    }
-                    ui.weak(format!(
-                        "{appels} {}",
-                        if *appels > 1 {
-                            ctx.t("appels", "calls")
-                        } else {
-                            ctx.t("appel", "call")
-                        }
-                    ));
-                });
+                // Le signe déplie ; l'adresse mène. Deux gestes
+                // distincts, car ce sont deux intentions : lire d'où
+                // une fonction est appelée, ou aller la voir.
+                // « − » et « + », et non deux triangles : ceux-ci
+                // n'existent pas dans les polices qu'egui embarque et
+                // se peignaient en carré vide, si bien que rien ne
+                // disait que la ligne se dépliait.
+                blocs.push(Bloc::Texte(
+                    vec![
+                        Fragment::dit(if ouverte { "\u{2212}" } else { "+" })
+                            .agit(format!("{ACTION_DÉPLIER}{addr:x}"))
+                            .survol(ctx.t("D'où est-ce appelé ?", "Called from where?")),
+                        Fragment::dit(format!(" {addr:#010x}")).mène_à(*addr),
+                        Fragment::dit(format!(
+                            " {appels} {}",
+                            if *appels > 1 {
+                                ctx.t("appels", "calls")
+                            } else {
+                                ctx.t("appel", "call")
+                            }
+                        ))
+                        .faible(),
+                    ]
+                    .into(),
+                ));
                 if ouverte {
-                    ui.indent(addr, |ui| {
-                        for reference in self.xrefs.to(*addr) {
-                            ui.horizontal(|ui| {
-                                ui.weak(match reference.kind {
-                                    Kind::Call => ctx.t("appelé depuis", "called from"),
-                                    Kind::Jump => ctx.t("saut depuis", "jumped from"),
-                                    Kind::Data => ctx.t("lu depuis", "read from"),
-                                    Kind::Address => ctx.t("adresse prise en", "address taken at"),
-                                });
-                                // D'où vient l'appel est aussi une adresse
-                                // où l'on veut aller : la lire sans pouvoir
-                                // l'atteindre serait s'arrêter au milieu.
-                                if let Some(cible) = clickable_address(ui, ctx, reference.from) {
-                                    demande = Some(ReRequest::GoTo {
-                                        addr: reference.from,
-                                        target: cible,
-                                    });
-                                }
-                            });
-                        }
-                    });
+                    blocs.push(Bloc::Retrait(
+                        self.xrefs
+                            .to(*addr)
+                            .iter()
+                            .map(|reference| {
+                                Bloc::Texte(
+                                    vec![
+                                        Fragment::dit(match reference.kind {
+                                            Kind::Call => ctx.t("appelé depuis ", "called from "),
+                                            Kind::Jump => ctx.t("saut depuis ", "jumped from "),
+                                            Kind::Data => ctx.t("lu depuis ", "read from "),
+                                            Kind::Address => {
+                                                ctx.t("adresse prise en ", "address taken at ")
+                                            }
+                                        })
+                                        .faible(),
+                                        // D'où vient l'appel est aussi
+                                        // une adresse où l'on veut
+                                        // aller : la lire sans pouvoir
+                                        // l'atteindre serait s'arrêter
+                                        // au milieu.
+                                        Fragment::dit(format!("{:#010x}", reference.from))
+                                            .mène_à(reference.from),
+                                    ]
+                                    .into(),
+                                )
+                            })
+                            .collect(),
+                    ));
                 }
-            }
-            if demande.is_some() {
-                self.demande = demande;
             }
         }
 
@@ -147,58 +182,57 @@ impl ReModule for XrefsModule {
         // exécute des milliers d'instructions.
         let boucles = self.xrefs.loops();
         if !boucles.is_empty() {
-            ui.add_space(4.0);
-            ui.strong(ctx.compte(boucles.len(), ("boucle", "boucles"), ("loop", "loops")));
-            ui.weak(ctx.t(
-                "Un saut qui revient en arrière ferme un chemin. Combien de fois on y \
-                 tourne ne se sait qu'en exécutant : la gouttière le compte.",
-                "A jump going backwards closes a path. How many times one goes round is \
-                 only known by running it: the gutter counts that.",
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.compte(boucles.len(), ("boucle", "boucles"), ("loop", "loops")))
+                    .fort()
+                    .into(),
             ));
-            let mut demande: Option<ReRequest> = None;
-            for (cible, depuis) in &boucles {
-                ui.horizontal(|ui| {
-                    if let Some(où) = clickable_address(ui, ctx, *cible) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: *cible,
-                            target: où,
-                        });
-                    }
-                    ui.weak(ctx.t("bouclée depuis", "looped from"));
-                    if let Some(où) = clickable_address(ui, ctx, *depuis) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: *depuis,
-                            target: où,
-                        });
-                    }
-                });
-            }
-            if demande.is_some() {
-                self.demande = demande;
-            }
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Un saut qui revient en arrière ferme un chemin. Combien de fois on y \
+                     tourne ne se sait qu'en exécutant : la gouttière le compte.",
+                    "A jump going backwards closes a path. How many times one goes round is \
+                     only known by running it: the gutter counts that.",
+                ))
+                .faible()
+                .into(),
+            ));
+            blocs.extend(boucles.iter().map(|(cible, depuis)| {
+                Bloc::Texte(
+                    vec![
+                        Fragment::dit(format!("{cible:#010x}")).mène_à(*cible),
+                        Fragment::dit(ctx.t(" bouclée depuis ", " looped from ")).faible(),
+                        Fragment::dit(format!("{depuis:#010x}")).mène_à(*depuis),
+                    ]
+                    .into(),
+                )
+            }));
         }
 
         // Les étiquettes : ce qu'on saute sans y entrer. Leur nombre
         // dit combien de boucles et de branches porte le programme.
         let étiquettes = self.xrefs.labels().len();
         if étiquettes > 0 {
-            ui.add_space(4.0);
-            ui.weak(ctx.compte(
-                étiquettes,
-                (
-                    "étiquette — début de boucle ou de branche",
-                    "étiquettes — débuts de boucle et de branche",
-                ),
-                (
-                    "label — start of a loop or a branch",
-                    "labels — starts of loops and branches",
-                ),
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.compte(
+                    étiquettes,
+                    (
+                        "étiquette — début de boucle ou de branche",
+                        "étiquettes — débuts de boucle et de branche",
+                    ),
+                    (
+                        "label — start of a loop or a branch",
+                        "labels — starts of loops and branches",
+                    ),
+                ))
+                .faible()
+                .into(),
             ));
         }
 
         // Ce que le programme désigne sans l'appeler : ses données. Le
-        // compte suffit ici — le détail est dans le panneau des chaînes,
-        // qui les montre avec leur contenu.
+        // compte suffit ici — le détail est dans le panneau des
+        // chaînes, qui les montre avec leur contenu.
         let données = self
             .xrefs
             .targets()
@@ -208,18 +242,138 @@ impl ReModule for XrefsModule {
             })
             .count();
         if données > 0 {
-            ui.add_space(4.0);
-            ui.weak(ctx.compte(
-                données,
-                (
-                    "adresse de données désignée par le code",
-                    "adresses de données désignées par le code",
-                ),
-                (
-                    "data address pointed at by the code",
-                    "data addresses pointed at by the code",
-                ),
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.compte(
+                    données,
+                    (
+                        "adresse de données désignée par le code",
+                        "adresses de données désignées par le code",
+                    ),
+                    (
+                        "data address pointed at by the code",
+                        "data addresses pointed at by the code",
+                    ),
+                ))
+                .faible()
+                .into(),
             ));
         }
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
+        }
+        for action in &gestes.actions {
+            self.bascule(action);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use namsdec_core::{Cpu, Memory};
+
+    /// Le dépliage d'une cible, éprouvé **sans peindre**.
+    ///
+    /// Le signe « + » était un `clickable_label` qui écrivait dans
+    /// `self.ouverte` pendant le dessin ; il est devenu une action
+    /// nommée que le module relit après coup. Ce contrôle suit le
+    /// chemin entier : la vue propose l'action, la bascule l'applique,
+    /// la vue suivante porte les appelants — et la même action referme.
+    #[test]
+    fn une_cible_se_deplie_par_son_action_et_se_referme_de_meme() {
+        // Un appel et un retour : de quoi avoir une fonction appelée,
+        // donc une cible dépliable. Assemblé ici en octets pour que ce
+        // contrôle ne dépende d'aucun fichier de la machine.
+        let octets = [
+            0xe8, 0x01, 0x00, 0x00, 0x00, // call +1
+            0xc3, // ret
+            0xc3, // ret (la cible)
+        ];
+        let disasm = namsdec_disasm::disassemble(&octets, 0x400000);
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = XrefsModule::default();
+        module.on_binary_loaded(&ctx);
+        let Some((cible, _)) = module.xrefs.functions().first().copied() else {
+            return; // rien d'appelé ici : il n'y a rien à déplier
+        };
+
+        // 1. La vue propose l'action, et le signe dit « fermé ».
+        let action = format!("{ACTION_DÉPLIER}{cible:x}");
+        assert!(
+            textes(&module, &ctx).iter().any(|t| t == "+"),
+            "le signe dit que la ligne se déplie : {:?}",
+            textes(&module, &ctx)
+        );
+
+        // 2. La bascule l'applique : les appelants paraissent.
+        module.bascule(&action);
+        assert_eq!(module.ouverte, Some(cible));
+        let ouverte = textes(&module, &ctx).join(" | ");
+        assert!(
+            ouverte.contains("appelé depuis"),
+            "d'où la fonction est appelée : {ouverte}"
+        );
+        assert!(
+            ouverte.contains('\u{2212}'),
+            "et le signe dit maintenant « ouvert » : {ouverte}"
+        );
+
+        // 3. La même action referme.
+        module.bascule(&action);
+        assert_eq!(module.ouverte, None);
+        assert!(
+            !textes(&module, &ctx).join(" | ").contains("appelé depuis"),
+            "un second clic referme"
+        );
+    }
+
+    /// Tous les textes de la vue, dans l'ordre.
+    fn textes(module: &XrefsModule, ctx: &ReContext) -> Vec<String> {
+        fn dedans(blocs: &[Bloc], vus: &mut Vec<String>) {
+            for bloc in blocs {
+                match bloc {
+                    Bloc::Texte(ligne) | Bloc::Attente(ligne) => {
+                        vus.extend(ligne.fragments.iter().map(|f| f.texte.clone()))
+                    }
+                    Bloc::Retrait(dedans_là) => dedans(dedans_là, vus),
+                    Bloc::Section { blocs, .. } | Bloc::Repliable { blocs, .. } => {
+                        dedans(blocs, vus)
+                    }
+                    Bloc::Tableau { rangées, .. } => vus.extend(
+                        rangées
+                            .iter()
+                            .flatten()
+                            .flat_map(|l| &l.fragments)
+                            .map(|f| f.texte.clone()),
+                    ),
+                    Bloc::Jauge { texte, .. } => {
+                        vus.extend(texte.fragments.iter().map(|f| f.texte.clone()))
+                    }
+                    Bloc::Code(_) | Bloc::Trait => {}
+                }
+            }
+        }
+        let mut vus = Vec::new();
+        dedans(&module.vue(ctx).expect("une vue").blocs, &mut vus);
+        vus
     }
 }

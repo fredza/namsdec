@@ -6,12 +6,663 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **27 octobre
-2026**, version 0.2.9-beta.1.
+Tenue à jour au fil des séances. Dernière mise à jour : **29 octobre
+2026**, version 0.2.9-beta.2.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
 - `[ ]` à faire
+
+---
+
+## Priorités pour Claude — revue du 28 octobre 2026
+
+**À la demande de Fred : suivre cet ordre pour la prochaine passe de
+consolidation.** Les trois premiers lots sont faits — voir le tableau
+d'avancement plus bas ; les éléments déjà cochés dans le reste du
+fichier restent l'historique des travaux réalisés. Avant de
+modifier un comportement, vérifier son état actuel et consulter les
+entrées existantes : un constat de cette revue peut avoir été corrigé
+depuis. Ne pas refaire un travail déjà démontré comme terminé.
+
+La revue de départ est conservée dans
+[l'analyse du projet](mockups/2026-10-28/ANALYSE.md). Ce bloc en est le
+plan d'action ; les investigations et décisions nouvelles continuent
+d'aller dans `AMELIORATIONS.txt`, avec un renvoi ajouté ici. Les chemins
+et symboles ci-dessous sont les points d'entrée, pas des numéros de ligne
+à conserver malgré les modifications.
+
+**Consigne de suivi pour Claude :** prendre un lot délimité, passer son
+entrée à `[~]`, reproduire ou mesurer le problème, corriger, puis noter
+les contrôles et leurs résultats. Ne passer à `[x]` qu'une fois les
+critères de validation satisfaits. Distinguer les défauts reproduits,
+les risques déduits du code et les choix de conception. Consolider ces
+points avant d'ajouter de nouveaux modules sans rapport avec eux.
+
+### Où en est ce plan — 29 octobre 2026
+
+| Lot | État | Ce que la mesure a trouvé |
+|-----|------|---------------------------|
+| **P1** limites de l'émulation | `[x]` A 9.55 | Les trois constats étaient justes, et un quatrième les dépasse : le contrôle de précision se sépare en **trois**, dont deux réglages exactement simulés. |
+| **P2** interface réactive | `[x]` A 9.56 | Le gel est **reproduit** : `times 2000000000 nop`, plus de 20 s. Et un second défaut, 40 Mo de listing lus en entier. |
+| **P3** arrêt des outils | `[x]` A 9.57 | Reproduit et **pire que décrit** : arrêt demandé à 300 ms, main rendue à 30 001 ms. Plus 50 Mo avalés en 3 s sur une ligne sans fin. |
+| **P3 bis** prototype RE web local | `[ ]` | Éprouver un espace RE fonctionnel sur de vrais ELF, y compris de gros binaires, avant de décider d'une migration de l'interface. |
+| **P4** apprentissage / analyse | `[ ]` | Le seul lot qui demande un avis plutôt qu'une mesure : trois organisations à éprouver, pas une refonte validée. **Tauri a été envisagé puis écarté le 29 octobre** — voir P7. |
+| **P5** sous-états de `NamsdecApp` | `[ ]` | — |
+| **P6** commentaires historiques | `[ ]` | — |
+| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 aux trois quarts : **9 modules passés**. Ne restent que les trois qui peignent vraiment. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
+
+Ce que les trois premiers lots ont en commun, et qui vaut pour les
+suivants : **chacun partait d'un risque déduit du code, et chacun s'est
+révélé mesurable.** Les trois sont reproduits par une commande, et les
+chiffres obtenus ont à chaque fois déplacé le sujet — ce n'est pas la
+même chose de savoir qu'un gel est possible et de savoir qu'une ligne
+d'assembleur suffit à le provoquer.
+
+Un gain non prévu par le plan, et qui a servi aux trois : **le lanceur
+de processus est désormais unique** (`namsdec-disasm::lanceur`). Il était
+écrit trois fois — bien dans `plugin.rs`, mal dans `start_install`,
+à moitié dans `run_upx_on`. Les deux copies ont disparu, et `nasm`,
+`ld`, les sondes de démarrage et l'assemblage d'une instruction seule en
+héritent. P3 n'a donc eu à ajouter qu'une chose : le journal progressif.
+
+### P1 — Rendre explicites les limites de l'émulation
+
+- [x] **Recenser et signaler les comportements simplifiés** (A 9.55,
+      28 octobre 2026) — fait, et la mesure a déplacé le sujet. Les
+      trois constats de la revue étaient justes ; le programme
+      d'épreuve en a ajouté un quatrième, qui est le plus utile :
+      **le contrôle de précision se sépare en trois**. À 53 bits,
+      namsdec EST le matériel — c'est la double précision, celle qu'il
+      calcule nativement. À 24 bits, il suffit d'arrondir chaque
+      résultat au format simple. Seule la précision **étendue**, qui
+      est le réglage par défaut, reste approximée : le matériel rend
+      9,76e-19 là où namsdec rend zéro. Dire « le x87 est approximé »
+      était une demi-vérité, et la moins utile des deux moitiés.
+      Corrigé : `X87::control` est un vrai registre, `fldcw` écrit,
+      `fnstcw` relit, `finit` remet 0x037f ; l'arrondi gouverne `fist`,
+      `fistp` et `frndint`, `fisttp` s'en affranchit, et la précision
+      s'applique aux cinq opérations de base.
+      Recensé : `namsdec_emu::Simplification`, sept entrées, chacune un
+      fait mesuré. L'émulateur nomme, l'interface fait la phrase dans
+      les deux langues. Dites au moment où elles se produisent, une
+      fois chacune : barre d'état, rubrique dans l'onglet Diagnostics
+      (son compteur les ajoute à ceux de nasm), et la fiche
+      **F1 « arrondi »** qui porte le recensement complet.
+      **Validation :** `cargo run -p namsdec-emu --example oracle_x87`
+      — vingt cas, un seul programme des deux côtés, écarts attendus
+      déclarés d'avance — rend **18 identiques, 2 écarts attendus et
+      annoncés, 0 défaut**. Cinq contrôles de régression portent les
+      valeurs du matériel, tous éprouvés en remettant le défaut, plus
+      une scène de banc « console / Diagnostics, simplifications ». Le
+      banc a trouvé ce qu'aucun d'eux ne cherchait : la rubrique posée
+      hors du défilement poussait le panneau sur l'éditeur à 800x520
+      (A 9.37 mot pour mot).
+      **Reste non mesuré**, et dit comme tel : les transcendantes ne
+      sont pas comparées cas par cas au matériel — le manuel d'Intel ne
+      garantit que l'ordre de grandeur de leur erreur —, et aucune
+      exception flottante n'est levée. Les deux sont dans le
+      recensement plutôt que passées sous silence.
+      Le constat de départ de la revue, conservé : `Fldcw` était
+      accepté sans effet, le mot de contrôle relu était constant et les
+      valeurs 80 bits passent par `f64`.
+
+  La consigne de départ, conservée telle qu'elle a été écrite — ce qui
+  permet de relire ce qui était demandé et de voir ce qui a été fait
+  d'autre :
+
+  > **Recenser et signaler les comportements simplifiés**, en
+  > commençant par x87 : `crates/namsdec-emu/src/x87.rs`, branches
+  > `Fldcw`, `Fstcw` / `Fnstcw`, conversions `f80_to_f64` et
+  > `read_fp_operand`. À la revue, `Fldcw` est accepté sans effet,
+  > le mot de contrôle relu est constant et les valeurs 80 bits
+  > passent par `f64`. C'est un constat de code ; aucun cas divergent
+  > n'a été exécuté pendant cette revue.
+  > **Action :** établir le contrat réellement simulé, corriger ce
+  > qui est pris en charge et annoncer les approximations restantes
+  > dans l'aide et au moment pertinent de l'exécution, en français
+  > et en anglais, sans répéter le même avertissement à chaque pas.
+  > Ne pas qualifier une instruction de « fidèle » sur la seule base
+  > de son mnémonique : formes, précision, arrondis et exceptions
+  > peuvent avoir des couvertures différentes.
+  > **Validation :** un exemple minimal de changement d'arrondi et
+  > un exemple sensible à la précision étendue ; comparaison à une
+  > référence indépendante disponible, état avant/après et résultat
+  > attendu documentés. Étendre l'oracle existant quand il convient,
+  > garder les cas de régression dans les tests et rendre explicites
+  > les vérifications non exécutables sur la machine. Un comportement
+  > encore approximatif ne doit plus paraître pleinement simulé.
+
+### P2 — Garder l'interface réactive pendant l'assemblage
+
+- [x] **Sortir NASM et ld du fil de rendu** (A 9.56, 28 octobre 2026) —
+      fait, et **le gel est reproduit** : le plan le donnait pour un
+      risque déduit du code, une seule ligne valide suffit à le
+      provoquer. `times 2000000000 nop` occupe nasm plus de vingt
+      secondes, pendant lesquelles l'interface n'a ni image, ni
+      clavier, ni Stop. Second défaut trouvé en chemin : `%rep 400000`
+      produit quarante méga-octets de listing, que `read_to_string`
+      lisait en entier.
+      **Le lanceur n'a pas été réécrit, il a été partagé** — comme le
+      plan le demandait. `plugin.rs` savait déjà mettre un outil dans
+      son groupe de processus, vider ses tubes pendant qu'il écrit,
+      tenir un délai et laisser une grâce aux lecteurs ; c'est extrait
+      dans `namsdec-disasm::lanceur`, dont `namsdec-asm` dépend déjà.
+      Aucun crate nouveau. Les 63 contrôles de `plugin.rs` sont passés
+      au vert sans retouche.
+      **Trois autres appels synchrones** recensés et passés au même
+      lanceur : `assemble_one`, les deux sondes `--version` du
+      démarrage, et `run_upx_on` — qui avait son propre guetteur, un
+      délai tenu pour le processus mais pas pour ses descendants.
+      **Le délai est mesuré, pas choisi** : sept lignes s'assemblent en
+      4 ms, vingt-deux mille en 52 ms ; dix secondes laissent deux
+      ordres de grandeur de marge. Le chiffre et sa mesure sont dans le
+      manuel.
+      **Le résultat est rattaché à sa révision** : le jeton est pris au
+      lancement et comparé à l'arrivée ; un texte modifié ou un onglet
+      changé entre-temps fait jeter le résultat plutôt que de faire
+      pointer la gouttière sur des lignes qui ont bougé. Changer
+      d'onglet arrête le travail en cours.
+      **Stop arrête enfin quelque chose** : il était grisé tant que
+      `running` était faux, c'est-à-dire pendant le seul travail dont
+      on veuille vraiment sortir.
+      **Validation :** treize contrôles — six sur le lanceur (délai
+      tenu, arrêt à la demande, petit-fils qui ne retient pas la main,
+      code de sortie gardé, sortie bornée sans blocage, fichier borné),
+      sept sur l'interface (lancement qui rend la main, résultat
+      périmé, arrêt, second assemblage, changement d'onglet, barre
+      d'état dans les deux langues, et le panneau des diagnostics qui
+      s'ouvre à la récolte). Trois sont éprouvés en remettant le
+      défaut, dont un défaut que ce lot avait lui-même introduit : le
+      panneau s'ouvrait avant que le résultat n'existe, et montrait
+      donc les diagnostics de l'assemblage précédent. Le seuil de réactivité est un
+      **rapport** et non un nombre de millisecondes, pour ne pas
+      broncher sous charge (A 9.51).
+      **Décision de conception, dite plutôt que cachée :**
+      `start_assemble` pose le travail, `tick_assemble` le récolte, et
+      `do_assemble` — marqué `#[cfg(test)]` — n'ajoute qu'une boucle
+      d'attente par-dessus le même chemin, pour les contrôles qui ont
+      besoin d'un état arrêté. Deux contrôles seulement ont dû changer,
+      ceux qui passaient par le bouton.
+
+  La consigne de départ, conservée :
+
+  > **Sortir NASM et ld du fil de rendu**, sur le chemin
+  > `crates/namsdec-gui/src/run.rs::assemble_once` vers
+  > `crates/namsdec-asm/src/lib.rs::assemble`. À la revue, les appels
+  > `Command::output()` y sont synchrones et sans échéance visible.
+  > Le gel prolongé est un risque identifié, pas un incident reproduit
+  > pendant la revue.
+  > **Action :** lancer le travail en arrière-plan, montrer son état,
+  > permettre l'annulation et imposer un délai explicite. Identifier
+  > le document et sa révision au départ : un résultat tardif ne doit
+  > pas remplacer un autre onglet ni être présenté comme correspondant
+  > à un source modifié entre-temps. Examiner aussi `assemble_one`
+  > et les autres appels externes synchrones atteignables depuis l'UI.
+  > Partager les garanties de lancement avec P3 plutôt que créer un
+  > nouveau lanceur indépendant.
+  > **Validation :** outils factices lents, bloqués et en erreur ;
+  > l'interface continue à traiter les interactions, l'annulation et
+  > le délai rendent la main, les diagnostics restent attachés au bon
+  > document, et un changement ou une fermeture d'onglet en cours de
+  > travail ne corrompt aucun état. Un assemblage normal conserve ses
+  > adresses, diagnostics et correspondances avec les lignes source.
+
+### P3 — Unifier l'arrêt des outils et de leurs descendants
+
+- [x] **Donner à l'installation les garanties du lanceur d'outils**
+      (A 9.57, 29 octobre 2026) — fait, et **le risque est reproduit et
+      chiffré** : en rejouant la logique de `start_install`, l'enfant
+      meurt en **300 ms** et la main n'est rendue que **30 001 ms**
+      plus tard — la durée du petit-fils, à la milliseconde près. Et
+      sans que personne n'ait rien demandé : un parent qui sort tout de
+      suite en laissant un descendant tenir le tube faisait croire
+      l'étape en cours pendant trente secondes de plus.
+      Troisième défaut, celui de la taille d'une ligne :
+      `yes | tr -d '\n'` fait **50 Mo en 3 secondes** ; le garde-fou
+      des deux mille lignes ne voyait rien passer, puisqu'il n'y avait
+      jamais de ligne.
+      **Rien de neuf n'a été écrit pour l'arrêt** : le lanceur partagé
+      de P2 savait déjà tout cela. Il lui manquait de rendre la sortie
+      au fur et à mesure, ce qu'une installation exige —
+      `lancer_en_journal` a été ajouté à côté de `lancer`, les deux
+      partageant `démarrer` et `surveiller`. `start_install` ne lance
+      plus rien lui-même : quatre-vingts lignes de boucle ont disparu,
+      et le troisième lanceur du projet avec.
+      **Gagné au passage** : le drapeau d'arrêt atteint l'**étape en
+      cours** et non plus seulement l'intervalle entre deux — il n'était
+      donc jamais consulté pendant la compilation dont on voulait
+      sortir. Son prix est dit : une étape coupée au milieu peut laisser
+      un dossier à demi décompressé, d'où la vérification du résultat
+      attendu à la fin.
+      **Délais distingués**, comme demandé : trente minutes par étape
+      d'installation contre deux pour une décompilation, avec la raison.
+      **Validation :** onze contrôles — huit sur le lanceur (journal
+      rempli pendant l'écriture, ligne sans fin coupée, fin du journal
+      gardée, retour chariot, arrêt malgré un petit-fils, parent sorti,
+      étape trop longue, étape en erreur) et trois sur l'installation
+      (arrêt qui emporte la descendance, code de sortie exact, journal
+      borné dans les deux sens).
+      **Un contrôle a dû être refait**, et c'est la part utile : le
+      premier jet passait SANS le groupe de processus — la grâce
+      suffisait à rendre la main pendant que le descendant continuait
+      sa vie. Il mesurait notre patience, pas la mort du petit-fils.
+      Refait avec un **témoin** que le descendant pose s'il survit, puis
+      éprouvé en retirant le groupe : le témoin apparaît, le contrôle
+      tombe. Durées courtes à dessein — rien ne traîne plus de huit
+      secondes, même si un contrôle échoue.
+      **Limite dite plutôt que promise** : un descendant qui se détache
+      par `setsid` échappe au signal, et rien ne le rattrape sans un
+      cgroup. L'attente, elle, reste bornée dans tous les cas.
+      **Précaution :** aucune recette d'épreuve ne va jusqu'au succès —
+      une installation réussie appelle `declare_tool`, qui écrit dans
+      les fichiers de l'utilisateur.
+
+  La consigne de départ, conservée :
+
+  > **Donner à l'installation les garanties du lanceur d'outils**.
+  > Comparer `crates/namsdec-gui/src/jobs.rs::start_install` et
+  > `crates/namsdec-disasm/src/plugin.rs` : le premier tue l'enfant
+  > direct et joint les lecteurs sans échéance ; le second prévoit
+  > un groupe de processus, des sorties bornées et un délai de grâce.
+  > Le risque de descendants survivants reste à reproduire.
+  > **Action :** mutualiser la gestion du cycle de vie, de
+  > l'annulation, des délais et des sorties, tout en conservant le
+  > journal progressif de l'installation. Distinguer le délai d'une
+  > décompilation de celui d'une compilation d'outils : ne pas imposer
+  > arbitrairement les mêmes deux minutes à toutes les tâches.
+  > Borner aussi la mémoire du journal et la taille d'une ligne.
+  > **Validation :** outil factice avec enfant et petit-enfant,
+  > sortie abondante, ligne sans fin et tube maintenu ouvert après la
+  > sortie du parent. Vérifier arrêt du groupe, attente bornée,
+  > journal borné et statut exact sur succès, erreur, annulation et
+  > expiration. Nettoyer les processus d'épreuve même en cas d'échec
+  > du test ; documenter les limites des descendants qui quittent leur
+  > groupe plutôt que promettre de les arrêter tous.
+
+### P3 bis — Éprouver un espace RE web local sur de vrais ELF
+
+- [ ] **Réaliser un premier espace RE fonctionnel : fonctions,
+      listing, références croisées, pseudo-code et notes.** Partir de
+      la [maquette RE](mockups/2026-10-29/re.html) et relier l'interface
+      web locale aux moteurs Rust et aux outils locaux de Namsdec pour
+      travailler sur un vrai ELF, au-delà du scénario fictif.
+      **Validation :** vérifier la réactivité sur de gros binaires et
+      le confort réel du parcours : ouvrir le fichier, retrouver une
+      fonction, suivre une référence, consulter le pseudo-code et
+      annoter une adresse. Mesurer les temps de chargement et de
+      navigation, puis essayer l'interface dans un navigateur réel.
+      **Décision :** cette étape doit établir si la facilité de
+      modification des maquettes se retrouve dans une application
+      fonctionnelle, avant de décider de migrer l'ensemble de Namsdec.
+      Elle précède P4 ; la migration complète reste à évaluer à partir
+      de ses résultats.
+
+### P4 — Clarifier apprentissage et analyse avancée
+
+- [ ] **Évaluer les trois organisations proposées** dans la
+      [galerie des maquettes](mockups/2026-10-28/index.html) :
+      **Atelier guidé** pour apprendre, **Observatoire** pour analyser,
+      **Trajectoire** pour suivre le graphe et le temps.
+      **Direction recommandée :** Atelier à l'accueil, Observatoire
+      comme espace avancé, Trajectoire comme vue dédiée, avec la même
+      session d'exécution. Mettre en avant « lire → prévoir → avancer →
+      constater », notamment l'instruction suivante et ses effets.
+      Ce sont des propositions à éprouver, pas une refonte validée par
+      Fred ni une demande de remplacer egui par une interface web.
+      **Action :** comparer les parcours sur un même programme, puis
+      transposer une amélioration limitée dans l'interface existante.
+      Conserver l'accès aux fonctions, raccourcis, thèmes et deux
+      langues ; les outils avancés doivent rester faciles à retrouver.
+      **Validation :** suivre `audit-ui-egui`, mesurer les scènes à
+      vide et chargées, aux petites et grandes tailles, regarder les
+      captures avec le vrai thème et essayer l'application en marche.
+      Comparer débutant et utilisateur expérimenté quand des retours
+      sont disponibles ; sans eux, garder le statut de proposition UX.
+      Les contrôles géométriques seuls ne prouvent pas la compréhension.
+      Les maquettes HTML n'ont pas été vérifiées dans un navigateur
+      pendant la revue : les inspecter avant de les prendre pour modèle.
+
+### P5 — Séparer les responsabilités de l'état de l'interface
+
+- [ ] **Extraire progressivement des sous-états de `NamsdecApp`**,
+      en commençant par une responsabilité rendue nécessaire par les
+      lots précédents : document, exécution, analyse, travaux de fond ou
+      présentation. Voir `crates/namsdec-gui/src/main.rs`, `session.rs`,
+      `run.rs` et `jobs.rs`, ainsi que les entrées « Découpage de
+      main.rs » plus bas dans ce fichier.
+      **Action :** définir qui possède l'état et quelles opérations le
+      modifient. Déplacer des méthodes dans un autre fichier ne suffit
+      pas à réduire le couplage si elles modifient toujours toute
+      l'application. Pas de réécriture générale ni d'objectif de nombre
+      de lignes ou de gain de compilation non mesuré.
+      **Validation :** préserver les parcours ouverture, fermeture et
+      changement d'onglet, restauration de session, assemblage,
+      exécution, retour arrière et achèvement d'un travail en fond.
+      Réutiliser les contrôles existants et couvrir les frontières
+      nouvelles ; maintenir les inventaires de sources utilisés par
+      les tests qui inspectent le code.
+
+### P6 — Garder le contrat dans le code, l'histoire dans le journal
+
+- [ ] **Alléger les commentaires historiques au fil des zones touchées**.
+      Garder près du code ses invariants, limites et raisons durables ;
+      déplacer dans `AMELIORATIONS.txt` les récits de tentatives et de
+      corrections qui masquent le contrat actuel, avec un renvoi utile.
+      **Validation :** aucune justification nécessaire ne disparaît,
+      aucun commentaire n'est rattaché au mauvais symbole et aucun
+      changement de comportement ne se cache dans ce travail éditorial.
+      Ne pas lancer une réécriture massive des commentaires.
+
+### P7 — Séparer le traitement de la présentation (29 octobre 2026)
+
+**Demandé par Fred, et c'est le vrai chantier d'architecture.** Les
+modules de `namsdec-re` exposent leurs résultats par une méthode qui
+*dessine* (`lib.rs`, trait `ReModule` : `fn ui(&mut self, ui: &mut
+egui::Ui, ctx: &ReContext)`). Tant que c'est la seule sortie, ce que
+namsdec comprend d'un binaire n'existe que peint à l'écran — ni
+exportable, ni lisible par un autre programme, ni éprouvable autrement
+qu'en mesurant des pixels.
+
+**Tauri a été envisagé puis écarté** le 29 octobre : réécrire
+88 747 lignes d'interface et perdre les ~780 contrôles qui mesurent ce
+qui est peint coûte plus que ce que la mise en page CSS ferait gagner,
+et WebKitGTK — la WebView de Tauri sous Linux — est justement la moins
+sûre des trois. La séparation, elle, est à faire **dans tous les cas** :
+elle se paie seule, et elle est le prérequis de toute alternative.
+
+- [x] **Étape 0 — mesurer ce que les panneaux peignent vraiment**
+      (29 octobre 2026). Avant de dessiner une frontière, savoir ce
+      qu'elle doit laisser passer. Relevé sur les vingt
+      `crates/namsdec-re/src/*_module.rs` :
+
+      | ce qui est appelé | combien | ce que ça veut dire |
+      |---|---|---|
+      | `weak` + `label` + `monospace` + `strong` + `colored_label` | 230 | du **texte**, avec cinq emphases |
+      | `egui::Grid` | 11 modules sur 20 | des **tableaux** |
+      | `section(` | 18 | des **sections titrées** — déjà une abstraction du projet |
+      | `framed_button(` | 18 | des **actions** |
+      | `clickable_address(` | 14 | des **adresses** qui mènent au listing |
+      | `separator` / `barre` / `spinner` / `selectable_value` | 19 | séparateur, jauge, attente, choix |
+      | `painter` | **4 modules** | du **dessin propre** |
+
+      **Le résultat qui décide de la suite : quatre modules sur vingt
+      peignent vraiment** — entropie, graphe d'appels, éditeur binaire,
+      décompilation. Les seize autres font du texte, des tableaux et des
+      adresses. La frontière est donc petite, et elle est réaliste.
+
+      Et la moitié du travail est déjà faite, par construction : sur les
+      28 293 lignes de `namsdec-re`, **18 000 ne connaissent pas egui**
+      (`patch`, `explain`, `structure`, `elf_scan`, `cfg`, `entropy`,
+      `ioc`, `imports`…) ; seules les ~10 000 de `*_module.rs`
+      dessinent. `EntropyModule` garde déjà ses résultats dans des
+      champs — `windows`, `ranges`, `whole`, `packers` — que `ui()` ne
+      fait que peindre. Ils sont privés : c'est tout le défaut.
+      `report.rs` (615 lignes, zéro egui) est déjà une sortie de
+      données, mais partielle et en Markdown seulement.
+
+- [x] **Étape 1 — le vocabulaire de la frontière** (29 octobre 2026).
+      Deux fichiers neufs dans `namsdec-re` :
+      `vue.rs` — `Vue`, `Bloc` (texte, tableau, jauge, trait, attente,
+      section), `Ligne`, `Fragment` et `Ton`. **Il ne connaît pas egui,
+      et ne doit jamais le connaître** : c'est ce qui en fait une
+      frontière plutôt qu'une couche de plus. Sérialisable, et ce qui
+      n'est pas dit ne pèse rien dans le JSON — sans quoi une vue de
+      trois cents lignes porterait autant de `"copiable": false` que de
+      contenu.
+      `vue_peinte.rs` — le seul fichier qui connaisse les deux côtés.
+      Il déménagera dans `namsdec-gui` quand les vingt modules seront
+      passés, et `namsdec-re` perdra egui.
+      Le trait porte `fn vue(&self, ctx) -> Option<Vue>`, `None` par
+      défaut : un module qui n'a pas encore sa vue dessine comme avant.
+      **Un gain non prévu :** `Ton::Bon`, `Attention`, `Mauvais` disent
+      un **verdict**, pas une teinte. Deux des trois suivent désormais
+      le thème (`warn_fg_color`, `error_fg_color`) là où les modules
+      écrivaient `Color32::from_rgb` en dur — un thème pourra changer
+      sans qu'aucun module bouge. Le troisième, le vert, n'a pas
+      d'équivalent dans egui ; la constante est isolée à un seul endroit
+      et le dit.
+      **Module pilote : `digest_module`**, choisi pour sa forme (un
+      tableau, du texte, une action « copier »). Son `ui()` tient
+      maintenant en trois lignes et **dérive de sa vue** — une seule
+      description du panneau, donc pas deux qui divergent.
+      **Validation :** aller-retour JSON, texte nu d'une ligne, JSON
+      sans champ inutile, et surtout
+      `ce_que_le_panneau_montre_se_lit_sans_le_peindre` : ce que le
+      panneau affiche se vérifie en lisant du **texte**, là où il
+      fallait un contexte egui, une surface, un thème et la comparaison
+      de rectangles. 1 441 contrôles verts, clippy muet.
+      L'invariant `la_liste_des_panneaux_ne_rate_aucun_module` a
+      réclamé son dû, comme prévu.
+      **Et la capture a tranché deux choses que la mesure ne voyait
+      pas.** Comparée au pixel avec celle d'avant le portage, la scène
+      « analyse / digest » révélait un artefact : le peintre enveloppait
+      une cellule à fragment unique dans une rangée repliable, et le
+      trait que `clickable_label` peint sous un texte cliquable
+      s'étirait alors bien au-delà du mot. Corrigé — un fragment seul
+      ne crée plus de rangée.
+      Reste **0,217 % des pixels**, sur une bande de 14 px de haut : le
+      dernier paragraphe descend de deux pixels. Le module alternait
+      `add_space(4.0)` puis `add_space(2.0)` entre ses trois blocs ; le
+      peintre applique un rythme unique. C'est une incohérence corrigée,
+      pas une régression — et c'est exactement ce que la frontière
+      devait apporter : l'espacement est décidé à **un seul endroit**,
+      et un thème plus aéré ne demandera qu'un chiffre.
+
+- [x] **Étape 2 — les modules sans état d'interaction** (29 octobre
+      2026). Six portés : `digest`, `slack`, `map`, `yara`, `patterns`,
+      `upx`. Restent `xrefs` **et `imports`**, qui gardent eux-mêmes ce
+      que l'utilisateur a déplié : ils rejoignent l'étape 3 avec les
+      quatre qui dessinent.
+      **`patterns` était passif, contrairement à ce que le recensement
+      disait** : celui-ci comptait les affectations de
+      `on_binary_loaded` comme des interactions. Son repli est un
+      `CollapsingHeader` dont **egui garde l'état** — le module n'en
+      retient rien, et c'est une qualité qu'il serait dommage de
+      perdre. D'où deux ajouts au vocabulaire, structurels tous les
+      deux, sans action ni couleur : `Bloc::Repliable`, dont le champ
+      `ouvert` ne dit que la position de départ, et `Bloc::Retrait`,
+      qui dit un rattachement — « ces lignes développent la
+      précédente ».
+      **`imports` a été regardé puis reporté, et la raison vaut d'être
+      écrite** : il engage deux décisions que le vocabulaire ne porte
+      pas encore. (1) Le nom d'une fonction empruntée est un **lien qui
+      déplie sa fiche** — il faut une notion d'action, et elle vaudra
+      pour les neuf modules interactifs. (2) Chaque entrée porte sa
+      **famille de comportement**, peinte par `famille.color()` : une
+      couleur arbitraire choisie par le module, exactement ce que la
+      frontière doit lui retirer. La bonne réponse est probablement une
+      étiquette typée dont l'interface choisit la teinte — comme les
+      verdicts. Deux questions à trancher reposé, pas en fin de
+      séance.
+      **Ce que le recensement a corrigé** : « seize modules de texte »
+      était optimiste. Sept seulement n'ont ni bouton, ni saisie, ni
+      état d'ouverture ; les autres interagissent, et le vocabulaire de
+      la vue ne porte pas encore l'action. C'est une mesure, pas une
+      estimation — `grep` sur `framed_button`, `TextEdit`, `checkbox`,
+      `selectable_value`, `clickable_label`.
+      **Trois réglages de la frontière, trouvés en portant** — c'est à
+      cela que sert un pilote :
+      (1) le peintre rendait un `GoTarget`, les modules ont besoin de la
+      **demande complète** (adresse et cible) ; sans quoi chacun devait
+      retrouver de quelle adresse il s'agissait ;
+      (2) il imposait le gras aux en-têtes de tableau : `map` les veut
+      discrets, `slack` les veut francs. Le ton revient au module, les
+      pixels à l'interface ;
+      (3) il ignorait l'air entre les colonnes, que `map` écrivait
+      lui-même — ses colonnes se touchaient. Quatorze pixels, décidés
+      une fois pour tous les tableaux.
+      **Et un trou du banc, trouvé en portant `patterns`.** Sa capture
+      est revenue **identique au pixel** — mais la scène ne montre que
+      « Aucune figure reconnue » : le programme d'épreuve de
+      l'interface ne contient aucune figure, si bien que la
+      comparaison ne prouvait rien de ce panneau-là. La frontière
+      répond exactement à ce trou, et c'est sa première vraie
+      justification : `le_panneau_plein_se_lit_sans_etre_peint` bâtit
+      un code qui porte des figures et lit ce que le panneau
+      montrerait. Il a d'ailleurs corrigé mon attente — **trois**
+      familles et non deux, le `mov ecx, "HVUH"` étant lui-même une
+      constante en texte, que le panneau a raison de nommer.
+
+      **`upx` a imposé la notion d'action**, celle qui était reportée
+      depuis `imports` : deux boutons qui demandent quelque chose à
+      l'application. Tranchée au plus simple — un fragment porte le
+      **nom** de ce qu'il demande (`Fragment::agit("upx:lister")`), pas
+      la demande elle-même. La vue reste du texte et des noms,
+      sérialisable et lisible par qui ne connaît pas namsdec ; c'est le
+      module qui traduit, et lui seul sait traduire. `inactif` grise un
+      bouton sans le cacher : un bouton absent fait chercher, un bouton
+      grisé fait lire la raison.
+      Deux fonctions de peinture et non une — `peindre` pour les
+      panneaux sans bouton, `peindre_tout` qui rend aussi les actions.
+      Imposer la seconde à tous aurait mis une liste vide à lire dans
+      cinq modules sur six.
+      **Et une infidélité que j'avais introduite sans la voir** : les
+      lignes de sortie d'upx étaient **sélectionnables** à la souris, et
+      le commentaire du code disait pourquoi — « c'est elle, la preuve,
+      et c'est elle qu'on recopie dans une recherche » quand upx
+      refuse. La vue n'a pas cette notion ; je les avais rendues
+      ordinaires, c'est-à-dire inutilisables pour ce qu'elles servent.
+      Corrigé en les rendant **copiables d'un clic**, ce qui vaut mieux
+      qu'un glisser-déposer au pixel près. Les deux commandes écrites
+      (`upx -l`, `upx -d -o`) le sont aussi : elles servent à être
+      collées dans un terminal.
+
+      **Validation :** les six panneaux sont comparés **au pixel**
+      avec leur capture d'avant le portage. Après ajustement, `slack`
+      est revenu identique ; les écarts restants sont des décalages de
+      quelques pixels dus au rythme unique — un seul espacement entre
+      blocs là où `digest` alternait 4 px et 2 px, un seul entre
+      colonnes là où `map` était seul à l'écrire. Aucun contenu, aucune
+      couleur, aucun alignement de colonne n'a changé. 1 441 contrôles
+      verts.
+      **Un gain au passage** : les droits `wx` d'un segment étaient
+      peints par un `Color32::from_rgb` en dur dans `map_module`. Le
+      module dit maintenant « mauvais » et l'interface choisit la
+      teinte — un thème peut changer sans qu'on touche au module.
+      **Une règle de manipulation, apprise en se trompant** : porter un
+      module en remplaçant tout ce qui va de `fn ui` au marqueur
+      suivant emporte ce qui vit APRÈS la méthode — sur `yara`, la
+      fonction `build_rule` a disparu avec. On remplace la méthode
+      jusqu'à sa propre accolade fermante, et l'on vérifie par un
+      `diff` contre la version committée que rien d'autre n'a bougé.
+      Le réflexe suivant — un `git checkout` du fichier — a été refusé
+      par le garde-fou du projet, et c'était juste : la version
+      committée se LIT (`git show HEAD:…`) sans toucher au dépôt.
+
+- [~] **Étape 3 — ceux qui dessinent, et ceux qui retiennent.**
+      Fait : **`imports`**, qui exigeait les trois nouveautés à lui
+      seul — l'action, l'étiquette typée et le dépliage retenu par le
+      module.
+      **L'étiquette typée, tranchée** : un fragment porte le **nom**
+      d'une catégorie (`behaviour::Family::clé()` : « réseau »,
+      « crypto », « anti-debug ») et l'interface choisit la teinte. Les
+      modules écrivaient `famille.color()` — ils choisissaient une
+      couleur, ce que la frontière doit leur retirer. `Family::color()`
+      reste pour `syscalls.rs`, dernier appelant de la version peinte,
+      et quittera `behaviour.rs` — qui n'a rien à faire d'egui — quand
+      il sera porté.
+      **Le lien-qui-agit** : par défaut une action fait un **lien**,
+      du texte qu'on clique ; `.bouton()` en fait un bouton encadré.
+      Deux messages différents — « ceci va lancer quelque chose » pour
+      `upx`, « ceci déplie » pour un nom de fonction.
+      **`Ton::Repère`** pour le nom d'un registre dans une fiche : il
+      n'est pas cliquable, mais il désigne ce que le bandeau du
+      processeur montre. « Repère » et non « lien » : un lien se
+      clique, celui-ci se regarde.
+      **Validation :** capture identique au pixel — mais la scène ne
+      montre, là encore, que le cas vide. Le contrôle qui compte est
+      `une_fiche_se_deplie_par_son_action_et_se_referme_de_meme`, qui
+      suit le chemin entier **sans peindre** : la vue propose
+      l'action, la bascule l'applique, la vue suivante porte la fiche
+      avec sa signature et le registre du premier argument, et la même
+      action referme. Éprouvé en cassant la bascule. La logique a été
+      sortie de `ui()` pour cela — c'est un comportement, pas un
+      dessin, et le vérifier en comptant des galères de texte revenait
+      à mesurer la fenêtre pour savoir ce que le module retient.
+      **Un contrôle existant a maigri au passage** :
+      `une_fonction_inconnue_dit_ce_que_son_nom_apprend` demandait un
+      contexte egui, deux images et la collecte des formes de texte
+      pour lire ce qu'une fiche dit. Il lit maintenant des blocs.
+      L'invariant `aucun_commentaire_n_a_perdu_sa_fonction` a réclamé
+      son dû : j'avais glissé `portrait_en_blocs` entre le doc-comment
+      de `portrait` et sa signature.
+
+      **`xrefs` suit**, et sans rien ajouter au vocabulaire : le
+      signe « + » devient une action nommée comme la fiche
+      d'`imports`, et `bascule` sort de `ui()` pour les mêmes raisons.
+      Son contrôle est bâti sur **sept octets assemblés à la main** —
+      un `call` et deux `ret` — plutôt que sur un fichier de la
+      machine : il tourne partout, et il nomme exactement ce qu'il
+      éprouve.
+
+      **La décompilation suit**, premier des quatre « qui dessinent » —
+      et celui qui montre que le mot était trompeur : ce qu'elle peint
+      est du **texte**. D'où `Bloc::Code(String)` : le texte est la
+      donnée, la coloration et les adresses qu'on y clique sont de la
+      présentation. Un rapport en reçoit du code lisible, ce qui est
+      exactement ce qu'il veut ; l'interface, elle, continue d'en faire
+      des liens vers le listing. Les fonctions deviennent des
+      `Repliable`, le bouton une action.
+
+      Restent les trois qui peignent **vraiment** : entropie, graphe
+      d'appels, éditeur binaire. Ceux-là exposeront des **valeurs** —
+      une entropie par tranche, des nœuds et des arêtes, des octets et
+      leur adresse — et le dessin restera à l'interface, qui seule sait
+      de quelle largeur elle dispose. C'est la dernière forme de la
+      frontière à concevoir.
+      Les quatre qui peignent vraiment — entropie, graphe d'appels,
+      éditeur binaire, décompilation —, plus `xrefs` et `imports`, qui
+      gardent en propre ce que l'utilisateur a déplié.
+      **La question qui reste ouverte, et qu'`imports` posera :** une
+      entrée y porte sa famille de comportement, peinte par
+      `famille.color()` — une couleur choisie par le module, exactement
+      ce que la frontière doit lui retirer. La réponse est
+      probablement une **étiquette typée** dont l'interface choisit la
+      teinte, comme pour les verdicts `Bon`/`Attention`/`Mauvais`.
+      Les quatre qui peignent vraiment. Ceux-là exposent leurs
+      **données** — fenêtres d'entropie, nœuds et arêtes, octets, texte
+      décompilé — et non un dessin. Le dessin reste dans l'interface,
+      qui est son métier.
+
+- [ ] **Étape 4 — ce que la frontière permet**, et qui la justifie :
+      un rapport complet (et non plus partiel), un export JSON, une
+      analyse sans interface. C'est l'étape qui prouve que la
+      séparation servait à quelque chose.
+
+### Référence de départ et clôture des lots
+
+**Au départ (28 octobre, avant les lots).** La revue a exécuté
+`cargo test --workspace --offline` : **1 405 tests réussis, 0 échec,
+5 ignorés**. Le contrôle explicite `captures_de_toutes_les_scenes` a
+réussi et produit **112 images** ; seules les vues source chargée et
+analyse chargée ont été inspectées visuellement. L'oracle matériel et
+clippy n'ont pas été exécutés lors de cette revue. Ces chiffres sont un
+état daté, pas des seuils à figer.
+
+**Après P1, P2, P3 et le début de P7 (29 octobre).**
+`cargo test --workspace --offline` : **1 441 tests réussis, 0 échec,
+5 ignorés** — trente-six de plus qu'au départ, tous écrits pour ces
+lots. `cargo fmt --all --check` propre, `cargo
+clippy --workspace --all-targets` **sans un avertissement**.
+`captures_de_toutes_les_scenes` a produit **113 images**, dont la scène
+nouvelle « console / Diagnostics, simplifications » — le seul état où la
+rubrique des approximations existe. L'oracle x87
+(`cargo run -p namsdec-emu --example oracle_x87`) rend **18 cas
+identiques, 2 écarts attendus et annoncés, 0 défaut**.
+Ce qui **reste non vérifié**, et qui est dit plutôt que passé sous
+silence : l'oracle général (`--example oracle`) n'a pas été relancé lors
+de cette séance, aucun lot n'ayant touché à la sémantique qu'il éprouve ;
+les transcendantes du x87 ne sont pas comparées cas par cas au matériel ;
+et un descendant qui se détache par `setsid` échappe toujours à l'arrêt
+de groupe.
+
+Pour chaque lot de code : contrôles ciblés, puis vérifications requises
+par le projet (`cargo fmt --all --check`, clippy et tests du workspace).
+Consigner exactement ce qui a été exécuté, ce qui a échoué ou reste
+non vérifié. Pour une modification visible, appliquer aussi la règle du
+manuel en fin de fichier. Conserver la version actuelle : cette liste
+ne demande aucun changement de numéro ni aucune publication.
 
 ---
 
@@ -96,6 +747,287 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
       demander à la carte du fichier, dans un autre panneau.
 - [x] **Plusieurs octets d'un coup, et l'insertion** — faits le
       27 octobre 2026, voir la section 0 nonies.
+
+---
+
+## 0 sexvicies. La checklist d'avant-commit (A 9.50)
+
+- [x] **La fenêtre des exercices entre au banc** — la plus longue liste
+      que namsdec peigne, et aucun invariant ne l'avait regardée. Tous
+      passent sur elle.
+- [x] **Le programme d'accueil annonçait quatre-vingt-seize exercices**
+      — la première phrase qu'on lit en ouvrant namsdec, fausse depuis
+      qu'il y en a cent huit. Trouvée en regardant la capture, pas par
+      une mesure.
+- [x] **L'invariant compare l'annoncé au réel** — ce qui demandait
+      d'écrire les nombres en toutes lettres, avec leurs pièges :
+      « vingt et un », « quatre-vingts », « soixante-onze ».
+- [x] **`no_preferences_page_grows_by_itself` ne lit plus la machine**
+      (A 9.51) — deux hypothèses réfutées par la mesure : le dossier de
+      données déplacé en cours de route ne change pas la hauteur, et la
+      page des outils fait 761 px qu'ils soient tous présents ou tous
+      absents. Deux sources de non-déterminisme retirées quand même,
+      chacune pour une règle écrite : l'état des outils est semé (le
+      contrôle lançait un processus par outil), et l'horloge est posée
+      (il mesurait une convergence sans fixer le temps). **La cause
+      exacte n'a pas été reproduite** — dix passages verts, dont trois
+      sous charge lourde, ne valent pas une reproduction.
+
+---
+
+## 0 quinvicies. Le parcours n'apprenait qu'à écrire (A 9.49)
+
+- [x] **Douze exercices de rétro-ingénierie** — 96 étapes, pas une de
+      lecture, dans une application dont la moitié des panneaux sert à
+      l'analyse. Réparties sur trois paliers : lire un fichier se
+      commence avant de savoir ce qu'est une pile.
+- [x] **Chacun dit où regarder** — c'est ce qui les distingue d'un
+      exercice d'écriture, et ce que l'invariant mesure. Éprouvé en
+      retirant les renvois d'un seul.
+- [x] **`re_derouler` demande un geste** — la clé est à trouver, à la
+      main ou en lisant RDX. Les onze autres se regardent tourner.
+- [x] **`re_entropie` réécrit** — 2855 instructions pour une table de
+      256 compteurs ; la contrainte « mille pas » du projet l'a
+      attrapé. 483 sans table, et l'exercice tient en une page.
+- [x] **README, manuel et comptes** — 108 étapes, 101 avec un but
+      vérifiable. Le manuel calcule ses chiffres tout seul.
+
+---
+
+## 0 quatervicies. L'éditeur binaire : la place, la largeur, et une phrase en deux morceaux (A 9.46, 9.47, 9.48)
+
+- [x] **Le vidage prend la place qu'on lui donne** — vingt-deux lignes
+      écrites d'avance : 663 pixels offerts, 330 pris sur un grand
+      écran ; 174 offerts, 330 pris sur un petit, avec un second
+      ascenseur. La crainte écrite — « lire la place se reboucle » —
+      était la bonne, mais ne s'applique pas ici : mesuré stable à 365,
+      708 et 806 px sur trois écrans.
+- [x] **« Vingt-deux » en montrait seize** — `show_rows` compte à
+      `hauteur + item_spacing.y`, et l'écart n'était remis à zéro qu'à
+      l'intérieur de la closure. La zone réservait vingt pixels par
+      ligne pour en peindre quinze, d'où du blanc au bas de la zone.
+- [x] **L'inspecteur ne pousse plus le vidage dehors** — quatre cents
+      pixels pris au bas du panneau, et ses dernières lectures coupées
+      par le bord. Borné à 250 px, défilant chez lui.
+- [x] **Vingt-six espaces dans une phrase** — le retrait du source
+      entré dans la chaîne, qui s'affichait en deux blocs décalés.
+      Dix-neuf chaînes dans tout le projet, `upx_module` en tête.
+      Invariant posé, qui distingue la prose de l'alignement.
+- [x] **Les deux flèches de la recherche** pointaient l'une vers
+      l'autre : précédent à gauche, suivant à droite.
+- [x] **La largeur ne se perd plus** — `ReModule::pleine_largeur`, faux
+      par défaut : la règle reste la largeur de lecture, et l'éditeur
+      binaire dit qu'il en veut plus. Fenêtre agrandie, l'inspecteur
+      passe en colonne à droite et le vidage garde ses cinquante-deux
+      lignes (A 9.47).
+- [x] **`float64` s'étalait sur trois lignes de zéros** — trouvé par la
+      colonne, qui ne pardonne pas trois cents caractères. Notation
+      scientifique pour ce qui ne se lit pas.
+- [x] **Autant d'octets par ligne que la largeur permet** — 1346 px
+      offerts, 606 pris dans l'onglet d'analyse. `auto` par défaut,
+      trente-deux dès qu'ils tiennent ; 8/16/32 figent. Troisième fois
+      la même crainte de rebouclage, troisième fois réfutée par la
+      mesure (A 9.48).
+- [x] **Une barre horizontale pour quatorze pixels** — egui retranche
+      la barre deux fois, la zone ne la comptait qu'une. Invisible à
+      seize octets, flagrante à trente-deux.
+- [x] **Le banc sait isoler une fenêtre agrandie** (A 9.52) — le tri se
+      fait sur l'ORDRE des formes : ce qu'une fenêtre peint vient après
+      le rectangle de son cadre. Deux mesures ont corrigé l'idée en
+      chemin — le fond de l'écran coïncide mal, et une fenêtre agrandie
+      ne peint aucun fond (alpha zéro). La scène retirée est revenue, et
+      c'est elle qui prouve le correctif.
+
+---
+
+## 0 tervicies. Le `int3` qu'un programme se pose à lui-même (A 9.45)
+
+- [x] **La cinquième pièce du montage anti-débogage** — `rt_sigaction`,
+      `clone`, `ptrace`, `tgkill` étaient en place ; `int3` manquait, et
+      sans lui les quatre autres ne servaient à rien. La trace des
+      appels système a montré l'ordre exact sur `LeetCrackme3`.
+- [x] **Un vrai cadre de signal** — `struct rt_sigframe`, `ucontext` de
+      968 octets, `sigcontext` de 256, les registres dans l'ordre du
+      noyau, la zone rouge enjambée, l'alignement d'après `call`. Un
+      gestionnaire qui réécrit `uc_mcontext.rip` pour sauter par-dessus
+      un leurre est obéi — c'est pour cela qu'il existe, et c'est ce que
+      le second contrôle mesure.
+- [x] **`rt_sigreturn`** — le trampoline posé par la bibliothèque C
+      restaure tout depuis le cadre, RIP compris. Nommé dans la table.
+- [x] **La note de la barre de statut ne dit plus « pas encore »** —
+      elle dit ce qui est vrai : aucun gestionnaire installé, et sur une
+      vraie machine ce signal tuerait le programme.
+- [x] **Mesuré** — `LeetCrackme3` passe d'un arrêt à sa bannière ASCII
+      et l'attente d'une entrée.
+
+---
+
+## 0 duovicies. Un chemin pris pour un descripteur, et `open` qui répond enfin (A 9.43, 9.44)
+
+- [x] **`newfstatat` décrivait la sortie standard** — l'appel sert à
+      deux choses selon que son chemin est vide ou non ; namsdec
+      répondait d'après le descripteur dans les deux cas. Un programme
+      qui demandait `/etc/passwd` recevait `-EBADF`, ou s'entendait
+      décrire le terminal. Le chemin est lu, et un chemin non vide vaut
+      `-ENOENT` — la réponse de `fopen`, pour la même raison.
+- [x] **`open` répond comme `fopen`** — `veil`, lié statiquement,
+      s'arrêtait sur « l'appel système 257 (openat) » ; le même
+      programme lié dynamiquement suivait sa branche d'erreur.
+      `open`, `openat`, `stat`, `lstat`, `access` et `faccessat`
+      rendent `-ENOENT`, et `-EROFS` sur `O_CREAT`. La console
+      l'annonce une fois. Décidé par le propriétaire du projet le
+      28 octobre 2026 ; README, manuel et deux contrôles mis d'accord
+      avec le code — ils avaient eu raison de refuser l'essai qui les
+      contournait. `veil` tourne.
+
+---
+
+## 0 unvicies. `lseek`, et une aide qui nommait quatre appels sur quarante-huit (A 9.42)
+
+- [x] **L'appel système 8** — un binaire C++ s'arrêtait sur « l'appel
+      système 8 » après avoir écrit sa première ligne. C'est `lseek` :
+      « où en suis-je dans ce flux ? ». Il n'y a ni fichier ni position
+      derrière l'entrée et la sortie de namsdec, mais c'est une réponse
+      que la bibliothèque attend, pas un arrêt — `-ESPIPE`, ce que rend
+      un noyau pour un tube ou un terminal, et `-EBADF` au-delà du
+      descripteur 2, comme `fstat`.
+- [x] **La table et l'interpréteur se suivent** — `namsdec-re::table`
+      marque `lseek` simulé ; le contrôle croisé
+      `what_the_table_calls_simulated_really_runs` éprouve les deux
+      listes l'une contre l'autre, il n'y avait rien à ajouter.
+- [x] **Un appel refusé se nomme** — « l'appel système 8 » laisse
+      chercher ; « l'appel système 8 (lseek) » donne la page de manuel à
+      lire. Le numéro reste devant : c'est lui qu'on a mis dans RAX.
+- [x] **L'aide nommait quatre appels sur quarante-huit** — « Les appels
+      simulés sont `read`, `write`, `brk` et `exit` » : vrai le jour où
+      la phrase fut écrite, faux depuis quarante-quatre appels. Elle dit
+      désormais la ligne de partage — ce qui sert à tourner seul contre
+      ce qui touche au dehors — et un invariant interdit l'entre-deux :
+      ou bien l'aide n'énumère rien, ou bien elle les cite tous.
+- [x] **Le manuel disait la même chose** — « les appels système qui
+      touchent au monde — `mmap`, `open`, `fork` » : `mmap` et `fork`
+      sont simulés depuis longtemps. Corrigé, PDF régénéré.
+- [x] **Aucune scène ne montrait l'application en erreur** — la barre de
+      statut en rouge, qui est pourtant l'écran qu'on photographie pour
+      signaler quelque chose, n'avait jamais été regardée remplie. Scène
+      de banc « barre de statut / un appel système refusé » ajoutée ; le
+      message tient en entier.
+
+---
+
+## 0 vicies. La phrase sous « Entrée : », et deux rangées sous le fond du terminal (A 9.41)
+
+- [x] **La phrase du dessous n'était comptée nulle part** — « Ce programme
+      ne lit rien pour l'instant… » se peignait sur trois pixels de ses
+      quinze, au ras de la barre de statut, dès que la hauteur de la
+      console avait été figée à la poignée. `console_input_estimate`
+      énumère ce que la zone de saisie prend, rangée par rangée ; cette
+      ligne-là manquait, et celle du code de sortie aussi.
+- [x] **La mesure ne pouvait pas rattraper l'oubli** — un panneau qui
+      déborde se fait RAMENER par egui à la place disponible, bas
+      conservé : la hauteur relevée à l'image suivante est celle qu'on
+      lui a allouée, jamais celle qu'il lui fallait. Le panneau restait
+      court parce qu'il était court. La hauteur se prend désormais sur
+      `ui.min_rect()` du contenu.
+- [x] **Deux rangées présentes, mesurables, invisibles** — « Arguments »
+      et l'en-tête de l'environnement disparaissaient sous le fond de la
+      fenêtre de sortie : une `ScrollArea` réclame soixante-quatre pixels
+      quand on ne lui dit rien, et les prend même s'il n'en reste que
+      sept. Aucune mesure de découpage ne bouge dans ce cas — il faut
+      regarder l'ORDRE des formes. `min_scrolled_height(0.0)` : la sortie
+      a un ascenseur, la rangée où l'on tape n'en a pas.
+- [x] **Les seize pixels du cadre de la sortie** ne figuraient ni dans la
+      hauteur demandée ni dans le plancher : la console demandait moins
+      que son propre plancher et arrivait coincée à son minimum, poignée
+      à sens unique. Une constante partagée par les trois calculs.
+- [x] **Contrôle** : `nothing_of_the_input_area_is_ever_cut_off_or_covered`,
+      vingt-quatre scènes, découpage et recouvrement, éprouvé en
+      remettant chacun des deux défauts. Et une scène de banc de plus —
+      « console / binaire chargé, hauteur figée » —, celle que le défaut
+      occupait et qu'aucune capture ne montrait.
+
+---
+
+## 0 novodecies. Trois idiomes d'onglets, et cent sept captures qui ne montraient pas l'application (A 9.40)
+
+- [x] **Les captures se rendaient SANS LE THÈME** — et c'est la trouvaille
+      qui invalidait tout le reste. `captures_de_toutes_les_scenes`
+      construisait son `Harness` sur un `NamsdecApp::default()` sans
+      jamais appeler `apply_theme` : les 107 images montraient les
+      `Visuals` d'egui — fond gris 27, boutons gris 60, espacements par
+      défaut — et non namsdec. Le reste du banc passe par `chassis`, qui
+      l'appelle depuis toujours ; ce test-là bâtissait son contexte à la
+      main. Deux revues sur captures avaient jugé cette interface-là, qui
+      n'existe nulle part. Le test pose maintenant le thème et **vérifie**
+      que `panel_fill` est celui du thème, parce qu'un `build_ui` qui
+      l'oublie se réécrit en une ligne.
+- [x] **Trois idiomes d'onglets au lieu de deux** — `rangée_d_onglets`
+      en prévenait en commentaire, et son inventaire ne les comptait pas :
+      les préférences, la console et les familles de la calculatrice
+      étaient des `selectable_label`, c'est-à-dire le bleu PLEIN de la
+      sélection. Dans la fenêtre des préférences, l'onglet « Général » et
+      le bouton « OK » se peignaient donc pareil — un sélecteur et une
+      commande qu'on ne distingue plus. Les trois rangées passent par
+      `rangée_d_onglets` ; le bleu plein reste à ce qui agit.
+      Contrôle : `a_row_of_tabs_underlines_its_active_tab_and_never_fills_it`,
+      sur les quatre rangées, et il demande **les deux moitiés** — pas de
+      fond, et la PRÉSENCE du trait. Éprouvé en remettant le
+      `selectable_value` : il nomme le rectangle fautif.
+- [x] **Les sept indicateurs : un creux, et non un contour** — le trait
+      qui cerclait CF…OF était de la couleur de leur propre texte : sept
+      traits clairs dans la barre de titre, aussi marqués que les sept
+      valeurs qu'ils encadrent, lesquelles sont à zéro la plupart du
+      temps. Ils sont creusés dans le fond de l'éditeur ; celui qui est
+      levé teinte son creux, et se voit à la tache avant qu'on ait lu le
+      chiffre. Le texte estompé y gagne du contraste au passage — 4,52
+      contre 4,16 sur la barre nue. Contrôle :
+      `a_raised_flag_shows_as_a_patch_and_not_as_an_outline`, qui exige
+      l'absence du contour **et** deux fonds différents selon l'état.
+- [x] **Un bouton encadré commence par une capitale** — « sommaire » était
+      le seul libellé de l'application à s'ouvrir en minuscule, à côté de
+      « Copier » dans la même fenêtre. Contrôle :
+      `a_framed_button_opens_its_label_with_a_capital`, mesuré sur le
+      RENDU (un cadre de la couleur estompée EST un bouton encadré) et
+      non sur `i18n` : un libellé nouveau est jugé sans qu'on ait à
+      l'inscrire nulle part. Deux faux positifs écartés et nommés — les
+      blocs du graphe de déroulement portent le même cadre, mais leur
+      texte est en chasse fixe et ils en portent plusieurs.
+- [x] **TREIZIÈME FAÇON DONT UN CONTRÔLE MENT : le fondu d'une fenêtre.**
+      Rencontrée deux fois dans la même journée. egui fait APPARAÎTRE une
+      `Area` en fondu, et tant qu'il dure, tout ce qu'elle peint est
+      teinté de son opacité : le trait d'un onglet sort en `#1B4A7F` au
+      lieu de `#3794FF`, le cadre d'un bouton en `dim` à moitié. Un
+      relevé qui compare des couleurs EXACTES sur quatre ou six images ne
+      reconnaît alors **rien** dans **aucune** fenêtre, et passe au vert
+      en ne regardant rien. Douze images. Les trois autres contrôles du
+      dépôt qui comparent une couleur exacte ont été relus : ils exigent
+      tous un compte non nul, donc ils ne peuvent pas mentir ainsi.
+- [x] **Une correction défaite SUR MESURE** — `console_wanted_height`
+      compte sa rangée d'onglets comme la hauteur du texte d'un bouton
+      (15) quand la rangée en fait 26. La corriger paraissait évident ;
+      avec `ONGLET_HAUTEUR + 28`, une ligne de la sortie se fait rogner
+      par le bas, vu sur la capture de « console / Output (en marche) ».
+      Ce qui ressemble à une sous-estimation est ce qui tient : réclamer
+      la hauteur exacte fait déborder le panneau. Le nombre est resté, et
+      la mesure est écrite à côté de lui.
+- [x] **Dix cartes, dix largeurs** — la page Modules des préférences
+      empilait des `module_card` dont chacune épousait son texte : 355 px
+      pour « nasm détecté — NASM version 3.02 compiled on Jul 14 2026 »
+      à côté de 175, et un bord droit en dents de scie sur toute la page.
+      Une largeur commune, relevée UNE FOIS avant la première carte et
+      DITE à chacune — un groupe qui se règle sur la place que son propre
+      contenu laisse est la boucle de mesure que ce dépôt a déjà payée.
+      Contrôle : `the_cards_of_a_list_share_one_width`, éprouvé en
+      retirant le `set_width` : il rend les neuf largeurs.
+- Ce qui a été REGARDÉ et laissé : le trait sous les textes cliquables
+  (choix du 20 octobre, découvrabilité), les touches bleues de la
+  calculatrice (deux familles franches, décidées contre des mélanges
+  timides), le 9 pt des états vides (dans le jeu de tailles déclaré).
+  Et une observation qui n'est pas un défaut de forme : quatre boutons
+  de la barre d'outils — « Step Into », « Step Over », « Step Back »,
+  « Stop » — sont en anglais dans l'interface française, entre
+  « Assembler » et « Réinitialiser ». C'est un choix de vocabulaire, pas
+  une incohérence de peinture, et il revient à qui écrit le manuel.
 
 ---
 
@@ -467,10 +1399,19 @@ habituel : le relevé cherche une chose et en montre une autre.
       `ctx.patches`), un contrôle de branchement la retient :
       `the_panel_refuses_a_site_that_a_patch_already_holds`, qui montre
       d'abord que le plan SORT quand rien n'est posé.
-- [ ] **Ce qui reste de A 4.17** — relocaliser un saut court en
-      l'élargissant. Il faudrait sortir du cadre de la longueur exacte
-      dans la zone recouverte : c'est la limite honnête de la méthode, et
-      non un défaut d'implémentation.
+- [x] **Ce qui reste de A 4.17 : TRANCHÉ, et contre** — relocaliser un
+      saut court en l'élargissant. La case laissait croire à une tâche
+      en attente ; le relevé des 3 371 923 sites du corpus avait déjà
+      décidé l'inverse, et il faut le lire avant de s'y remettre. Le
+      saut court vaut **5,6 %** des refus ; la PLACE LIBRE en vaut
+      **28,1 %**, cinq fois plus, et quatre binaires sur onze n'ont
+      aucun trou exécutable. Élargir un `jmp rel8` en rel32 changerait
+      sa longueur dans la zone recouverte, c'est-à-dire ce qui fait la
+      sûreté du détour — on paierait cher le plus petit des deux
+      gisements.
+- [ ] **La vraie suite du détour : FABRIQUER de la place** — étendre un
+      segment, ajouter une section. C'est là que sont les 28,1 %, et
+      c'est un travail sur le fichier ELF, non sur les instructions.
 
 ---
 
@@ -1085,10 +2026,17 @@ un panneau de plus. Six points, six reproductions, six contrôles.
 - [x] **L'onglet RE porte une fiche d'identité** (A 8.20) — forme,
       langage, compilateur, protections, chiffres, portrait : ce qu'on
       veut savoir sans rien ouvrir. Il ne portait qu'un bouton.
-- [ ] **egui 0.37** (A 8.21) — mesuré puis défait : 6 erreurs de
-      compilation, mais 16 contrôles tombés sur 692, et le rendu de
-      n'importe quel glyphe n'arrive pas par défaut — il EMPIRE. À
-      reprendre avec `egui_system_font_provider`, pas sans.
+- [ ] **egui 0.37** (A 8.21, puis 9.54) — repris AVEC
+      `egui_system_font_provider`, comme 8.21 le demandait, et la mesure
+      a bougé. La compilation coûte trois lignes, pas six erreurs. Les
+      POLICES SONT RÉGLÉES : le fournisseur répare les deux invariants
+      de glyphes, et le « il empire » ne tient plus. Mais vingt-deux
+      contrôles tombent encore, et ils ne découlaient pas des glyphes.
+      Le vrai chantier est nommé : `Id::new` est déprécié au profit
+      d'`IdSalt`, `PanelState::load` ne retrouve plus les panneaux
+      (« le panneau latéral est affiché » échoue), et un changement de
+      style réel laisse deux boutons voisins à 21 et 26 px. Défait ;
+      le dépôt est en 0.36, 773 contrôles verts.
 - [x] **Le graphe d'appels en style UML** (A 8.22) — stéréotype,
       compartiments, angles droits, et des dépendances en tirets à pointe
       ouverte, qui est ce qu'un appel est. Le renommage répercuté
@@ -1347,9 +2295,12 @@ de ce qu'il porte (saisie, sélection, presse-papier) n'y existe.
 - [x] **La gouttière suit le fichier** — trouvé sur capture : la pastille
       d'un point d'arrêt recouvrait le numéro (« ●012 » pour la ligne
       4 012), et sept chiffres n'y tenaient pas du tout.
-- [ ] **Entrer en Insertion sur un million de lignes** paie encore les
-      trois secondes et les 1,8 Go : c'est le vrai champ qui revient. Le
-      cas est rare — on n'édite pas un désassemblage — et il est écrit.
+- [x] **Entrer en Insertion ne coûte plus trois secondes** (A 9.53) —
+      mesuré : le pic n'était pas la coloration (437 ms) mais ce qu'elle
+      PRODUIT, 1 200 001 sections qu'egui met 2,46 s à poser. Au-delà de
+      400 Ko, le texte se pose d'un bloc, sans couleur : 2,95 s → 1,02 s
+      sur deux cent mille lignes. Le mode Normal garde ses couleurs, il
+      ne pose que ce qu'il montre.
 
 ## 7. Les gros binaires ne gèlent plus — passe du 14 octobre (A 7.13)
 
@@ -1406,6 +2357,13 @@ binaire de quatre mégaoctets.
       mesurées : epaint parcourt lui aussi toutes les rangées du galley à
       chaque tesselation, et un galley d'un million de rangées pèse ce
       que pèsent ses glyphes.
+
+**Un cinquième gel, d'une autre espèce, a été trouvé le 28 octobre**
+(A 9.56) — et il n'était pas proportionnel au listing : il venait d'un
+programme EXTÉRIEUR qu'on attendait. `nasm` sur `times 2000000000 nop`
+occupe plus de vingt secondes, et `Command::output()` attendait sans
+borne. Les quatre d'ici se voyaient sur un gros binaire ; celui-là se
+voit sur une ligne. Voir P2 en tête de fichier.
 
 ## 6. Huit griefs sur captures — passe du 13 octobre (A 7.12)
 
@@ -3149,6 +4107,16 @@ code est écrit. C'est la règle qui a le plus servi cette année : trois
 défauts corrigés sans invariant sont revenus, et un contrôle écrit sans
 être éprouvé en remettant le défaut est passé au vert pendant des
 semaines en ne regardant rien.
+
+La séance du 29 octobre en a donné un exemple de plus, et il vaut d'être
+gardé : le contrôle qui devait prouver qu'un arrêt emporte la
+descendance d'une commande **passait sans le groupe de processus**. Il
+vérifiait que la main revenait vite — ce qu'un abandon donne aussi bien
+qu'un arrêt. Il mesurait notre patience, pas la mort du descendant.
+Refait avec un témoin que celui-ci pose s'il survit, il tombe dès qu'on
+retire le groupe. **Un contrôle qui ne distingue pas les deux états
+qu'il nomme ne regarde rien**, même quand il est vert pour la bonne
+raison.
 
 Toute modification visible met aussi à jour `docs/guide.py` et régénère
 le PDF du manuel.

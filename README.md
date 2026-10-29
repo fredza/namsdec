@@ -182,10 +182,20 @@ un classement : le nombre de passages, la part du total, la ligne
 elle-même, et un clic qui y emmène. La bande dit où ça chauffe ; le
 classement dit de combien, et se copie en texte.
 
-**Ce que namsdec ne fera pas.** `mmap`, `open`, `fork` : ces appels
-système sont nommés mais pas exécutés — namsdec n'a ni fichiers ni
-processus à offrir. Le programme qui en contient un s'arrêterait dessus
-sans prévenir : c'est dit à l'assemblage, avec la ligne.
+**Ce que namsdec ne fera pas.** `execve`, `socket`, `connect` : ces
+appels système sont nommés mais pas exécutés — namsdec n'a ni second
+processus ni réseau à offrir. Le programme qui en contient un
+s'arrêterait dessus sans prévenir : c'est dit à l'assemblage, avec la
+ligne. Ouvrir un fichier, en revanche, **répond** : « introuvable », ce
+qui est la vérité, et le programme suit sa branche d'erreur — souvent la
+moitié qu'on était venu voir. La console le dit la première fois.
+
+**Le `int3` qu'un programme se pose à lui-même.** Il installe un
+gestionnaire de `SIGTRAP`, exécute `int3`, et regarde s'il a été appelé :
+sous un débogueur, c'est le débogueur qui reçoit le point d'arrêt.
+namsdec l'appelle, avec un vrai cadre de signal — un gestionnaire qui
+réécrit l'adresse de reprise pour sauter par-dessus un leurre est donc
+obéi. Sans gestionnaire, l'exécution s'arrête en le disant.
 
 **Ce que nasm ne dit pas.** Deux fautes passent l'assemblage sans un mot
 et ne se voient qu'à l'exécution — ou pas du tout : un programme que rien
@@ -243,7 +253,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 183 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 184 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -275,7 +285,7 @@ demande explicite, et écrit la commande complète avant de la lancer.
 ## Le guide
 
 Un **guide de l'utilisateur en PDF** accompagne chaque version :
-[`docs/guide-namsdec-0.2.9-beta.1.pdf`](docs/guide-namsdec-0.2.9-beta.1.pdf)
+[`docs/guide-namsdec-0.2.9-beta.2.pdf`](docs/guide-namsdec-0.2.9-beta.2.pdf)
 — installation, prise en main, chaque panneau, l'exécution pas à pas, la
 mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
 raccourcis et les limites connues.
@@ -361,7 +371,7 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Quatre-vingt-neuf des quatre-vingt-seize exercices portent un **but vérifiable** (`rax == 0xf`) :
+Cent un des cent huit exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -377,7 +387,7 @@ budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
 aussi — champ `goal` du fichier JSON.
 
-Un parcours de quatre-vingt-seize exercices est livré avec le
+Un parcours de cent huit exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
 - **Découverte** (21) — registres, échange, mise à zéro, boucles,
@@ -385,27 +395,35 @@ programme, rangé en quatre paliers de difficulté croissante :
   écritures d'un nombre, `inc` contre `add`, `test`, `xchg`/`bswap`,
   masques de bits, constantes calculées à l'assemblage, rotations,
   `setcc`, `not` et `neg`, division signée, coût d'un immédiat.
-- **Pratique** (26) — décalages, compte de bits, multiplication,
+- **Pratique** (29) — décalages, compte de bits, multiplication,
   division, mémoire, tailles d'opérande, ordre des octets, données
   déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et
   maximum, parité, occurrences, retournement sur place, bornage sans
   branchement, puissances de deux, somme et moyenne, tableau d'octets,
   zones qui se chevauchent (`memmove`), remplissage par `rep stosb`,
   recherche de bit, addition sur 128 bits, table de conversion,
-  alignement et trous d'une structure.
-- **Structures** (30) — chaînes, instructions de chaîne, comparaison de
+  alignement et trous d'une structure. Puis la **rétro-ingénierie**
+  commence, avant même de lire du code : la signature d'un fichier,
+  ce qu'un `strings` laisse voir, position dans le fichier contre
+  adresse en mémoire.
+- **Structures** (33) — chaînes, instructions de chaîne, comparaison de
   chaînes, texte vers nombre, macros, enregistrements et champs, table
   de saut, choix sans branchement, pile, appels, convention d'appel,
   récursion, Fibonacci, cadre de pile, tableau local, tri, `strlen` par
   `scasb`, mot à l'envers, compte de mots, pile qui retourne, arguments
   au-delà de six, pointeur de fonction, alignement de pile, concaténation, extraction
   d'un mot, récursion terminale, tri par insertion, recherche binaire,
-  liste chaînée, transposition.
-- **Maîtrise** (19) — sortie, entrée, tas, flottants, SIMD, affichage
+  liste chaînée, transposition. Côté **rétro-ingénierie** : la
+  comparaison et le saut qui en dépend, dérouler un calcul plutôt
+  que l'exécuter, un aiguillage vu du désassemblage.
+- **Maîtrise** (25) — sortie, entrée, tas, flottants, SIMD, affichage
   décimal et hexadécimal, majuscules, débordement, protections,
   chiffrement XOR, somme de contrôle, canari posé à la main, choix
   vectoriel par masque, somme vectorielle, troncature contre arrondi,
-  table ASCII, affichage d'un négatif, lecture jusqu'à la fin.
+  table ASCII, affichage d'un négatif, lecture jusqu'à la fin. Et la
+  **rétro-ingénierie** de ce qui ne veut pas être lu : chaînes
+  cachées par XOR, garde `ptrace`, `int3` et son gestionnaire,
+  entropie d'une zone, gadget ROP, et l'octet qui change tout.
 
 Activable dans Préférences ▸ Modules.
 
@@ -676,10 +694,14 @@ manquent — sans cela, deux des onze binaires rendaient « zéro site ».
   rien changer au monde — `getpid`, `getuid`, `geteuid`, `sched_yield`,
   `nanosleep`, `getrandom`, `uname`, `clock_gettime` — et ceux du
   démarrage d'une bibliothèque C : `arch_prctl`, `set_tid_address`,
-  `fstat`, `ioctl`, `writev`, `prlimit64`, `futex`. Les autres — ouvrir
-  un fichier, lancer un processus, ouvrir une connexion — sont nommés et
-  signalés comme non simulés : il n'y a derrière namsdec ni système de
-  fichiers, ni réseau, ni second processus. `getrandom` rend des octets
+  `fstat`, `lseek`, `ioctl`, `writev`, `prlimit64`, `futex`. S'y
+  ajoutent ceux qui touchent aux **fichiers** — `open`, `openat`,
+  `stat`, `access` : ils répondent « introuvable », ce qui est la vérité
+  puisqu'il n'y a pas de système de fichiers, et le programme suit sa
+  branche d'erreur au lieu de s'arrêter devant la question ; la console
+  le dit la première fois. Les autres — lancer un processus, ouvrir une
+  connexion — sont nommés et signalés comme non simulés : il n'y a
+  derrière namsdec ni réseau, ni second processus. `getrandom` rend des octets
   **reproductibles** : c'est ce qu'il faut à un atelier où l'on revient
   en arrière, et ce qu'il ne faut surtout pas à une clé.
 - AVX-512, FMA, les ports `in`/`out` et `cmpxchg16b` ne sont pas

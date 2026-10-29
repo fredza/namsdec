@@ -4144,13 +4144,26 @@ pub(crate) fn flag_chip(
     // mais ne se cliquent pas. Les basculer à la main brouillait ce qu'on
     // vient de lire — l'état posé par la dernière instruction.
     let (rect, response) =
-        ui.allocate_exact_size(galley.size() + egui::vec2(6.0, 2.0), egui::Sense::hover());
-    ui.painter().rect_stroke(
-        rect,
-        egui::CornerRadius::from(3),
-        egui::Stroke::new(1.0, color),
-        egui::StrokeKind::Inside,
-    );
+        ui.allocate_exact_size(galley.size() + egui::vec2(10.0, 4.0), egui::Sense::hover());
+    // UN CREUX, ET NON UN CONTOUR. Le trait était de la couleur du
+    // texte : sept traits clairs côte à côte dans la barre de titre,
+    // aussi marqués que ce qu'ils encadrent, pour sept témoins qui
+    // valent zéro la plupart du temps. Le cadre criait, le contenu
+    // chuchotait.
+    //
+    // Le fond de l'éditeur sert de creux : plus SOMBRE que la barre, il
+    // sépare les sept sans rien ajouter de clair, et le texte estompé y
+    // gagne du contraste au lieu d'en perdre — 4,52 contre 4,16 sur la
+    // barre nue, mesuré sur VS Code Dark+. Un indicateur levé teinte ce
+    // creux de sa couleur : à l'écran, ce qui est à un se voit
+    // maintenant à la tache, et non au seul trait.
+    let fond = if on || flash > 0.0 {
+        mélange(theme.bg, color, 0.22)
+    } else {
+        theme.bg
+    };
+    ui.painter()
+        .rect_filled(rect, egui::CornerRadius::from(4), fond);
     let pos = rect.center() - 0.5 * galley.size();
     ui.painter().galley(pos, galley, color);
     response

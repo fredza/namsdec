@@ -1,6 +1,8 @@
-use crate::{
-    ReContext, ReModule, ReRequest, ReResult, ReSection, clickable_address, dzf, framed_button,
-};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, dzf};
+
+/// L'action du bouton qui lance le décompilateur.
+const ACTION_DÉCOMPILER: &str = "dzf:décompiler";
 
 /// Le panneau de décompilation DZF : les fonctions que DZF a rendues, en
 /// pseudo-C, dans l'onglet RE.
@@ -83,100 +85,120 @@ impl ReModule for DzfDecompilerModule {
         self.erreur = None;
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         let Some(sortie) = &self.decompilation else {
             // Pas encore de décompilation : on dit ce que ce panneau
-            // montrera, et comment l'obtenir. Un panneau vide qui ne dit
-            // rien se lit comme cassé.
-            ui.weak(ctx.t(
-                "La décompilation que DZF produit apparaîtra ici : chaque fonction en \
-                 pseudo-C, nommée comme vous l'avez nommée ailleurs.",
-                "The decompilation DZF produces will appear here: each function in \
-                 pseudo-C, named the way you named it elsewhere.",
-            ));
-            ui.add_space(4.0);
-            ui.weak(ctx.t(
-                "DZF est le désassembleur-décompilateur maison, en cours d'écriture. \
-                 Activez-le dans Outils, et il s'affichera ici dès qu'il aura rendu.",
-                "DZF is the home-grown disassembler-decompiler, under development. Enable \
-                 it in Tools, and it will show here as soon as it has produced output.",
-            ));
-            ui.add_space(8.0);
-            if framed_button(ui, ctx.t("Décompiler", "Decompile"))
-                .on_hover_text(ctx.t(
-                    "Lancer le décompilateur actif et lire sa sortie ici.",
-                    "Run the active decompiler and read its output here.",
-                ))
-                .clicked()
-            {
-                self.demande_decompile = true;
-            }
+            // montrera, et comment l'obtenir. Un panneau vide qui ne
+            // dit rien se lit comme cassé.
+            let mut blocs = vec![
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "La décompilation que DZF produit apparaîtra ici : chaque fonction en \
+                         pseudo-C, nommée comme vous l'avez nommée ailleurs.",
+                        "The decompilation DZF produces will appear here: each function in \
+                         pseudo-C, named the way you named it elsewhere.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "DZF est le désassembleur-décompilateur maison, en cours d'écriture. \
+                         Activez-le dans Outils, et il s'affichera ici dès qu'il aura rendu.",
+                        "DZF is the home-grown disassembler-decompiler, under development. \
+                         Enable it in Tools, and it will show here as soon as it has produced \
+                         output.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+                Bloc::Texte(
+                    Fragment::dit(ctx.t("Décompiler", "Decompile"))
+                        .bouton(ACTION_DÉCOMPILER)
+                        .survol(ctx.t(
+                            "Lancer le décompilateur actif et lire sa sortie ici.",
+                            "Run the active decompiler and read its output here.",
+                        ))
+                        .into(),
+                ),
+            ];
             if let Some(message) = &self.erreur {
-                ui.add_space(4.0);
-                ui.colored_label(ui.visuals().error_fg_color, message);
+                blocs.push(Bloc::Texte(Fragment::dit(message).ton(Ton::Mauvais).into()));
             }
-            return;
+            return Some(Vue { blocs });
         };
 
+        let mut blocs = Vec::new();
         if sortie.functions.is_empty() {
-            ui.weak(ctx.t(
-                "DZF n'a rendu aucune fonction pour ce binaire.",
-                "DZF returned no function for this binary.",
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "DZF n'a rendu aucune fonction pour ce binaire.",
+                    "DZF returned no function for this binary.",
+                ))
+                .faible()
+                .into(),
             ));
         }
-
         // Ce que DZF n'a pas su faire, en tête : une fonction manquante
         // n'est pas un vide, c'est un renoncement qu'il faut dire.
-        if !sortie.diagnostics.is_empty() {
-            for note in &sortie.diagnostics {
-                ui.colored_label(ui.visuals().warn_fg_color, note);
-            }
-            ui.add_space(4.0);
-        }
+        blocs.extend(
+            sortie
+                .diagnostics
+                .iter()
+                .map(|note| Bloc::Texte(Fragment::dit(note).ton(Ton::Attention).into())),
+        );
 
-        let mut aller: Option<(u64, crate::GoTarget)> = None;
         for f in &sortie.functions {
-            // Le nom : celui que NAMSDEC porte pour cette adresse, sinon
-            // celui de DZF, sinon un sub_… par défaut.
+            // Le nom : celui que NAMSDEC porte pour cette adresse,
+            // sinon celui de DZF, sinon un sub_… par défaut.
             let défaut = f
                 .name
                 .clone()
                 .unwrap_or_else(|| format!("sub_{:x}", f.address));
             let nom = ctx.display_name(f.address, &défaut);
 
-            egui::CollapsingHeader::new(egui::RichText::new(&nom).monospace().strong())
-                .id_salt(("dzf_fn", f.address))
-                .default_open(sortie.functions.len() == 1)
-                .show(ui, |ui| {
-                    if let Some(cible) = clickable_address(ui, ctx, f.address) {
-                        aller = Some((f.address, cible));
-                    }
-                    if let Some(sig) = &f.signature {
-                        ui.add_space(2.0);
-                        ui.monospace(
-                            egui::RichText::new(sig).color(ui.visuals().weak_text_color()),
-                        );
-                    }
-                    ui.add_space(4.0);
-                    if f.pseudocode.is_empty() {
-                        ui.weak(ctx.t(
-                            "DZF n'a donné que la signature de cette fonction.",
-                            "DZF gave only this function's signature.",
-                        ));
-                    } else if let Some(addr) =
-                        pseudocode_cliquable(ui, &f.pseudocode, f32::INFINITY)
-                    {
-                        // Une adresse du pseudo-code a été cliquée :
-                        // vers le CODE, sans demander. Elle y désigne un
-                        // appel ou un saut, et le choix ne se pose que
-                        // pour une adresse dont on ignore ce qu'elle
-                        // porte.
-                        aller = Some((addr, crate::GoTarget::Listing));
-                    }
-                });
+            let mut dedans = vec![Bloc::Texte(
+                Fragment::dit(format!("{:#010x}", f.address))
+                    .mène_à(f.address)
+                    .into(),
+            )];
+            if let Some(sig) = &f.signature {
+                dedans.push(Bloc::Texte(Fragment::dit(sig).code().faible().into()));
+            }
+            dedans.push(if f.pseudocode.is_empty() {
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "DZF n'a donné que la signature de cette fonction.",
+                        "DZF gave only this function's signature.",
+                    ))
+                    .faible()
+                    .into(),
+                )
+            } else {
+                Bloc::Code(f.pseudocode.clone())
+            });
+            blocs.push(Bloc::Repliable {
+                titre: Fragment::dit(nom).code().fort().into(),
+                // Une seule fonction : elle est ce qu'on vient lire.
+                ouvert: sortie.functions.len() == 1,
+                blocs: dedans,
+            });
         }
-        if let Some(addr) = aller {
-            self.aller = Some(addr);
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        if let Some(ReRequest::GoTo { addr, target }) = gestes.demande {
+            self.aller = Some((addr, target));
+        }
+        if gestes.actions.iter().any(|a| a == ACTION_DÉCOMPILER) {
+            self.demande_decompile = true;
         }
     }
 }

@@ -15,7 +15,8 @@ use std::collections::BTreeMap;
 
 use crate::misalign::{self, Misalignment};
 use crate::patterns::{Finding, Pattern, scan};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
 
 #[derive(Default)]
 pub struct PatternsModule {
@@ -77,37 +78,36 @@ impl ReModule for PatternsModule {
         self.misalignments = misalign::scan_in(ctx.disasm, &misalign::code_zones(ctx.binary, base));
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let mut vue = Vue::neuve();
         // Le désalignement d'abord, et sans compromis : c'est la seule
         // figure de ce panneau qui dise que **le listing lui-même ment**.
         // Toutes les autres se lisent dans un listing juste.
         if !self.misalignments.is_empty() {
-            if let Some((addr, target)) = désalignements(ui, ctx, &self.misalignments) {
-                self.demande = Some(ReRequest::GoTo { addr, target });
+            for bloc in désalignements(ctx, &self.misalignments) {
+                vue = vue.bloc(bloc);
             }
-            ui.add_space(6.0);
         }
         if self.found.is_empty() {
             if self.misalignments.is_empty() {
-                ui.label(ctx.t(
+                vue = vue.texte(ctx.t(
                     "Aucune figure reconnue : ce code ne compare rien de remarquable.",
                     "No shape recognised: this code compares nothing remarkable.",
                 ));
             }
-            return;
+            return Some(vue);
         }
-        ui.weak(ctx.t(
-            "Rangées de la plus rare à la plus commune : dans un gros binaire, mille tests \
-             de nullité sont de la ponctuation, et quatre comparaisons par XOR sont une \
-             piste.",
-            "Sorted from rarest to commonest: in a large binary, a thousand null tests are \
-             punctuation, and four XOR comparisons are a lead.",
-        ));
-        ui.add_space(4.0);
+        vue = vue.texte(
+            Fragment::dit(ctx.t(
+                "Rangées de la plus rare à la plus commune : dans un gros binaire, mille \
+                 tests de nullité sont de la ponctuation, et quatre comparaisons par XOR \
+                 sont une piste.",
+                "Sorted from rarest to commonest: in a large binary, a thousand null tests \
+                 are punctuation, and four XOR comparisons are a lead.",
+            ))
+            .faible(),
+        );
 
-        // Relevé pendant le dessin, posé après : les grilles empruntent
-        // `self`, et le module ne peut donc pas s'écrire dedans.
-        let mut demande: Option<ReRequest> = None;
         let mut familles: BTreeMap<Pattern, Vec<&Finding>> = BTreeMap::new();
         for finding in &self.found {
             familles.entry(finding.pattern).or_default().push(finding);
@@ -116,46 +116,61 @@ impl ReModule for PatternsModule {
         rangées.sort_by_key(|(_, occurrences)| occurrences.len());
 
         for (pattern, occurrences) in rangées {
-            egui::CollapsingHeader::new(format!(
-                "{} — {} {}",
-                pattern.title(ctx.lang),
-                occurrences.len(),
-                ctx.t("endroits", "places")
-            ))
-            .id_salt(pattern.title("en"))
-            // Ouvertes tant qu'elles restent lisibles : une famille de
-            // douze endroits se parcourt, une de mille se demande.
-            .default_open(occurrences.len() <= PAR_FAMILLE)
-            .show(ui, |ui| {
-                ui.weak(pattern.explain(ctx.lang));
-                ui.add_space(3.0);
-                egui::Grid::new(format!("patterns_{}", pattern.title("en")))
-                    .num_columns(2)
-                    .min_col_width(0.0)
-                    .striped(true)
-                    .show(ui, |ui| {
-                        for finding in occurrences.iter().take(PAR_FAMILLE) {
-                            if let Some(cible) = clickable_address(ui, ctx, finding.addr) {
-                                demande = Some(ReRequest::GoTo {
-                                    addr: finding.addr,
-                                    target: cible,
-                                });
-                            }
-                            ui.monospace(&finding.detail);
-                            ui.end_row();
-                        }
-                    });
-                if occurrences.len() > PAR_FAMILLE {
-                    ui.weak(format!(
+            let mut dedans = vec![
+                Bloc::Texte(Fragment::dit(pattern.explain(ctx.lang)).faible().into()),
+                Bloc::Tableau {
+                    colonnes: Vec::new(),
+                    rangées: occurrences
+                        .iter()
+                        .take(PAR_FAMILLE)
+                        .map(|finding| {
+                            vec![
+                                Fragment::dit(format!("{:#010x}", finding.addr))
+                                    .mène_à(finding.addr)
+                                    .into(),
+                                Fragment::dit(&finding.detail).code().into(),
+                            ]
+                        })
+                        .collect(),
+                    rayé: true,
+                },
+            ];
+            if occurrences.len() > PAR_FAMILLE {
+                dedans.push(Bloc::Texte(
+                    Fragment::dit(format!(
                         "… {} {}",
                         occurrences.len() - PAR_FAMILLE,
                         ctx.t("de plus", "more")
-                    ));
-                }
+                    ))
+                    .faible()
+                    .into(),
+                ));
+            }
+            vue = vue.bloc(Bloc::Repliable {
+                titre: format!(
+                    "{} — {} {}",
+                    pattern.title(ctx.lang),
+                    occurrences.len(),
+                    ctx.t("endroits", "places")
+                )
+                .into(),
+                // Ouvertes tant qu'elles restent lisibles : une famille
+                // de douze endroits se parcourt, une de mille se
+                // demande.
+                ouvert: occurrences.len() <= PAR_FAMILLE,
+                blocs: dedans,
             });
         }
-        if demande.is_some() {
-            self.demande = demande;
+        Some(vue)
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx)
+            && let Some(demande) = crate::vue_peinte::peindre(ui, ctx, &vue)
+        {
+            // Relevé pendant le dessin, posé après : c'est la règle de
+            // tous les panneaux, et la vue ne la change pas.
+            self.demande = Some(demande);
         }
     }
 }
@@ -166,83 +181,97 @@ impl ReModule for PatternsModule {
 /// affiche, voici ce que le processeur lit, et voici l'octet qui les
 /// sépare ». Une ligne qui dirait seulement « désalignement en 0x401234 »
 /// laisserait tout le travail à faire.
-fn désalignements(
-    ui: &mut egui::Ui,
-    ctx: &ReContext,
-    trouvés: &[Misalignment],
-) -> Option<(u64, crate::GoTarget)> {
-    let mut aller: Option<(u64, crate::GoTarget)> = None;
-    let rouge = egui::Color32::from_rgb(0xf4, 0x87, 0x71);
-    ui.horizontal_wrapped(|ui| {
-        ui.strong(
-            egui::RichText::new(ctx.t("Le listing est trompé", "The listing is being fooled"))
-                .color(rouge),
-        );
-        ui.weak(format!(
-            "{} {}",
-            trouvés.len(),
-            if trouvés.len() > 1 {
-                ctx.t("endroits", "places")
-            } else {
-                ctx.t("endroit", "place")
-            }
-        ));
-    });
-    ui.weak(ctx.t(
-        "Un saut atterrit au MILIEU d'une instruction du listing. Le listing lit ligne à ligne ; le processeur, lui, va où les sauts l'envoient — et lit donc d'autres octets. C'est l'anti-désassemblage classique : un seul octet-piège suffit à faire mentir tout ce qui suit. Le découpage en instructions n'est pas une propriété des octets, c'est une propriété du point où l'on commence à lire.",
-        "A jump lands in the MIDDLE of an instruction of the listing. The listing reads line by line; the processor goes where jumps send it — and therefore reads other bytes. This is classic anti-disassembly: a single trap byte is enough to make everything that follows lie. Where instructions begin is not a property of the bytes, it is a property of where one starts reading.",
-    ));
-    ui.add_space(4.0);
+fn désalignements(ctx: &ReContext, trouvés: &[Misalignment]) -> Vec<Bloc> {
+    let mut blocs = vec![
+        Bloc::Texte(
+            vec![
+                // Le rouge est un VERDICT depuis P7 : le module dit que
+                // c'est grave, l'interface choisit la teinte.
+                Fragment::dit(ctx.t("Le listing est trompé", "The listing is being fooled"))
+                    .ton(Ton::Mauvais),
+                Fragment::dit(format!(
+                    " {} {}",
+                    trouvés.len(),
+                    if trouvés.len() > 1 {
+                        ctx.t("endroits", "places")
+                    } else {
+                        ctx.t("endroit", "place")
+                    }
+                ))
+                .faible(),
+            ]
+            .into(),
+        ),
+        Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Un saut atterrit au MILIEU d'une instruction du listing. Le listing lit ligne à ligne ; le processeur, lui, va où les sauts l'envoient — et lit donc d'autres octets. C'est l'anti-désassemblage classique : un seul octet-piège suffit à faire mentir tout ce qui suit. Le découpage en instructions n'est pas une propriété des octets, c'est une propriété du point où l'on commence à lire.",
+                "A jump lands in the MIDDLE of an instruction of the listing. The listing reads line by line; the processor goes where jumps send it — and therefore reads other bytes. This is classic anti-disassembly: a single trap byte is enough to make everything that follows lie. Where instructions begin is not a property of the bytes, it is a property of where one starts reading.",
+            ))
+            .faible()
+            .into(),
+        ),
+    ];
 
     for m in trouvés {
-        ui.horizontal_wrapped(|ui| {
-            if let Some(cible) = clickable_address(ui, ctx, m.from) {
-                aller = Some((m.from, cible));
-            }
-            ui.label(ctx.t("envoie à", "sends to"));
-            ui.monospace(format!("{:#010x}", m.target));
-            ui.weak(format!(
-                "— {} {} {} {:#x}",
-                m.offset,
-                if m.offset > 1 {
-                    ctx.t("octets", "bytes")
+        blocs.push(Bloc::Texte(
+            vec![
+                Fragment::dit(format!("{:#010x}", m.from)).mène_à(m.from),
+                Fragment::dit(ctx.t(" envoie à ", " sends to ")),
+                Fragment::dit(format!("{:#010x}", m.target)).code(),
+                Fragment::dit(format!(
+                    " — {} {} {} {:#x}",
+                    m.offset,
+                    if m.offset > 1 {
+                        ctx.t("octets", "bytes")
+                    } else {
+                        ctx.t("octet", "byte")
+                    },
+                    ctx.t("après le début de", "past the start of"),
+                    m.inside
+                ))
+                .faible(),
+            ]
+            .into(),
+        ));
+        // Les deux lectures, côte à côte. C'est la forme qui apprend
+        // quelque chose : « voici ce que le listing affiche, voici ce
+        // que le processeur lit, et voici l'octet qui les sépare ». Une
+        // ligne qui dirait seulement « désalignement en 0x401234 »
+        // laisserait tout le travail à faire.
+        let mut rangées = vec![vec![
+            ctx.t("le listing lit", "the listing reads").into(),
+            Fragment::dit(&m.linear).code().into(),
+        ]];
+        rangées.extend(m.flow.iter().enumerate().map(|(rang, lue)| {
+            let texte = Fragment::dit(&lue.text).code();
+            vec![
+                if rang == 0 {
+                    ctx.t("le processeur lit", "the processor reads").into()
                 } else {
-                    ctx.t("octet", "byte")
+                    crate::vue::Ligne::default()
                 },
-                ctx.t("après le début de", "past the start of"),
-                m.inside
-            ));
-        });
-        ui.indent(m.target, |ui| {
-            egui::Grid::new(format!("misalign_{:x}", m.target))
-                .num_columns(2)
-                .min_col_width(0.0)
-                .striped(true)
-                .show(ui, |ui| {
-                    ui.label(ctx.t("le listing lit", "the listing reads"));
-                    ui.monospace(&m.linear);
-                    ui.end_row();
-                    for (rang, lue) in m.flow.iter().enumerate() {
-                        ui.label(if rang == 0 {
-                            ctx.t("le processeur lit", "the processor reads")
-                        } else {
-                            ""
-                        });
-                        ui.horizontal(|ui| {
-                            ui.monospace(format!("{:#010x}", lue.addr));
-                            ui.monospace(egui::RichText::new(&lue.text).color(if rang == 0 {
-                                rouge
-                            } else {
-                                ui.visuals().text_color()
-                            }));
-                        });
-                        ui.end_row();
-                    }
-                });
-        });
-        ui.add_space(4.0);
+                vec![
+                    Fragment::dit(format!("{:#010x} ", lue.addr)).code(),
+                    // La PREMIÈRE ligne lue par le processeur est celle
+                    // qui contredit le listing : c'est elle qu'on
+                    // cherche, et les suivantes ne font que remettre le
+                    // flot d'aplomb.
+                    if rang == 0 {
+                        texte.ton(Ton::Mauvais)
+                    } else {
+                        texte
+                    },
+                ]
+                .into(),
+            ]
+        }));
+        blocs.push(Bloc::Retrait(vec![Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées,
+            rayé: true,
+        }]));
     }
-    aller
+    blocs
 }
 
 #[cfg(test)]
@@ -292,5 +321,90 @@ mod tests {
             .find(|f| f.pattern == Pattern::XorCompare)
             .expect("la comparaison par XOR");
         assert!(xor.detail.contains("HVUH"), "{}", xor.detail);
+    }
+
+    /// Le panneau PLEIN se lit sans être peint — et c'est la seule
+    /// façon de le vérifier ici.
+    ///
+    /// La scène du banc ne montre que le cas vide : le programme
+    /// d'épreuve de l'interface ne contient aucune figure, si bien que
+    /// la comparaison au pixel ne prouve rien de ce panneau-ci. La
+    /// frontière de P7 répond exactement à ce trou — on construit un
+    /// code qui porte des figures, et l'on lit ce que le panneau
+    /// montrerait.
+    #[test]
+    fn le_panneau_plein_se_lit_sans_etre_peint() {
+        let mut bytes = Vec::new();
+        for _ in 0..5 {
+            bytes.extend_from_slice(&[0x48, 0x85, 0xC0, 0x74, 0x00]); // test rax,rax ; je
+        }
+        bytes.extend_from_slice(&[0xB9, 0x48, 0x56, 0x55, 0x48]); // mov ecx, "HVUH"
+        bytes.extend_from_slice(&[0x33, 0x0C, 0x03]); // xor ecx, [rbx+rax]
+
+        let disasm = namsdec_disasm::disassemble(&bytes, 0x1000);
+        let cpu = Cpu::new(Memory::new(0x1000, 0x100));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = PatternsModule::default();
+        module.on_binary_loaded(&ctx);
+        let vue = module.vue(&ctx).expect("une vue");
+
+        // Une famille par repli, et le plus rare devant — ce que le
+        // panneau promet dans sa première phrase.
+        let replis: Vec<(&str, bool, usize)> = vue
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Repliable {
+                    titre,
+                    ouvert,
+                    blocs,
+                } => Some((titre.fragments[0].texte.as_str(), *ouvert, blocs.len())),
+                _ => None,
+            })
+            .collect();
+        // Trois familles, et non deux : ce code porte aussi une
+        // constante en texte — c'est le `mov ecx, "HVUH"` qui sert à la
+        // comparaison par XOR, et le panneau a raison de la nommer.
+        assert_eq!(replis.len(), 3, "les familles trouvées : {replis:?}");
+        assert!(
+            replis.last().expect("la dernière").0.contains("nullité"),
+            "la plus COMMUNE ferme la marche — c'est la règle du panneau, \
+             et la seule raison d'être de son classement : {replis:?}"
+        );
+        assert!(
+            replis.iter().all(|(_, ouvert, _)| *ouvert),
+            "des familles d'un ou cinq endroits s'ouvrent d'elles-mêmes : {replis:?}"
+        );
+
+        // Et les adresses mènent quelque part : une figure qu'on ne
+        // peut pas atteindre ne sert à rien.
+        let adresses: Vec<u64> = vue
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Repliable { blocs, .. } => Some(blocs),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|bloc| match bloc {
+                Bloc::Tableau { rangées, .. } => Some(rangées),
+                _ => None,
+            })
+            .flatten()
+            .filter_map(|rangée| rangée.first()?.fragments.first()?.mène_à)
+            .collect();
+        assert!(
+            adresses.iter().all(|a| (0x1000..0x1100).contains(a)),
+            "les adresses sont celles du code éprouvé : {adresses:#x?}"
+        );
+        assert!(!adresses.is_empty(), "et il y en a");
     }
 }

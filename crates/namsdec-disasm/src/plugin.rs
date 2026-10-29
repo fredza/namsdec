@@ -21,6 +21,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::lanceur::{self, Bornes, Fin, Récolte};
+
 /// `Display` en anglais, comme les autres erreurs des crates métier.
 #[derive(Debug, Error)]
 pub enum PluginError {
@@ -156,8 +158,6 @@ impl<'a> Cible<'a> {
 /// Exposé parce qu'un appelant qui passe une [`Cible`] emploie `run_on`
 /// et doit pouvoir dire le même délai que `run` — sans le recopier.
 pub const TIMEOUT: Duration = Duration::from_secs(10);
-/// Au-delà, ce n'est plus un listing qu'on lit, c'est un vidage.
-const MAX_OUTPUT: usize = 4 * 1024 * 1024;
 
 /// Lit un fichier de description.
 pub fn read(path: &Path) -> Result<Plugin, PluginError> {
@@ -265,89 +265,22 @@ impl Plugin {
                     .replace("{out}", &sortie.to_string_lossy())
             })
             .collect();
-        // Le groupe de processus, et c'est la correction du délai.
-        //
-        // On tuait l'enfant DIRECT, puis on attendait les fils qui
-        // lisent ses sorties. Un descendant qui garde les tubes ouverts
-        // — un `sleep` lancé en héritant des sorties, ce que font
-        // couramment les scripts d'installation — laissait donc ces
-        // lecteurs attendre, et leur `join` n'était soumis à aucun
-        // délai : un délai demandé de 100 ms rendait la main au bout de
-        // deux secondes. Mis dans son propre groupe, l'outil emmène sa
-        // descendance quand on l'arrête.
+        // Le lancement lui-même est au lanceur partagé : groupe de
+        // processus, tubes vidés pendant que l'outil écrit, délai tenu
+        // jusque dans la descendance. Ces garanties ont été trouvées
+        // ici, une à une, et elles servent maintenant aussi à `nasm` et
+        // `ld` — voir `crate::lanceur`.
         let mut commande = Command::new(&self.command);
-        commande
-            .args(&args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped());
-        #[cfg(unix)]
-        {
-            use std::os::unix::process::CommandExt;
-            commande.process_group(0);
-        }
-        let mut enfant = commande.spawn()?;
-
-        // ON LIT PENDANT QUE L'OUTIL ÉCRIT, et c'est indispensable.
-        //
-        // Un tube a un tampon d'une soixantaine de kilo-octets. Plein,
-        // l'écriture suivante BLOQUE l'outil — qui ne finit donc jamais,
-        // pendant que nous l'attendons sagement. On tenait là un
-        // interblocage parfait : `objdump -d /bin/ls` rend plusieurs
-        // méga-octets, et namsdec le déclarait « arrêté au bout de cent
-        // vingt secondes » alors qu'objdump avait fait son travail en
-        // une fraction de seconde et attendait qu'on le lise.
-        //
-        // Deux fils, un par tube. Ils gardent au plus [`MAX_OUTPUT`]
-        // octets et **continuent de vider** le reste : la borne est
-        // maintenant une borne de MÉMOIRE et pas seulement d'affichage.
-        // `read_to_end` lisait tout avant de tronquer, ce qui revenait
-        // à promettre quatre méga-octets en en consommant autant que
-        // l'outil voulait bien en écrire.
-        let sortie_std = enfant.stdout.take().map(Lecteur::lancer);
-        let sortie_err = enfant.stderr.take().map(Lecteur::lancer);
-
-        // On surveille à petits pas plutôt que d'attendre : c'est la
-        // seule façon, sans bibliothèque supplémentaire, de reprendre la
-        // main sur un outil qui ne la rend pas.
-        let début = std::time::Instant::now();
-        let mut trop_long = false;
-        let mut statut = None;
-        loop {
-            match enfant.try_wait()? {
-                // Le statut est GARDÉ. Jeté, il laissait un outil qui
-                // écrit « tool failed » et sort avec le code 7 rendre un
-                // `Ok` indiscernable d'un succès.
-                Some(fini) => {
-                    statut = Some(fini);
-                    break;
-                }
-                None if début.elapsed() >= délai => {
-                    tuer_le_groupe(&mut enfant);
-                    let _ = enfant.wait();
-                    trop_long = true;
-                    break;
-                }
-                None => std::thread::sleep(Duration::from_millis(20)),
-            }
-        }
-        // Les fils rejoints DANS TOUS LES CAS, y compris après un
-        // arrêt — mais avec une échéance, et c'est la seconde moitié de
-        // la correction : un descendant qui aurait échappé au groupe
-        // (un `setsid`, par exemple) tiendrait sinon le tube ouvert
-        // pour toujours. Passé le délai de grâce, on prend ce qui a été
-        // lu jusque-là et l'on s'en va ; le tampon est partagé, donc
-        // rien n'est perdu de ce qui était arrivé.
-        let std_out = sortie_std
-            .map(|lecteur| lecteur.récolter(GRÂCE))
-            .unwrap_or_default();
-        let std_err = sortie_err
-            .map(|lecteur| lecteur.récolter(GRÂCE))
-            .unwrap_or_default();
-        if trop_long {
+        commande.args(&args);
+        let rendu = lanceur::lancer(&mut commande, &Bornes::en(délai))?;
+        if rendu.fin() == Fin::TropLong {
             return Err(PluginError::TooLong(délai.as_secs()));
         }
-        let code = statut.and_then(|fini| fini.code());
+        let code = match rendu.fin() {
+            Fin::Terminé(code) => code,
+            _ => None,
+        };
+        let (std_out, std_err) = (rendu.ordinaire, rendu.erreur);
         if écrit_un_fichier {
             // Ce que l'outil a écrit dans son fichier fait foi. S'il n'a
             // rien écrit — il a refusé, il s'est plaint —, la sortie
@@ -356,135 +289,13 @@ impl Plugin {
             // Lu BORNÉ comme les tubes : un fichier de sortie d'un
             // gigaoctet était lu en entier avant d'être tronqué pour
             // l'affichage.
-            if let Ok(fichier) = Récolte::lire_fichier(&sortie)
+            if let Ok(fichier) = Récolte::lire_fichier(&sortie, lanceur::MAX_SORTIE)
                 && !fichier.octets.is_empty()
             {
                 return Ok(ToolOutput::choisir(code, fichier, std_err, Source::File));
             }
         }
         Ok(ToolOutput::choisir(code, std_out, std_err, Source::Stdout))
-    }
-}
-
-/// Le délai de grâce accordé aux fils de lecture après l'arrêt de
-/// l'outil : le temps que les tubes se ferment, et pas davantage.
-const GRÂCE: Duration = Duration::from_millis(500);
-
-/// Arrête l'outil **et sa descendance**.
-///
-/// Sous Unix, l'enfant a été placé dans son propre groupe : un signal
-/// envoyé au groupe (un PID négatif) atteint tout ce qu'il a lancé.
-/// Ailleurs, on fait ce qu'on peut — l'enfant direct.
-fn tuer_le_groupe(enfant: &mut std::process::Child) {
-    #[cfg(unix)]
-    {
-        let pid = enfant.id() as i32;
-        // SAFETY: `kill(2)` sur un groupe dont nous sommes le parent.
-        // Le processus n'a pas encore été attendu, donc son PID est
-        // toujours le sien et ne peut pas avoir été réattribué.
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
-    }
-    let _ = enfant.kill();
-}
-
-/// Ce qu'un fil de lecture a récolté sur un tube ou dans un fichier.
-#[derive(Debug, Default, Clone)]
-struct Récolte {
-    /// Les octets gardés : au plus [`MAX_OUTPUT`].
-    octets: Vec<u8>,
-    /// Vrai si l'outil en a écrit davantage.
-    tronqué: bool,
-}
-
-impl Récolte {
-    /// Le contenu d'un fichier, borné de la même façon qu'un tube.
-    fn lire_fichier(path: &Path) -> std::io::Result<Self> {
-        use std::io::Read;
-        let mut octets = Vec::new();
-        std::fs::File::open(path)?
-            .take(MAX_OUTPUT as u64 + 1)
-            .read_to_end(&mut octets)?;
-        let tronqué = octets.len() > MAX_OUTPUT;
-        octets.truncate(MAX_OUTPUT);
-        Ok(Self { octets, tronqué })
-    }
-
-    /// Le texte, coupé sur une frontière UTF-8 valide.
-    ///
-    /// C'est ici que tenait la panique : `String::truncate(4 Mio)` sur
-    /// un texte dont le quatre-millionième octet tombait au milieu d'un
-    /// « é » interrompait le fil, et le résultat du travail était perdu.
-    /// On coupe les OCTETS, et seulement là où une séquence se termine.
-    fn texte(&self) -> String {
-        let mut texte = String::from_utf8_lossy(frontière(&self.octets)).into_owned();
-        if self.tronqué {
-            texte.push_str("\n… (sortie coupée à 4 Mio)");
-        }
-        texte
-    }
-}
-
-/// Les octets jusqu'à la dernière séquence UTF-8 complète.
-///
-/// Une séquence tronquée en fin de tampon est écartée ; une vraie
-/// erreur au milieu est laissée à `from_utf8_lossy`, qui la remplace
-/// sans rien interrompre.
-fn frontière(octets: &[u8]) -> &[u8] {
-    match std::str::from_utf8(octets) {
-        Ok(_) => octets,
-        Err(e) if e.error_len().is_none() => &octets[..e.valid_up_to()],
-        Err(_) => octets,
-    }
-}
-
-/// Un fil qui vide un tube dans un tampon partagé.
-///
-/// Partagé, et c'est la raison d'être du type : le fil peut être
-/// abandonné sans que ce qu'il avait déjà lu disparaisse avec lui.
-struct Lecteur {
-    tampon: std::sync::Arc<std::sync::Mutex<Récolte>>,
-    fini: std::sync::mpsc::Receiver<()>,
-}
-
-impl Lecteur {
-    fn lancer(mut flux: impl std::io::Read + Send + 'static) -> Self {
-        let tampon = std::sync::Arc::new(std::sync::Mutex::new(Récolte::default()));
-        let (dit_fini, fini) = std::sync::mpsc::channel();
-        let à_remplir = std::sync::Arc::clone(&tampon);
-        std::thread::spawn(move || {
-            let mut bloc = [0u8; 64 * 1024];
-            loop {
-                let lu = match flux.read(&mut bloc) {
-                    Ok(0) | Err(_) => break,
-                    Ok(n) => n,
-                };
-                let Ok(mut récolte) = à_remplir.lock() else {
-                    break;
-                };
-                let place = MAX_OUTPUT.saturating_sub(récolte.octets.len());
-                let prend = lu.min(place);
-                récolte.octets.extend_from_slice(&bloc[..prend]);
-                if prend < lu {
-                    // Au-delà de la borne on CONTINUE DE LIRE sans
-                    // garder : s'arrêter remplirait le tube, et l'outil
-                    // resterait bloqué sur son écriture suivante.
-                    récolte.tronqué = true;
-                }
-            }
-            let _ = dit_fini.send(());
-        });
-        Self { tampon, fini }
-    }
-
-    /// Ce que le fil a lu, en lui laissant au plus `grâce` pour finir.
-    fn récolter(self, grâce: Duration) -> Récolte {
-        let _ = self.fini.recv_timeout(grâce);
-        self.tampon
-            .lock()
-            .map(|récolte| récolte.clone())
-            .unwrap_or_default()
     }
 }
 
@@ -857,7 +668,7 @@ mod bornes_tests {
             .expect("l'outil répond");
         assert_eq!(rendu.source, Source::Stderr, "rien sur la sortie ordinaire");
         assert!(
-            rendu.text.len() <= MAX_OUTPUT + 64,
+            rendu.text.len() <= lanceur::MAX_SORTIE + 64,
             "borné comme l'autre : {} octets",
             rendu.text.len()
         );

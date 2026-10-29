@@ -136,6 +136,29 @@ impl Family {
     /// Du même nuancier que le reste de l'interface (VS Code Dark+), et
     /// stable : une famille garde sa couleur d'un panneau à l'autre,
     /// sans quoi la couleur n'apprendrait rien.
+    /// Le nom stable de la famille, tel qu'il voyage dans une vue.
+    ///
+    /// Une CLÉ et non une couleur : un module dit « réseau »,
+    /// l'interface décide de quelle teinte elle peint ce mot-là. C'est
+    /// la règle de P7, et c'est ce qui permettra à `color()` de quitter
+    /// ce fichier — qui n'a rien à faire d'egui — le jour où le dernier
+    /// module sera porté.
+    pub fn clé(self) -> &'static str {
+        match self {
+            Family::AntiDebug => "anti-debug",
+            Family::Execution => "execution",
+            Family::Network => "network",
+            Family::Memory => "memory",
+            Family::Crypto => "crypto",
+            Family::Files => "files",
+        }
+    }
+
+    /// La famille que désigne une clé, s'il y en a une.
+    pub fn de_clé(clé: &str) -> Option<Self> {
+        ALL.into_iter().find(|famille| famille.clé() == clé)
+    }
+
     pub fn color(self) -> egui::Color32 {
         match self {
             Family::AntiDebug => egui::Color32::from_rgb(0xf4, 0x87, 0x71),

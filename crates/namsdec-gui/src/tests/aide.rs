@@ -440,7 +440,8 @@ fn every_documented_example_assembles_and_runs() {
         \x20   align 32\n    huit_valeurs dd 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0\n\
         \x20   vecteur times 16 db 0\n    non_aligné times 32 db 0\n\
         \x20   valeurs dq 1.0\n    sortie times 32 db 0\n    buf times 64 db 0\n\
-        \x20   texte db \"abc\", 0\n\nsection .text\n_start:\n";
+        \x20   texte db \"abc\", 0\n\
+        \x20   ancien dw 0\n    vers_zero dw 0x0f7f\n\nsection .text\n_start:\n";
     let epilogue = "\n    hlt\nplus_grand:\nfin:\nnul:\nfini:\nidentiques:\n\
         non_comparable:\nétait_déjà_posé:\n    hlt\n";
 
@@ -710,6 +711,172 @@ fn the_banner_leads_to_the_sheet_of_the_instruction_it_shows() {
     );
 }
 
+/// Aucune phrase affichée ne porte l'indentation du source.
+///
+/// UN DÉFAUT QUI NE SE VOIT QUE SUR L'IMAGE, et qui revient à chaque
+/// fois qu'une longue chaîne est repliée dans le code sans `\` de
+/// continuation : les espaces du retrait entrent DANS le texte. À
+/// l'écran, la phrase s'ouvre d'un trou de vingt-six espaces, ou se
+/// replie en deux blocs qu'on lit dans le désordre — c'est ce que
+/// montrait l'éditeur binaire le 28 octobre 2026, et quatorze phrases
+/// d'`upx_module` avaient le même.
+///
+/// LA RÈGLE DISTINGUE LA PROSE DE L'ALIGNEMENT, et la longueur ne
+/// suffit pas à les séparer : le retrait incrusté fait de dix à
+/// vingt-six espaces, l'alignement volontaire de dix à seize. Écrit
+/// sur la seule longueur, ce contrôle accusait trois colonnes
+/// parfaitement légitimes.
+///
+/// Ce qui les sépare est ce qu'il y a de part et d'autre. Des espaces
+/// qui mènent à un `;` alignent un commentaire d'assembleur sur sa
+/// colonne. Des espaces qui suivent un mot hexadécimal séparent les
+/// colonnes d'un listing. Partout ailleurs, dix espaces entre deux
+/// mots sont un accident du source.
+#[test]
+fn aucune_phrase_ne_porte_l_indentation_du_source() {
+    let racine = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../.."));
+    let mut coupables = Vec::new();
+    let mut à_voir = vec![racine.join("crates")];
+    while let Some(dossier) = à_voir.pop() {
+        let Ok(entrées) = std::fs::read_dir(&dossier) else {
+            continue;
+        };
+        for entrée in entrées.filter_map(Result::ok) {
+            let chemin = entrée.path();
+            if chemin.is_dir() {
+                à_voir.push(chemin);
+                continue;
+            }
+            if chemin.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let Ok(texte) = std::fs::read_to_string(&chemin) else {
+                continue;
+            };
+            for (numéro, ligne) in texte.lines().enumerate() {
+                // Hors d'un littéral, rien à dire ; et une chaîne qui
+                // porte des retours à la ligne met en page quelque
+                // chose — un listing, une bannière —, ce n'est pas de
+                // la prose.
+                if !ligne.contains('"') || ligne.contains("\\n") {
+                    continue;
+                }
+                let octets: Vec<char> = ligne.chars().collect();
+                let mut début = None;
+                for (index, &c) in octets.iter().enumerate() {
+                    if c == ' ' {
+                        début.get_or_insert(index);
+                    } else {
+                        // Le mot qui précède : hexadécimal, ce sont
+                        // les colonnes d'un listing.
+                        let avant: String = début
+                            .map(|d| {
+                                octets[..d]
+                                    .iter()
+                                    .rev()
+                                    .take_while(|c| !c.is_whitespace() && **c != '"')
+                                    .collect::<Vec<_>>()
+                                    .into_iter()
+                                    .rev()
+                                    .collect()
+                            })
+                            .unwrap_or_default();
+                        let colonne_de_données =
+                            avant.len() >= 4 && avant.chars().all(|c| c.is_ascii_hexdigit());
+                        if let Some(d) = début.take()
+                            && index - d >= 10
+                            && d > 0
+                            && !matches!(octets[d - 1], ' ' | '"')
+                            && c != '"'
+                            // Un commentaire d'assembleur posé sur sa
+                            // colonne : les espaces y sont le propos.
+                            && c != ';'
+                            && !colonne_de_données
+                        {
+                            coupables.push(format!(
+                                "{}:{} — {} espaces",
+                                chemin.strip_prefix(racine).unwrap_or(&chemin).display(),
+                                numéro + 1,
+                                index - d
+                            ));
+                        }
+                        début = None;
+                    }
+                }
+            }
+        }
+    }
+
+    // ET LE MÊME DÉFAUT SOUS SON AUTRE FORME : une chaîne écrite sur
+    // plusieurs lignes du SOURCE, sans le `\` qui dit à Rust de manger
+    // le retour à la ligne et le retrait qui suit. La phrase emporte
+    // alors un saut de ligne ET vingt-cinq espaces. Deux infobulles de
+    // la barre de statut en étaient là, et le contrôle ci-dessus ne les
+    // voyait pas : il regarde une ligne à la fois, et le retrait y est
+    // en TÊTE, là où il est ordinaire.
+    //
+    // La signature est nette : une ligne très en retrait, qui est de la
+    // prose, qui ne porte qu'UN guillemet — celui qui ferme —, et dont
+    // la précédente ne finit pas par une continuation.
+    let mut suites = Vec::new();
+    let mut à_voir = vec![racine.join("crates")];
+    while let Some(dossier) = à_voir.pop() {
+        let Ok(entrées) = std::fs::read_dir(&dossier) else {
+            continue;
+        };
+        for entrée in entrées.filter_map(Result::ok) {
+            let chemin = entrée.path();
+            if chemin.is_dir() {
+                à_voir.push(chemin);
+                continue;
+            }
+            if chemin.extension().is_none_or(|e| e != "rs") {
+                continue;
+            }
+            let Ok(texte) = std::fs::read_to_string(&chemin) else {
+                continue;
+            };
+            let lignes: Vec<&str> = texte.lines().collect();
+            for (numéro, ligne) in lignes.iter().enumerate() {
+                if numéro == 0 {
+                    continue;
+                }
+                let retrait = ligne.len() - ligne.trim_start().len();
+                let corps = ligne.trim_end();
+                if retrait < 14
+                    || !corps.ends_with('"')
+                    || corps.matches('"').count() != 1
+                    || corps.split_whitespace().count() < 4
+                {
+                    continue;
+                }
+                // Le premier caractère est une lettre : du code finit
+                // par une parenthèse, une accolade, une virgule.
+                if !ligne
+                    .trim_start()
+                    .starts_with(|c: char| c.is_alphabetic() || c == '«' || c == '\u{201c}')
+                {
+                    continue;
+                }
+                if lignes[numéro - 1].trim_end().ends_with('\\') {
+                    continue;
+                }
+                suites.push(format!(
+                    "{}:{}",
+                    chemin.strip_prefix(racine).unwrap_or(&chemin).display(),
+                    numéro + 1
+                ));
+            }
+        }
+    }
+    coupables.extend(suites);
+
+    assert!(
+        coupables.is_empty(),
+        "ces phrases portent le retrait de leur source, et il se voit à l'écran : {coupables:#?}"
+    );
+}
+
 /// Le README annonce des chiffres : ils doivent rester vrais.
 ///
 /// C'est la page que voient ceux à qui l'on partage l'outil, et une
@@ -728,11 +895,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 96,
-        "le parcours livré compte quatre-vingt-seize exercices"
+        exercices, 108,
+        "le parcours livré compte cent huit exercices"
     );
     assert!(
-        readme.contains("parcours de quatre-vingt-seize exercices"),
+        readme.contains("parcours de cent huit exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.
@@ -770,10 +937,20 @@ fn the_readme_tells_the_truth() {
             "l'appel {simulé} est annoncé comme simulé"
         );
     }
+    // Ouvrir un fichier RÉPOND — « introuvable », ce qui est la vérité
+    // — depuis le 28 octobre 2026, et le README ne dit plus le
+    // contraire. Ce qui reste refusé est ce qui n'a pas de réponse
+    // vraie : il n'y a ni second processus, ni réseau.
     assert!(
-        !namsdec_re::table::is_simulated(2),
-        "ouvrir un fichier n'est pas simulé, et le README le dit"
+        namsdec_re::table::is_simulated(2) && namsdec_re::table::is_simulated(257),
+        "ouvrir un fichier répond, et le README le dit"
     );
+    for refusé in [59u64, 41, 42] {
+        assert!(
+            !namsdec_re::table::is_simulated(refusé),
+            "l'appel {refusé} n'a pas de réponse vraie ici"
+        );
+    }
     for nom in ["getpid", "getrandom", "sched_yield", "arch_prctl", "mmap"] {
         assert!(readme.contains(nom), "le README annonce {nom}");
     }
@@ -1645,7 +1822,7 @@ fn every_nasm_directive_has_a_sheet() {
 /// Le guide de l'utilisateur dit la vérité sur la version qu'il décrit.
 ///
 /// Un guide qui annonce une autre version que celle du programme, ou
-/// quarante-sept exercices quand il y en a quatre-vingt-seize, est pire
+/// quarante-sept exercices quand il y en a cent huit, est pire
 /// qu'une absence de guide. Son générateur lit donc le dépôt, et ce test
 /// vérifie qu'il n'y a rien d'écrit en dur qui puisse vieillir.
 #[test]

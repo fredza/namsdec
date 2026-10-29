@@ -2683,6 +2683,420 @@ hlt
     assert_eq!(emu.cpu.regs.get8l(Reg64::R10), 1, "ftst voit le zéro");
 }
 
+/// Le mot de contrôle est un registre, pas une constante : ce qu'un
+/// programme y pose se relit, et `finit` le remet au repos.
+///
+/// Ce qu'il faut savoir pour lire ce test : 0x037f est le mot au repos
+/// — précision étendue, arrondi au plus proche, exceptions masquées —
+/// et le prologue de beaucoup de routines de conversion fait
+/// exactement cette danse-là, `fnstcw` pour garder l'ancien et `fldcw`
+/// pour tronquer le temps d'un calcul.
+///
+/// Les deux valeurs attendues viennent du matériel : programme
+/// d'épreuve de A 9.55, cas r0 et r4.
+#[test]
+fn the_x87_control_word_reads_back_what_was_written() {
+    let emu = run_program(
+        "\
+section .data
+tronque dw 0x0f7f
+relu    dw 0
+
+section .text
+global _start
+_start:
+fnstcw [relu]
+movzx eax, word [relu]      ; au repos : 0x037f
+
+fldcw [tronque]
+fnstcw [relu]
+movzx ebx, word [relu]      ; ce qu'on vient d'y poser
+
+finit
+fnstcw [relu]
+movzx ecx, word [relu]      ; finit remet le mot au repos
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        emu.cpu.regs.get32(Reg64::Rax),
+        0x037f,
+        "le mot au repos, avant que personne n'y touche"
+    );
+    assert_eq!(
+        emu.cpu.regs.get32(Reg64::Rbx),
+        0x0f7f,
+        "ce que `fldcw` a posé se relit tel quel"
+    );
+    assert_eq!(
+        emu.cpu.regs.get32(Reg64::Rcx),
+        0x037f,
+        "`finit` remet aussi le mot de contrôle"
+    );
+}
+
+/// Le mode d'arrondi gouverne les conversions vers l'entier, et
+/// `fisttp` s'en affranchit.
+///
+/// C'est LE comportement qu'on vient voir dans un émulateur
+/// pédagogique : 3,5 ne donne pas le même entier selon quatre bits du
+/// mot de contrôle, et aucun des quatre résultats n'est une erreur.
+///
+/// Toutes les attentes viennent du matériel — A 9.55, cas r1 à r6, r13
+/// de la première épreuve et r0 à r2 de la seconde. Aucune n'a été
+/// posée à la main.
+#[test]
+fn the_rounding_mode_governs_the_conversions() {
+    let emu = run_program(
+        "\
+section .data
+proche  dw 0x037f
+bas     dw 0x077f
+haut    dw 0x0b7f
+tronque dw 0x0f7f
+trois5  dq 3.5
+mtrois5 dq -3.5
+mdeux5  dq -2.5
+deux5   dq 2.5
+entier  dq 0
+reel    dq 0.0
+
+section .text
+global _start
+_start:
+fldcw [proche]
+fld qword [trois5]
+fistp qword [entier]
+mov rax, [entier]           ; 4
+
+fldcw [tronque]
+fld qword [trois5]
+fistp qword [entier]
+mov rbx, [entier]           ; 3
+
+fldcw [haut]
+fld qword [trois5]
+fistp qword [entier]
+mov rcx, [entier]           ; 4
+
+fldcw [bas]
+fld qword [trois5]
+fistp qword [entier]
+mov rdx, [entier]           ; 3
+
+fldcw [bas]
+fld qword [mtrois5]
+fistp qword [entier]
+mov rsi, [entier]           ; -4 : vers moins l'infini, pas vers zéro
+
+fldcw [haut]
+fld qword [trois5]
+fisttp qword [entier]
+mov rdi, [entier]           ; 3 : fisttp tranche quoi qu'on règle
+
+fldcw [bas]
+mov qword [entier], 0
+fld qword [trois5]
+fistp dword [entier]
+mov r8, [entier]            ; 3, par la forme 32 bits
+
+fldcw [tronque]
+fld qword [deux5]
+frndint
+fstp qword [reel]
+mov r9, [reel]              ; 2.0
+
+fldcw [haut]
+fld qword [deux5]
+frndint
+fstp qword [reel]
+mov r10, [reel]             ; 3.0
+
+fldcw [haut]
+fld qword [mdeux5]
+frndint
+fstp qword [reel]
+mov r11, [reel]             ; -2.0 : vers le haut depuis un négatif
+hlt
+",
+        &[],
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rax), 4, "3,5 au plus proche pair");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rbx), 3, "3,5 tronqué");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rcx), 4, "3,5 vers le haut");
+    assert_eq!(emu.cpu.regs.get64(Reg64::Rdx), 3, "3,5 vers le bas");
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rsi) as i64,
+        -4,
+        "-3,5 vers le bas descend : le mode dirigé n'est pas la troncature"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rdi),
+        3,
+        "`fisttp` tronque même quand le mot dit « vers le haut »"
+    );
+    assert_eq!(emu.cpu.regs.get64(Reg64::R8), 3, "la forme 32 bits suit");
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::R9)),
+        2.0,
+        "frndint tronque"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::R10)),
+        3.0,
+        "frndint monte"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::R11)),
+        -2.0,
+        "vers le haut depuis -2,5 : -2 et non -3"
+    );
+}
+
+/// Le contrôle de précision, et la frontière exacte de ce qui est
+/// simulé.
+///
+/// Trois réglages, trois sorts différents, et c'est tout l'intérêt de
+/// ce test : il montre où namsdec est FIDÈLE et où il approxime, au
+/// lieu de laisser croire que les deux se valent.
+///
+/// * 24 bits : simulé, en arrondissant chaque résultat au format
+///   simple. `1 + 2^-30` rend 1 exactement, comme sur le matériel.
+/// * 53 bits : simulé **à l'identique**, puisque c'est ce que namsdec
+///   calcule — `(1 + 10^-18) - 1` rend zéro des deux côtés.
+/// * 64 bits (le réglage par défaut) : approximé par 53. Le matériel
+///   rend 9,757819552369540e-19 là où namsdec rend zéro, et ce test
+///   fixe cet écart au lieu de l'ignorer.
+///
+/// Matériel : A 9.55, cas r9 à r12, r14 et r15.
+#[test]
+fn the_precision_control_says_where_the_simulation_stops() {
+    let emu = run_program(
+        "\
+section .data
+etendue dw 0x037f
+double  dw 0x027f
+simple  dw 0x007f
+un      dq 1.0
+petit60 dq 1.0e-18
+petit30 dq 9.3132257461547852e-10
+sortie  dq 0.0
+
+section .text
+global _start
+_start:
+fldcw [simple]
+fld qword [un]
+fadd qword [petit30]
+fstp qword [sortie]
+mov rax, [sortie]           ; 1.0 : 2^-30 disparaît sous 24 bits
+
+fldcw [etendue]
+fld qword [un]
+fadd qword [petit30]
+fstp qword [sortie]
+mov rbx, [sortie]           ; 1.0000000009313226
+
+fldcw [double]
+fld qword [un]
+fadd qword [petit60]
+fsub qword [un]
+fstp qword [sortie]
+mov rcx, [sortie]           ; 0.0, comme le matériel
+
+fldcw [etendue]
+fld qword [un]
+fadd qword [petit60]
+fsub qword [un]
+fstp qword [sortie]
+mov rdx, [sortie]           ; 0.0 ici, 9.76e-19 sur le vrai x87
+
+fldcw [simple]
+fld1
+fld1
+faddp
+fsqrt
+fstp qword [sortie]
+mov rsi, [sortie]           ; racine de 2 arrondie au format simple
+
+fldcw [etendue]
+fld1
+fld1
+faddp
+fsqrt
+fstp qword [sortie]
+mov rdi, [sortie]
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rax)),
+        1.0,
+        "à 24 bits, 2^-30 ne pèse plus rien"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rbx)),
+        1.000_000_000_931_322_6,
+        "à la précision par défaut, il pèse"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rcx)),
+        0.0,
+        "à 53 bits, namsdec EST le matériel"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rdx)),
+        0.0,
+        "à 64 bits, le matériel rend 9.757819552369540e-19 : \
+         c'est l'approximation annoncée, et elle est fixée ici"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rsi)),
+        1.414_213_538_169_860_8,
+        "racine de 2 au format simple"
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rdi)),
+        std::f64::consts::SQRT_2,
+        "et à la précision par défaut, la double suffit : même réponse \
+         que le matériel"
+    );
+}
+
+/// Lire un vrai 80 bits : ce que la conversion perd, isolé du reste.
+///
+/// La valeur est posée octet par octet — 1 + 2⁻⁶³, mantisse
+/// 0x8000000000000001 et exposant 16383 — parce qu'aucun littéral
+/// décimal ne l'écrirait. Le calcul se fait à 53 bits, où 2⁻⁶³ est
+/// exactement représentable : le seul endroit où namsdec peut perdre
+/// quelque chose est donc la conversion à l'entrée. Le processeur rend
+/// 1,0842021724855044e-19, namsdec rend zéro, et c'est la
+/// simplification `X87FormatEtenduEnMemoire` — mesurée par
+/// `examples/oracle_x87`, cas 19.
+#[test]
+fn reading_a_real_eighty_bit_value_loses_its_low_bits() {
+    let emu = run_program(
+        "\
+section .data
+double       dw 0x027f
+un           dq 1.0
+un_et_un_bit db 0x01, 0, 0, 0, 0, 0, 0, 0x80, 0xff, 0x3f
+sortie       dq 0.0
+
+section .text
+global _start
+_start:
+fldcw [double]
+fld tword [un_et_un_bit]
+fsub qword [un]
+fstp qword [sortie]
+mov rax, [sortie]
+hlt
+",
+        &[],
+    );
+    assert_eq!(
+        f64::from_bits(emu.cpu.regs.get64(Reg64::Rax)),
+        0.0,
+        "le bit de poids faible du 80 bits n'a pas survécu au double"
+    );
+    assert!(
+        emu.simplifications()
+            .contains(&Simplification::X87FormatEtenduEnMemoire),
+        "et la perte est annoncée, pas subie en silence"
+    );
+}
+
+/// Ce que l'exécution a touché de simplifié, elle le sait et peut le
+/// dire — une fois chacun, même dans une boucle.
+#[test]
+fn the_simplifications_name_themselves_once() {
+    let mut emu = run_program(
+        "\
+section .data
+etendue dw 0x037f
+demasque dw 0x0340
+deux    dq 2.0
+sortie  dq 0.0
+etendu  dt 0.0
+
+section .text
+global _start
+_start:
+fldcw [etendue]
+mov ecx, 3
+boucle:
+fld qword [deux]
+fld qword [deux]
+faddp
+fstp qword [sortie]
+dec ecx
+jnz boucle
+
+fld qword [deux]
+fstp tword [etendu]
+fld qword [deux]
+fsin
+fstp qword [sortie]
+fldcw [demasque]
+hlt
+",
+        &[],
+    );
+    let vues = emu.simplifications().clone();
+    assert!(
+        vues.contains(&Simplification::X87PrecisionEtendue),
+        "trois additions en précision étendue : l'approximation est notée"
+    );
+    assert!(
+        vues.contains(&Simplification::X87FormatEtenduEnMemoire),
+        "un aller en 80 bits"
+    );
+    assert!(
+        vues.contains(&Simplification::X87Transcendantes),
+        "`fsin` ne passe pas par le polynôme du coprocesseur"
+    );
+    assert!(
+        vues.contains(&Simplification::X87ExceptionsMasquees),
+        "démasquer une exception ne change rien, et c'est dit"
+    );
+    assert!(
+        !vues.contains(&Simplification::X87FpremEnUnPas),
+        "ce programme n'a pas fait de `fprem` : on n'annonce que ce qui \
+         a eu lieu"
+    );
+
+    let a_dire = emu.simplifications_a_annoncer();
+    assert_eq!(
+        a_dire.len(),
+        vues.len(),
+        "chacune est à dire une fois, pas une fois par tour de boucle"
+    );
+    assert!(
+        emu.simplifications_a_annoncer().is_empty(),
+        "et une fois dite, elle ne revient pas"
+    );
+}
+
+/// Chaque simplification recensée a une clé, et les clés sont
+/// distinctes : c'est par elles que l'interface retrouve ses deux
+/// phrases.
+#[test]
+fn every_simplification_has_a_distinct_key() {
+    let mut cles: Vec<&str> = Simplification::TOUTES.iter().map(|s| s.cle()).collect();
+    let combien = cles.len();
+    cles.sort_unstable();
+    cles.dedup();
+    assert_eq!(
+        cles.len(),
+        combien,
+        "deux simplifications partagent une clé"
+    );
+    assert!(combien >= 7, "le recensement a perdu des entrées");
+}
+
 /// Les constantes et les fonctions du coprocesseur : c'est avec
 /// elles qu'on écrit un calcul trigonométrique sans table.
 #[test]
@@ -3502,6 +3916,327 @@ hlt
         emu.cpu.regs.get64(Reg64::Rcx) as u32,
         0x2000 | 0o620,
         "st_mode annonce un terminal"
+    );
+}
+
+/// Un `int3` va au gestionnaire que le programme s'est posé, et
+/// l'exécution reprend après.
+///
+/// C'est la dernière pièce du montage anti-débogage, et la plus simple
+/// à décrire : le programme installe un gestionnaire de `SIGTRAP`, pose
+/// un `int3`, et regarde s'il a été appelé. Sous un débogueur, c'est le
+/// DÉBOGUEUR qui reçoit le point d'arrêt et le gestionnaire ne tourne
+/// pas — c'est ainsi que le programme sait qu'on le suit.
+///
+/// namsdec l'appelle, comme le ferait une machine où personne ne
+/// regarde : la même décision que pour `ptrace`, qui répond « personne
+/// ne te suit ».
+#[test]
+fn an_int3_reaches_the_handler_the_program_installed() {
+    let emu = run_program(
+        "\
+section .bss
+act: resq 4
+témoin: resq 1
+
+section .text
+global _start
+_start:
+lea rax, [rel gestionnaire]
+mov [rel act], rax
+lea rax, [rel trampoline]
+mov [rel act + 16], rax
+mov rax, 13
+mov rdi, 5
+lea rsi, [rel act]
+xor rdx, rdx
+mov r10, 8
+syscall
+mov rbx, 0x5151
+mov r13, 0x1111
+int3
+mov r14, 0x1234
+mov rcx, [rel témoin]
+hlt
+
+gestionnaire:
+; en MÉMOIRE, car un registre serait rendu en revenant — et c'est
+; précisément ce qu'on vérifie plus bas.
+mov qword [rel témoin], 0xbeef
+mov r13, 0x9999
+ret
+
+trampoline:
+mov rax, 15
+syscall
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx),
+        0xbeef,
+        "le gestionnaire a tourné"
+    );
+    // Ce qu'un gestionnaire fait aux REGISTRES ne sort pas avec lui :
+    // le cadre les rend tels qu'ils étaient, comme sur une vraie
+    // machine. Un programme qui compte là-dessus se tromperait, et
+    // namsdec ne doit pas lui donner raison.
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R13),
+        0x1111,
+        "un registre changé dans le gestionnaire est rendu"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R14),
+        0x1234,
+        "et l'exécution a repris après l'int3"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx),
+        0x5151,
+        "les registres d'avant le signal sont rendus intacts"
+    );
+    assert!(
+        emu.software_breakpoint().is_none(),
+        "l'int3 n'a pas arrêté la machine"
+    );
+}
+
+/// Un gestionnaire qui RÉÉCRIT l'adresse de reprise est obéi.
+///
+/// C'est pour cela qu'un tel gestionnaire existe : il ne revient pas
+/// d'où il vient, il saute par-dessus un leurre. L'adresse se trouve
+/// dans `uc_mcontext.rip`, à un décalage que le noyau Linux fixe et que
+/// le programme écrit à la main — approcher ne suffirait pas, il faut
+/// le même octet.
+///
+/// C'est ce contrôle qui justifie de poser un VRAI cadre de signal
+/// plutôt qu'un appel de fonction déguisé : sans contexte à réécrire,
+/// le programme repartirait dans le décor, ce qui est pire que de
+/// s'arrêter.
+#[test]
+fn a_handler_that_rewrites_the_resume_address_is_obeyed() {
+    let emu = run_program(
+        "\
+section .bss
+act: resq 4
+
+section .text
+global _start
+_start:
+lea rax, [rel gestionnaire]
+mov [rel act], rax
+lea rax, [rel trampoline]
+mov [rel act + 16], rax
+mov rax, 13
+mov rdi, 5
+lea rsi, [rel act]
+xor rdx, rdx
+mov r10, 8
+syscall
+int3
+; LE LEURRE : ce qui suit l'int3 ne doit jamais s'exécuter.
+mov r15, 0xdead
+hlt
+
+suite:
+mov r15, 0x600d
+hlt
+
+gestionnaire:
+; uc_mcontext.rip : 40 pour uc_mcontext, 128 pour rip.
+lea rax, [rel suite]
+mov [rdx + 168], rax
+ret
+
+trampoline:
+mov rax, 15
+syscall
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R15),
+        0x600d,
+        "le programme a repris où le gestionnaire l'a dit"
+    );
+}
+
+/// `open` répond « introuvable » au lieu de s'arrêter, et le programme
+/// continue.
+///
+/// Il n'y a pas de système de fichiers derrière namsdec, et c'est
+/// justement pourquoi `-ENOENT` est la vérité plutôt qu'une politesse.
+/// C'est ce que `fopen` répond depuis longtemps ; un binaire lié
+/// statiquement, qui fait le même travail par l'appel système,
+/// s'arrêtait net. La même question recevait deux réponses opposées
+/// selon la façon dont le programme avait été lié.
+///
+/// Ouvrir pour CRÉER est un autre cas : ce qui manque n'est pas le
+/// fichier, c'est l'endroit où l'écrire. `-EROFS`.
+#[test]
+fn open_answers_not_found_instead_of_stopping() {
+    let emu = run_program(
+        "\
+section .data
+chemin: db '/etc/passwd', 0
+après: db 'après', 10
+
+section .text
+global _start
+_start:
+mov rax, 2
+lea rdi, [rel chemin]
+xor rsi, rsi
+xor rdx, rdx
+syscall
+mov rbx, rax
+; le même, mais pour créer : O_CREAT
+mov rax, 2
+lea rdi, [rel chemin]
+mov rsi, 0o100
+mov rdx, 0o644
+syscall
+mov r12, rax
+; et le programme continue, ce qui est tout l'intérêt
+mov rax, 1
+mov rdi, 1
+lea rsi, [rel après]
+mov rdx, 7
+syscall
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx) as i64,
+        -2,
+        "ouvrir pour lire : -ENOENT"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::R12) as i64,
+        -30,
+        "ouvrir pour créer : -EROFS"
+    );
+    let sortie = String::from_utf8_lossy(emu.output()).into_owned();
+    assert!(
+        sortie.ends_with("après\n"),
+        "le programme a poursuivi : {sortie:?}"
+    );
+    // Répondre n'est pas se taire : la console le dit, une fois.
+    assert_eq!(
+        sortie.matches("système de fichiers").count(),
+        1,
+        "annoncé une seule fois : {sortie:?}"
+    );
+}
+
+/// `newfstatat` sur un CHEMIN ne décrit pas la sortie standard.
+///
+/// L'appel sert à deux choses : avec un chemin vide — ou `AT_EMPTY_PATH`
+/// —, c'est `fstat` sur le descripteur, et une bibliothèque C le demande
+/// ainsi avant d'écrire son premier caractère. Avec un chemin, c'est un
+/// fichier, et il n'y en a pas ici.
+///
+/// namsdec répondait d'après le descripteur dans les deux cas : un
+/// programme qui demandait `/etc/passwd` s'entendait décrire le terminal
+/// — ou, selon le descripteur, recevait `-EBADF`, qui n'est pas non plus
+/// ce qui manque. `-ENOENT` est la vérité, et c'est déjà ce que `fopen`
+/// répond.
+#[test]
+fn newfstatat_on_a_path_does_not_describe_standard_output() {
+    let emu = run_program(
+        "\
+section .data
+chemin: db '/etc/passwd', 0
+
+section .bss
+statbuf: resb 144
+
+section .text
+global _start
+_start:
+mov rax, 262
+mov rdi, -100
+lea rsi, [rel chemin]
+mov rdx, statbuf
+xor r10, r10
+syscall
+mov rbx, rax
+; le même appel, chemin vide : c'est `fstat` sur la sortie standard
+mov rax, 262
+mov rdi, 1
+lea rsi, [rel vide]
+mov rdx, statbuf
+xor r10, r10
+syscall
+hlt
+
+section .data
+vide: db 0
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rbx) as i64,
+        -2,
+        "un chemin qui n'existe pas vaut -ENOENT"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax) as i64,
+        0,
+        "et le chemin vide décrit toujours le descripteur"
+    );
+}
+
+/// `lseek` répond « ce flux ne se rembobine pas » au lieu de s'arrêter.
+///
+/// Il n'y a ni fichier ni position derrière l'entrée et la sortie de
+/// namsdec. Un noyau, pour un tube ou un terminal, rend `-ESPIPE` ; une
+/// bibliothèque sait quoi en faire et poursuit. Refuser l'appel, lui,
+/// arrêtait le programme — c'est ainsi qu'un binaire C++ ordinaire
+/// mourait sur « l'appel système 8 » après avoir écrit sa première
+/// ligne.
+#[test]
+fn lseek_says_the_stream_does_not_rewind() {
+    let emu = run_program(
+        "\
+section .text
+global _start
+_start:
+mov rax, 8
+mov rdi, 0
+xor rsi, rsi
+xor rdx, rdx
+syscall
+mov rcx, rax
+mov rax, 8
+mov rdi, 7
+xor rsi, rsi
+xor rdx, rdx
+syscall
+hlt
+",
+        &[],
+    );
+
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rcx) as i64,
+        -29,
+        "sur l'entrée standard, attendu -ESPIPE"
+    );
+    assert_eq!(
+        emu.cpu.regs.get64(Reg64::Rax) as i64,
+        -9,
+        "sur un descripteur qui n'existe pas, attendu -EBADF"
+    );
+    assert!(
+        emu.exit_code().is_none() || emu.exit_code() == Some(0),
+        "l'appel ne doit pas interrompre le programme"
     );
 }
 

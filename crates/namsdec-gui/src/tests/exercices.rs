@@ -456,6 +456,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "adc_128",
             "table_conversion",
             "padding",
+            // La rétro-ingénierie entre ici : lire un fichier avant
+            // de lire son code.
+            "re_entete",
+            "re_chaines",
+            "re_position_adresse",
             "chaine",
             "chaines",
             "comparer_chaines",
@@ -486,6 +491,11 @@ fn the_built_in_pack_is_a_course_in_order() {
             "recherche_binaire",
             "liste_chainee",
             "transposee",
+            // Ce qu'un contrôle d'accès a l'air d'être, vu du
+            // désassemblage.
+            "re_comparaison",
+            "re_derouler",
+            "re_table_sauts",
             "sortie",
             "entree",
             "tas",
@@ -505,6 +515,14 @@ fn the_built_in_pack_is_a_course_in_order() {
             "table_ascii",
             "afficher_signe",
             "echo",
+            // Ce qu'un programme fait pour ne pas être lu, et ce
+            // qu'on y répond.
+            "re_chaines_cachees",
+            "re_antidebogage",
+            "re_int3",
+            "re_entropie",
+            "re_gadget",
+            "re_un_octet",
         ]
     );
     for exercise in &pack.exercises {
@@ -618,9 +636,97 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
+    assert!(painted.contains("cent huit exercices"), "{painted}");
+}
+
+/// Le programme d'accueil annonce le bon nombre d'exercices.
+///
+/// C'est la PREMIÈRE phrase qu'on lit en ouvrant namsdec, et elle a
+/// annoncé « quatre-vingt-seize » le jour où le parcours en comptait
+/// cent huit. Le même défaut que l'aide des appels système : un nombre
+/// écrit dans une phrase ne suit pas le code qui le dément, et celui
+/// qui ajoute la cent neuvième étape ne vient pas relire l'écran
+/// d'accueil.
+///
+/// Trouvé par la checklist d'avant-commit, en regardant la capture de
+/// la fenêtre des exercices — pas par une mesure, qui ne cherchait pas
+/// là.
+#[test]
+fn le_programme_d_accueil_annonce_le_bon_nombre_d_exercices() {
+    /// Un nombre en toutes lettres, comme le projet les écrit.
+    ///
+    /// Jusqu'à mille : au-delà, un parcours ne s'annonce plus par son
+    /// compte.
+    fn en_lettres(n: usize) -> String {
+        const UNITÉS: [&str; 20] = [
+            "zéro", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
+            "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit",
+            "dix-neuf",
+        ];
+        const DIZAINES: [&str; 10] = [
+            "",
+            "",
+            "vingt",
+            "trente",
+            "quarante",
+            "cinquante",
+            "soixante",
+            "soixante",
+            "quatre-vingt",
+            "quatre-vingt",
+        ];
+        match n {
+            0..=19 => UNITÉS[n].to_owned(),
+            20..=99 => {
+                let (d, u) = (n / 10, n % 10);
+                // Soixante-dix et quatre-vingt-dix comptent jusqu'à
+                // dix-neuf, comme le veut le français.
+                let reste = if d == 7 || d == 9 { n - d * 10 + 10 } else { u };
+                let tête = DIZAINES[d];
+                let pluriel = if d == 8 && reste == 0 { "s" } else { "" };
+                if reste == 0 {
+                    format!("{tête}{pluriel}")
+                } else if reste == 1 && d != 8 && d != 7 && d != 9 {
+                    format!("{tête} et un")
+                } else {
+                    format!("{tête}-{}", en_lettres(reste))
+                }
+            }
+            100..=999 => {
+                let (c, reste) = (n / 100, n % 100);
+                let tête = if c == 1 {
+                    "cent".to_owned()
+                } else if reste == 0 {
+                    format!("{} cents", en_lettres(c))
+                } else {
+                    format!("{} cent", en_lettres(c))
+                };
+                if reste == 0 {
+                    tête
+                } else {
+                    format!("{tête} {}", en_lettres(reste))
+                }
+            }
+            _ => n.to_string(),
+        }
+    }
+    // La table vaut ce qu'elle vaut si on ne l'éprouve pas.
+    assert_eq!(en_lettres(96), "quatre-vingt-seize");
+    assert_eq!(en_lettres(108), "cent huit");
+    assert_eq!(en_lettres(21), "vingt et un");
+    assert_eq!(en_lettres(80), "quatre-vingts");
+    assert_eq!(en_lettres(71), "soixante-onze");
+
+    let combien = builtin_pack().exercises.len();
+    let attendu = format!("parcours de {} exercices", en_lettres(combien));
     assert!(
-        painted.contains("quatre-vingt-seize exercices"),
-        "{painted}"
+        crate::DEFAULT_SOURCE.contains(&attendu),
+        "le programme d'accueil doit annoncer « {attendu} » — voici ce qu'il dit :\n{}",
+        crate::DEFAULT_SOURCE
+            .lines()
+            .take(3)
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 }
 
@@ -689,12 +795,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // vingt-quatrième des quatre-vingt-seize étapes.
-    assert!(painted.contains("30/96"), "{painted}");
+    // vingt-quatrième des cent huit étapes.
+    assert!(painted.contains("30/108"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de quatre-vingt-seize.
+/// retrouver son rang dans une liste de cent huit.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -713,7 +819,7 @@ fn the_course_offers_the_next_step() {
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
     // propose pas d'aller au-delà.
-    assert!(app.exercise_after("namsdec/echo").is_none());
+    assert!(app.exercise_after("namsdec/re_un_octet").is_none());
     // Un identifiant inconnu non plus.
     assert!(app.exercise_after("namsdec/ceci-nexiste-pas").is_none());
 
@@ -742,7 +848,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/96"),
+        painted.contains("1/108"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -876,7 +982,7 @@ fn every_goal_is_readable_and_on_the_right_side() {
     }
     // Ce que le programme livré fait déjà : on le regarde tourner et on
     // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 86] = [
+    const DÉMONSTRATIONS: [&str; 97] = [
         "constantes",
         "rotations",
         "setcc",
@@ -963,10 +1069,23 @@ fn every_goal_is_readable_and_on_the_right_side() {
         "fibonacci",
         "pile_locale",
         "majuscules",
+        // La rétro-ingénierie : on regarde d'abord, et ce qu'on
+        // regarde tourne déjà. Seul `re_derouler` demande un geste.
+        "re_entete",
+        "re_chaines",
+        "re_position_adresse",
+        "re_comparaison",
+        "re_table_sauts",
+        "re_chaines_cachees",
+        "re_antidebogage",
+        "re_int3",
+        "re_entropie",
+        "re_gadget",
+        "re_un_octet",
     ];
     // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
     // pas écrit ce qui manque.
-    const À_FAIRE: [&str; 3] = ["pile", "division", "convention"];
+    const À_FAIRE: [&str; 4] = ["pile", "division", "convention", "re_derouler"];
 
     for (id, attendu) in DÉMONSTRATIONS
         .iter()
@@ -1074,7 +1193,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/96 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/108 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -1266,7 +1385,10 @@ fn every_budget_is_one_a_program_can_hold() {
     }
     // Les deux exercices à faire : le budget vise la solution que
     // l'énoncé demande, et la voici.
-    let corrections: [(&str, &str, &str); 3] = [
+    let corrections: [(&str, &str, &str); 4] = [
+        // La valeur que l'énoncé demande de trouver :
+        // ((0x1234 ^ 0x5a5a) + 7) * 3.
+        ("re_derouler", "mov rax, 0", "mov rax, 55647"),
         ("division", "mov rdx, 99", "xor rdx, rdx"),
         ("pile", "    hlt", "    xchg rax, rbx\n    hlt"),
         // La fonction honnête : elle met RBX de côté et le rend.
@@ -2354,7 +2476,7 @@ fn the_workshop_exercises_are_complete_and_reach_their_goal() {
 
 /// Un exercice SANS but se termine quand on l'a regardé tourner.
 ///
-/// Sept des quatre-vingt-seize sont des programmes à observer, et le
+/// Sept des cent huit sont des programmes à observer, et le
 /// tout premier du parcours en est un. `exercise_goal` rend `None` pour
 /// eux, et `note_goal_reached` sortait là sans rien noter : on allait
 /// jusqu'au `hlt`, la pastille restait creuse, « en cours » ne partait

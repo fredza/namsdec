@@ -31,7 +31,15 @@
 
 use namsdec_disasm::known::Availability;
 
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, UpxAction, framed};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, UpxAction};
+
+/// Les deux gestes, nommés une fois : le panneau les écrit dans sa vue,
+/// le module les relit à la pression. Deux constantes plutôt que deux
+/// chaînes en double, pour que renommer l'un ne casse pas l'autre en
+/// silence.
+const ACTION_LISTER: &str = "upx:lister";
+const ACTION_DÉBALLER: &str = "upx:déballer";
 
 /// Combien de lignes de sortie le panneau peint.
 ///
@@ -131,36 +139,36 @@ pub fn refus_expliqué(sortie: &str, fr: bool) -> Option<&'static str> {
     // L'ordre compte : les motifs les plus précis d'abord.
     if bas.contains("not packed by upx") {
         return Some(if fr {
-            "Ce fichier n'est pas empaqueté par UPX. Il n'y a donc rien à déballer — ce qui              est une réponse, pas une panne : l'entropie et les sections disent déjà d'où              vient le fichier."
+            "Ce fichier n'est pas empaqueté par UPX. Il n'y a donc rien à déballer — ce qui est une réponse, pas une panne : l'entropie et les sections disent déjà d'où vient le fichier."
         } else {
-            "This file is not packed by UPX. There is nothing to unpack — which is an              answer, not a failure: entropy and sections already say where the file comes              from."
+            "This file is not packed by UPX. There is nothing to unpack — which is an answer, not a failure: entropy and sections already say where the file comes from."
         });
     }
     if bas.contains("e_phnum") || bas.contains("bad e_phoff") || bas.contains("not a valid") {
         return Some(if fr {
-            "upx n'a pas reconnu les en-têtes de ce fichier comme ceux d'un ELF qu'il aurait              empaqueté. C'est le cas ordinaire d'un fichier qui n'est tout simplement pas              empaqueté — regardez « Ce que porte ce fichier », juste au-dessus."
+            "upx n'a pas reconnu les en-têtes de ce fichier comme ceux d'un ELF qu'il aurait empaqueté. C'est le cas ordinaire d'un fichier qui n'est tout simplement pas empaqueté — regardez « Ce que porte ce fichier », juste au-dessus."
         } else {
-            "upx did not recognise this file's headers as those of an ELF it would have              packed. That is the ordinary case of a file that simply is not packed — see              “What this file carries”, just above."
+            "upx did not recognise this file's headers as those of an ELF it would have packed. That is the ordinary case of a file that simply is not packed — see “What this file carries”, just above."
         });
     }
     if bas.contains("hacked") || bas.contains("modified") || bas.contains("tampered") {
         return Some(if fr {
-            "upx voit un fichier empaqueté PUIS MODIFIÉ, et refuse de le déballer. C'est le              cas intéressant : beaucoup de protecteurs partent d'UPX puis effacent ses              marques, précisément pour que `upx -d` dise non. Le programme est bien              compressé — il se décompresse tout seul à l'exécution —, mais il faudra le              déballer autrement : en l'exécutant pas à pas jusqu'au saut vers le code              rendu, puis en vidant la mémoire."
+            "upx voit un fichier empaqueté PUIS MODIFIÉ, et refuse de le déballer. C'est le cas intéressant : beaucoup de protecteurs partent d'UPX puis effacent ses marques, précisément pour que `upx -d` dise non. Le programme est bien compressé — il se décompresse tout seul à l'exécution —, mais il faudra le déballer autrement : en l'exécutant pas à pas jusqu'au saut vers le code rendu, puis en vidant la mémoire."
         } else {
-            "upx sees a file that was packed and THEN MODIFIED, and refuses to unpack it.              This is the interesting case: many protectors start from UPX then erase its              markers, precisely so that `upx -d` says no. The program is compressed — it              decompresses itself at run time — but it will have to be unpacked another              way: by stepping until the jump into the restored code, then dumping memory."
+            "upx sees a file that was packed and THEN MODIFIED, and refuses to unpack it. This is the interesting case: many protectors start from UPX then erase its markers, precisely so that `upx -d` says no. The program is compressed — it decompresses itself at run time — but it will have to be unpacked another way: by stepping until the jump into the restored code, then dumping memory."
         });
     }
     if bas.contains("not executable") {
         return Some(if fr {
-            "upx refuse un fichier qui n'a pas le droit d'exécution. namsdec lui passe une              copie temporaire : si ce message paraît, c'est la copie qui a perdu ses              droits, et c'est un défaut de namsdec, non du fichier."
+            "upx refuse un fichier qui n'a pas le droit d'exécution. namsdec lui passe une copie temporaire : si ce message paraît, c'est la copie qui a perdu ses droits, et c'est un défaut de namsdec, non du fichier."
         } else {
-            "upx refuses a file without the execute bit. namsdec hands it a temporary copy:              if this message appears, the copy lost its permissions, and that is a defect              of namsdec, not of the file."
+            "upx refuses a file without the execute bit. namsdec hands it a temporary copy: if this message appears, the copy lost its permissions, and that is a defect of namsdec, not of the file."
         });
     }
     Some(if fr {
-        "upx a refusé. La ligne ci-dessous est la sienne, telle quelle : elle nomme          l'exception qu'il a levée, et c'est elle qu'on recopie dans une recherche."
+        "upx a refusé. La ligne ci-dessous est la sienne, telle quelle : elle nomme l'exception qu'il a levée, et c'est elle qu'on recopie dans une recherche."
     } else {
-        "upx refused. The line below is its own, as-is: it names the exception it raised,          and that is what one copies into a search."
+        "upx refused. The line below is its own, as-is: it names the exception it raised, and that is what one copies into a search."
     })
 }
 
@@ -254,210 +262,242 @@ impl ReModule for UpxModule {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.weak(ctx.t(
-            "Deux gestes, et aucun ne touche le fichier ouvert : demander à upx ce \
-             qu'il voit, et écrire l'original déballé dans un fichier neuf.",
-            "Two actions, and neither touches the open file: ask upx what it sees, \
-             and write the unpacked original into a new file.",
-        ));
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let mut blocs = vec![Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Deux gestes, et aucun ne touche le fichier ouvert : demander à upx ce \
+                 qu'il voit, et écrire l'original déballé dans un fichier neuf.",
+                "Two actions, and neither touches the open file: ask upx what it sees, \
+                 and write the unpacked original into a new file.",
+            ))
+            .faible()
+            .into(),
+        )];
+        blocs.extend(self.ce_que_porte_le_fichier(ctx));
+        blocs.extend(self.où_en_est_upx(ctx));
+        blocs.extend(self.les_deux_gestes(ctx));
+        blocs.extend(self.ce_qu_upx_a_dit(ctx));
+        Some(Vue { blocs })
+    }
 
-        ui.add_space(8.0);
-        self.ce_que_porte_le_fichier(ui, ctx);
-        ui.add_space(8.0);
-        self.où_en_est_upx(ui, ctx);
-        ui.add_space(8.0);
-        self.les_deux_gestes(ui, ctx);
-        ui.add_space(8.0);
-        self.ce_qu_upx_a_dit(ui, ctx);
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        for action in &gestes.actions {
+            let quoi = match action.as_str() {
+                ACTION_LISTER => UpxAction::List,
+                ACTION_DÉBALLER => UpxAction::Unpack,
+                _ => continue,
+            };
+            self.en_cours = Some(quoi);
+            self.erreur = None;
+            self.demande = Some(ReRequest::Upx { action: quoi });
+        }
     }
 }
 
 impl UpxModule {
     /// Ce que le fichier porte : la marque, ou son absence — dite comme
     /// une absence et non comme une preuve.
-    fn ce_que_porte_le_fichier(&self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.strong(ctx.t("Ce que porte ce fichier", "What this file carries"));
-        ui.add_space(2.0);
+    fn ce_que_porte_le_fichier(&self, ctx: &ReContext) -> Vec<Bloc> {
+        let titre = Bloc::Texte(
+            Fragment::dit(ctx.t("Ce que porte ce fichier", "What this file carries"))
+                .fort()
+                .into(),
+        );
         match &self.marque {
-            Some(trouvé) => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong(
-                        egui::RichText::new("UPX").color(egui::Color32::from_rgb(0xf4, 0x87, 0x71)),
-                    );
-                    // La preuve avec le nom, toujours : « c'est de
-                    // l'UPX » sans dire pourquoi demande de faire
-                    // confiance, et un atelier d'apprentissage n'a pas
-                    // à demander ça. Elle se vérifie à la main, dans le
-                    // vidage.
-                    ui.monospace(trouvé.clue.label(ctx.lang));
-                });
-                ui.indent("upx_marque", |ui| {
-                    ui.weak(trouvé.text(ctx.lang));
-                });
-            }
-            None => {
-                ui.weak(ctx.t(
-                    "Aucune marque d'UPX : ni section « UPX0 » ou « UPX1 », ni nombre \
-                     magique « UPX! ».",
-                    "No UPX mark: neither a “UPX0” or “UPX1” section, nor the “UPX!” \
-                     magic number.",
-                ));
+            Some(trouvé) => vec![
+                titre,
+                Bloc::Texte(
+                    vec![
+                        // Le rouge est un VERDICT : le module dit que
+                        // c'est la marque d'un empaqueteur, l'interface
+                        // choisit la teinte.
+                        Fragment::dit("UPX").ton(Ton::Mauvais),
+                        // La preuve avec le nom, toujours : « c'est de
+                        // l'UPX » sans dire pourquoi demande de faire
+                        // confiance, et un atelier d'apprentissage n'a
+                        // pas à demander ça. Elle se vérifie à la main,
+                        // dans le vidage.
+                        Fragment::dit(format!(" {}", trouvé.clue.label(ctx.lang))).code(),
+                    ]
+                    .into(),
+                ),
+                Bloc::Retrait(vec![Bloc::Texte(
+                    Fragment::dit(trouvé.text(ctx.lang)).faible().into(),
+                )]),
+            ],
+            None => vec![
+                titre,
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "Aucune marque d'UPX : ni section « UPX0 » ou « UPX1 », ni nombre \
+                         magique « UPX! ».",
+                        "No UPX mark: neither a “UPX0” or “UPX1” section, nor the “UPX!” \
+                         magic number.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
                 // CE QUI COMPTE AUTANT QUE LA TROUVAILLE. Trois octets
                 // effacés, et la signature disparaît : beaucoup de
                 // protecteurs réels partent d'UPX puis la retirent
-                // précisément pour qu'`upx -d` refuse. Conclure
-                // « pas d'UPX » d'une absence de marque ferait chercher
+                // précisément pour qu'`upx -d` refuse. Conclure « pas
+                // d'UPX » d'une absence de marque ferait chercher
                 // ailleurs pendant une soirée.
-                ui.weak(ctx.t(
-                    "Ce qui ne prouve pas l'absence d'UPX : la signature et les noms de \
-                     section s'effacent en trois octets, et c'est la première chose qu'un \
-                     protecteur fait pour qu'upx refuse de déballer. L'entropie, elle, ne \
-                     s'efface pas — voyez « Entropie ». upx -l ci-dessous tranche : il lit \
-                     les en-têtes de bloc, non la signature.",
-                    "Which does not prove UPX is absent: the signature and the section \
-                     names are erased in three bytes, and that is the first thing a \
-                     protector does so that upx refuses to unpack. Entropy does not erase \
-                     — see “Entropy”. upx -l below settles it: it reads the block headers, \
-                     not the signature.",
-                ));
-            }
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "Ce qui ne prouve pas l'absence d'UPX : la signature et les noms de \
+                         section s'effacent en trois octets, et c'est la première chose qu'un \
+                         protecteur fait pour qu'upx refuse de déballer. L'entropie, elle, ne \
+                         s'efface pas — voyez « Entropie ». upx -l ci-dessous tranche : il lit \
+                         les en-têtes de bloc, pas les noms.",
+                        "What this does not prove: the signature and section names are erased \
+                         in three bytes, and that is the first thing a protector does so that \
+                         upx refuses to unpack. Entropy does not erase — see “Entropy”. The \
+                         upx -l below settles it: it reads block headers, not names.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+            ],
         }
     }
 
     /// upx est-il sur cette machine ? Et sinon, ce qu'il faut taper —
     /// namsdec ne l'installe pas à votre place.
-    fn où_en_est_upx(&self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn où_en_est_upx(&self, ctx: &ReContext) -> Vec<Bloc> {
         match self.disponible {
-            Availability::Ready | Availability::Incomplete => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.weak(ctx.t("upx est sur cette machine.", "upx is on this machine."));
-                });
-            }
-            Availability::Missing => {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    ctx.t(
+            Availability::Ready | Availability::Incomplete => vec![Bloc::Texte(
+                Fragment::dit(ctx.t("upx est sur cette machine.", "upx is on this machine."))
+                    .faible()
+                    .into(),
+            )],
+            Availability::Missing => vec![
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
                         "upx n'est pas sur cette machine.",
                         "upx is not on this machine.",
-                    ),
-                );
-                ui.horizontal_wrapped(|ui| {
-                    ui.weak(ctx.t("Pour l'obtenir :", "To get it:"));
-                    ui.add(
-                        egui::Label::new(egui::RichText::new("sudo dnf install upx").monospace())
-                            .selectable(true),
-                    );
-                });
-                ui.weak(ctx.t(
-                    "namsdec ne l'installe pas à votre place : exécuter du code au nom de \
-                     quelqu'un n'est pas une commodité, c'est une décision.",
-                    "namsdec does not install it for you: running code on someone's behalf \
-                     is not a convenience, it is a decision.",
-                ));
-            }
+                    ))
+                    .ton(Ton::Attention)
+                    .into(),
+                ),
+                Bloc::Texte(
+                    vec![
+                        Fragment::dit(ctx.t("Pour l'obtenir : ", "To get it: ")).faible(),
+                        Fragment::dit("sudo dnf install upx").code().copiable(),
+                    ]
+                    .into(),
+                ),
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "namsdec ne l'installe pas à votre place : exécuter du code au nom de \
+                         quelqu'un n'est pas une commodité, c'est une décision.",
+                        "namsdec does not install it for you: running code on someone's behalf \
+                         is not a convenience, it is a decision.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+            ],
         }
     }
 
     /// Les deux commandes, écrites avant d'être lançables.
-    fn les_deux_gestes(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn les_deux_gestes(&self, ctx: &ReContext) -> Vec<Bloc> {
         let lançable = self.disponible != Availability::Missing && self.en_cours.is_none();
-
-        ui.strong(ctx.t("Les deux gestes", "The two actions"));
-        ui.add_space(4.0);
-
-        // 1. IDENTIFIER. Lecture seule, et c'est ce qui en fait le
-        // premier : il répond « est-ce packé, et par quoi » sans rien
-        // écrire nulle part.
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(lançable, framed(ui, ctx.t("Identifier", "Identify")))
-                .on_hover_text(ctx.t(
-                    "Demander à upx ce qu'il voit. Rien n'est écrit.",
-                    "Ask upx what it sees. Nothing is written.",
+        vec![
+            Bloc::Texte(
+                Fragment::dit(ctx.t("Les deux gestes", "The two actions"))
+                    .fort()
+                    .into(),
+            ),
+            // 1. IDENTIFIER. Lecture seule, et c'est ce qui en fait le
+            // premier : il répond « est-ce packé, et par quoi » sans
+            // rien écrire nulle part.
+            Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("Identifier", "Identify"))
+                        .bouton(ACTION_LISTER)
+                        .inactif_si(!lançable)
+                        .survol(ctx.t(
+                            "Demander à upx ce qu'il voit. Rien n'est écrit.",
+                            "Ask upx what it sees. Nothing is written.",
+                        )),
+                    Fragment::dit("upx -l <copie>")
+                        .code()
+                        .copiable()
+                        .survol(ctx.t(
+                            "Cliquer pour copier la commande",
+                            "Click to copy the command",
+                        )),
+                    Fragment::dit(ctx.t(" — lecture seule", " — read only")).faible(),
+                ]
+                .into(),
+            ),
+            // 2. DÉBALLER, vers un fichier neuf. `-o` est ce qui
+            // distingue ce bouton de la commande qu'on tape de
+            // mémoire : sans lui, `upx -d` écrase l'échantillon en
+            // place, et l'on a perdu ce qu'on analysait.
+            Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("Déballer vers…", "Unpack to…"))
+                        .bouton(ACTION_DÉBALLER)
+                        .inactif_si(!lançable)
+                        .survol(ctx.t(
+                            "Écrire l'original déballé dans un fichier neuf, et l'ouvrir dans \
+                             un onglet.",
+                            "Write the unpacked original into a new file, and open it in a tab.",
+                        )),
+                    Fragment::dit("upx -d -o <choisi> <copie>")
+                        .code()
+                        .copiable()
+                        .survol(ctx.t(
+                            "Cliquer pour copier la commande",
+                            "Click to copy the command",
+                        )),
+                ]
+                .into(),
+            ),
+            Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "`<copie>` est une copie temporaire du binaire ouvert, et `<choisi>` le \
+                     fichier que vous nommez : votre échantillon n'est ni lu en écriture, ni \
+                     remplacé, ni déplacé. C'est tout l'écart avec `upx -d fichier`, qui écrase \
+                     en place. Aucun interpréteur de commandes n'est en jeu.",
+                    "`<copy>` is a temporary copy of the open binary, and `<chosen>` the file \
+                     you name: your sample is neither opened for writing, nor replaced, nor \
+                     moved. That is the whole difference from `upx -d file`, which overwrites \
+                     in place. No shell is involved.",
                 ))
-                .clicked()
-            {
-                self.en_cours = Some(UpxAction::List);
-                self.erreur = None;
-                self.demande = Some(ReRequest::Upx {
-                    action: UpxAction::List,
-                });
-            }
-            ui.add(
-                egui::Label::new(egui::RichText::new("upx -l <copie>").monospace())
-                    .selectable(true),
-            );
-            ui.weak(ctx.t("— lecture seule", "— read only"));
-        });
-
-        ui.add_space(4.0);
-
-        // 2. DÉBALLER, vers un fichier neuf. `-o` est ce qui distingue
-        // ce bouton de la commande qu'on tape de mémoire : sans lui,
-        // `upx -d` écrase l'échantillon en place, et l'on a perdu ce
-        // qu'on analysait.
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(lançable, framed(ui, ctx.t("Déballer vers…", "Unpack to…")))
-                .on_hover_text(ctx.t(
-                    "Écrire l'original déballé dans un fichier neuf, et l'ouvrir dans un \
-                     onglet.",
-                    "Write the unpacked original into a new file, and open it in a tab.",
-                ))
-                .clicked()
-            {
-                self.en_cours = Some(UpxAction::Unpack);
-                self.erreur = None;
-                self.demande = Some(ReRequest::Upx {
-                    action: UpxAction::Unpack,
-                });
-            }
-            ui.add(
-                egui::Label::new(egui::RichText::new("upx -d -o <choisi> <copie>").monospace())
-                    .selectable(true),
-            );
-        });
-
-        ui.add_space(4.0);
-        ui.weak(ctx.t(
-            "`<copie>` est une copie temporaire du binaire ouvert, et `<choisi>` le \
-             fichier que vous nommez : votre échantillon n'est ni lu en écriture, ni \
-             remplacé, ni déplacé. C'est tout l'écart avec `upx -d fichier`, qui écrase \
-             en place. Aucun interpréteur de commandes n'est en jeu.",
-            "`<copy>` is a temporary copy of the open binary, and `<chosen>` the file you \
-             name: your sample is neither opened for writing, nor replaced, nor moved. \
-             That is the whole difference from `upx -d file`, which overwrites in place. \
-             No shell is involved.",
-        ));
-
-        if let Some(action) = self.en_cours {
-            ui.add_space(4.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.spinner();
-                ui.weak(match action {
-                    UpxAction::List => ctx.t("upx regarde le fichier…", "upx is looking…"),
-                    UpxAction::Unpack => ctx.t("upx déballe…", "upx is unpacking…"),
-                });
-            });
-        }
+                .faible()
+                .into(),
+            ),
+        ]
     }
 
     /// Ce qu'UPX a répondu — y compris son refus, qui est une réponse.
-    fn ce_qu_upx_a_dit(&self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn ce_qu_upx_a_dit(&self, ctx: &ReContext) -> Vec<Bloc> {
         if let Some(message) = &self.erreur {
-            ui.colored_label(ui.visuals().error_fg_color, message);
-            return;
+            return vec![Bloc::Texte(Fragment::dit(message).ton(Ton::Mauvais).into())];
         }
         let Some(action) = self.fait else {
-            return;
+            return Vec::new();
         };
 
-        ui.strong(match action {
-            UpxAction::List => ctx.t("Ce qu'upx voit", "What upx sees"),
-            UpxAction::Unpack => ctx.t("Ce qu'upx a fait", "What upx did"),
-        });
-        ui.add_space(2.0);
+        let mut blocs = vec![Bloc::Texte(
+            Fragment::dit(match action {
+                UpxAction::List => ctx.t("Ce qu'upx voit", "What upx sees"),
+                UpxAction::Unpack => ctx.t("Ce qu'upx a fait", "What upx did"),
+            })
+            .fort()
+            .into(),
+        )];
+
         // LE REFUS, EXPLIQUÉ AVANT D'ÊTRE MONTRÉ.
         //
         // upx refuse en jetant le nom d'une exception C++ —
@@ -468,16 +508,20 @@ impl UpxModule {
         // dans une recherche.
         let brut = self.sortie.join("\n");
         if let Some(explication) = refus_expliqué(&brut, ctx.lang.starts_with("fr")) {
-            ui.colored_label(egui::Color32::from_rgb(0xd7, 0xba, 0x7d), explication);
-            ui.add_space(4.0);
+            blocs.push(Bloc::Texte(
+                Fragment::dit(explication).ton(Ton::Attention).into(),
+            ));
         }
-        for ligne in &self.sortie {
-            ui.add(
-                egui::Label::new(egui::RichText::new(ligne).monospace())
-                    .selectable(true)
-                    .wrap_mode(egui::TextWrapMode::Extend),
-            );
-        }
+        // CHAQUE LIGNE SE COPIE D'UN CLIC. Elles étaient
+        // sélectionnables à la souris ; la vue n'a pas cette notion, et
+        // il ne fallait pas la perdre pour autant — c'est la ligne
+        // d'origine qu'on recopie dans une recherche quand upx refuse,
+        // et c'est elle, la preuve. Un clic vaut mieux qu'un
+        // glisser-déposer au pixel près.
+        let copier = ctx.t("Cliquer pour copier la ligne", "Click to copy the line");
+        blocs.extend(self.sortie.iter().map(|ligne| {
+            Bloc::Texte(Fragment::dit(ligne).code().copiable().survol(copier).into())
+        }));
 
         // LE REFUS EXPLIQUÉ. `NotPackedException` est la réponse la plus
         // fréquente sur un vrai échantillon, et lue telle quelle elle
@@ -489,19 +533,22 @@ impl UpxModule {
             .iter()
             .any(|ligne| ligne.contains("NotPackedException"))
         {
-            ui.add_space(6.0);
-            ui.weak(ctx.t(
-                "« NotPackedException » ne veut pas dire « pas d'UPX » : elle veut dire \
-                 que les en-têtes de bloc ne sont pas là où upx les attend. Sur un \
-                 binaire ordinaire, c'est la bonne réponse. Sur un binaire à forte \
-                 entropie, c'est le signe qu'on a effacé ou modifié ces en-têtes — et \
-                 la suite passe alors par le vidage mémoire, après que le programme \
-                 s'est déballé lui-même.",
-                "“NotPackedException” does not mean “no UPX”: it means the block headers \
-                 are not where upx expects them. On an ordinary binary that is the right \
-                 answer. On a high-entropy binary it is the sign that those headers were \
-                 erased or altered — and what follows goes through a memory dump, once \
-                 the program has unpacked itself.",
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "« NotPackedException » ne veut pas dire « pas d'UPX » : elle veut dire \
+                     que les en-têtes de bloc ne sont pas là où upx les attend. Sur un \
+                     binaire ordinaire, c'est la bonne réponse. Sur un binaire à forte \
+                     entropie, c'est le signe qu'on a effacé ou modifié ces en-têtes — et \
+                     la suite passe alors par le vidage mémoire, après que le programme \
+                     s'est déballé lui-même.",
+                    "“NotPackedException” does not mean “no UPX”: it means the block headers \
+                     are not where upx expects them. On an ordinary binary that is the right \
+                     answer. On a high-entropy binary it is the sign that those headers were \
+                     erased or altered — and what follows goes through a memory dump, once \
+                     the program has unpacked itself.",
+                ))
+                .faible()
+                .into(),
             ));
         }
 
@@ -511,21 +558,27 @@ impl UpxModule {
         if let Some(chemin) = &self.déballé
             && action == UpxAction::Unpack
         {
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.weak(ctx.t("Écrit dans", "Written to"));
-                ui.add(
-                    egui::Label::new(egui::RichText::new(chemin.display().to_string()).monospace())
-                        .selectable(true),
-                );
-            });
-            ui.weak(ctx.t(
-                "Ouvert dans un onglet à côté : l'échantillon empaqueté reste dans le \
-                 sien, et l'on compare les deux.",
-                "Opened in a tab beside this one: the packed sample stays in its own, and \
-                 one compares the two.",
+            blocs.push(Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("Écrit dans ", "Written to ")).faible(),
+                    Fragment::dit(chemin.display().to_string())
+                        .code()
+                        .copiable(),
+                ]
+                .into(),
+            ));
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Ouvert dans un onglet à côté : l'échantillon empaqueté reste dans le \
+                     sien, et l'on compare les deux.",
+                    "Opened in a tab beside this one: the packed sample stays in its own, and \
+                     one compares the two.",
+                ))
+                .faible()
+                .into(),
             ));
         }
+        blocs
     }
 
     /// Ce que namsdec sait d'`upx`, posé par l'application.

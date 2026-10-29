@@ -20,11 +20,53 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::process::Command;
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use regex::Regex;
 use thiserror::Error;
 
+pub use namsdec_disasm::lanceur::{self, Bornes};
+
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Ce qu'on accorde à `nasm` et à `ld`, chacun pour soi.
+///
+/// MESURÉ, et non choisi au jugé : un programme de sept lignes
+/// s'assemble et se lie en 4 ms, un de vingt-deux mille lignes en
+/// 52 ms. Dix secondes laissent donc deux ordres de grandeur de marge à
+/// tout ce qu'on écrit à la main, et arrêtent ce qui n'en finit pas —
+/// `times 2000000000 nop`, une ligne valide, occupe nasm bien au-delà
+/// de vingt secondes.
+pub const DÉLAI: Duration = Duration::from_secs(10);
+
+/// Ce qu'on accorde à une sonde `--version`.
+///
+/// Court, parce qu'une sonde ne calcule rien : elle imprime une ligne.
+/// Elle a pourtant les mêmes droits qu'un assemblage, puisque c'est le
+/// PATH qui dit quel programme porte ce nom-là.
+const DÉLAI_SONDE: Duration = Duration::from_secs(5);
+
+/// Ce qu'on garde du listing de nasm.
+///
+/// Il ne sert qu'à relier les lignes source aux adresses : au-delà de
+/// quelques méga-octets, ce n'est plus une table, c'est un vidage.
+const MAX_LISTING: usize = 8 * 1024 * 1024;
+
+/// Traduit la fin d'un outil en erreur, quand elle en est une.
+fn vérifier_la_fin(
+    outil: &'static str,
+    fin: lanceur::Fin,
+    bornes: &Bornes,
+) -> Result<(), AsmError> {
+    match fin {
+        lanceur::Fin::TropLong => Err(AsmError::TooLong {
+            tool: outil,
+            seconds: bornes.délai.as_secs(),
+        }),
+        lanceur::Fin::Arrêté => Err(AsmError::Cancelled),
+        lanceur::Fin::Terminé(_) => Ok(()),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -191,6 +233,17 @@ pub enum AsmError {
     /// `ld` a produit quelque chose que le lecteur ELF ne comprend pas.
     #[error("the linked program could not be read back")]
     UnreadableProgram,
+    /// L'outil a dépassé le temps qu'on lui accordait et a été arrêté.
+    ///
+    /// Ce n'est pas une erreur d'écriture : `times 2000000000 nop` est
+    /// un programme parfaitement valide, et nasm y réfléchit plus de
+    /// vingt secondes. Le dire vaut mieux que de figer l'interface
+    /// pendant ce temps-là.
+    #[error("{tool} took longer than {seconds} seconds and was stopped")]
+    TooLong { tool: &'static str, seconds: u64 },
+    /// Quelqu'un a demandé l'arrêt pendant le travail.
+    #[error("assembly was cancelled")]
+    Cancelled,
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
 }
@@ -207,12 +260,17 @@ pub fn find_nasm() -> Option<NasmInfo> {
 }
 
 fn probe_nasm() -> Option<NasmInfo> {
-    let output = Command::new("nasm").arg("-v").output().ok()?;
-    if !output.status.success() {
+    let mut commande = Command::new("nasm");
+    commande.arg("-v");
+    // Bornée comme le reste : `nasm` est ce que le PATH désigne, et ce
+    // que le PATH désigne peut être n'importe quoi. Une sonde qui ne
+    // rend pas la main retarderait le démarrage de la fenêtre.
+    let sortie = lanceur::lancer(&mut commande, &Bornes::en(DÉLAI_SONDE)).ok()?;
+    if !sortie.fin().réussi() {
         return None;
     }
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let version = stdout.lines().next().unwrap_or("nasm").trim().to_string();
+    let texte = sortie.ordinaire.texte_brut();
+    let version = texte.lines().next().unwrap_or("nasm").trim().to_string();
     Some(NasmInfo { version })
 }
 
@@ -233,10 +291,10 @@ pub fn find_linker() -> bool {
 }
 
 fn probe_linker() -> bool {
-    Command::new("ld")
-        .arg("--version")
-        .output()
-        .is_ok_and(|out| out.status.success())
+    let mut commande = Command::new("ld");
+    commande.arg("--version");
+    lanceur::lancer(&mut commande, &Bornes::en(DÉLAI_SONDE))
+        .is_ok_and(|sortie| sortie.fin().réussi())
 }
 
 /// Les deux commandes que namsdec lance pour assembler, telles qu'on les
@@ -291,19 +349,40 @@ pub fn assemble_one(texte: &str, adresse: u64) -> Result<Vec<u8>, AsmError> {
         format!("[BITS 64]\n[ORG {adresse:#x}]\n{}\n", texte.trim()),
     )?;
 
-    let output = Command::new("nasm")
+    let mut commande = Command::new("nasm");
+    commande
         .current_dir(dir.path())
-        .args(["-f", "bin", "-o", "une.bin", "une.asm"])
-        .output()?;
-    if !output.status.success() {
+        .args(["-f", "bin", "-o", "une.bin", "une.asm"]);
+    // Le même délai qu'un assemblage complet, pour la même raison :
+    // c'est une ligne, mais une ligne a le droit d'être `times
+    // 2000000000 nop`. Atteignable depuis l'interface — c'est par ici
+    // que passe l'assemblage d'une instruction qu'on vient d'écrire
+    // dans le panneau de modification du binaire.
+    let output = lanceur::lancer(&mut commande, &Bornes::en(DÉLAI))?;
+    vérifier_la_fin("nasm", output.fin(), &Bornes::en(DÉLAI))?;
+    if !output.fin().réussi() {
         return Err(AsmError::Failed {
-            diagnostics: parse_diagnostics(&String::from_utf8_lossy(&output.stderr)),
+            diagnostics: parse_diagnostics(&output.erreur.texte_brut()),
         });
     }
     Ok(fs::read(&out_path)?)
 }
 
 pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError> {
+    assemble_within(source, base_addr, &Bornes::en(DÉLAI))
+}
+
+/// Le même assemblage, avec ce qu'on accorde aux deux outils.
+///
+/// Séparé parce que l'interface a besoin des deux : un délai qu'elle
+/// choisit, et un drapeau d'arrêt que le bouton Stop lève. Le reste du
+/// projet — les contrôles, les exemples — emploie [`assemble`] et son
+/// délai par défaut.
+pub fn assemble_within(
+    source: &str,
+    base_addr: u64,
+    bornes: &Bornes,
+) -> Result<AssembleOutput, AsmError> {
     find_nasm().ok_or(AsmError::NasmNotFound)?;
     if !find_linker() {
         return Err(AsmError::LinkerNotFound);
@@ -315,37 +394,37 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
     let program_path = dir.path().join("program");
     fs::write(&asm_path, source)?;
 
-    let output = Command::new("nasm")
-        .current_dir(dir.path())
-        .args([
-            "-f",
-            "elf64",
-            "-l",
-            "listing.lst",
-            "-o",
-            "input.o",
-            "input.asm",
-        ])
-        .output()?;
+    let mut nasm = Command::new("nasm");
+    nasm.current_dir(dir.path()).args([
+        "-f",
+        "elf64",
+        "-l",
+        "listing.lst",
+        "-o",
+        "input.o",
+        "input.asm",
+    ]);
+    let output = lanceur::lancer(&mut nasm, bornes)?;
+    vérifier_la_fin("nasm", output.fin(), bornes)?;
 
-    let mut diagnostics = parse_diagnostics(&String::from_utf8_lossy(&output.stderr));
-    if !output.status.success() {
+    let mut diagnostics = parse_diagnostics(&output.erreur.texte_brut());
+    if !output.fin().réussi() {
         return Err(AsmError::Failed { diagnostics });
     }
 
-    let linked = Command::new("ld")
-        .current_dir(dir.path())
-        .args([
-            "-Ttext".to_owned(),
-            format!("{base_addr:#x}"),
-            "-o".to_owned(),
-            "program".to_owned(),
-            "input.o".to_owned(),
-        ])
-        .output()?;
-    if !linked.status.success() {
+    let mut ld = Command::new("ld");
+    ld.current_dir(dir.path()).args([
+        "-Ttext".to_owned(),
+        format!("{base_addr:#x}"),
+        "-o".to_owned(),
+        "program".to_owned(),
+        "input.o".to_owned(),
+    ]);
+    let linked = lanceur::lancer(&mut ld, bornes)?;
+    vérifier_la_fin("ld", linked.fin(), bornes)?;
+    if !linked.fin().réussi() {
         return Err(AsmError::LinkFailed {
-            message: String::from_utf8_lossy(&linked.stderr).trim().to_owned(),
+            message: linked.erreur.texte_brut().trim().to_owned(),
         });
     }
     // L'éditeur de liens peut réussir *en avertissant* — un programme
@@ -355,7 +434,9 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
     // choisi. Ils rejoignent maintenant ceux de nasm, sans numéro de
     // ligne : ils parlent du programme entier, pas d'une ligne.
     diagnostics.extend(
-        String::from_utf8_lossy(&linked.stderr)
+        linked
+            .erreur
+            .texte_brut()
             .lines()
             .map(str::trim)
             .filter(|line| !line.is_empty())
@@ -378,7 +459,15 @@ pub fn assemble(source: &str, base_addr: u64) -> Result<AssembleOutput, AsmError
         .image(elf::IMAGE_MAX)
         .map_err(|_| AsmError::UnreadableProgram)?;
 
-    let listing = fs::read_to_string(&listing_path).unwrap_or_default();
+    // LE LISTING EST BORNÉ, comme les tubes et pour la même raison :
+    // `%rep 400000` en produit quarante méga-octets, et le lire en
+    // entier pour en tirer une table de lignes revient à n'avoir aucune
+    // borne. Coupé, la table s'arrête avec lui — les premières lignes
+    // sont correctes, les dernières manquent, et c'est très exactement
+    // ce qu'on peut promettre.
+    let listing = lanceur::Récolte::lire_fichier(&listing_path, MAX_LISTING)
+        .map(|récolte| récolte.texte_brut().into_owned())
+        .unwrap_or_default();
     let line_to_addr = parse_listing(&listing, &elf);
 
     Ok(AssembleOutput {

@@ -1399,10 +1399,19 @@ impl NamsdecApp {
                 // retiré plutôt que gardé pour l'ornement. Ce que
                 // l'écran montre et que le banc ne retrouve pas est une
                 // question ouverte (A 9.16).
+                // La largeur de LECTURE, sauf pour un module qui dit
+                // en vouloir plus — une grille d'octets n'est pas une
+                // phrase, et chaque pixel lui sert. Voir
+                // `ReModule::pleine_largeur`.
+                let plafond = if self.re_registry.pleine_largeur(&self.analysis_module) {
+                    f32::INFINITY
+                } else {
+                    ANALYSIS_CONTENT_MAX
+                };
                 let lecture = (ui.available_width()
                     - ui.spacing().scroll.bar_width
                     - ui.spacing().item_spacing.x)
-                    .clamp(120.0, ANALYSIS_CONTENT_MAX);
+                    .clamp(120.0, plafond);
                 // DÉFILANTE DANS LES DEUX SENS, et c'est ce qui
                 // empêche la fenêtre d'enfler.
                 //

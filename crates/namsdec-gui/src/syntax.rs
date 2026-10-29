@@ -102,6 +102,28 @@ impl Token {
     }
 }
 
+/// Au-delà de combien d'octets un texte n'est plus coloré d'un bloc.
+///
+/// LA COULEUR SE PAIE À LA POSE, et non à la coloration. Mesuré le
+/// 28 octobre 2026 sur deux cent mille lignes : colorer coûte 437 ms,
+/// mais le job qui en sort porte 1 200 001 SECTIONS — six par ligne,
+/// une par morceau coloré —, et egui met 2,46 s à les poser. Le même
+/// texte en une seule section se pose en 1,13 s. La couleur coûte donc
+/// 1,77 s sur 2,9, c'est-à-dire la plus grande part du gel qu'on
+/// mesurait en entrant en Insertion.
+///
+/// Quatre cent mille octets : de quoi couvrir tout ce qu'on écrit à la
+/// main et les désassemblages ordinaires. Au-delà, on est devant un
+/// fichier qu'on ne lit pas d'un bout à l'autre, et la vue ligne à
+/// ligne du mode Normal, elle, garde ses couleurs — elle ne pose que
+/// ce qu'elle montre.
+pub const SANS_COULEUR_AU_DELÀ: usize = 400_000;
+
+/// Ce texte est-il trop gros pour être coloré d'un bloc ?
+pub fn trop_gros_pour_la_couleur(text: &str) -> bool {
+    text.len() > SANS_COULEUR_AU_DELÀ
+}
+
 /// Les couleurs viennent du thème actif (`namsdec-theme`) et non du
 /// `dark_mode` d'egui : un thème installé plus tard apporte sa propre
 /// palette de code sans qu'il y ait ici deux branches à rallonger.
@@ -110,6 +132,15 @@ pub fn highlight(ui: &Ui, theme: &Theme, text: &str, wrap_width: f32) -> LayoutJ
 
     let mut job = LayoutJob::default();
     job.wrap.max_width = wrap_width;
+
+    // UNE SEULE SECTION quand le texte est énorme : voir
+    // `SANS_COULEUR_AU_DELÀ`, qui porte la mesure. Ce n'est pas la
+    // coloration qu'on épargne, c'est la POSE des six sections par
+    // ligne qu'elle produit.
+    if trop_gros_pour_la_couleur(text) {
+        append(&mut job, text, &font_id, theme.text, false);
+        return job;
+    }
 
     // Relevées une fois pour tout le fichier : une macro définie en bas
     // s'emploie en haut, et colorer ligne à ligne sans les connaître

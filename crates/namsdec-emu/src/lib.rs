@@ -5,9 +5,12 @@
 
 pub mod libc;
 pub use libc::name_reads_input;
+pub mod limites;
 mod regmap;
 mod vector;
 mod x87;
+
+pub use limites::{Famille, Simplification};
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -515,6 +518,19 @@ pub trait Backend {
     /// l'avaient trouvé. Vide pour un moteur qui ne regarde pas.
     fn breaches(&self) -> &[AbiBreach];
 
+    /// Les simplifications que ce moteur a touchées et n'a pas encore
+    /// annoncées. Le dire fait partie du contrat d'un moteur
+    /// pédagogique : un autre moteur branché ici qui simulerait tout
+    /// fidèlement rendrait une liste vide, et c'est une réponse.
+    fn pending_simplifications(&mut self) -> Vec<Simplification> {
+        Vec::new()
+    }
+
+    /// Celles qu'il a touchées depuis le départ.
+    fn touched_simplifications(&self) -> Vec<Simplification> {
+        Vec::new()
+    }
+
     /// Combien d'instructions ont été exécutées depuis le départ.
     ///
     /// La mesure la plus simple de ce que coûte un programme : deux
@@ -707,6 +723,43 @@ impl Mmap {
     }
 }
 
+/// Ce qu'un `rt_sigaction` a installé pour un signal.
+///
+/// `sa_handler` est l'adresse de la fonction ; `sa_restorer` celle du
+/// petit bout de code que la bibliothèque C pose comme ADRESSE DE
+/// RETOUR du gestionnaire, et qui ne fait qu'une chose : appeler
+/// `rt_sigreturn`. C'est par lui que le programme revient d'un signal,
+/// et sans lui le gestionnaire reviendrait n'importe où.
+#[derive(Debug, Clone, Copy)]
+struct Gestionnaire {
+    handler: u64,
+    restorer: u64,
+}
+
+/// La disposition du cadre qu'un noyau x86-64 pose sur la pile avant
+/// d'entrer dans un gestionnaire de signal.
+///
+/// Ces nombres ne sont pas arbitraires et ne se devinent pas : ce sont
+/// ceux de `struct rt_sigframe` et de `struct sigcontext`, que le noyau
+/// Linux fixe et qu'une bibliothèque C lit. Un gestionnaire qui veut
+/// reprendre AILLEURS — et c'est tout l'objet du montage qu'on cherche
+/// à franchir — écrit dans `uc_mcontext.rip` à la main, par ces
+/// offsets-là. Les approcher ne suffirait pas : il faut les mêmes.
+mod cadre_de_signal {
+    /// `uc_mcontext` dans `ucontext_t` : après `uc_flags`, `uc_link` et
+    /// `uc_stack`.
+    pub const UC_MCONTEXT: u64 = 40;
+    pub const UC_TAILLE: u64 = 968;
+    pub const SIGINFO_TAILLE: u64 = 128;
+    /// Les registres dans `sigcontext`, dans l'ordre du noyau — qui
+    /// n'est NI celui des numéros de registres, ni celui d'un `pusha`.
+    pub const RSP: u64 = 120;
+    pub const RIP: u64 = 128;
+    pub const EFLAGS: u64 = 136;
+    /// `SI_KERNEL` : ce signal vient du noyau, non d'un `kill`.
+    pub const SI_KERNEL: u32 = 128;
+}
+
 pub struct Emulator {
     pub cpu: Cpu,
     pub breakpoints: BTreeSet<u64>,
@@ -769,6 +822,27 @@ pub struct Emulator {
     pub(crate) ctype_at: u64,
     /// A-t-on déjà dit qu'il n'y a pas de système de fichiers ?
     pub(crate) dit_sans_fichiers: bool,
+    /// Les simplifications que cette exécution a réellement
+    /// rencontrées — pas le recensement complet, qui est statique, mais
+    /// celles que CE programme a touchées.
+    ///
+    /// Des champs de Rust et non de la mémoire simulée, comme
+    /// `dit_sans_fichiers` : revenir sur ses pas ne « désannonce » pas
+    /// un avertissement déjà lu, et c'est le comportement voulu — on ne
+    /// veut pas le relire à chaque aller-retour sur la même
+    /// instruction.
+    simplifications: BTreeSet<Simplification>,
+    /// Celles qui n'ont pas encore été dites à l'utilisateur.
+    a_annoncer: Vec<Simplification>,
+    /// Le gestionnaire que le programme a installé pour `SIGTRAP`, s'il
+    /// en a installé un.
+    ///
+    /// Un champ de Rust et non de la mémoire simulée, comme
+    /// `dit_sans_fichiers` : ce que `rt_sigaction` a posé ne se défait
+    /// donc pas en revenant sur ses pas. C'est assumé — l'installation
+    /// a lieu une fois, au démarrage, et bien avant le `int3` qu'on
+    /// cherche à franchir.
+    sigtrap: Option<Gestionnaire>,
     /// Les entorses à la convention d'appel relevées jusqu'ici.
     breaches: Vec<AbiBreach>,
     /// Combien d'instructions ont été exécutées depuis le chargement.
@@ -907,6 +981,14 @@ impl Backend for Emulator {
         Emulator::breaches(self)
     }
 
+    fn pending_simplifications(&mut self) -> Vec<Simplification> {
+        Emulator::simplifications_a_annoncer(self)
+    }
+
+    fn touched_simplifications(&self) -> Vec<Simplification> {
+        Emulator::simplifications(self).iter().copied().collect()
+    }
+
     fn output(&self) -> &[u8] {
         &self.output
     }
@@ -972,6 +1054,9 @@ impl Emulator {
             strtok_at: 0,
             ctype_at: 0,
             dit_sans_fichiers: false,
+            simplifications: BTreeSet::new(),
+            a_annoncer: Vec::new(),
+            sigtrap: None,
             ticks: 0,
             visits: BTreeMap::new(),
             trace: VecDeque::new(),
@@ -1186,6 +1271,113 @@ impl Emulator {
     /// namsdec répond « un terminal » : la sortie apparaît alors ligne à
     /// ligne, au moment où le programme l'écrit, ce qui est exactement ce
     /// qu'on veut en avançant pas à pas.
+    /// Les registres de `sigcontext`, dans l'ordre que le noyau leur
+    /// donne.
+    const GREGS: [(u64, Reg64); 15] = [
+        (0, Reg64::R8),
+        (8, Reg64::R9),
+        (16, Reg64::R10),
+        (24, Reg64::R11),
+        (32, Reg64::R12),
+        (40, Reg64::R13),
+        (48, Reg64::R14),
+        (56, Reg64::R15),
+        (64, Reg64::Rdi),
+        (72, Reg64::Rsi),
+        (80, Reg64::Rbp),
+        (88, Reg64::Rbx),
+        (96, Reg64::Rdx),
+        (104, Reg64::Rax),
+        (112, Reg64::Rcx),
+    ];
+
+    /// Entre dans le gestionnaire de `SIGTRAP`, si le programme en a
+    /// installé un. Rend `false` quand il n'y en a pas, et l'`int3`
+    /// arrête alors la machine comme avant.
+    ///
+    /// C'EST LA DERNIÈRE PIÈCE DU MONTAGE ANTI-DÉBOGAGE. Le programme
+    /// pose un gestionnaire, exécute `int3`, et regarde s'il a été
+    /// appelé : sous un débogueur, c'est le débogueur qui reçoit le
+    /// point d'arrêt, et le gestionnaire ne tourne pas. namsdec
+    /// l'appelle, donc, comme le ferait une machine où personne ne
+    /// regarde — la même décision que pour `ptrace`, qui répond
+    /// « personne ne te suit ».
+    ///
+    /// LE CADRE EST UN VRAI CADRE, et ce n'est pas du zèle : un
+    /// gestionnaire de ce genre ne se contente pas de revenir, il
+    /// RÉÉCRIT l'adresse de reprise dans `uc_mcontext.rip` pour sauter
+    /// par-dessus un leurre. Lui donner un contexte approximatif
+    /// l'enverrait dans le décor, et un programme qui part dans le
+    /// décor est pire qu'un programme qui s'arrête.
+    fn entre_dans_le_gestionnaire(&mut self, signal: u64) -> Result<bool, EmuError> {
+        use cadre_de_signal as c;
+        let Some(gestionnaire) = self.sigtrap else {
+            return Ok(false);
+        };
+        // `SIG_DFL` vaut 0 et `SIG_IGN` vaut 1 : ce sont des consignes,
+        // pas des adresses. Par défaut, un `SIGTRAP` tue le programme —
+        // ce que namsdec montre en s'arrêtant dessus.
+        if gestionnaire.handler <= 1 {
+            return Ok(false);
+        }
+        let taille = 8 + c::UC_TAILLE + c::SIGINFO_TAILLE;
+        let rsp = self.cpu.regs.get64(Reg64::Rsp);
+        // La zone rouge d'abord — les 128 octets sous RSP qu'une
+        // fonction a le droit d'utiliser sans les réserver, et qu'un
+        // noyau enjambe. Puis l'alignement : le cadre est posé de façon
+        // que le gestionnaire voie la pile comme après un `call`.
+        let cadre = ((rsp.wrapping_sub(128).wrapping_sub(taille)) & !15).wrapping_sub(8);
+        let uc = cadre + 8;
+        let sc = uc + c::UC_MCONTEXT;
+        let info = uc + c::UC_TAILLE;
+        self.record_memory(cadre, taille as usize);
+        self.cpu.mem.poke(cadre, &vec![0u8; taille as usize])?;
+        for (décalage, registre) in Self::GREGS {
+            let valeur = self.cpu.regs.get64(registre);
+            self.cpu.mem.write_u64(sc + décalage, valeur)?;
+        }
+        self.cpu.mem.write_u64(sc + c::RSP, rsp)?;
+        // RIP est DÉJÀ l'instruction suivante : un pas l'avance avant
+        // d'exécuter, et c'est bien là que le programme doit reprendre.
+        self.cpu.mem.write_u64(sc + c::RIP, self.cpu.regs.rip)?;
+        self.cpu
+            .mem
+            .write_u64(sc + c::EFLAGS, self.cpu.flags.bits() | 0x02)?;
+        self.cpu.mem.write_u64(cadre, gestionnaire.restorer)?;
+        // `si_signo`, puis `si_code` : de quoi répondre à un
+        // gestionnaire qui regarde d'où vient le signal.
+        self.cpu.mem.write_u32(info, signal as u32)?;
+        self.cpu.mem.write_u32(info + 8, c::SI_KERNEL)?;
+        self.cpu.regs.set64(Reg64::Rdi, signal);
+        self.cpu.regs.set64(Reg64::Rsi, info);
+        self.cpu.regs.set64(Reg64::Rdx, uc);
+        self.cpu.regs.set64(Reg64::Rsp, cadre);
+        self.cpu.regs.rip = gestionnaire.handler;
+        Ok(true)
+    }
+
+    /// Revient d'un gestionnaire de signal : tout l'état reprend sa
+    /// valeur d'avant, y compris RIP — que le gestionnaire a pu
+    /// changer, et c'est souvent pour cela qu'il existe.
+    fn revient_du_gestionnaire(&mut self) -> Result<(), EmuError> {
+        use cadre_de_signal as c;
+        // Le trampoline a dépilé l'adresse de retour : RSP pointe sur
+        // le `ucontext`.
+        let uc = self.cpu.regs.get64(Reg64::Rsp);
+        let sc = uc + c::UC_MCONTEXT;
+        for (décalage, registre) in Self::GREGS {
+            let valeur = self.cpu.mem.read_u64(sc + décalage)?;
+            self.cpu.regs.set64(registre, valeur);
+        }
+        let rsp = self.cpu.mem.read_u64(sc + c::RSP)?;
+        let rip = self.cpu.mem.read_u64(sc + c::RIP)?;
+        let flags = self.cpu.mem.read_u64(sc + c::EFLAGS)?;
+        self.cpu.regs.set64(Reg64::Rsp, rsp);
+        self.cpu.regs.rip = rip;
+        self.cpu.flags = RFlags::from_bits_truncate(flags);
+        Ok(())
+    }
+
     fn fstat(&mut self, fd: u64, buf: u64) -> Result<i64, EmuError> {
         /// `struct stat` d'x86-64 : 144 octets, dont seuls quelques
         /// champs intéressent qui que ce soit ici.
@@ -1374,9 +1566,48 @@ impl Emulator {
         const PROT_READ: u64 = 1;
         const PROT_WRITE: u64 = 2;
         const PROT_EXEC: u64 = 4;
+        /// LES FICHIERS. namsdec n'en a pas, et la réponse d'un noyau à
+        /// qui l'on demande un fichier qu'il n'a pas est `-ENOENT` :
+        /// « il n'existe pas ». Ici c'est la vérité, et non une
+        /// politesse — rien n'est ouvert sur le disque de personne.
+        ///
+        /// C'est la réponse que namsdec fait à `fopen` depuis
+        /// longtemps, avec sa raison écrite en toutes lettres dans
+        /// `libc.rs` : refuser arrête le programme AVANT qu'il ait
+        /// montré ce qu'il fait quand le fichier manque, qui est
+        /// souvent la moitié intéressante. Elle ne valait que pour un
+        /// binaire lié DYNAMIQUEMENT, qui passe par la fonction ; un
+        /// binaire lié statiquement fait le même travail par l'appel
+        /// système et s'arrêtait net. La même question recevait deux
+        /// réponses opposées selon la façon dont le programme avait été
+        /// lié.
+        ///
+        /// Répondre n'est pas se taire : `sans_fichiers` l'annonce dans
+        /// la console la première fois, pour qu'on ne prenne pas la
+        /// réponse de namsdec pour celle du système.
+        const SYS_OPEN: u64 = 2;
+        const SYS_OPENAT: u64 = 257;
+        const SYS_STAT: u64 = 4;
+        const SYS_LSTAT: u64 = 6;
+        const SYS_ACCESS: u64 = 21;
+        const SYS_FACCESSAT: u64 = 269;
+        /// `O_CREAT` : ouvrir pour créer. « Introuvable » serait alors
+        /// une réponse de travers — ce qui manque n'est pas le fichier,
+        /// c'est l'endroit où l'écrire. `-EROFS` le dit exactement.
+        const O_CREAT: u64 = 0o100;
+        /// `AT_EMPTY_PATH` : le chemin est vide, l'appel porte sur le
+        /// descripteur seul. C'est ainsi qu'une bibliothèque C demande
+        /// `fstat` par `newfstatat`.
+        const AT_EMPTY_PATH: u64 = 0x1000;
+        /// `lseek` demande « où en suis-je dans ce flux ? ». Un
+        /// programme le demande rarement pour de bon : c'est une
+        /// bibliothèque qui le fait pour savoir si le flux se rembobine,
+        /// et qui en tire sa façon de tamponner. Une bibliothèque C++
+        /// l'adresse à l'entrée standard avant sa première lecture.
         /// `fstat` sur la sortie standard : une bibliothèque C le fait
         /// avant d'écrire son premier caractère, pour choisir comment
         /// tamponner. Sans réponse, elle n'écrit rien du tout.
+        const SYS_LSEEK: u64 = 8;
         const SYS_FSTAT: u64 = 5;
         const SYS_NEWFSTATAT: u64 = 262;
         /// `ioctl` : la même question, posée autrement — « es-tu un
@@ -1417,6 +1648,17 @@ impl Emulator {
         const SYS_RT_SIGACTION: u64 = 13;
         const SYS_RT_SIGPROCMASK: u64 = 14;
         const SYS_SIGALTSTACK: u64 = 131;
+        /// `rt_sigreturn` : la façon dont on revient d'un gestionnaire
+        /// de signal. Ce n'est pas le programme qui l'appelle, c'est le
+        /// bout de code que la bibliothèque C a posé comme adresse de
+        /// retour.
+        const SYS_RT_SIGRETURN: u64 = 15;
+        /// Le signal qu'un `int3` lève.
+        const SIGTRAP: u64 = 5;
+        /// Dans `struct sigaction` : le gestionnaire, les options, puis
+        /// le trampoline de retour.
+        const SA_HANDLER: u64 = 0;
+        const SA_RESTORER: u64 = 16;
         const SYS_CLOSE: u64 = 3;
         const SYS_FCNTL: u64 = 72;
         const SYS_GETCWD: u64 = 79;
@@ -1424,6 +1666,10 @@ impl Emulator {
         const ENOSYS: i64 = -38;
         const EINVAL: i64 = -22;
         const ENOTTY: i64 = -25;
+        const ESPIPE: i64 = -29;
+        const ENOENT: i64 = -2;
+        const EROFS: i64 = -30;
+        const EBADF: i64 = -9;
         const ENOMEM: i64 = -12;
         /// Le numéro que namsdec rend à `getpid`, toujours le même : un
         /// programme d'apprentissage doit être reproductible.
@@ -1620,16 +1866,75 @@ impl Emulator {
                 }
                 self.cpu.regs.set64(Reg64::Rax, 0);
             }
+            // « Où en suis-je dans ce flux ? » — nulle part, et c'est
+            // une réponse. Il n'y a ni fichier ni position derrière
+            // l'entrée et la sortie de namsdec : `-ESPIPE` est ce que
+            // rend un noyau pour un tube ou un terminal, et une
+            // bibliothèque sait exactement quoi en faire — elle renonce
+            // à revenir en arrière et tamponne autrement.
+            //
+            // Refuser l'appel, en revanche, arrêtait le programme net.
+            // Et il n'y a pas de fd au-delà de deux ici, comme pour
+            // `fstat` : `-EBADF`, pour ne pas laisser croire qu'un
+            // fichier ouvert ailleurs serait suivi.
+            // « Ouvre-moi ce fichier » — il n'existe pas, et le dire
+            // est exact. Le programme suit alors sa branche d'erreur,
+            // qu'il valait mieux voir que de s'arrêter devant.
+            SYS_OPEN | SYS_OPENAT | SYS_STAT | SYS_LSTAT | SYS_ACCESS | SYS_FACCESSAT => {
+                let quoi = match number {
+                    SYS_OPEN => "open",
+                    SYS_OPENAT => "openat",
+                    SYS_STAT => "stat",
+                    SYS_LSTAT => "lstat",
+                    SYS_ACCESS => "access",
+                    _ => "faccessat",
+                };
+                libc::sans_fichiers(self, quoi);
+                // Les options sont le deuxième argument d'`open` et le
+                // troisième d'`openat` ; les autres n'en ont pas.
+                let options = match number {
+                    SYS_OPEN => self.cpu.regs.get64(Reg64::Rsi),
+                    SYS_OPENAT => self.cpu.regs.get64(Reg64::Rdx),
+                    _ => 0,
+                };
+                let rendu = if options & O_CREAT != 0 {
+                    EROFS
+                } else {
+                    ENOENT
+                };
+                self.cpu.regs.set64(Reg64::Rax, rendu as u64);
+            }
+            SYS_LSEEK => {
+                let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let rendu = if fd > 2 { EBADF } else { ESPIPE };
+                self.cpu.regs.set64(Reg64::Rax, rendu as u64);
+            }
             SYS_FSTAT => {
                 let fd = self.cpu.regs.get64(Reg64::Rdi);
                 let buf = self.cpu.regs.get64(Reg64::Rsi);
                 let rendu = self.fstat(fd, buf)?;
                 self.cpu.regs.set64(Reg64::Rax, rendu as u64);
             }
+            // `newfstatat(fd, chemin, statbuf, options)` sert à deux
+            // choses. Chemin vide — ou `AT_EMPTY_PATH` —, c'est `fstat`
+            // sur le descripteur, et une bibliothèque C le demande ainsi
+            // avant d'écrire. Chemin NON vide, c'est un fichier, et il
+            // n'y en a pas : répondre d'après le descripteur décrirait
+            // la sortie standard en croyant décrire `/etc/passwd`.
             SYS_NEWFSTATAT => {
                 let fd = self.cpu.regs.get64(Reg64::Rdi);
+                let chemin = self.cpu.regs.get64(Reg64::Rsi);
+                let options = self.cpu.regs.get64(Reg64::R10);
                 let buf = self.cpu.regs.get64(Reg64::Rdx);
-                let rendu = self.fstat(fd, buf)?;
+                let vide = options & AT_EMPTY_PATH != 0
+                    || chemin == 0
+                    || self.cpu.mem.read_u8(chemin).is_ok_and(|octet| octet == 0);
+                let rendu = if vide {
+                    self.fstat(fd, buf)?
+                } else {
+                    libc::sans_fichiers(self, "newfstatat");
+                    ENOENT
+                };
                 self.cpu.regs.set64(Reg64::Rax, rendu as u64);
             }
             // « Es-tu un terminal ? » — non. La bibliothèque en tire la
@@ -1715,11 +2020,43 @@ impl Emulator {
                     self.cpu.regs.set64(Reg64::Rax, 0);
                 }
             }
-            // Les signaux : namsdec n'en délivre aucun, il n'y a donc
-            // rien à installer — mais refuser l'appel arrêterait le
-            // démarrage de toute bibliothèque moderne.
-            SYS_RT_SIGACTION | SYS_RT_SIGPROCMASK | SYS_SIGALTSTACK => {
+            // `rt_sigaction` pose un gestionnaire. namsdec n'en RETIENT
+            // qu'un, celui de `SIGTRAP` — parce que c'est le seul signal
+            // qu'il sache lever, par `int3`, et qu'un gestionnaire
+            // retenu sans être jamais appelé ne serait qu'une promesse.
+            //
+            // Les autres s'installent sans rien faire, comme avant : il
+            // n'y a ici ni terminal pour envoyer `SIGINT`, ni horloge
+            // pour `SIGALRM`, ni voisin pour `SIGUSR1`.
+            SYS_RT_SIGACTION => {
+                let signal = self.cpu.regs.get64(Reg64::Rdi);
+                let act = self.cpu.regs.get64(Reg64::Rsi);
+                let ancien = self.cpu.regs.get64(Reg64::Rdx);
+                if ancien != 0 {
+                    let posé = self.sigtrap.filter(|_| signal == SIGTRAP);
+                    self.record_memory(ancien, 24);
+                    let handler = posé.map_or(0, |g| g.handler);
+                    let restorer = posé.map_or(0, |g| g.restorer);
+                    self.cpu.mem.write_u64(ancien + SA_HANDLER, handler)?;
+                    self.cpu.mem.write_u64(ancien + SA_RESTORER, restorer)?;
+                }
+                if signal == SIGTRAP && act != 0 {
+                    let handler = self.cpu.mem.read_u64(act + SA_HANDLER)?;
+                    let restorer = self.cpu.mem.read_u64(act + SA_RESTORER)?;
+                    self.sigtrap = Some(Gestionnaire { handler, restorer });
+                }
                 self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // Les autres : rien à installer, mais refuser l'appel
+            // arrêterait le démarrage de toute bibliothèque moderne.
+            SYS_RT_SIGPROCMASK | SYS_SIGALTSTACK => {
+                self.cpu.regs.set64(Reg64::Rax, 0);
+            }
+            // On revient du gestionnaire. Tout l'état reprend sa valeur
+            // d'avant le signal — RIP compris, que le gestionnaire a pu
+            // déplacer, et c'est souvent pour cela qu'il existe.
+            SYS_RT_SIGRETURN => {
+                self.revient_du_gestionnaire()?;
             }
             // Fermer un descripteur qu'on ne tient pas vraiment : dire
             // que c'est fait est exact du point de vue du programme.
@@ -2545,12 +2882,16 @@ impl Emulator {
                 self.cpu.regs.set32(Reg64::Rax, ticks as u32);
                 self.cpu.regs.set32(Reg64::Rdx, (ticks >> 32) as u32);
             }
-            // Un point d'arrêt logiciel : l'exécution s'arrête, comme
-            // devant un débogueur — sauf qu'ici, le débogueur, c'est
-            // l'application elle-même.
+            // Un point d'arrêt logiciel. Si le programme s'est posé un
+            // gestionnaire de `SIGTRAP`, c'est à lui que le signal va —
+            // comme sur une machine où personne ne regarde. Sinon
+            // l'exécution s'arrête, comme devant un débogueur, sauf
+            // qu'ici le débogueur, c'est l'application elle-même.
             M::Int3 => {
-                self.software_breakpoint = Some(instr.ip());
-                self.cpu.halted = true;
+                if !self.entre_dans_le_gestionnaire(5)? {
+                    self.software_breakpoint = Some(instr.ip());
+                    self.cpu.halted = true;
+                }
             }
             // `ud2` existe pour planter : c'est ce qu'un compilateur pose
             // là où le programme ne doit jamais passer.

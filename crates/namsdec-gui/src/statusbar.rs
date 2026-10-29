@@ -89,13 +89,15 @@ impl NamsdecApp {
                 )
                 .on_hover_text(if self.lang == Lang::Fr {
                     format!(
-                        "Compteur de répétition : le prochain mouvement sera fait {compte} fois.
-                         C'est le « {compte} » de « {compte}j » dans vim. Échap l'annule."
+                        "Compteur de répétition : le prochain mouvement sera fait \
+                         {compte} fois. C'est le « {compte} » de « {compte}j » dans \
+                         vim. Échap l'annule."
                     )
                 } else {
                     format!(
-                        "Repeat count: the next motion will be done {compte} times.
-                         This is the “{compte}” of “{compte}j” in vim. Escape clears it."
+                        "Repeat count: the next motion will be done {compte} times. \
+                         This is the “{compte}” of “{compte}j” in vim. Escape clears \
+                         it."
                     )
                 });
             }
@@ -290,6 +292,18 @@ impl NamsdecApp {
                 theme.accent,
                 None,
             ),
+            // Pendant l'assemblage : ce qui tourne, et depuis quand.
+            // Le temps écoulé plutôt qu'une barre qui avance, parce
+            // qu'un assemblage ne dit pas où il en est — et parce que
+            // c'est le temps qui décide de l'abandon.
+            Status::Assembling => (
+                match &self.job {
+                    Some(job) => format!("{} ({})", s.assemble_running, job.timing()),
+                    None => s.assemble_running.to_owned(),
+                },
+                theme.accent,
+                None,
+            ),
             Status::StepLimit => (s.status_step_limit.to_owned(), theme.bad, None),
             Status::NasmMissing => (s.status_nasm_missing.to_owned(), theme.bad, None),
             Status::Note(phrase) => (phrase(s).to_owned(), theme.good, None),
@@ -299,6 +313,23 @@ impl NamsdecApp {
             Status::Counted(combien, phrase) => {
                 (format!("{combien} {}", phrase(s)), theme.good, None)
             }
+            // À la couleur d'accent et non à celle d'une erreur : rien
+            // ne s'est mal passé, le programme tourne — on vient
+            // seulement de quitter le terrain où namsdec et le
+            // processeur répondent bit pour bit.
+            Status::Simplified(quoi) => (
+                format!(
+                    "{} — {}",
+                    crate::limites::titre(self.lang, *quoi),
+                    if fr {
+                        "détail dans Diagnostics"
+                    } else {
+                        "details in Diagnostics"
+                    }
+                ),
+                theme.accent,
+                None,
+            ),
             Status::Error(msg) => (
                 if fr {
                     format!("Erreur : {msg}")

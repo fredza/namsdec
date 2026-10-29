@@ -498,6 +498,8 @@ pub(crate) enum Status {
     /// Il n'y avait plus rien à défaire.
     NothingToUndo,
     Running,
+    /// nasm et ld travaillent, dans un fil à part.
+    Assembling,
     Halted,
     /// Le programme s'est terminé lui-même par `exit`, avec ce code — ce
     /// qui n'est pas la même chose que la machine arrêtée par `hlt`.
@@ -535,6 +537,12 @@ pub(crate) enum Status {
     /// Un nombre et ce qu'il compte, la phrase venant des textes : le
     /// nombre ne se traduit pas, la phrase si.
     Counted(usize, fn(&Strings) -> &'static str),
+    /// L'exécution vient de toucher un comportement que namsdec
+    /// simplifie, et le dit sur le coup.
+    ///
+    /// La variante et non la phrase, pour la même raison que `Note` :
+    /// elle se lit dans la langue du moment.
+    Simplified(namsdec_emu::Simplification),
     Error(String),
 }
 

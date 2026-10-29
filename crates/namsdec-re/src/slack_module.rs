@@ -9,7 +9,8 @@
 //! rien.
 
 use crate::slack::{self, Slack};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address};
+use crate::vue::{Bloc, Fragment, Ligne, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
 
 /// Combien on en montre. Au-delà, la liste cesse d'apprendre et devient
 /// un vidage.
@@ -57,8 +58,8 @@ impl ReModule for SlackModule {
         self.found = tous.into_iter().take(SHOWN).collect();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.weak(ctx.t(
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let intro = Fragment::dit(ctx.t(
             "Un exécutable n'est jamais plein. Entre deux fonctions, entre deux \
              sections, à la fin d'un segment, l'éditeur de liens comble avec un \
              octet neutre — un zéro, un `nop` (0x90), un `int3` (0xcc) — jusqu'au \
@@ -69,19 +70,22 @@ impl ReModule for SlackModule {
              byte — a zero, a `nop` (0x90), an `int3` (0xcc) — up to the next \
              alignment. These gaps are visible, and they are space the code does \
              not use.",
-        ));
+        ))
+        .faible();
 
         if self.found.is_empty() {
-            ui.add_space(4.0);
-            ui.weak(ctx.t(
-                "Aucun trou notable ici — ou ce n'est pas un ELF chargé.",
-                "No notable gap here — or this is not a loaded ELF.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(intro).texte(
+                    Fragment::dit(ctx.t(
+                        "Aucun trou notable ici — ou ce n'est pas un ELF chargé.",
+                        "No notable gap here — or this is not a loaded ELF.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
 
-        ui.add_space(6.0);
-        ui.label(format!(
+        let mut vue = Vue::neuve().texte(intro).texte(format!(
             "{} {} · {} {} · {} {}",
             self.total,
             ctx.t("zones", "zones"),
@@ -90,61 +94,72 @@ impl ReModule for SlackModule {
             self.plus_grande,
             ctx.t("d'un tenant", "in one run"),
         ));
-        ui.add_space(4.0);
 
-        // Relevé pendant le dessin, posé après : la grille emprunte
-        // `self`, et le module ne peut donc pas s'écrire dedans.
-        let mut demande: Option<ReRequest> = None;
-        egui::Grid::new("slack_grid")
-            .num_columns(5)
-            .striped(true)
-            .min_col_width(0.0)
-            .show(ui, |ui| {
-                ui.strong(ctx.t("adresse", "address"));
-                ui.strong(ctx.t("octets", "bytes"));
-                ui.strong(ctx.t("rempli de", "filled with"));
-                ui.strong(ctx.t("section", "section"));
-                ui.strong("");
-                ui.end_row();
-                for trou in &self.found {
-                    if let Some(cible) = clickable_address(ui, ctx, trou.vaddr) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: trou.vaddr,
-                            target: cible,
-                        });
-                    }
-                    ui.monospace(format!("{}", trou.len));
-                    ui.monospace(nom_du_bourrage(trou.filler));
-                    // Le nom de section raconte l'histoire : un trou en
-                    // fin de `.text` n'est pas un trou entre deux entrées
-                    // de `.plt`. Un tiret quand aucune section déclarée ne
-                    // le couvre — l'interstice entre deux, ou un binaire
-                    // dépouillé.
-                    match &trou.section {
-                        Some(nom) => ui.monospace(nom.clone()),
-                        None => ui.weak("—"),
-                    };
-                    // Un trou dans du code exécutable n'a pas le même sens
-                    // qu'un trou dans les données : le dire d'un mot.
-                    ui.weak(if trou.executable {
-                        ctx.t("exécutable", "executable")
-                    } else {
-                        ctx.t("données", "data")
-                    });
-                    ui.end_row();
-                }
-            });
-        if demande.is_some() {
-            self.demande = demande;
-        }
+        vue = vue.bloc(Bloc::Tableau {
+            colonnes: vec![
+                Fragment::dit(ctx.t("adresse", "address")).fort().into(),
+                Fragment::dit(ctx.t("octets", "bytes")).fort().into(),
+                Fragment::dit(ctx.t("rempli de", "filled with"))
+                    .fort()
+                    .into(),
+                Fragment::dit(ctx.t("section", "section")).fort().into(),
+                Ligne::default(),
+            ],
+            rangées: self
+                .found
+                .iter()
+                .map(|trou| {
+                    vec![
+                        Fragment::dit(format!("{:#010x}", trou.vaddr))
+                            .mène_à(trou.vaddr)
+                            .into(),
+                        Fragment::dit(format!("{}", trou.len)).code().into(),
+                        Fragment::dit(nom_du_bourrage(trou.filler)).code().into(),
+                        // Le nom de section raconte l'histoire : un trou
+                        // en fin de `.text` n'est pas un trou entre deux
+                        // entrées de `.plt`. Un tiret quand aucune
+                        // section déclarée ne le couvre — l'interstice
+                        // entre deux, ou un binaire dépouillé.
+                        match &trou.section {
+                            Some(nom) => Fragment::dit(nom.clone()).code().into(),
+                            None => Fragment::dit("—").faible().into(),
+                        },
+                        // Un trou dans du code exécutable n'a pas le
+                        // même sens qu'un trou dans les données : le
+                        // dire d'un mot.
+                        Fragment::dit(if trou.executable {
+                            ctx.t("exécutable", "executable")
+                        } else {
+                            ctx.t("données", "data")
+                        })
+                        .faible()
+                        .into(),
+                    ]
+                })
+                .collect(),
+            rayé: true,
+        });
 
         if self.total > self.found.len() {
-            ui.add_space(4.0);
-            ui.weak(format!(
-                "… {} {}",
-                self.total - self.found.len(),
-                ctx.t("de plus, plus petites", "more, smaller"),
-            ));
+            vue = vue.texte(
+                Fragment::dit(format!(
+                    "… {} {}",
+                    self.total - self.found.len(),
+                    ctx.t("de plus, plus petites", "more, smaller"),
+                ))
+                .faible(),
+            );
+        }
+        Some(vue)
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx)
+            && let Some(demande) = crate::vue_peinte::peindre(ui, ctx, &vue)
+        {
+            // Relevé pendant le dessin, posé après : c'est la règle de
+            // tous les panneaux, et la vue ne la change pas.
+            self.demande = Some(demande);
         }
     }
 }

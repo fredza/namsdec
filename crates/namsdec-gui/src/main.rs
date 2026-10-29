@@ -26,6 +26,7 @@ mod icons;
 mod jobs;
 mod keybindings;
 mod labels;
+mod limites;
 mod listing;
 mod loader;
 mod marks;
@@ -263,14 +264,27 @@ struct InstallJob {
     /// Les étapes, pour dire où l'on en est.
     total: usize,
     done: usize,
-    /// Ce que les commandes ont écrit, dans l'ordre.
-    log: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
+    /// Ce que les commandes ont écrit, dans l'ordre — borné en nombre
+    /// de lignes ET en taille de ligne, ce qui n'était pas le cas.
+    log: namsdec_asm::lanceur::Journal,
     /// Fini ? Et si oui, comment.
     outcome: std::sync::Arc<std::sync::Mutex<Option<Result<PathBuf, String>>>>,
     /// Combien d'étapes sont passées, vu depuis le fil de travail.
     progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    /// Mis à vrai pour demander l'arrêt : le fil s'arrête à la fin de
-    /// l'étape en cours plutôt qu'au milieu d'une décompression.
+    /// Mis à vrai pour demander l'arrêt.
+    ///
+    /// Il atteint maintenant l'ÉTAPE EN COURS et non plus seulement
+    /// l'intervalle entre deux : le drapeau est passé au lanceur, qui
+    /// le consulte toutes les vingt millisecondes et arrête le groupe
+    /// de processus. Auparavant, le fil attendait la fin de l'étape —
+    /// c'est-à-dire la fin de la compilation dont on voulait
+    /// précisément sortir.
+    ///
+    /// Ce qui reste vrai, et qui est le prix de cette brutalité : une
+    /// étape arrêtée au milieu peut laisser un dossier à demi
+    /// décompressé. C'est pour cela que le résultat attendu est vérifié
+    /// à la fin — une suite de commandes qui réussissent ne prouve pas
+    /// qu'on a obtenu ce qu'on cherchait.
     cancel: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -291,6 +305,26 @@ struct BackgroundJob {
     /// le temps accordé, lui, est vrai — et c'est ce qui intéresse,
     /// puisque c'est ce qui décide de l'abandon.
     limit: Option<std::time::Duration>,
+}
+
+/// Un assemblage en cours dans un fil à part.
+///
+/// Ce qu'il porte tient en une idée : **à quoi ce résultat se
+/// rapporte**. Un assemblage lancé sur un texte, rendu dix secondes
+/// plus tard, n'a aucune raison de décrire encore le texte à l'écran —
+/// on a pu écrire entre-temps, ou changer d'onglet. La révision tranche
+/// à l'arrivée.
+struct AssembleJob {
+    /// La révision du texte au moment du lancement.
+    rev: u64,
+    /// Levé pour arrêter l'outil avant la fin.
+    arrêt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Là où le fil pose ce qu'il a obtenu.
+    #[allow(clippy::type_complexity)]
+    résultat: std::sync::Arc<
+        std::sync::Mutex<Option<Result<namsdec_asm::AssembleOutput, namsdec_asm::AsmError>>>,
+    >,
+    démarré: std::time::Instant,
 }
 
 impl BackgroundJob {
@@ -319,6 +353,22 @@ impl BackgroundJob {
 const APP_NAME: &str = "Namsdec";
 
 const DECOMPILER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
+/// Ce qu'on accorde à UNE étape d'installation.
+///
+/// Trente minutes, et non les deux de la décompilation : ces deux
+/// travaux n'ont rien de commun. Un décompilateur qui n'a pas répondu
+/// en deux minutes ne répondra pas ; une compilation d'outil, elle,
+/// peut légitimement durer un quart d'heure, et un téléchargement de
+/// cent quatre-vingts méga-octets sur une ligne lente aussi. Leur
+/// imposer le même chiffre reviendrait à tuer les secondes pour
+/// surveiller les premières.
+///
+/// Le vrai garde-fou n'est pas ce délai : c'est le bouton d'arrêt, qui
+/// rend la main en une demi-seconde depuis qu'il passe par le lanceur
+/// partagé. Ce délai-ci n'est là que pour la fenêtre qu'on a oubliée
+/// ouverte.
+const DÉLAI_ÉTAPE: std::time::Duration = std::time::Duration::from_secs(30 * 60);
 
 /// Un fichier d'exemple, montré quand aucun outil n'est installé.
 ///
@@ -733,6 +783,8 @@ struct NamsdecApp {
     mem_before: Option<Vec<u8>>,
     re_registry: ReModuleRegistry,
     status: Status,
+    /// L'assemblage qui tourne en fond, s'il y en a un.
+    assemble_job: Option<AssembleJob>,
     diagnostics: Vec<Diagnostic>,
     active_tab: SidebarTab,
     console_tab: ConsoleTab,
@@ -1793,7 +1845,7 @@ impl PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de quatre-vingt-seize exercices vous attend : Préférences > Modules.
+; Un parcours de cent huit exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -2059,6 +2111,7 @@ impl Default for NamsdecApp {
             mem_before: None,
             re_registry,
             status: Status::Idle,
+            assemble_job: None,
             diagnostics: Vec::new(),
             // Le processeur en premier : c'est ce qu'on regarde entre
             // deux pas, et c'était jusqu'ici un bandeau toujours
@@ -2366,7 +2419,11 @@ impl NamsdecApp {
                 // le refermer le rend à l'éditeur.
                 self.focus_explorer(self.show_explorer);
             }
-            Action::Assemble => self.do_assemble(),
+            // L'interface LANCE et rend la main : la fenêtre continue
+            // de vivre, et le résultat est récolté par `tick_assemble`
+            // à l'image où il arrive. `do_assemble`, qui attend, reste
+            // pour qui a besoin du programme dans la foulée.
+            Action::Assemble => self.start_assemble(),
             Action::Run => self.do_run(),
             Action::StepInto => self.do_step(),
             Action::StepOver => self.do_step_over(),
@@ -2902,52 +2959,6 @@ fn file_mtime(path: &Path) -> Option<std::time::SystemTime> {
 /// Ce que prend l'en-tête d'un bloc : « 0x0001d491  ? ».
 const ENTÊTE_COLONNES: usize = 16;
 
-/// Recopie un flux d'un programme en cours dans le journal, ligne à ligne.
-///
-/// Deux subtilités : on lit par blocs, sans attendre la fin du programme,
-/// et l'on coupe aussi bien sur `\r` que sur `\n`. C'est ce second point
-/// qui rend la jauge de `curl` lisible : elle réécrit sa ligne avec un
-/// retour chariot, alors on réécrit la dernière ligne du journal au lieu
-/// d'en empiler mille.
-fn lire_flux(
-    mut flux: impl std::io::Read + Send + 'static,
-    journal: std::sync::Arc<std::sync::Mutex<Vec<String>>>,
-) -> std::thread::JoinHandle<()> {
-    std::thread::spawn(move || {
-        let mut ligne = Vec::new();
-        let mut bloc = [0u8; 4096];
-        let mut réécrire = false;
-        loop {
-            let lu = match flux.read(&mut bloc) {
-                Ok(0) | Err(_) => break,
-                Ok(n) => n,
-            };
-            for &octet in &bloc[..lu] {
-                if octet != b'\n' && octet != b'\r' {
-                    ligne.push(octet);
-                    continue;
-                }
-                let texte = String::from_utf8_lossy(&ligne).trim_end().to_owned();
-                ligne.clear();
-                if !texte.is_empty() {
-                    let mut lignes = journal.lock().expect("le journal");
-                    match lignes.last_mut() {
-                        Some(dernière) if réécrire => *dernière = texte,
-                        _ => lignes.push(texte),
-                    }
-                    // Un journal de compilation tient des dizaines de
-                    // milliers de lignes : on garde la fin, qui est ce
-                    // qu'on lit quand ça casse.
-                    if lignes.len() > 2000 {
-                        lignes.drain(..500);
-                    }
-                }
-                réécrire = octet == b'\r';
-            }
-        }
-    })
-}
-
 /// Une pastille d'état : un mot, teinté, sur un fond de la même teinte.
 ///
 /// Un mot coloré seul se lit mal quand il en côtoie un autre de couleur
@@ -3439,6 +3450,7 @@ impl NamsdecApp {
         self.reload_keymap_if_changed();
         self.had_focus = focus;
         self.apply_tooltip_setting(&ctx);
+        self.tick_assemble();
         self.tick_run(&ctx);
         self.note_goal_reached();
         if self.rebinding.is_none() {
@@ -3568,7 +3580,20 @@ impl NamsdecApp {
                 let plancher = if saisie > 0.0 {
                     // La saisie, les onglets, et une ligne de journal :
                     // en dessous, on ne verrait plus où taper.
-                    (saisie + ui.text_style_height(&egui::TextStyle::Button) + 28.0)
+                    //
+                    // LA LIGNE DE JOURNAL EST COMPTÉE DEPUIS, et elle
+                    // ne l'était pas : le plancher ne gardait rien pour
+                    // la sortie, qui réclame alors son propre minimum
+                    // et le prend sur la saisie — son fond est opaque,
+                    // et il est peint par-dessus. Les deux rangées du
+                    // haut de la saisie disparaissaient dessous sans
+                    // qu'aucune mesure ne bouge : elles étaient peintes
+                    // et entières, simplement recouvertes.
+                    // Les marges du cadre de la sortie, et elles
+                    // seules : la sortie sait se replier jusqu'à ne
+                    // plus rien montrer, son cadre non.
+                    let sortie = console::MARGES_DE_LA_SORTIE;
+                    (saisie + ui.text_style_height(&egui::TextStyle::Button) + 28.0 + sortie)
                         .max(CONSOLE_MIN_HEIGHT)
                         .min(plafond)
                 } else {

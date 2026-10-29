@@ -12,7 +12,45 @@
 use super::*;
 
 impl NamsdecApp {
+    /// Assemble, et attend que ce soit fait.
+    ///
+    /// Le geste complet, pour qui a besoin du programme dans la foulée.
+    /// L'interface ne l'emploie pas : elle lance par
+    /// [`NamsdecApp::start_assemble`] et laisse
+    /// [`NamsdecApp::tick_assemble`] récolter à l'image où le résultat
+    /// arrive. C'est le même travail, dans le même fil, avec le même
+    /// délai et la même récolte — seule l'attente diffère, et c'est
+    /// elle qu'une fenêtre ne peut pas se permettre.
+    ///
+    /// **Réservé aux contrôles**, et c'est dit plutôt que caché : rien
+    /// en production n'attend un assemblage de bout en bout depuis que
+    /// P2 l'a mis en fond. Ce que les contrôles éprouvent par ici reste
+    /// le chemin de production à l'attente près — `start_assemble` pose
+    /// le travail, `tick_assemble` le récolte, et la révision tranche —
+    /// ; seule la boucle d'attente leur appartient, parce qu'un
+    /// contrôle a besoin d'un état arrêté pour regarder.
+    ///
+    /// Une action qui exige un programme prêt passe, elle, par
+    /// [`NamsdecApp::assurer_le_programme`].
+    #[cfg(test)]
     pub(crate) fn do_assemble(&mut self) {
+        self.start_assemble();
+        self.attendre_l_assemblage();
+    }
+
+    /// Lance l'assemblage dans un fil à part et rend la main aussitôt.
+    ///
+    /// Pourquoi en fond, alors qu'un assemblage ordinaire prend quatre
+    /// millisecondes : parce qu'une seule ligne valide suffit à le
+    /// faire durer. `times 2000000000 nop` occupe nasm plus de vingt
+    /// secondes, mesuré, et l'interface n'avait alors ni image, ni
+    /// clavier, ni Stop. Le délai du lanceur borne la casse à dix
+    /// secondes ; ceci rend la fenêtre vivante pendant ces dix
+    /// secondes, et donne de quoi en sortir avant.
+    pub(crate) fn start_assemble(&mut self) {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::{Arc, Mutex};
+
         // Réassembler un listing de binaire est presque toujours une
         // erreur de geste — un Ctrl+Maj+B par habitude. On le dit, et
         // l'on ne touche à rien : ce qui est chargé vaut mieux que ce
@@ -21,8 +59,143 @@ impl NamsdecApp {
             self.status = Status::Error(strings(self.lang).binary_no_reassemble.to_owned());
             return;
         }
-        self.assemble_once();
+        // Un seul à la fois. Le précédent est arrêté plutôt que laissé
+        // courir : son résultat serait de toute façon écarté par la
+        // révision, et deux nasm pour un seul tampon ne servent
+        // personne.
+        self.cancel_assemble();
+
+        let source = self.source.clone();
+        let arrêt = Arc::new(AtomicBool::new(false));
+        let résultat = Arc::new(Mutex::new(None));
+        let (drapeau, boîte) = (Arc::clone(&arrêt), Arc::clone(&résultat));
+        std::thread::spawn(move || {
+            let bornes = namsdec_asm::Bornes::en(namsdec_asm::DÉLAI).arrêtable(drapeau);
+            let rendu = namsdec_asm::assemble_within(&source, BASE_ADDR, &bornes);
+            // Le verrou empoisonné ne fait rien perdre d'autre que ce
+            // travail-ci : la récolte le verra vide et conclura que le
+            // fil a échoué.
+            if let Ok(mut case) = boîte.lock() {
+                *case = Some(rendu);
+            }
+        });
+        self.assemble_job = Some(AssembleJob {
+            // LA RÉVISION AU DÉPART, et c'est tout l'objet du champ : le
+            // texte peut changer, l'onglet peut changer — `restore_tab`
+            // passe par `set_source`, qui fait avancer la révision —, et
+            // un résultat qui arrive après ne décrit plus ce qui est à
+            // l'écran. Le rattacher quand même, c'est donner à lire des
+            // adresses et des numéros de ligne qui désignent un autre
+            // programme.
+            rev: self.texte_rev,
+            arrêt,
+            résultat,
+            démarré: std::time::Instant::now(),
+        });
+        self.job = Some(BackgroundJob {
+            label: strings(self.lang).job_assembling.to_owned(),
+            started: std::time::Instant::now(),
+            limit: Some(namsdec_asm::DÉLAI),
+        });
+        self.status = Status::Assembling;
+    }
+
+    /// Arrête l'assemblage en cours, s'il y en a un.
+    ///
+    /// Le drapeau est levé ; le fil le voit au prochain battement du
+    /// lanceur — vingt millisecondes — et tue le groupe de processus.
+    /// On n'attend pas ce fil : il écrira son résultat dans une boîte
+    /// que plus personne ne lit.
+    pub(crate) fn cancel_assemble(&mut self) {
+        if let Some(job) = self.assemble_job.take() {
+            job.arrêt.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
+        if matches!(self.status, Status::Assembling) {
+            self.status = Status::Idle;
+        }
+        self.job = None;
+    }
+
+    /// Y a-t-il un assemblage en cours ?
+    pub(crate) fn assembling(&self) -> bool {
+        self.assemble_job.is_some()
+    }
+
+    /// Récolte le résultat s'il est arrivé. À appeler une fois par
+    /// image.
+    pub(crate) fn tick_assemble(&mut self) {
+        let Some(job) = &self.assemble_job else {
+            return;
+        };
+        let Some(rendu) = job
+            .résultat
+            .lock()
+            .ok()
+            .and_then(|mut case| case.take())
+            .or_else(|| {
+                // Le verrou empoisonné : le fil a paniqué, et personne
+                // ne posera jamais de résultat. Mieux vaut le dire que
+                // laisser une barre tourner pour toujours.
+                job.résultat
+                    .is_poisoned()
+                    .then_some(Err(namsdec_asm::AsmError::Cancelled))
+            })
+        else {
+            return;
+        };
+        let (rev, démarré) = (job.rev, job.démarré);
+        self.assemble_job = None;
+        self.job = None;
+        // PÉRIMÉ : le texte a changé pendant que nasm travaillait, ou
+        // l'on a changé d'onglet. Le résultat décrit un programme que
+        // personne ne regarde plus ; on le jette, et l'on ne touche ni
+        // au listing, ni aux diagnostics, ni à l'émulateur de celui qui
+        // est à l'écran.
+        if rev != self.texte_rev {
+            if matches!(self.status, Status::Assembling) {
+                self.status = Status::Idle;
+            }
+            return;
+        }
+        self.apply_assembled(rendu, démarré.elapsed());
+        // LE PANNEAU S'OUVRE ICI, et nulle part ailleurs : c'est le seul
+        // endroit où les diagnostics viennent d'arriver. Posé après le
+        // lancement, il montrait ceux de l'assemblage PRÉCÉDENT — une
+        // erreur corrigée restait affichée, une erreur nouvelle
+        // n'ouvrait rien.
         self.show_diagnostics_if_any();
+    }
+
+    /// Attend la fin de l'assemblage en cours, s'il y en a un.
+    ///
+    /// Bornée par le délai du lanceur, et d'une marge : le fil tue
+    /// l'outil passé ce délai et pose son résultat, donc l'attente se
+    /// termine d'elle-même. La marge couvre le battement de vingt
+    /// millisecondes et le délai de grâce des lecteurs.
+    pub(crate) fn attendre_l_assemblage(&mut self) {
+        let fin =
+            std::time::Instant::now() + namsdec_asm::DÉLAI + std::time::Duration::from_secs(2);
+        while self.assemble_job.is_some() {
+            self.tick_assemble();
+            if self.assemble_job.is_none() {
+                return;
+            }
+            if std::time::Instant::now() >= fin {
+                // Le fil n'a pas rendu dans le temps qu'il s'était lui
+                // même donné : on cesse d'attendre et on le dit, plutôt
+                // que de boucler sans fin.
+                self.cancel_assemble();
+                self.status = Status::Error(errors::asm(
+                    self.lang,
+                    &namsdec_asm::AsmError::TooLong {
+                        tool: "nasm",
+                        seconds: namsdec_asm::DÉLAI.as_secs(),
+                    },
+                ));
+                return;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
     }
 
     /// Le panneau bas se met sur ce qui vient de se passer : les
@@ -40,8 +213,15 @@ impl NamsdecApp {
         }
     }
 
-    pub(crate) fn assemble_once(&mut self) {
-        match namsdec_asm::assemble(&self.source, BASE_ADDR) {
+    /// Ce qu'on fait du résultat, une fois qu'il est là et qu'il
+    /// concerne bien le texte à l'écran.
+    pub(crate) fn apply_assembled(
+        &mut self,
+        rendu: Result<namsdec_asm::AssembleOutput, AsmError>,
+        durée: std::time::Duration,
+    ) {
+        let _ = durée;
+        match rendu {
             Ok(output) => {
                 let disasm = disassemble_code(&output);
                 let addr_to_line = output.line_to_addr.iter().map(|(l, a)| (*a, *l)).collect();
@@ -96,6 +276,21 @@ impl NamsdecApp {
             Err(e @ AsmError::Io(_)) => {
                 self.diagnostics.clear();
                 self.status = Status::Error(errors::asm(self.lang, &e));
+            }
+            // L'outil a été arrêté : ce qui était assemblé avant ne
+            // décrit plus ce texte-ci, et le garder ferait pointer la
+            // gouttière sur des lignes qui ont bougé.
+            Err(e @ AsmError::TooLong { .. }) => {
+                self.diagnostics.clear();
+                self.assemble_state = None;
+                self.emulator = None;
+                self.status = Status::Error(errors::asm(self.lang, &e));
+            }
+            // Arrêté à la demande : on ne dit pas « erreur », on ne dit
+            // rien de plus que ce qui s'est passé.
+            Err(AsmError::Cancelled) => {
+                self.diagnostics.clear();
+                self.status = Status::Note(|s| s.assemble_cancelled);
             }
         }
     }
@@ -583,6 +778,33 @@ impl NamsdecApp {
         }
     }
 
+    /// Relève ce que l'exécution vient de toucher de simplifié, et le
+    /// dit — une fois chacune, au moment où ça se produit.
+    ///
+    /// Au moment où ça se produit, et pas au démarrage : un
+    /// avertissement lu avant d'avoir exécuté quoi que ce soit ne se
+    /// rattache à rien, et c'est comme ça qu'on apprend à ne plus les
+    /// lire. Celui-ci paraît juste après le `fsin` ou le `fstp tword`
+    /// qui l'a provoqué, et le panneau des diagnostics le garde.
+    fn recueille_les_simplifications(&mut self) {
+        let Some(emulator) = &mut self.emulator else {
+            return;
+        };
+        let nouvelles = emulator.pending_simplifications();
+        if nouvelles.is_empty() {
+            return;
+        }
+        // La barre d'état n'en montre qu'une — la dernière rencontrée.
+        // Une barre qui empile sept phrases n'en montre aucune ; le
+        // panneau des diagnostics, lui, les tient toutes, et il les lit
+        // dans l'émulateur plutôt que d'en garder une copie : la liste
+        // suit alors l'onglet, et un autre programme n'hérite pas des
+        // approximations du précédent.
+        if let Some(derniere) = nouvelles.last() {
+            self.status = Status::Simplified(*derniere);
+        }
+    }
+
     pub(crate) fn notify_step(&mut self) {
         // Le battement d'orange part d'ici : notify_step est le point par
         // où passent tous les pas (un pas, un Run qui s'arrête, un retour
@@ -590,6 +812,7 @@ impl NamsdecApp {
         // visible. Ce qui a changé, le diff le dit déjà ; quand, c'est
         // cet horodatage.
         self.values_changed_at = Some(std::time::Instant::now());
+        self.recueille_les_simplifications();
         // L'éditeur suit l'exécution : au prochain rendu, il ramène son
         // défilement horizontal à zéro, pour que les instructions et la
         // ligne courante ne restent pas sorties à gauche.
@@ -632,7 +855,21 @@ impl NamsdecApp {
         self.status = Status::Error(errors::emu(self.lang, e));
     }
 
+    /// Avant d'exécuter quoi que ce soit : si nasm travaille encore,
+    /// on l'attend.
+    ///
+    /// Demander un pas pendant un assemblage ne veut pas dire « ignore
+    /// ma demande », cela veut dire « quand il aura fini ». Sans cela,
+    /// frapper Step aussitôt après Ctrl+Maj+B ne faisait rien du tout
+    /// — et rien du tout est ce qui ressemble le plus à une panne.
+    pub(crate) fn assurer_le_programme(&mut self) {
+        if self.assembling() {
+            self.attendre_l_assemblage();
+        }
+    }
+
     pub(crate) fn do_step(&mut self) {
+        self.assurer_le_programme();
         self.remember_registers();
         self.remember_step();
         // Le conseil vaut pour l'erreur qui vient de se produire : au pas
@@ -663,6 +900,7 @@ impl NamsdecApp {
     /// `tick_run` avance par petits paquets, une frame à la fois, pour que
     /// Stop reste réactif.
     pub(crate) fn do_run(&mut self) {
+        self.assurer_le_programme();
         if self.emulator.is_none() {
             return;
         }
@@ -870,6 +1108,15 @@ impl NamsdecApp {
         // faute d'entrée a `running == false` et attend pourtant de
         // repartir tout seul. Sans ça, Stop le laissait armé.
         self.resume_run_after_input = false;
+        // ET L'ASSEMBLAGE, depuis qu'il tourne en fond. Sans cela, le
+        // seul bouton qui dise « arrête » ne pouvait rien contre le
+        // seul travail dont on veuille vraiment sortir : nasm occupé
+        // dix secondes sur un `times` démesuré.
+        if self.assembling() {
+            self.cancel_assemble();
+            self.status = Status::Note(|s| s.assemble_cancelled);
+            return;
+        }
         if self.running {
             self.running = false;
             self.status = Status::Idle;
@@ -910,6 +1157,7 @@ impl NamsdecApp {
     }
 
     pub(crate) fn do_step_over(&mut self) {
+        self.assurer_le_programme();
         self.follow_execution();
         self.remember_registers();
         self.remember_step();

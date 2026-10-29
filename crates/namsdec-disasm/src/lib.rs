@@ -69,6 +69,7 @@ impl Syntax {
 /// fait toujours en passant par cette crate.
 pub mod install;
 pub mod known;
+pub mod lanceur;
 pub mod plugin;
 pub mod pseudo;
 

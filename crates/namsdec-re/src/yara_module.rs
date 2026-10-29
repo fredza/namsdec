@@ -1,3 +1,4 @@
+use crate::vue::{Fragment, Vue};
 use crate::{ReContext, ReModule, ReSection, digest, strings};
 
 /// Une règle YARA tirée du fichier chargé : de quoi reconnaître d'autres
@@ -40,34 +41,47 @@ impl ReModule for YaraModule {
         self.rule = build_rule(ctx.binary);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.rule.is_empty() {
-            ui.weak(ctx.t(
-                "Rien de chargé : il n'y a pas de fichier d'où tirer une règle.",
-                "Nothing loaded: there is no file to derive a rule from.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Rien de chargé : il n'y a pas de fichier d'où tirer une règle.",
+                        "Nothing loaded: there is no file to derive a rule from.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
-        ui.weak(ctx.t(
-            "Un point de départ pour reconnaître d'autres échantillons de la même \
-             famille, pas un verdict. On la resserre (plus de chaînes exigées) ou on \
-             l'élargit (motifs plutôt que chaînes exactes) selon ce qu'on cherche.",
-            "A starting point for recognizing other samples of the same family, not a \
-             verdict. Tighten it (require more strings) or widen it (patterns instead of \
-             exact strings) depending on what you are after.",
-        ));
-        ui.add_space(6.0);
-
-        // La règle entière, cliquable pour la copier : une règle YARA sert
-        // à être collée dans un fichier `.yar`, pas recopiée à la main.
-        if crate::clickable_label(
-            ui,
-            egui::Label::new(egui::RichText::new(&self.rule).monospace()),
+        Some(
+            Vue::neuve()
+                .texte(
+                    Fragment::dit(ctx.t(
+                        "Un point de départ pour reconnaître d'autres échantillons de la même \
+                         famille, pas un verdict. On la resserre (plus de chaînes exigées) ou \
+                         on l'élargit (motifs plutôt que chaînes exactes) selon ce qu'on \
+                         cherche.",
+                        "A starting point for recognizing other samples of the same family, \
+                         not a verdict. Tighten it (require more strings) or widen it \
+                         (patterns instead of exact strings) depending on what you are after.",
+                    ))
+                    .faible(),
+                )
+                // La règle entière, cliquable pour la copier : une règle
+                // YARA sert à être collée dans un fichier `.yar`, pas
+                // recopiée à la main.
+                .texte(
+                    Fragment::dit(&self.rule)
+                        .code()
+                        .copiable()
+                        .survol(ctx.t("Cliquer pour copier la règle", "Click to copy the rule")),
+                ),
         )
-        .on_hover_text(ctx.t("Cliquer pour copier la règle", "Click to copy the rule"))
-        .clicked()
-        {
-            ui.ctx().copy_text(self.rule.clone());
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
         }
     }
 }

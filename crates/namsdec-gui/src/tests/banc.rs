@@ -1222,6 +1222,11 @@ fn an_empty_panel_says_what_is_missing_and_offers_the_way_out() {
     // Et le bouton assemble vraiment : il ne décore pas.
     if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
         app.dispatch(Action::Assemble);
+        // Le bouton LANCE : depuis P2, l'assemblage tourne dans un fil
+        // à part et l'interface continue de vivre pendant ce temps. Ce
+        // que fait ici l'attente, l'application le fait en plusieurs
+        // images, par `tick_assemble`.
+        app.attendre_l_assemblage();
         assert!(
             app.emulator.is_some(),
             "le bouton du panneau vide fait ce qu'il dit : {:?}",
@@ -3858,19 +3863,47 @@ fn captures_de_toutes_les_scenes() {
         // remettrait l'état à zéro sous ce qu'on regarde. C'est ce que
         // fait le relevé du banc, et pour la même raison.
         prépare(&mut app);
+        // Relevé AVANT le déplacement d'`app` : `theme` est un
+        // `&'static Theme`, donc il survit à la closure.
+        let attendu = app.theme;
         let taille = écran_du_banc()
             .screen_rect
             .map(|r| r.size())
             .unwrap_or(egui::vec2(1600.0, 1100.0));
+        // LE THÈME, et c'est tout le sujet : `NamsdecApp::default()`
+        // porte sa palette, mais rien ne l'a posée dans le contexte.
+        // Sans ce `apply_theme`, les images rendues ici montraient les
+        // `Visuals` d'egui — fond gris 27, boutons gris 60, espacements
+        // par défaut — et non l'application. Les 107 captures du
+        // 27 octobre 2026 ont toutes été jugées sur cette interface-là,
+        // qui n'existe nulle part : le reste du banc, lui, passe par
+        // `chassis`, qui l'appelle depuis toujours.
+        //
+        // Posé DANS la closure parce qu'`app` y est déplacée, et à
+        // chaque image parce que `set_visuals` ne prend qu'à la
+        // suivante : le `Ui` reçu tient déjà le style de l'image en
+        // cours.
         let mut harness = Harness::builder()
             .with_size(taille)
             .wgpu()
-            .build_ui(move |ui| app.draw(ui));
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
         // Plusieurs images : une surface ancrée ne se place qu'après
         // s'être mesurée, et une fenêtre est AMENÉE à sa taille.
         for _ in 0..6 {
             harness.step();
         }
+        // Et l'on vérifie que la palette est bien celle du thème, au
+        // lieu de le croire : c'est l'écart exact qui a rendu les
+        // captures trompeuses, et il revient si quelqu'un remet
+        // `build_ui(move |ui| app.draw(ui))`.
+        let fond = harness.ctx.style_of(egui::Theme::Dark).visuals.panel_fill;
+        assert_eq!(
+            fond, attendu.panel,
+            "{nom} : rendue sans le thème — fond {fond:?}"
+        );
         match harness.render() {
             Ok(image) => {
                 let fichier = dossier.join(format!("{}.png", nom.replace(['/', ' '], "_")));
@@ -4062,4 +4095,765 @@ fn un_etat_vide_tient_dans_une_largeur_de_lecture() {
             débordent.join("\n  ")
         );
     }
+}
+
+/// Une rangée d'onglets marque son onglet actif par un TRAIT SOUS LUI,
+/// jamais par un fond.
+///
+/// Quatre rangées d'onglets dans namsdec : les vues de la zone
+/// centrale, les onglets du panneau latéral, les pages des préférences,
+/// les onglets de la console. `rangée_d_onglets` prévenait, en
+/// commentaire, du jour où « l'application aurait trois idiomes
+/// d'onglets au lieu de deux » — elle en avait trois, et son inventaire
+/// ne les comptait pas : les préférences et la console passaient par
+/// `selectable_label`, qui peint le bleu PLEIN de la sélection.
+///
+/// Ce que cela donnait à l'écran : dans la fenêtre des préférences,
+/// l'onglet « Général » et le bouton « OK » étaient peints de la même
+/// façon — un sélecteur et une commande qu'on ne distingue plus. Vu sur
+/// capture le 28 octobre 2026.
+///
+/// LE CONTRÔLE DEMANDE LES DEUX MOITIÉS, et c'est voulu : l'absence du
+/// fond, et la PRÉSENCE du trait. « Rien ne recouvre l'onglet actif »
+/// serait vrai aussi d'un onglet qui ne se marque pas du tout.
+#[test]
+fn a_row_of_tabs_underlines_its_active_tab_and_never_fills_it() {
+    // Chaque rangée : la scène qui la montre, et l'étiquette de l'onglet
+    // qui y est actif. Déclarées ici, parce qu'une rangée nouvelle qui
+    // oublierait ce contrôle est précisément ce qu'on vient de vivre.
+    /// Une rangée d'onglets du banc : ce qu'on en dit, l'étiquette qui
+    /// doit y être active, et la façon de l'amener à l'écran.
+    type Rangée = (&'static str, &'static str, Box<dyn Fn(&mut NamsdecApp)>);
+    let rangées: Vec<Rangée> = vec![
+        (
+            "les pages des préférences",
+            "Général",
+            Box::new(|app: &mut NamsdecApp| {
+                app.show_preferences = true;
+                app.preferences_tab = PreferencesTab::General;
+            }),
+        ),
+        (
+            "les onglets de la console",
+            "Console",
+            Box::new(|app: &mut NamsdecApp| {
+                app.show_console = true;
+                app.console_tab = ConsoleTab::Output;
+            }),
+        ),
+        (
+            "les onglets du panneau latéral",
+            "Processeur",
+            Box::new(|app: &mut NamsdecApp| {
+                app.show_sidebar = true;
+                app.active_tab = SidebarTab::Cpu;
+            }),
+        ),
+        (
+            "les familles de la calculatrice",
+            calc::FAMILIES[0].1,
+            Box::new(|app: &mut NamsdecApp| {
+                app.show_calculator = true;
+                app.calc_family = calc::FAMILIES[0].0.to_owned();
+            }),
+        ),
+    ];
+
+    for (quoi, actif, prépare) in rangées {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        let theme = app.theme;
+
+        // Les formes pleines, relevées sur la même image que les textes :
+        // comparer un relevé de formes à un relevé de textes pris à deux
+        // images d'écart ferait mesurer deux mises en page.
+        // DOUZE IMAGES, et c'est la fenêtre qui les demande : egui fait
+        // APPARAÎTRE une `Area` en fondu, et sur les premières images
+        // tout ce qu'elle peint est teinté de son opacité. Le trait sous
+        // « Général » sortait en #1B4A7F — l'accent à moitié — et le
+        // contrôle concluait qu'il n'y en avait pas. Quatre images
+        // suffisent à poser une fenêtre, pas à la rendre opaque.
+        let entrée = écran_du_banc();
+        let mut pleins: Vec<(egui::Rect, egui::Color32)> = Vec::new();
+        for _ in 0..12 {
+            pleins.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.fill.a() > 0
+                {
+                    pleins.push((r.rect, r.fill));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 4);
+        let étiquette = lignes
+            .iter()
+            .find(|(t, _)| t == actif)
+            .map(|(_, r)| *r)
+            .unwrap_or_else(|| panic!("{quoi} : « {actif} » doit être peint"));
+
+        // PAS DE FOND. Le bleu de la sélection derrière l'étiquette, à
+        // deux pixels près — une marge, pas une tolérance : le fond d'un
+        // `selectable_label` déborde l'encre de son texte.
+        let fonds: Vec<String> = pleins
+            .iter()
+            .filter(|(rect, fill)| {
+                *fill == theme.selection && rect.expand(2.0).contains_rect(étiquette)
+            })
+            .map(|(rect, _)| format!("{rect:?}"))
+            .collect();
+        assert!(
+            fonds.is_empty(),
+            "{quoi} : « {actif} » est peint sur un fond de sélection {fonds:?} — \
+             un onglet actif se souligne, il ne se remplit pas (sinon il a \
+             l'apparence d'un bouton d'action)"
+        );
+
+        // LE TRAIT, SOUS LUI. Un filet de deux pixels, de l'accent du
+        // thème, qui commence sous le bas de l'étiquette et couvre son
+        // abscisse.
+        let traits: Vec<&(egui::Rect, egui::Color32)> = pleins
+            .iter()
+            .filter(|(rect, fill)| {
+                *fill == theme.accent
+                    && rect.height() <= 3.0
+                    && rect.top() >= étiquette.bottom() - 2.0
+                    && rect.top() - étiquette.bottom() < 14.0
+                    && rect.left() <= étiquette.left()
+                    && rect.right() >= étiquette.right()
+            })
+            .collect();
+        assert!(
+            !traits.is_empty(),
+            "{quoi} : « {actif} » (encre {étiquette:?}) n'a aucun trait sous lui — \
+             c'est à ce trait qu'on voit quel onglet on regarde"
+        );
+    }
+}
+
+/// Un indicateur levé se voit à sa TACHE, et non au seul trait qui
+/// l'entoure.
+///
+/// Les sept témoins de la barre de titre — CF, PF, AF, ZF, SF, DF, OF —
+/// étaient des pastilles à CONTOUR, tracé de la couleur de leur propre
+/// texte. Sept traits clairs côte à côte, aussi marqués que ce qu'ils
+/// encadrent, pour sept valeurs qui sont à zéro la plupart du temps :
+/// le cadre criait, le contenu chuchotait. Et un indicateur à un ne se
+/// distinguait d'un indicateur à zéro que par la teinte du trait et du
+/// chiffre, à la taille d'un caractère.
+///
+/// Ils sont maintenant creusés dans le fond de l'éditeur, et celui qui
+/// est levé teinte ce creux. Le contrôle demande les deux : aucun
+/// contour, et un fond qui DIFFÈRE selon l'état — sans quoi « plus de
+/// contour » serait vrai aussi de sept pastilles toutes identiques.
+#[test]
+fn a_raised_flag_shows_as_a_patch_and_not_as_an_outline() {
+    /// Le fond et les contours peints sous « ZF {valeur} », à l'endroit
+    /// où la barre de titre l'écrit.
+    fn relevé(zf: bool) -> (Vec<egui::Color32>, Vec<egui::Color32>) {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.source = PROGRAMME_DU_BANC.to_owned();
+        app.do_assemble();
+        // `cmp rcx, rcx` pose ZF ; quelques pas du programme du banc le
+        // laissent retombé. On prend donc l'état par la machine
+        // elle-même plutôt que de le supposer.
+        for _ in 0..8 {
+            app.do_step();
+        }
+        if let Some(emulator) = app.emulator.as_mut() {
+            let mut f = emulator.cpu().flags;
+            f.set(namsdec_core::RFlags::ZF, zf);
+            emulator.cpu_mut().flags = f;
+        }
+        let entrée = écran_du_banc();
+        let mut fonds = Vec::new();
+        let mut contours = Vec::new();
+        let mut encre = None;
+        for _ in 0..4 {
+            fonds.clear();
+            contours.clear();
+            encre = None;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            // L'encre de la pastille d'abord : c'est elle qui dit où
+            // regarder. LA PLUS HAUTE des « ZF … » : le bandeau du
+            // panneau latéral écrit les mêmes sept témoins plus bas, et
+            // prendre la dernière venue faisait mesurer celui-là — un
+            // texte sans pastille, donc sans fond, donc un contrôle qui
+            // échoue en désignant le mauvais endroit.
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && t.galley.job.text.starts_with("ZF ")
+                {
+                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    if encre.is_none_or(|haut: egui::Rect| rect.top() < haut.top()) {
+                        encre = Some(rect);
+                    }
+                }
+            }
+            if let Some(encre) = encre {
+                for clipped in &sortie.shapes {
+                    if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                        && r.rect.expand(2.0).contains_rect(encre)
+                        && r.rect.width() < 100.0
+                    {
+                        if r.fill.a() > 0 {
+                            fonds.push(r.fill);
+                        }
+                        if r.stroke.width > 0.0 && r.stroke.color.a() > 0 {
+                            contours.push(r.stroke.color);
+                        }
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(encre.is_some(), "« ZF » est peint dans la barre de titre");
+        (fonds, contours)
+    }
+
+    let (fond_bas, contour_bas) = relevé(false);
+    let (fond_haut, contour_haut) = relevé(true);
+
+    assert!(
+        contour_bas.is_empty() && contour_haut.is_empty(),
+        "la pastille de ZF est encore cerclée d'un trait — retombée {contour_bas:?}, \
+         levée {contour_haut:?} ; sept contours clairs dans une barre de titre \
+         pèsent plus que les sept valeurs qu'ils encadrent"
+    );
+    assert!(
+        !fond_bas.is_empty() && !fond_haut.is_empty(),
+        "la pastille de ZF n'a aucun fond — retombée {fond_bas:?}, levée {fond_haut:?} ; \
+         sans creux, les sept témoins se lisent comme une seule phrase"
+    );
+    assert_ne!(
+        fond_bas, fond_haut,
+        "ZF levé et ZF retombé se peignent sur le MÊME fond : l'état d'un \
+         indicateur doit se voir à la tache, et non au seul chiffre"
+    );
+}
+
+/// Le libellé d'un bouton encadré commence par une capitale.
+///
+/// Une règle de CASSE, et c'est une règle de forme comme les autres :
+/// sur une même fenêtre, « Copier » voisinait avec « sommaire » — le
+/// seul bouton de l'application dont le libellé s'ouvrait en
+/// minuscule. Ce n'est pas une faute de langue, c'est une rupture de
+/// rythme : l'œil parcourt une rangée de commandes en s'appuyant sur
+/// leurs capitales, et celle qui manque se lit comme du texte courant.
+///
+/// Mesuré sur le RENDU et non sur `i18n` : un cadre de la couleur
+/// estompée du thème EST un bouton encadré (c'est ce que dit
+/// `a_framed_button_draws_the_outline_a_flat_one_does_not`), et l'on
+/// relève ce qui est écrit dedans. Un libellé nouveau est donc jugé
+/// sans qu'on ait à l'inscrire nulle part.
+#[test]
+fn a_framed_button_opens_its_label_with_a_capital() {
+    let entrée = écran_du_banc();
+    let mut fautes: Vec<String> = Vec::new();
+    for lang in [Lang::Fr, Lang::En] {
+        for (nom, _, ouvre) in scènes() {
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp {
+                lang,
+                ..Default::default()
+            };
+            app.apply_theme(&ctx);
+            ouvre(&mut app);
+            let theme = app.theme;
+            // DOUZE IMAGES : egui fait APPARAÎTRE une fenêtre en fondu,
+            // et tant qu'il dure, tout ce qu'elle peint est teinté de
+            // son opacité. Le cadre d'un bouton n'est alors plus
+            // `theme.dim` mais `theme.dim` à moitié, et le relevé ne
+            // reconnaît aucun bouton dans aucune fenêtre — un contrôle
+            // au vert qui ne regarde rien.
+            for image in 0..12 {
+                let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+                if image < 11 {
+                    sortie.textures_delta.clear();
+                    continue;
+                }
+                let cadres: Vec<egui::Rect> = sortie
+                    .shapes
+                    .iter()
+                    .filter_map(|clipped| match &clipped.shape {
+                        egui::epaint::Shape::Rect(r)
+                            if r.stroke.width >= 1.0 && r.stroke.color == theme.dim =>
+                        {
+                            Some(r.rect)
+                        }
+                        _ => None,
+                    })
+                    .collect();
+                for clipped in &sortie.shapes {
+                    let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                        continue;
+                    };
+                    let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    if !cadres.iter().any(|c| c.expand(1.0).contains_rect(encre)) {
+                        continue;
+                    }
+                    // LE GRAPHE N'EST PAS UNE RANGÉE DE BOUTONS. Ses
+                    // blocs portent le même cadre estompé, et le relevé
+                    // y voyait vingt « boutons » nommés `mov eax,1`. Un
+                    // bouton écrit en PROPORTIONNELLE : le code d'un
+                    // bloc est en chasse fixe, et c'est ce qui les
+                    // sépare sans rien connaître du graphe.
+                    if t.galley.job.sections.iter().any(|section| {
+                        section.format.font_id.family != egui::FontFamily::Proportional
+                    }) {
+                        continue;
+                    }
+                    // Et un bouton ne porte qu'UN texte : un bloc du
+                    // graphe en empile plusieurs, dont sa phrase
+                    // d'explication, qui est bien en proportionnelle.
+                    let dans_le_cadre = cadres
+                        .iter()
+                        .find(|c| c.expand(1.0).contains_rect(encre))
+                        .copied();
+                    if let Some(cadre) = dans_le_cadre {
+                        let combien = sortie
+                            .shapes
+                            .iter()
+                            .filter(|c| match &c.shape {
+                                egui::epaint::Shape::Text(autre) => {
+                                    cadre.expand(1.0).contains_rect(egui::Rect::from_min_size(
+                                        autre.pos,
+                                        autre.galley.size(),
+                                    ))
+                                }
+                                _ => false,
+                            })
+                            .count();
+                        if combien > 1 {
+                            continue;
+                        }
+                    }
+                    let texte = t.galley.text();
+                    let Some(première) = texte.chars().next() else {
+                        continue;
+                    };
+                    // Seules les lettres sont jugées : une commande peut
+                    // s'ouvrir sur un chiffre, un signe ou une icône.
+                    if !première.is_alphabetic() || première.is_uppercase() {
+                        continue;
+                    }
+                    let faute = format!("« {texte} » — {nom} ({lang:?})");
+                    if !fautes.contains(&faute) {
+                        fautes.push(faute);
+                    }
+                }
+                sortie.textures_delta.clear();
+            }
+        }
+    }
+    fautes.sort();
+    assert!(
+        fautes.is_empty(),
+        "{} libellé(s) de bouton encadré s'ouvrent en minuscule :\n  {}",
+        fautes.len(),
+        fautes.join("\n  ")
+    );
+}
+
+/// Les cartes d'une liste partagent une largeur.
+///
+/// La page Modules des préférences empile dix `module_card`. Chacune
+/// épousait son texte : « nasm détecté — NASM version 3.02 compiled on
+/// Jul 14 2026 » en faisait une de 355 px à côté d'une de 175, et le
+/// bord droit de la page descendait en dents de scie. Ce ne sont pas
+/// dix objets de tailles différentes, c'est une liste — et une liste
+/// s'aligne. Les vignettes de thèmes de la page voisine partagent déjà
+/// une largeur calculée une fois.
+///
+/// Mesuré sur les cadres peints. Le trait d'un `Frame::group` n'est PAS
+/// une couleur du thème — c'est `widgets.noninteractive.bg_stroke`,
+/// qu'egui pose lui-même ; le relevé la demande donc au style plutôt
+/// que de la nommer, sans quoi il ne trouve aucune carte. Et la hauteur
+/// les sépare des boutons encadrés, qui portent le même trait sur une
+/// seule ligne.
+#[test]
+fn the_cards_of_a_list_share_one_width() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.show_preferences = true;
+    app.preferences_tab = PreferencesTab::Modules;
+    let trait_du_cadre = ctx
+        .style_of(egui::Theme::Dark)
+        .visuals
+        .widgets
+        .noninteractive
+        .bg_stroke
+        .color;
+    let entrée = écran_du_banc();
+    let mut largeurs: Vec<f32> = Vec::new();
+    // Douze images : la fenêtre des préférences apparaît en fondu, et
+    // tant qu'il dure, le trait d'un cadre n'est plus `theme.dim` mais
+    // `theme.dim` à moitié — le relevé ne verrait aucune carte.
+    for _ in 0..12 {
+        largeurs.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                && r.stroke.width >= 1.0
+                && r.stroke.color == trait_du_cadre
+                && r.rect.height() > 40.0
+            {
+                largeurs.push(r.rect.width());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(
+        largeurs.len() >= 8,
+        "la page Modules empile au moins huit cartes, relevé {largeurs:?}"
+    );
+    let mut distinctes = largeurs.clone();
+    distinctes.sort_by(f32::total_cmp);
+    distinctes.dedup_by(|a, b| (*a - *b).abs() < 0.5);
+    assert_eq!(
+        distinctes.len(),
+        1,
+        "les {} cartes de la page Modules ont {} largeurs différentes : {distinctes:?} — \
+         une liste s'aligne sur un bord droit, elle n'épouse pas chaque phrase",
+        largeurs.len(),
+        distinctes.len()
+    );
+}
+
+/// Le vidage de l'éditeur binaire emploie la place qu'on lui donne.
+///
+/// IL NE LE FAISAIT PAS, et de deux façons qui s'additionnaient. Le
+/// nombre de lignes était écrit d'avance — vingt-deux —, donc le même
+/// sur un écran de mille pixels et sur un de deux mille quatre cents :
+/// la moitié du panneau restait blanche en grand, et le vidage
+/// débordait en petit, avec un second ascenseur à côté du sien.
+///
+/// Et le nombre annoncé n'était même pas celui qu'on voyait :
+/// `show_rows` compte ses lignes à `hauteur + item_spacing.y`, l'écart
+/// n'était remis à zéro qu'à l'intérieur de la closure — trop tard —,
+/// si bien que la zone réservait vingt lignes de place pour en peindre
+/// quinze. « Vingt-deux » en montrait seize, et les six manquantes
+/// restaient en blanc au bas de la zone.
+///
+/// CE QUE CE CONTRÔLE MESURE est donc le seul fait qui les attrape
+/// toutes les deux : le nombre de lignes PEINTES, qui doit croître
+/// avec la hauteur de l'écran, et remplir ce qu'on lui a donné.
+#[test]
+fn le_vidage_binaire_emploie_la_place_qu_on_lui_donne() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+
+    /// Les adresses de la première colonne : six chiffres hexadécimaux
+    /// et rien d'autre. Les compter, c'est compter les lignes peintes.
+    fn lignes_peintes(formes: &[egui::epaint::ClippedShape]) -> (usize, f32) {
+        let mut vues = 0;
+        let mut bas_des_lignes = f32::MIN;
+        let mut bas_de_la_zone = f32::MIN;
+        for clipped in formes {
+            if let egui::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                if texte.len() == 6 && texte.chars().all(|c| c.is_ascii_hexdigit()) {
+                    // Ce qui sort de la découpe n'est pas à l'écran.
+                    let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    if clipped.clip_rect.intersects(encre) {
+                        vues += 1;
+                        bas_des_lignes = bas_des_lignes.max(encre.bottom());
+                        // La découpe d'une adresse EST celle de la zone
+                        // du vidage : c'est elle qui dit jusqu'où la
+                        // zone descend.
+                        bas_de_la_zone = bas_de_la_zone.max(clipped.clip_rect.bottom());
+                    }
+                }
+            }
+        }
+        (vues, (bas_de_la_zone - bas_des_lignes).max(0.0))
+    }
+
+    let compte = |hauteur: f32| -> (usize, f32) {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.load_elf(&octets, NOM_FABRIQUÉ);
+        app.show_analysis = true;
+        app.analysis_module = "hex_editor".to_owned();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, hauteur),
+            )),
+            predicted_dt: 0.5,
+            ..Default::default()
+        };
+        let mut formes = Vec::new();
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+        lignes_peintes(&formes)
+    };
+
+    // TROIS HAUTEURS, et non deux : à deux, ce contrôle passait encore
+    // avec le nombre de lignes refigé. Un vidage figé à vingt-deux en
+    // montre moins quand l'écran est petit — non parce qu'il se serre,
+    // mais parce qu'il est COUPÉ —, et la différence suffisait à le
+    // faire paraître adaptatif. Entre deux écrans où ses vingt-deux
+    // lignes tiennent, en revanche, il plafonne ; c'est ce plafond que
+    // la troisième mesure attrape.
+    let mesures: Vec<(usize, f32)> = [700.0, 1100.0, 1500.0].into_iter().map(compte).collect();
+    let compté: Vec<usize> = mesures.iter().map(|(n, _)| *n).collect();
+    assert!(
+        compté[0] > 0,
+        "le vidage doit peindre des lignes : {compté:?}"
+    );
+    assert!(
+        compté[2] > compté[1] && compté[1] > compté[0],
+        "le vidage doit montrer plus d'octets quand on lui donne plus de hauteur, \
+         et il plafonne : {compté:?} lignes à 700, 1100 et 1500 px"
+    );
+    // ET PAS DE BLANC AU BAS DE LA ZONE. C'est l'autre moitié du
+    // défaut, et elle ne se voit pas dans un compte : `show_rows`
+    // réservait vingt pixels par ligne pour en peindre quinze, si bien
+    // que le quart du bas de la zone restait vide alors qu'il restait
+    // des octets à montrer. Deux lignes de tolérance : la dernière peut
+    // ne pas tomber juste.
+    for (hauteur, (lignes, blanc)) in [700.0, 1100.0, 1500.0].iter().zip(&mesures) {
+        assert!(
+            *blanc < 40.0,
+            "à {hauteur} px de haut, {blanc:.0} pixels de blanc au bas de la zone \
+             du vidage, sous {lignes} lignes — il reste des octets à y montrer"
+        );
+    }
+}
+
+/// Quand la place y est, choisir un octet ne rétrécit pas le vidage.
+///
+/// L'inspecteur — position, lectures, boutons — se posait SOUS le
+/// vidage et lui prenait quatre cents pixels, dans un panneau dont le
+/// quart droit restait vide. Cliquer un octet coûtait donc la moitié de
+/// ce qu'on regardait, au moment précis où l'on en avait besoin.
+///
+/// Il va maintenant dans une colonne à droite dès qu'il y a la largeur
+/// — ce qui suppose deux choses : que le panneau ne soit plus borné à
+/// une largeur de LECTURE, qui est faite pour de la prose et non pour
+/// une grille, et que le vidage garde sa hauteur. C'est cette seconde
+/// moitié qu'on mesure ici ; la première la rend possible.
+#[test]
+fn choisir_un_octet_ne_retrecit_pas_le_vidage_quand_la_place_y_est() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+
+    /// Les lignes peintes, et où se trouve le premier octet cliquable.
+    fn relève(formes: &[egui::epaint::ClippedShape]) -> (usize, Option<egui::Pos2>) {
+        let mut lignes = 0;
+        let mut premier = None;
+        for clipped in formes {
+            if let egui::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                if !clipped.clip_rect.intersects(encre) {
+                    continue;
+                }
+                if texte.len() == 6 && texte.chars().all(|c| c.is_ascii_hexdigit()) {
+                    lignes += 1;
+                    // Un octet de la grille se trouve à droite des deux
+                    // colonnes d'adresses, sur la même ligne.
+                    if premier.is_none() && texte == "000000" {
+                        premier = Some(egui::pos2(encre.right() + 120.0, encre.center().y));
+                    }
+                }
+            }
+        }
+        (lignes, premier)
+    }
+
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.load_elf(&octets, NOM_FABRIQUÉ);
+    app.show_analysis = true;
+    app.analysis_module = "hex_editor".to_owned();
+    // Agrandie : c'est là que la largeur existe, et c'est le cas qu'on
+    // veut tenir. Serrée, l'inspecteur se remet dessous, et c'est bien.
+    app.toggle_maximized(NamsdecApp::ANALYSIS_WINDOW);
+
+    let écran = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1900.0, 1200.0),
+        )),
+        predicted_dt: 0.5,
+        ..Default::default()
+    };
+    let mut formes = Vec::new();
+    for _ in 0..6 {
+        let mut sortie = ctx.run_ui(écran.clone(), |ui| app.draw(ui));
+        formes = std::mem::take(&mut sortie.shapes);
+        sortie.textures_delta.clear();
+    }
+    let (avant, cible) = relève(&formes);
+    let cible = cible.expect("le vidage peint ses adresses");
+    assert!(avant > 20, "le vidage doit être grand ici : {avant}");
+
+    // Le clic sur un octet, puis quelques images pour que le panneau
+    // s'installe.
+    for pressed in [true, false] {
+        let clic = egui::RawInput {
+            events: vec![egui::Event::PointerButton {
+                pos: cible,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: Default::default(),
+            }],
+            ..écran.clone()
+        };
+        let mut sortie = ctx.run_ui(clic, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    }
+    for _ in 0..4 {
+        let mut sortie = ctx.run_ui(écran.clone(), |ui| app.draw(ui));
+        formes = std::mem::take(&mut sortie.shapes);
+        sortie.textures_delta.clear();
+    }
+    let (après, _) = relève(&formes);
+    assert!(
+        après + 2 >= avant,
+        "choisir un octet a coûté {} lignes de vidage ({avant} puis {après}) : \
+         l'inspecteur est repassé sous la grille au lieu de se poser à côté",
+        avant.saturating_sub(après)
+    );
+}
+
+/// Les captures de l'éditeur binaire, à quatre tailles.
+///
+/// À part des scènes du banc, et pour une raison écrite dans `scènes()` :
+/// la plus intéressante — la fenêtre agrandie, seule disposition où
+/// l'inspecteur se pose à côté du vidage — ne peut pas y entrer tant
+/// que le tri des formes d'une fenêtre se fait sur la largeur de sa
+/// découpe.
+#[test]
+#[ignore]
+fn releve_hex() {
+    use egui_kittest::Harness;
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/captures");
+    let Some(source) = binaire_fabriqué() else {
+        return;
+    };
+    for (étiquette, taille, clic, agrandie) in [
+        ("petit", egui::vec2(1000.0, 700.0), false, false),
+        ("grand", egui::vec2(2400.0, 1500.0), false, false),
+        ("choisi", egui::vec2(1600.0, 1100.0), true, false),
+        ("colonne", egui::vec2(1900.0, 1200.0), true, true),
+    ] {
+        let octets = source.clone();
+        let mut app = NamsdecApp::default();
+        app.load_elf(&octets, NOM_FABRIQUÉ);
+        app.show_analysis = true;
+        app.analysis_module = "hex_editor".to_owned();
+        if agrandie {
+            app.toggle_maximized(NamsdecApp::ANALYSIS_WINDOW);
+        }
+        let mut harness = Harness::builder()
+            .with_size(taille)
+            .wgpu()
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        for _ in 0..6 {
+            harness.step();
+        }
+        if clic {
+            for pressed in [true, false] {
+                harness.input_mut().events.push(egui::Event::PointerButton {
+                    pos: egui::pos2(537.0, 452.0),
+                    button: egui::PointerButton::Primary,
+                    pressed,
+                    modifiers: Default::default(),
+                });
+            }
+            for _ in 0..4 {
+                harness.step();
+            }
+        }
+        let image = harness.render().expect("rendu");
+        image
+            .save(dossier.join(format!("hex-{étiquette}.png")))
+            .expect("écriture");
+        println!("écrit hex-{étiquette}");
+    }
+}
+
+/// L'éditeur binaire met plus d'octets par ligne quand on lui donne
+/// plus de largeur.
+///
+/// Le nombre était un RÉGLAGE — seize par défaut —, et la raison écrite
+/// était la même crainte que pour la hauteur : lire la largeur offerte
+/// serait lire une dimension que ce panneau fixe lui-même. Mesuré dans
+/// l'onglet d'analyse : mille trois cent quarante-six pixels offerts,
+/// six cent six pris — SEPT CENT QUARANTE de vide, plus que la grille
+/// entière —, et la largeur relevée ne bouge pas d'une image à l'autre.
+///
+/// Ce qu'on mesure ici est la règle des colonnes : elle porte « 1f »
+/// quand la ligne fait trente-deux octets, et s'arrête à « 0f » quand
+/// elle en fait seize. C'est ce que l'œil voit, et non un réglage
+/// interne.
+#[test]
+fn l_editeur_binaire_remplit_la_largeur_qu_on_lui_donne() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+
+    let colonnes = |largeur: f32| -> bool {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.load_elf(&octets, NOM_FABRIQUÉ);
+        app.vue_centrale = VueCentrale::Analysis;
+        app.analysis_module = "hex_editor".to_owned();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, 1200.0),
+            )),
+            predicted_dt: 0.5,
+            ..Default::default()
+        };
+        let mut formes = Vec::new();
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+        // « 1f » n'est peint que par la règle d'une ligne de
+        // trente-deux octets : c'est le numéro de sa dernière colonne.
+        formes.iter().any(|clipped| {
+            if let egui::Shape::Text(t) = &clipped.shape {
+                let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                t.galley.text() == "1f" && clipped.clip_rect.intersects(encre)
+            } else {
+                false
+            }
+        })
+    };
+
+    assert!(
+        !colonnes(1100.0),
+        "à 1100 px, trente-deux octets par ligne ne tiennent pas : la règle ne doit pas \
+         aller jusqu'à « 1f »"
+    );
+    assert!(
+        colonnes(2000.0),
+        "à 2000 px, la place est là et la grille doit la prendre : la règle doit aller \
+         jusqu'à « 1f »"
+    );
 }

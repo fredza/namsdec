@@ -172,9 +172,16 @@ impl RegXmm {
 /// calcule sur 80 bits. C'est une approximation, et elle est assumée :
 /// simuler le format étendu demanderait une arithmétique logicielle
 /// entière, pour un écart qui n'apparaît qu'au-delà du quinzième chiffre.
+///
 /// Ce que le x87 enseigne — une pile au lieu de registres nommés, des
 /// comparaisons qui répondent dans un mot d'état — est intact.
-#[derive(Clone, Copy, Debug, Default)]
+///
+/// Dit exactement : le contrôle de précision à 53 bits (`fldcw 0x027f`)
+/// est simulé **à l'identique**, puisque c'est la double précision ;
+/// celui à 24 bits est simulé en arrondissant chaque résultat
+/// arithmétique au format simple ; la précision étendue — qui est le
+/// réglage par défaut — est celle qui reste approximée.
+#[derive(Clone, Copy, Debug)]
 pub struct X87 {
     /// Les huit cases, dans l'ordre physique.
     slots: [f64; 8],
@@ -187,6 +194,60 @@ pub struct X87 {
     /// où `fcom` range le résultat d'une comparaison et d'où `fstsw ax`
     /// le tire.
     pub status: u16,
+    /// Le mot de contrôle, tel que `fldcw` l'écrit et `fnstcw` le relit.
+    ///
+    /// Un vrai registre et non une constante : un programme qui pose un
+    /// arrondi puis relit le mot doit retrouver ce qu'il a écrit, et
+    /// c'est exactement ce que fait le prologue de beaucoup de routines
+    /// de conversion — `fnstcw` pour garder l'ancien, `fldcw` pour
+    /// tronquer, `fldcw` pour remettre.
+    pub control: u16,
+}
+
+/// Le mode d'arrondi que portent les bits 10 et 11 du mot de contrôle.
+///
+/// Quatre modes, et le programme choisit : c'est l'IEEE 754 qui les
+/// définit, et le x87 est le premier endroit du processeur où ils se
+/// règlent. Les connaître sert au-delà du coprocesseur — `roundsd` de
+/// SSE4.1 reprend les mêmes quatre, encodés dans un immédiat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rounding {
+    /// Au plus proche, et l'exacte moitié vers le pair. Le défaut.
+    Nearest,
+    /// Vers moins l'infini : `-3,5` donne `-4`, `3,5` donne `3`.
+    Down,
+    /// Vers plus l'infini.
+    Up,
+    /// Vers zéro — ce que fait le C de `(int)x`, et ce que `fisttp`
+    /// fait quel que soit ce réglage.
+    Truncate,
+}
+
+/// Le contrôle de précision que portent les bits 8 et 9 du mot de
+/// contrôle : sur combien de bits de mantisse le coprocesseur arrondit
+/// le résultat de chaque opération de base.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Precision {
+    /// Vingt-quatre bits : le format simple.
+    Single,
+    /// Cinquante-trois bits : le format double. C'est ce que namsdec
+    /// calcule nativement, donc le seul réglage simulé *exactement*.
+    Double,
+    /// Soixante-quatre bits : le format étendu du x87, et le réglage par
+    /// défaut du processeur. Approximé ici par la double précision.
+    Extended,
+}
+
+impl Default for X87 {
+    fn default() -> Self {
+        Self {
+            slots: [0.0; 8],
+            top: 0,
+            occupied: [false; 8],
+            status: 0,
+            control: Self::CONTROL_RESET,
+        }
+    }
 }
 
 impl X87 {
@@ -195,6 +256,31 @@ impl X87 {
     pub const C1: u16 = 1 << 9;
     pub const C2: u16 = 1 << 10;
     pub const C3: u16 = 1 << 14;
+
+    /// Le mot de contrôle après `finit` : précision étendue, arrondi au
+    /// plus proche, les six exceptions masquées (les bits 0 à 5).
+    pub const CONTROL_RESET: u16 = 0x037f;
+
+    /// Le mode d'arrondi en vigueur.
+    pub fn rounding(&self) -> Rounding {
+        match (self.control >> 10) & 0b11 {
+            0b00 => Rounding::Nearest,
+            0b01 => Rounding::Down,
+            0b10 => Rounding::Up,
+            _ => Rounding::Truncate,
+        }
+    }
+
+    /// Le contrôle de précision en vigueur. La combinaison 01 est
+    /// réservée par Intel ; le processeur la traite comme la double
+    /// précision, et c'est ce qu'on fait ici.
+    pub fn precision(&self) -> Precision {
+        match (self.control >> 8) & 0b11 {
+            0b00 => Precision::Single,
+            0b11 => Precision::Extended,
+            _ => Precision::Double,
+        }
+    }
 
     /// La case physique derrière `st(i)`.
     fn slot(&self, i: usize) -> usize {
@@ -258,7 +344,50 @@ impl X87 {
         self.status | ((self.top as u16) << 11)
     }
 
-    /// Remet le coprocesseur à neuf : pile vide, conditions effacées.
+    /// Arrondit à l'entier selon le mode en vigueur. C'est ce que font
+    /// `fist`, `fistp` et `frndint` — et c'est là que le réglage se
+    /// voit : `fistp` de 3,5 rend 4 au plus proche, 3 par troncature.
+    ///
+    /// `fisttp` ne passe pas par ici : elle tronque toujours, c'est
+    /// toute sa raison d'être.
+    pub fn round_to_integer(&self, value: f64) -> f64 {
+        match self.rounding() {
+            Rounding::Nearest => {
+                let rounded = value.round();
+                if (value - value.trunc()).abs() == 0.5 && rounded % 2.0 != 0.0 {
+                    rounded - value.signum()
+                } else {
+                    rounded
+                }
+            }
+            Rounding::Down => value.floor(),
+            Rounding::Up => value.ceil(),
+            Rounding::Truncate => value.trunc(),
+        }
+    }
+
+    /// Le résultat d'une opération de base, ramené à la précision
+    /// réglée. `fadd`, `fsub`, `fmul`, `fdiv` et `fsqrt` y passent — les
+    /// transcendantes n'y passent pas, le manuel d'Intel les en
+    /// dispense.
+    ///
+    /// L'arrondi à 24 bits suit le plus proche même quand le mode est
+    /// dirigé : c'est la seule chose que ce raccourci laisse de côté, et
+    /// elle est recensée plutôt que passée sous silence.
+    pub fn shorten(&self, value: f64) -> f64 {
+        match self.precision() {
+            Precision::Single => f64::from(value as f32),
+            // La double précision est ce que namsdec calcule : rien à
+            // faire. L'étendue est approximée par elle, et c'est la
+            // simplification annoncée.
+            Precision::Double | Precision::Extended => value,
+        }
+    }
+
+    /// Remet le coprocesseur à neuf : pile vide, conditions effacées,
+    /// mot de contrôle au repos — c'est ce que `finit` fait, y compris
+    /// pour le mot de contrôle, et un programme qui compte là-dessus
+    /// pour revenir à l'arrondi au plus proche doit le retrouver.
     pub fn reset(&mut self) {
         *self = Self::default();
     }

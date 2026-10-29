@@ -105,7 +105,7 @@ pub struct Strings {
     pub goal_reached: &'static str,
     /// Ce que dit le panneau pour un exercice SANS but.
     ///
-    /// Sept des quatre-vingt-seize sont des programmes à regarder
+    /// Sept des cent huit sont des programmes à regarder
     /// tourner. Le panneau se taisait pour eux : rien ne disait ce
     /// qu'on attendait, et la pastille du parcours restait creuse quoi
     /// qu'on fasse.
@@ -352,6 +352,11 @@ pub struct Strings {
     pub tools_no_dir: &'static str,
     pub job_decompiling: &'static str,
     pub job_installing: &'static str,
+    /// Ce qui s'écrit dans le titre de la fenêtre pendant que nasm et
+    /// ld travaillent.
+    pub job_assembling: &'static str,
+    pub assemble_cancelled: &'static str,
+    pub assemble_running: &'static str,
     /// Le module qui va chercher un outil et le construit : ce qu'on
     /// autorise, ce qu'on s'apprête à faire, et ce qui en est sorti.
     pub installer_checkbox: &'static str,
@@ -1399,7 +1404,7 @@ const FR: Strings = Strings {
     help_copy_hint: "Copier l'exemple, pour l'essayer dans votre programme",
     help_example_copied: "Exemple copié : collez-le dans votre programme (Ctrl+V).",
     help_search: "Chercher une instruction…",
-    help_search_hint: "Le champ ci-dessus cherche dans les 183 fiches, par nom ou par ce qu'elles font.",
+    help_search_hint: "Le champ ci-dessus cherche dans les 184 fiches, par nom ou par ce qu'elles font.",
     help_results: "fiches",
     help_index_count: "mnémoniques, tous présents",
     help_open_sheet: "Ouvrir la fiche",
@@ -1408,7 +1413,7 @@ const FR: Strings = Strings {
     help_example: "Exemple",
     help_kind_directive: "Directive de NASM : elle ne s'exécute pas, elle décide de ce qui sera écrit.",
     help_kind_concept: "Une notion : ce qu'il faut avoir compris pour lire les autres fiches.",
-    help_index: "sommaire",
+    help_index: "Sommaire",
     help_see_also: "Voir aussi :",
     help_reference: "Le détail complet :",
     help_watch: "à regarder",
@@ -1481,6 +1486,9 @@ const FR: Strings = Strings {
     tools_no_dir: "Aucun dossier de données : ni XDG_DATA_HOME ni HOME.",
     job_decompiling: "Décompilation",
     job_installing: "Installation de",
+    job_assembling: "Assemblage",
+    assemble_cancelled: "Assemblage arrêté.",
+    assemble_running: "Assemblage en cours…",
     installer_checkbox: "Aller chercher les outils et les construire",
     installer_hint: "Ce module télécharge du code depuis Internet et l'exécute pour construire l'outil. Tout est montré avant d'être lancé, rien ne sort du dossier de namsdec, et aucun droit d'administrateur n'est demandé.",
     install_button: "Installer…",
@@ -1903,7 +1911,7 @@ déclenchera jamais.",
     status_nothing_to_undo: "Plus rien à défaire : on est au début du programme.",
     status_running: "Exécution en cours…",
     status_halted: "Arrêté (hlt).",
-    status_software_breakpoint: "Arrêté sur un `int3` — le programme se pose un point d'arrêt à lui-même. Un débogueur le franchirait ; namsdec ne délivre pas encore le signal au gestionnaire installé.",
+    status_software_breakpoint: "Arrêté sur un `int3` — le programme se pose un point d'arrêt à lui-même, et n'a installé aucun gestionnaire de `SIGTRAP` : sur une vraie machine, ce signal le tuerait. S'il en pose un, namsdec l'appelle et l'exécution reprend après.",
     status_step_limit: "Limite de pas atteinte — boucle infinie possible ?",
     status_nasm_missing: "nasm est introuvable dans le PATH (ex : `sudo dnf install nasm`).",
     binary_too_large: "le binaire assemblé dépasse la fenêtre mémoire simulée",
@@ -2301,7 +2309,7 @@ const EN: Strings = Strings {
     help_copy_hint: "Copy the example, to try it in your own program",
     help_example_copied: "Example copied: paste it into your program (Ctrl+V).",
     help_search: "Search an instruction…",
-    help_search_hint: "The field above searches all 183 sheets, by name or by what they do.",
+    help_search_hint: "The field above searches all 184 sheets, by name or by what they do.",
     help_results: "sheets",
     help_index_count: "mnemonics, all present",
     help_open_sheet: "Open the sheet",
@@ -2310,7 +2318,7 @@ const EN: Strings = Strings {
     help_example: "Example",
     help_kind_directive: "A NASM directive: it does not execute, it decides what gets written.",
     help_kind_concept: "A concept: what one needs to have understood to read the other sheets.",
-    help_index: "contents",
+    help_index: "Contents",
     help_see_also: "See also:",
     help_reference: "Full reference:",
     help_watch: "worth a look",
@@ -2383,6 +2391,9 @@ const EN: Strings = Strings {
     tools_no_dir: "No data directory: neither XDG_DATA_HOME nor HOME.",
     job_decompiling: "Decompiling",
     job_installing: "Installing",
+    job_assembling: "Assembling",
+    assemble_cancelled: "Assembly stopped.",
+    assemble_running: "Assembling…",
     installer_checkbox: "Fetch tools and build them",
     installer_hint: "This module downloads code from the Internet and runs it to build the tool. Everything is shown before it is launched, nothing leaves namsdec's own directory, and no administrator rights are asked for.",
     install_button: "Install…",
@@ -2804,7 +2815,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     status_nothing_to_undo: "Nothing left to undo: this is the start of the program.",
     status_running: "Running…",
     status_halted: "Halted (hlt).",
-    status_software_breakpoint: "Stopped on an `int3` — the program sets a breakpoint on itself. A debugger would step past it; namsdec does not yet deliver the signal to the installed handler.",
+    status_software_breakpoint: "Stopped on an `int3` — the program sets a breakpoint on itself, and installed no `SIGTRAP` handler: on a real machine this signal would kill it. If it installs one, namsdec calls it and execution resumes after.",
     status_step_limit: "Step limit reached — possible infinite loop?",
     status_nasm_missing: "nasm was not found in PATH (e.g.: `sudo dnf install nasm`).",
     binary_too_large: "the assembled binary exceeds the simulated memory window",

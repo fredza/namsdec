@@ -9,6 +9,18 @@
 //! se VOIT — dans le titre de la fenêtre, dans une barre, dans une
 //! phrase — parce qu'un programme qui semble ne rien faire pendant
 //! trois minutes passe pour cassé.
+//!
+//! **Le lancement lui-même ne vit plus ici.** Il est dans
+//! `namsdec-disasm::lanceur`, partagé avec `nasm`, `ld`, les
+//! désassembleurs extérieurs et `upx` : groupe de processus, journal
+//! borné en lignes et en taille de ligne, délai par tâche, arrêt qui
+//! atteint l'étape en cours. Ce fichier-ci décide de ce qu'on lance et
+//! de ce qu'on en dit ; il ne redécouvre plus comment l'arrêter.
+//!
+//! Ce que l'arrêt ne peut pas promettre, et qu'il vaut mieux dire : un
+//! descendant qui s'est donné un nouveau groupe par `setsid` échappe au
+//! signal. Rien ne le rattrape sans un cgroup. L'attente, elle, reste
+//! bornée dans tous les cas — c'est ce qui compte pour la fenêtre.
 
 use super::*;
 
@@ -25,14 +37,14 @@ impl NamsdecApp {
         if self.install_job.is_some() {
             return;
         }
-        let log: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
+        let log = namsdec_asm::lanceur::Journal::default();
         let outcome = Arc::new(Mutex::new(None));
         let progress = Arc::new(AtomicUsize::new(0));
         let cancel = Arc::new(AtomicBool::new(false));
         let total = recette.steps.len();
 
         let (journal, résultat, avancement, arrêt) = (
-            Arc::clone(&log),
+            log.clone(),
             Arc::clone(&outcome),
             Arc::clone(&progress),
             Arc::clone(&cancel),
@@ -43,83 +55,70 @@ impl NamsdecApp {
             use std::sync::atomic::Ordering;
             for (rang, étape) in étapes.iter().enumerate() {
                 if arrêt.load(Ordering::Relaxed) {
-                    *résultat.lock().expect("le journal") =
+                    *résultat.lock().expect("le résultat") =
                         Some(Err("arrêté à la demande".to_owned()));
                     return;
                 }
-                journal
-                    .lock()
-                    .expect("le journal")
-                    .push(format!("$ {}", étape.line()));
+                // La commande est écrite AVANT d'être lancée, puis ce
+                // qu'elle répond s'y ajoute : on lit donc ce qui se
+                // passe pendant que ça se passe, et non un compte rendu
+                // écrit après coup par le programme qui l'a fait.
+                journal.écrire(format!("$ {}", étape.line()));
                 let mut commande = std::process::Command::new(&étape.command);
-                commande
-                    .args(&étape.args)
-                    .stdin(std::process::Stdio::null())
-                    .stdout(std::process::Stdio::piped())
-                    .stderr(std::process::Stdio::piped());
+                commande.args(&étape.args);
                 if let Some(dir) = &étape.cwd {
                     commande.current_dir(dir);
                 }
-                // On lance l'enfant plutôt que d'attendre sa sortie
-                // complète : un téléchargement de 180 Mo ou une
-                // compilation de quinze minutes doivent s'écrire au fur
-                // et à mesure, et pouvoir s'arrêter avant la fin.
-                let mut enfant = match commande.spawn() {
-                    Ok(enfant) => enfant,
-                    Err(e) => {
-                        journal.lock().expect("le journal").push(e.to_string());
-                        *résultat.lock().expect("le résultat") =
-                            Some(Err(format!("« {} » : {e}", étape.line())));
-                        return;
-                    }
-                };
-                let mut lecteurs = Vec::new();
-                if let Some(flux) = enfant.stdout.take() {
-                    lecteurs.push(lire_flux(flux, Arc::clone(&journal)));
-                }
-                if let Some(flux) = enfant.stderr.take() {
-                    lecteurs.push(lire_flux(flux, Arc::clone(&journal)));
-                }
-                let statut = loop {
-                    if arrêt.load(Ordering::Relaxed) {
-                        let _ = enfant.kill();
-                        let _ = enfant.wait();
-                        journal
-                            .lock()
-                            .expect("le journal")
-                            .push("(arrêté)".to_owned());
-                        *résultat.lock().expect("le résultat") =
-                            Some(Err("arrêté à la demande".to_owned()));
-                        return;
-                    }
-                    match enfant.try_wait() {
-                        Ok(Some(statut)) => break statut,
-                        Ok(None) => std::thread::sleep(std::time::Duration::from_millis(100)),
+                // PAR LE LANCEUR PARTAGÉ, et c'est tout l'objet de P3 :
+                // l'enfant part dans son propre groupe, le journal est
+                // borné en lignes ET en taille de ligne, et l'arrêt
+                // rend la main sans attendre qu'un descendant veuille
+                // bien fermer le tube. Mesuré avant la correction :
+                // trente secondes pour un arrêt demandé au bout de
+                // trois cents millisecondes.
+                let bornes = namsdec_asm::Bornes::en(DÉLAI_ÉTAPE).arrêtable(Arc::clone(&arrêt));
+                let fin =
+                    match namsdec_asm::lanceur::lancer_en_journal(&mut commande, &bornes, &journal)
+                    {
+                        Ok(fin) => fin,
                         Err(e) => {
+                            journal.écrire(e.to_string());
                             *résultat.lock().expect("le résultat") =
                                 Some(Err(format!("« {} » : {e}", étape.line())));
                             return;
                         }
+                    };
+                match fin {
+                    namsdec_asm::lanceur::Fin::Arrêté => {
+                        journal.écrire("(arrêté)");
+                        *résultat.lock().expect("le résultat") =
+                            Some(Err("arrêté à la demande".to_owned()));
+                        return;
                     }
-                };
-                for lecteur in lecteurs {
-                    let _ = lecteur.join();
-                }
-                if !statut.success() {
-                    let code = statut
-                        .code()
-                        .map(|c| c.to_string())
-                        .unwrap_or_else(|| "?".to_owned());
-                    // Le code de sortie dans le journal aussi : il ne
-                    // figurait que dans la note d'échec, ailleurs dans la
-                    // fenêtre, et l'on lisait les deux séparément.
-                    journal
-                        .lock()
-                        .expect("le journal")
-                        .push(format!("(code {code})"));
-                    *résultat.lock().expect("le résultat") =
-                        Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
-                    return;
+                    namsdec_asm::lanceur::Fin::TropLong => {
+                        let minutes = DÉLAI_ÉTAPE.as_secs() / 60;
+                        journal.écrire(format!("(arrêtée après {minutes} minutes)"));
+                        *résultat.lock().expect("le résultat") = Some(Err(format!(
+                            "« {} » a dépassé {minutes} minutes et a été arrêtée",
+                            étape.line()
+                        )));
+                        return;
+                    }
+                    namsdec_asm::lanceur::Fin::Terminé(code) => {
+                        if code != Some(0) {
+                            let code = code
+                                .map(|c| c.to_string())
+                                .unwrap_or_else(|| "?".to_owned());
+                            // Le code de sortie dans le journal aussi :
+                            // il ne figurait que dans la note d'échec,
+                            // ailleurs dans la fenêtre, et l'on lisait
+                            // les deux séparément.
+                            journal.écrire(format!("(code {code})"));
+                            *résultat.lock().expect("le résultat") =
+                                Some(Err(format!("« {} » a échoué (code {code})", étape.line())));
+                            return;
+                        }
+                    }
                 }
                 avancement.store(rang + 1, Ordering::Relaxed);
             }

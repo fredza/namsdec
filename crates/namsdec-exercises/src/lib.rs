@@ -221,9 +221,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : quatre-vingt-seize étapes, et
+        // Un parcours, pas une poignée : cent huit étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 96);
+        assert_eq!(pack.exercises.len(), 108);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
@@ -271,6 +271,66 @@ mod tests {
                     .iter()
                     .any(|exercise| exercise.level == niveau),
                 "aucun exercice en {niveau:?}"
+            );
+        }
+    }
+
+    /// Le parcours apprend aussi à LIRE un binaire, et pas seulement à
+    /// en écrire un.
+    ///
+    /// Il ne l'a pas toujours fait : quatre-vingt-seize exercices, tous
+    /// d'écriture, dans une application dont la moitié des panneaux
+    /// sert à l'analyse. On apprenait `xor` en l'écrivant, jamais à le
+    /// reconnaître dans un fichier qu'on n'a pas écrit — et c'est
+    /// pourtant ce qu'on fait devant un binaire inconnu.
+    ///
+    /// CE QUI DISTINGUE CES EXERCICES-LÀ, et ce que ce contrôle mesure :
+    /// leur énoncé nomme un panneau de namsdec. Un exercice de
+    /// rétro-ingénierie qui ne dit pas OÙ REGARDER n'en est pas un ;
+    /// c'est le geste qu'on vient apprendre, pas la syntaxe.
+    #[test]
+    fn le_parcours_apprend_a_lire_un_binaire_et_pas_seulement_a_en_ecrire() {
+        let pack = builtin_pack();
+        let rétro: Vec<&Exercise> = pack
+            .exercises
+            .iter()
+            .filter(|e| e.id.starts_with("re_"))
+            .collect();
+        assert!(
+            rétro.len() >= 10,
+            "un seul exercice de lecture ne fait pas un apprentissage : {}",
+            rétro.len()
+        );
+
+        // Sur plusieurs paliers : lire un fichier se commence tôt — une
+        // signature et des chaînes se regardent avant de savoir ce
+        // qu'est une pile —, et finit tard, sur ce qui résiste.
+        let paliers: std::collections::BTreeSet<Level> = rétro.iter().map(|e| e.level).collect();
+        assert!(
+            paliers.len() >= 3,
+            "la lecture d'un binaire s'apprend par paliers, pas d'un bloc : {paliers:?}"
+        );
+
+        // Et chacun dit où regarder.
+        let panneaux = [
+            "Analyse",
+            "Désassemblage",
+            "Éditeur binaire",
+            "Chronologie",
+            "Correctifs",
+            "Mémoire",
+            "Fragments",
+            "Chaînes",
+            "Entropie",
+            "Fonctions importées",
+            "Appels système",
+        ];
+        for exercice in &rétro {
+            let texte = format!("{} {}", exercice.description.fr, exercice.starter_code);
+            assert!(
+                panneaux.iter().any(|p| texte.contains(p)),
+                "{} ne dit pas où regarder dans namsdec",
+                exercice.id
             );
         }
     }

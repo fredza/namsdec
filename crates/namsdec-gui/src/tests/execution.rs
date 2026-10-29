@@ -2297,11 +2297,16 @@ boucle:
 
 /// Un appel système que namsdec ne simule pas se dit à l'assemblage.
 ///
-/// `open`, `execve`, `fork` : namsdec les nomme mais ne les fait pas — il
-/// n'a ni fichiers ni processus à offrir. Un programme qui en contient
-/// un s'arrête dessus, et rien dans le code ne le laisse deviner. Le
-/// dire avant, avec sa ligne, vaut mieux que de le découvrir au milieu
-/// d'une exécution.
+/// `execve`, `socket`, `connect` : namsdec les nomme mais ne les fait
+/// pas — il n'a ni second processus ni réseau à offrir. Un programme
+/// qui en contient un s'arrête dessus, et rien dans le code ne le
+/// laisse deviner. Le dire avant, avec sa ligne, vaut mieux que de le
+/// découvrir au milieu d'une exécution.
+///
+/// `open` était l'exemple de ce contrôle, et ne l'est plus : il REPOND
+/// « introuvable » depuis le 28 octobre 2026, comme `fopen`. Un appel
+/// qui répond n'a rien à annoncer — c'est la console qui le dit, à
+/// l'exécution et une seule fois.
 #[test]
 fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
@@ -2309,7 +2314,7 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     }
     let mut app = NamsdecApp {
         source: "global _start\nsection .text\n_start:\n\
-                 \x20   mov rax, 2\n    xor rdi, rdi\n    xor rsi, rsi\n\
+                 \x20   mov rax, 59\n    xor rdi, rdi\n    xor rsi, rsi\n\
                  \x20   xor rdx, rdx\n    syscall\n    hlt\n"
             .to_owned(),
         ..Default::default()
@@ -2320,12 +2325,12 @@ fn an_unsimulated_syscall_is_announced_before_it_stops_the_program() {
     let dit: Vec<&namsdec_asm::Diagnostic> = app
         .diagnostics
         .iter()
-        .filter(|d| d.message.contains("open"))
+        .filter(|d| d.message.contains("execve"))
         .collect();
     assert_eq!(
         dit.len(),
         1,
-        "open doit être annoncé une fois : {:?}",
+        "execve doit être annoncé une fois : {:?}",
         app.diagnostics
     );
     assert_eq!(
@@ -3768,4 +3773,311 @@ fn posing_the_same_detour_twice_changes_nothing_the_second_time() {
         origine,
         "et le fichier est exactement celui du départ"
     );
+}
+
+/// Un source qui occupe nasm assez longtemps pour qu'on ait le temps
+/// de regarder : `%rep 200000` lui prend environ 180 ms, mesuré sur la
+/// machine de développement, et produit neuf méga-octets de listing.
+///
+/// Assez lent pour que l'écart entre « lancer » et « attendre la fin »
+/// soit sans ambiguïté — un facteur dix sépare les deux —, assez court
+/// pour qu'un contrôle qui le lance deux fois reste une affaire d'une
+/// demi-seconde.
+const SOURCE_LENT: &str = "\
+section .text
+global _start
+_start:
+%rep 200000
+    nop
+%endrep
+    hlt
+";
+
+/// Lancer un assemblage REND LA MAIN, et c'est tout l'objet de P2.
+///
+/// La mesure est un rapport, pas un seuil absolu : on assemble d'abord
+/// en attendant, pour savoir ce que ce source coûte sur CETTE
+/// machine ; puis on relance sans attendre, et le lancement doit
+/// prendre une fraction de ce temps-là. Un seuil en millisecondes
+/// aurait fini par échouer sur une machine lente ou chargée, ce qui
+/// est arrivé à ce projet (A 9.51).
+#[test]
+fn lancer_un_assemblage_rend_la_main_tout_de_suite() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    let début = std::time::Instant::now();
+    app.do_assemble();
+    let complet = début.elapsed();
+    assert!(
+        matches!(app.status, Status::AssembleOk),
+        "le source d'épreuve doit s'assembler : {:?}",
+        app.status
+    );
+
+    // Le même travail, lancé sans l'attendre.
+    app.set_source(SOURCE_LENT.to_owned());
+    let début = std::time::Instant::now();
+    app.start_assemble();
+    let lancement = début.elapsed();
+    assert!(
+        app.assembling(),
+        "le travail tourne, et l'interface a déjà la main"
+    );
+    assert!(
+        matches!(app.status, Status::Assembling),
+        "et la barre d'état le dit : {:?}",
+        app.status
+    );
+    assert!(
+        lancement * 3 < complet,
+        "lancer doit coûter bien moins que faire : {lancement:?} contre {complet:?}"
+    );
+    app.attendre_l_assemblage();
+    assert!(matches!(app.status, Status::AssembleOk));
+}
+
+/// Un résultat qui arrive après coup ne remplace pas ce qui est à
+/// l'écran.
+///
+/// Le cas qu'on veut interdire : on lance un assemblage, on continue
+/// d'écrire — ou l'on change d'onglet —, et dix secondes plus tard
+/// nasm rend un listing qui décrit un texte que personne ne regarde
+/// plus. Appliqué, il ferait pointer la gouttière, les points d'arrêt
+/// et les diagnostics sur des lignes qui ont bougé.
+///
+/// Déterministe quelle que soit la vitesse de la machine : la récolte
+/// n'a lieu que dans `tick_assemble`, donc le changement de texte
+/// arrive toujours avant elle.
+#[test]
+fn un_resultat_perime_ne_remplace_pas_ce_qui_est_a_l_ecran() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    app.start_assemble();
+    // On continue d'écrire pendant que nasm travaille.
+    app.set_source("section .text\nglobal _start\n_start:\n    hlt\n".to_owned());
+    app.attendre_l_assemblage();
+    assert!(
+        app.assemble_state.is_none(),
+        "le résultat décrivait l'ancien texte : il est écarté"
+    );
+    assert!(
+        app.emulator.is_none(),
+        "et aucun émulateur n'est bâti sur lui"
+    );
+    assert!(
+        !matches!(app.status, Status::Assembling),
+        "la barre ne reste pas à « en cours » : {:?}",
+        app.status
+    );
+
+    // Et le texte à l'écran s'assemble normalement derrière.
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    assert!(app.emulator.is_some());
+}
+
+/// L'assemblage s'arrête à la demande, et l'état revient au repos.
+#[test]
+fn un_assemblage_s_arrete_a_la_demande() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    app.start_assemble();
+    assert!(app.assembling());
+    app.cancel_assemble();
+    assert!(!app.assembling(), "plus rien en cours");
+    assert!(
+        !matches!(app.status, Status::Assembling),
+        "et la barre ne promet plus un travail qui n'existe pas : {:?}",
+        app.status
+    );
+    // Récolter après l'arrêt ne ressuscite rien : le travail a été
+    // oublié, pas mis de côté.
+    app.tick_assemble();
+    assert!(app.assemble_state.is_none());
+    assert!(!app.assembling());
+}
+
+/// Deux assemblages lancés coup sur coup : le premier est arrêté, le
+/// second fait foi.
+///
+/// C'est le Ctrl+Maj+B qu'on frappe deux fois parce que rien n'a l'air
+/// de se passer. Sans cette règle, deux nasm travailleraient sur le
+/// même tampon et le dernier à finir — pas le dernier lancé —
+/// gagnerait.
+#[test]
+fn un_second_assemblage_remplace_le_premier() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    app.start_assemble();
+    app.start_assemble();
+    assert!(app.assembling(), "un seul, et c'est le dernier");
+    app.attendre_l_assemblage();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    assert!(app.emulator.is_some());
+}
+
+/// Changer d'onglet pendant un assemblage ne laisse rien derrière.
+///
+/// Trois choses à ne pas abîmer : le travail en fond ne doit pas
+/// continuer pour rien, la barre ne doit pas rester à « en cours », et
+/// l'onglet rangé ne doit pas recevoir plus tard le listing d'un texte
+/// qu'il ne contient plus.
+#[test]
+fn changer_d_onglet_pendant_un_assemblage_ne_laisse_rien_derriere() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    app.start_assemble();
+    assert!(app.assembling());
+
+    let rangé = app.take_tab();
+    assert!(
+        !app.assembling(),
+        "le travail ne suit pas l'onglet qu'on vient de ranger"
+    );
+    assert!(
+        !matches!(app.status, Status::Assembling),
+        "{:?}",
+        app.status
+    );
+
+    // On revient dessus : rien n'a été corrompu, et l'assemblage se
+    // refait normalement.
+    app.restore_tab(rangé);
+    assert_eq!(app.source, SOURCE_LENT, "le texte est revenu intact");
+    assert!(
+        app.assemble_state.is_none(),
+        "et rien ne s'est glissé dedans"
+    );
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+}
+
+/// Stop arrête l'assemblage, et c'est le seul bouton qui le dise.
+#[test]
+fn stop_arrete_aussi_un_assemblage() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        source: SOURCE_LENT.to_owned(),
+        ..Default::default()
+    };
+    app.start_assemble();
+    app.dispatch(Action::Stop);
+    assert!(!app.assembling(), "nasm a été arrêté");
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "et on le dit sans crier à l'erreur : {:?}",
+        app.status
+    );
+}
+
+/// Pendant l'assemblage, la barre d'état le dit — et dit depuis
+/// combien de temps.
+///
+/// Le temps écoulé plutôt qu'une barre qui avance : un assembleur ne
+/// dit pas où il en est, et une progression inventée est pire qu'un
+/// chiffre vrai. C'est aussi le temps qui décide de l'abandon, donc
+/// c'est celui qu'on a envie de lire.
+///
+/// Relevé sur `status_line` et non sur une image : rien ne récolte ici,
+/// donc l'état mesuré est bien celui de l'assemblage en cours, quelle
+/// que soit la vitesse de la machine.
+#[test]
+fn la_barre_dit_que_l_assemblage_tourne() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    for lang in [Lang::Fr, Lang::En] {
+        let mut app = NamsdecApp {
+            lang,
+            source: SOURCE_LENT.to_owned(),
+            ..Default::default()
+        };
+        app.start_assemble();
+        let (texte, _, _) = app.status_line();
+        assert!(
+            texte.contains(strings(lang).assemble_running),
+            "la barre dit ce qui tourne ({lang:?}) : {texte}"
+        );
+        assert!(
+            texte.contains(" s"),
+            "et depuis combien de temps ({lang:?}) : {texte}"
+        );
+        app.cancel_assemble();
+    }
+}
+
+/// Une erreur d'assemblage ouvre le panneau des diagnostics — même
+/// quand le travail s'est fait en fond.
+///
+/// Le défaut que ce contrôle retient : `show_diagnostics_if_any` était
+/// appelé juste après le LANCEMENT, c'est-à-dire avant que le moindre
+/// diagnostic n'existe. Il montrait donc ceux de l'assemblage
+/// précédent — une erreur corrigée restait affichée, une erreur neuve
+/// n'ouvrait rien. Le panneau s'ouvre maintenant à la récolte, seul
+/// moment où l'on sait ce que nasm a eu à dire.
+#[test]
+fn une_erreur_ouvre_le_panneau_meme_assemblee_en_fond() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        // Un programme correct d'abord : le panneau n'a rien à dire.
+        source: "section .text\nglobal _start\n_start:\n    hlt\n".to_owned(),
+        show_console: true,
+        ..Default::default()
+    };
+    app.dispatch(Action::Assemble);
+    app.attendre_l_assemblage();
+    assert!(app.diagnostics.is_empty(), "{:?}", app.diagnostics);
+    assert_ne!(app.console_tab, ConsoleTab::Diagnostics);
+
+    // Puis une faute de frappe, par le bouton.
+    app.set_source("section .text\nglobal _start\n_start:\n    mob rax, 1\n".to_owned());
+    app.dispatch(Action::Assemble);
+    app.attendre_l_assemblage();
+    assert!(
+        !app.diagnostics.is_empty(),
+        "nasm a quelque chose à dire : {:?}",
+        app.status
+    );
+    assert_eq!(
+        app.console_tab,
+        ConsoleTab::Diagnostics,
+        "et le panneau s'ouvre dessus"
+    );
+
+    // Et corrigée, le panneau rend la place : sans quoi l'erreur
+    // d'avant resterait sous les yeux.
+    app.set_source("section .text\nglobal _start\n_start:\n    mov rax, 1\n    hlt\n".to_owned());
+    app.dispatch(Action::Assemble);
+    app.attendre_l_assemblage();
+    assert!(app.diagnostics.is_empty(), "{:?}", app.diagnostics);
+    assert_ne!(app.console_tab, ConsoleTab::Diagnostics);
 }

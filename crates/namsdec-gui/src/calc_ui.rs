@@ -1120,29 +1120,27 @@ fn calculator_functions_ui(
     // sont en treize : même rôle, deux corps, et onze ne paraissait
     // nulle part ailleurs en proportionnelle. La rangée se replie si
     // elle manque de place, ce qu'elle savait déjà faire.
-    ui.horizontal_wrapped(|ui| {
-        // SERRÉS, pour que les six tiennent sur UNE ligne. Aux écarts
-        // d'egui par défaut, le sixième — « Calculer » — passait seul à
-        // la ligne suivante, où il ne ressemblait plus à un onglet mais
-        // à l'intertitre de la rangée de pastilles qui le suit. Une
-        // rangée d'onglets dont le dernier a l'air d'autre chose ment
-        // sur ce qu'elle est.
-        ui.spacing_mut().item_spacing.x = 3.0;
-        ui.spacing_mut().button_padding.x = 6.0;
-        for (famille, court, long) in calc::FAMILIES {
-            let choisi = famille_active == famille;
-            if ui
-                .add(egui::Button::selectable(
-                    choisi,
-                    egui::RichText::new(*court),
-                ))
-                .on_hover_text(*long)
-                .clicked()
-            {
-                *famille_active = (*famille).to_owned();
-            }
-        }
-    });
+    //
+    // ET DE LA MÊME FORME QU'ELLES, depuis le 28 octobre 2026 : elle
+    // passe par `rangée_d_onglets`, comme les vues, le panneau latéral,
+    // les préférences et la console. Au bleu plein de `Button::selectable`,
+    // la famille choisie avait l'apparence du bouton « OK » posé deux
+    // rangées plus bas, et celle des pastilles de fonctions juste
+    // dessous — trois rôles, une seule peinture. Le repli dont parle la
+    // note qui suit est désormais celui de la rangée, qui mesure ses
+    // étiquettes avant de les poser au lieu de découvrir en les peignant
+    // qu'elles débordent.
+    let étiquettes: Vec<(&str, Option<&str>)> = calc::FAMILIES
+        .iter()
+        .map(|(_, court, long)| (*court, Some(*long)))
+        .collect();
+    let actif = calc::FAMILIES
+        .iter()
+        .position(|(famille, _, _)| famille_active == famille)
+        .unwrap_or(0);
+    if let Some(rang) = rangée_d_onglets(ui, theme, &étiquettes, actif, 0.0, |_| {}) {
+        *famille_active = calc::FAMILIES[rang].0.to_owned();
+    }
     {
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {

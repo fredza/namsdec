@@ -51,6 +51,8 @@ pub mod table;
 mod tool_module;
 pub mod toolchain;
 mod upx_module;
+pub mod vue;
+pub mod vue_peinte;
 pub mod xrefs;
 mod xrefs_module;
 mod yara_module;
@@ -624,6 +626,24 @@ pub trait ReModule {
     /// doit choisir sa place plutôt que d'échouer en bas d'une liste.
     fn section(&self) -> ReSection;
 
+    /// Ce module veut-il toute la largeur du panneau, ou la largeur de
+    /// LECTURE ?
+    ///
+    /// La fenêtre d'analyse borne son contenu à mille pixels, et c'est
+    /// juste : au-delà, une table à deux colonnes pose la seconde si
+    /// loin de la première qu'on suit la ligne du doigt, et une phrase
+    /// se perd en revenant à la gauche.
+    ///
+    /// Une GRILLE ne lit pas comme une phrase. L'éditeur binaire gagne
+    /// à chaque pixel — plus d'octets par ligne, un motif qui se répète
+    /// toutes les trente-deux positions qui se voit d'un coup d'œil, et
+    /// la place de poser l'inspecteur à côté du vidage plutôt que sous
+    /// lui. La borne de lecture lui coûtait le quart droit du panneau,
+    /// même fenêtre agrandie.
+    fn pleine_largeur(&self) -> bool {
+        false
+    }
+
     /// Le nom de la rubrique dans la colonne de navigation, quand il
     /// doit être plus court que le titre.
     ///
@@ -649,7 +669,28 @@ pub trait ReModule {
     /// objet pour la plupart des modules — d'où la version vide.
     fn deliver(&mut self, _result: &ReResult) {}
 
+    /// Ce que le module a à montrer, **sans savoir comment on le
+    /// peint**.
+    ///
+    /// C'est la sortie qui permet à ce que namsdec comprend d'un
+    /// binaire d'exister ailleurs qu'à l'écran : un rapport, un export,
+    /// une autre interface, un contrôle qui lise du texte plutôt que
+    /// des pixels. Voir [`crate::vue`] pour le vocabulaire, et le lot
+    /// P7 de `TRAVAUX.md` pour la mesure dont il est tiré.
+    ///
+    /// `None` par défaut, et c'est voulu : les modules y passent
+    /// groupe par groupe, et un module qui n'a pas encore sa vue
+    /// continue de dessiner comme avant. Un module qui la rend DOIT en
+    /// dériver son `ui()` — sinon il y aurait deux descriptions du même
+    /// panneau, et elles divergeraient.
+    fn vue(&self, _ctx: &ReContext) -> Option<crate::vue::Vue> {
+        None
+    }
+
     /// Rendu du panneau du module.
+    ///
+    /// Pour un module qui rend une [`ReModule::vue`], ce n'est qu'une
+    /// ligne — voir `digest_module`.
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext);
 }
 
@@ -716,6 +757,14 @@ impl ReModuleRegistry {
             .iter()
             .map(|m| (m.id(), m.nav_title(lang), m.section()))
             .collect()
+    }
+
+    /// Ce module-là veut-il toute la largeur ? Faux s'il n'existe pas.
+    pub fn pleine_largeur(&self, id: &str) -> bool {
+        self.modules
+            .iter()
+            .find(|m| m.id() == id)
+            .is_some_and(|m| m.pleine_largeur())
     }
 
     pub fn on_binary_loaded(&mut self, ctx: &ReContext) {

@@ -867,7 +867,7 @@ impl NamsdecApp {
                         if let Some(job) = &self.install_job
                             && job.tool == outil
                         {
-                            let lignes = job.log.lock().expect("le journal").clone();
+                            let lignes = job.log.copie();
                             if !lignes.is_empty() {
                                 ui.add_space(6.0);
                                 egui::CollapsingHeader::new(s.install_log)
@@ -915,7 +915,7 @@ impl NamsdecApp {
                 let journal: Vec<String> = if en_cours {
                     self.install_job
                         .as_ref()
-                        .map(|job| job.log.lock().expect("le journal").clone())
+                        .map(|job| job.log.copie())
                         .unwrap_or_default()
                 } else {
                     self.install_log.clone()
@@ -1063,7 +1063,7 @@ impl NamsdecApp {
         // tient, et c'est justement quand cela tourne mal qu'on veut le
         // lire.
         if fini.is_some() {
-            self.install_log = job.log.lock().expect("le journal").clone();
+            self.install_log = job.log.copie();
             // Une installation qui s'achève change la réponse des
             // outils : le relevé est jeté, et refait à la première
             // demande.
@@ -1673,36 +1673,22 @@ fn run_upx_on(
         }
     }
 
-    let mut enfant = commande
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped())
-        .spawn()
+    // Par le lanceur partagé, comme nasm, ld et les désassembleurs
+    // extérieurs : groupe de processus, tubes vidés pendant que l'outil
+    // écrit, délai tenu. Ce fil-ci avait son propre guetteur, qui
+    // tenait le délai pour le processus mais pas pour ses descendants —
+    // et `wait_with_output` après l'arrêt pouvait attendre un tube que
+    // personne ne fermait.
+    let fin = namsdec_asm::lanceur::lancer(&mut commande, &namsdec_asm::Bornes::en(UPX_TIMEOUT))
         .map_err(|e| e.to_string())?;
-
-    // On surveille à petits pas plutôt que d'attendre : c'est la seule
-    // façon, sans bibliothèque supplémentaire, de reprendre la main sur
-    // un programme qui ne la rend pas. Les tubes d'upx portent une
-    // dizaine de lignes, loin du tampon qui ferait bloquer l'écriture —
-    // pas de fil de lecture à prévoir, contrairement à objdump.
-    let début = std::time::Instant::now();
-    loop {
-        match enfant.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) if début.elapsed() >= UPX_TIMEOUT => {
-                let _ = enfant.kill();
-                let _ = enfant.wait();
-                return Err(format!(
-                    "upx took longer than {} seconds and was stopped",
-                    UPX_TIMEOUT.as_secs()
-                ));
-            }
-            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(20)),
-            Err(e) => return Err(e.to_string()),
-        }
+    if fin.fin() == namsdec_asm::lanceur::Fin::TropLong {
+        return Err(format!(
+            "upx took longer than {} seconds and was stopped",
+            UPX_TIMEOUT.as_secs()
+        ));
     }
-    let fin = enfant.wait_with_output().map_err(|e| e.to_string())?;
-    let mut texte = String::from_utf8_lossy(&fin.stdout).into_owned();
-    let erreur = String::from_utf8_lossy(&fin.stderr);
+    let mut texte = fin.ordinaire.texte_brut().into_owned();
+    let erreur = fin.erreur.texte_brut();
     if !erreur.trim().is_empty() {
         if !texte.ends_with('\n') && !texte.is_empty() {
             texte.push('\n');

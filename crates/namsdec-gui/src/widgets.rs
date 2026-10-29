@@ -709,8 +709,25 @@ pub(crate) fn module_card(
     active: bool,
     color: egui::Color32,
     detail: &str,
+    largeur: f32,
 ) {
     ui.group(|ui| {
+        // UNE LARGEUR COMMUNE, et `largeur` vient de l'APPELANT.
+        //
+        // Chaque carte épousait son texte : dix cartes, dix largeurs, un
+        // bord droit en dents de scie sur toute la page — « nasm détecté
+        // — NASM version 3.02 compiled on Jul 14 2026 » en faisait une
+        // de 355 px à côté d'une de 175. Ce ne sont pas dix objets de
+        // tailles différentes : c'est une liste, et une liste s'aligne.
+        // Les vignettes de thèmes, dans la page voisine, partagent déjà
+        // une largeur calculée une fois (`theme_card_width`).
+        //
+        // La largeur est DITE, et non lue ici : un groupe qui se règle
+        // sur la place que son propre contenu laisse est la boucle de
+        // mesure que ce dépôt a déjà payée. L'appelant la relève une
+        // fois, avant la première carte, sur une place qui ne dépend pas
+        // d'elles.
+        ui.set_width(largeur);
         ui.horizontal(|ui| {
             status_dot(ui, if active { color } else { egui::Color32::GRAY });
             ui.strong(name);
@@ -719,6 +736,19 @@ pub(crate) fn module_card(
         ui.label(detail);
     });
     ui.add_space(4.0);
+}
+
+/// La largeur intérieure à donner à chaque `module_card` d'une liste.
+///
+/// Relevée UNE FOIS, avant la première carte : c'est la place offerte,
+/// moins la marge et le trait que `Frame::group` ajoute de chaque côté.
+/// Une carte reste ainsi plus étroite que ce qu'on lui laisse — elle ne
+/// peut donc pas faire apparaître une barre de défilement qui lui
+/// reprendrait de la place à l'image suivante.
+pub(crate) fn module_card_width(ui: &egui::Ui) -> f32 {
+    let cadre = egui::Frame::group(ui.style());
+    let marges = cadre.inner_margin.sum().x + cadre.stroke.width * 2.0;
+    (ui.available_width() - marges - 2.0).max(80.0)
 }
 
 /// La hauteur d'une ligne d'une rangée d'onglets plats.

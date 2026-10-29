@@ -1094,11 +1094,11 @@ pub const ENTRIES: &[Entry] = &[
             en: "The status and control words",
         },
         body: Text {
-            fr: "`fstsw` rend le mot d'état — où vivent les bits de condition et le numéro du sommet. `fstcw`/`fldcw` lisent et écrivent le mot de contrôle, qui fixe la précision et le mode d'arrondi ; namsdec calcule toujours au plus proche, et accepte l'écriture sans en tenir compte.",
-            en: "`fstsw` returns the status word — home of the condition bits and the top-of-stack index. `fstcw`/`fldcw` read and write the control word, which sets precision and rounding mode; namsdec always rounds to nearest, and accepts the write without acting on it.",
+            fr: "`fstsw` rend le mot d'état — où vivent les bits de condition et le numéro du sommet. `fstcw`/`fldcw` lisent et écrivent le mot de contrôle, qui fixe la précision (bits 8-9) et le mode d'arrondi (bits 10-11) ; il vaut 0x037f au repos, et `finit` le remet là. Dans namsdec, ce qu'on y pose compte : l'arrondi gouverne `fist`, `fistp` et `frndint`, et la précision à 24 bits arrondit chaque opération de base au format simple. Ce qui reste simplifié est recensé sous la notion « arrondi ».",
+            en: "`fstsw` returns the status word — home of the condition bits and the top-of-stack index. `fstcw`/`fldcw` read and write the control word, which sets precision (bits 8-9) and rounding mode (bits 10-11); it reads 0x037f at rest, and `finit` puts it back there. In namsdec what you write there counts: the rounding mode governs `fist`, `fistp` and `frndint`, and 24-bit precision rounds every basic operation to single format. What remains simplified is listed under the «\u{a0}rounding\u{a0}» concept.",
         },
         flags: "",
-        example: "fstsw ax",
+        example: "fnstcw [ancien]      ; garder le réglage\n    fldcw [vers_zero]    ; 0x0f7f : arrondi vers zéro\n    fld qword [x]        ; 1,5\n    fistp qword [entier] ; 1 — au plus proche, ce serait 2\n    fldcw [ancien]       ; remettre comme on l'a trouvé",
     },
     Entry {
         kind: Kind::Instruction,
@@ -2935,5 +2935,26 @@ phaddd xmm0, xmm0   ; la somme des quatre",
         },
         flags: "",
         example: "; Outils > Analyse du binaire",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &[
+            "arrondi",
+            "rounding",
+            "precision",
+            "précision",
+            "mot-de-controle",
+            "control-word",
+        ],
+        title: Text {
+            fr: "L'arrondi, la précision, et ce que namsdec simplifie",
+            en: "Rounding, precision, and what namsdec simplifies",
+        },
+        body: Text {
+            fr: "Quatre modes, et le programme choisit. Les bits 10 et 11 du **mot de contrôle** du x87 disent comment arrondir : **au plus proche** — et l'exacte moitié vers le pair, 00 —, **vers moins l'infini** (01), **vers plus l'infini** (10), **vers zéro** (11). Aucun n'est plus juste que les autres : `fistp` de 3,5 rend 4 au plus proche et 3 par troncature, et les deux sont corrects. C'est la première chose qui surprend quand on compare deux programmes qui calculent « la même chose ».\n\nLes bits 8 et 9 fixent la **précision** : 24 bits de mantisse (le format simple), 53 (le double), ou 64 — le format étendu du x87, et le réglage par défaut. Le mot au repos vaut donc 0x037f, et `finit` le remet là. C'est la raison d'une vieille bizarrerie : un même calcul écrit en C pouvait changer de dernier chiffre selon qu'une valeur intermédiaire restait dans la pile du coprocesseur — à 64 bits — ou passait par la mémoire en 53. SSE a réglé la question en calculant toujours à la largeur du format.\n\n**Ce que namsdec simule, et ce qu'il simplifie.** Le mot de contrôle est un vrai registre : ce qu'on y pose se relit, et l'arrondi gouverne `fist`, `fistp` et `frndint` — `fisttp` tronche toujours, c'est sa raison d'être. À 53 bits, namsdec **est** le matériel : il calcule nativement en double. À 24 bits, il arrondit chaque opération de base au format simple. Restent sept simplifications, et les voici plutôt que de les taire : (1) la précision **étendue** est approximée par la double — le vrai x87 garde onze bits de mantisse de plus, et un calcul qui les exploite diverge ; (2) un `fstp tword` écrit un 80 bits dont les onze derniers bits sont nuls ; (3) les transcendantes — `fsin`, `fcos`, `fptan`, `fpatan`, `fyl2x`, `f2xm1` — passent par la bibliothèque de Rust et non par le polynôme du coprocesseur ; (4) à 24 bits, l'arrondi au format simple suit le plus proche même en mode dirigé ; (5) aucune exception flottante n'est levée, donc démasquer les bits 0 à 5 ne change rien ; (6) `fstsw` rend les bits de condition et le sommet, pas les bits d'exception ; (7) `fprem` rend le reste complet du premier coup, là où le processeur peut s'arrêter en chemin et le dire par C2.\n\nPendant une exécution, namsdec signale dans la console celles que le programme touche vraiment — une fois chacune.",
+            en: "Four modes, and the program picks. Bits 10 and 11 of the x87 **control word** say how to round: **to nearest** — ties to even, 00 —, **toward minus infinity** (01), **toward plus infinity** (10), **toward zero** (11). None is more correct than the others: `fistp` of 3.5 gives 4 to nearest and 3 by truncation, and both are right. That is the first thing that surprises you when comparing two programs that compute «\u{a0}the same thing\u{a0}».\n\nBits 8 and 9 set the **precision**: 24 mantissa bits (single format), 53 (double), or 64 — the x87's extended format, and the default setting. The word at rest therefore reads 0x037f, and `finit` puts it back there. This explains an old oddity: one and the same C computation could change its last digit depending on whether an intermediate value stayed in the coprocessor stack — at 64 bits — or went through memory at 53. SSE settled the question by always computing at the format's width.\n\n**What namsdec simulates, and what it simplifies.** The control word is a real register: what you put there reads back, and the rounding mode governs `fist`, `fistp` and `frndint` — `fisttp` always truncates, that is its whole point. At 53 bits namsdec **is** the hardware: it computes natively in double. At 24 bits it rounds every basic operation to single format. Seven simplifications remain, and here they are rather than left unsaid: (1) **extended** precision is approximated by double — a real x87 keeps eleven more mantissa bits, and a computation that exploits them diverges; (2) an `fstp tword` writes an 80-bit value whose last eleven bits are zero; (3) the transcendentals — `fsin`, `fcos`, `fptan`, `fpatan`, `fyl2x`, `f2xm1` — go through Rust's library rather than the coprocessor's polynomial; (4) at 24 bits, rounding to single format follows nearest even in a directed mode; (5) no floating-point exception is raised, so unmasking bits 0 to 5 changes nothing; (6) `fstsw` returns the condition bits and the top index, not the exception bits; (7) `fprem` returns the complete remainder on the first try, where the processor may stop partway and say so through C2.\n\nDuring a run, namsdec reports in the console the ones the program actually touches — once each.",
+        },
+        flags: "",
+        example: "fnstcw [ancien]\n    fldcw [vers_zero]    ; 0x0f7f : vers zéro\n    fld qword [x]        ; 1,5\n    fistp qword [entier] ; 1, et 2 au plus proche\n    fldcw [ancien]",
     },
 ];

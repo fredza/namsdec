@@ -631,6 +631,8 @@ const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
     ("slack.rs", include_str!("../src/slack.rs")),
     ("strings.rs", include_str!("../src/strings.rs")),
     ("structure.rs", include_str!("../src/structure.rs")),
+    ("vue.rs", include_str!("../src/vue.rs")),
+    ("vue_peinte.rs", include_str!("../src/vue_peinte.rs")),
     ("syscalls.rs", include_str!("../src/syscalls.rs")),
     ("table.rs", include_str!("../src/table.rs")),
     ("toolchain.rs", include_str!("../src/toolchain.rs")),

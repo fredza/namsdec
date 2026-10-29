@@ -127,11 +127,24 @@ impl NamsdecApp {
                 // `PreferencesTab::ALL` : la rangée d'onglets et le banc
                 // de mise en page la lisent au même endroit, et une page
                 // nouvelle se trouve mesurée sans qu'on y pense.
-                ui.horizontal(|ui| {
-                    for tab in PreferencesTab::ALL {
-                        ui.selectable_value(&mut self.preferences_tab, tab, tab.label(s));
-                    }
-                });
+                // Le même idiome d'onglets que l'éditeur, le panneau
+                // latéral et la console : une étiquette plate, soulignée
+                // en bas. Au bleu plein de la sélection, l'onglet choisi
+                // avait exactement l'apparence du bouton « OK » qui
+                // l'attend en bas de la même fenêtre.
+                let étiquettes: Vec<(&str, Option<&str>)> = PreferencesTab::ALL
+                    .iter()
+                    .map(|tab| (tab.label(s), None))
+                    .collect();
+                let actif = PreferencesTab::ALL
+                    .iter()
+                    .position(|tab| *tab == self.preferences_tab)
+                    .unwrap_or(0);
+                if let Some(rang) =
+                    rangée_d_onglets(ui, self.theme, &étiquettes, actif, 0.0, |_| {})
+                {
+                    self.preferences_tab = PreferencesTab::ALL[rang];
+                }
                 ui.separator();
                 // Une seule zone qui défile, et qui s'arrête avant le
                 // bas : les pages avaient chacune la leur, prenant toute

@@ -63,6 +63,13 @@ pub struct HexEditorModule {
     /// sert — flèche bas, page suivante — et il s'exécute APRÈS la
     /// grille, qui vient de le mesurer.
     par_ligne: usize,
+    /// Le nombre d'octets par ligne suit-il la largeur offerte ?
+    ///
+    /// Vrai au départ : c'est ce qu'on attend d'une grille, et c'est ce
+    /// qui emploie la place. Cliquer 8, 16 ou 32 le fige — on veut
+    /// parfois comparer deux fichiers sur la même grille, ou retrouver
+    /// la disposition de `xxd`.
+    largeur_auto: bool,
     /// Ce qu'on a tapé dans « aller à ».
     aller: String,
     /// L'octet choisi, s'il y en a un. C'est le CURSEUR.
@@ -151,16 +158,59 @@ const GROUPE: usize = 8;
 /// groupes de huit suffit à ce que l'œil retrouve sa colonne.
 const PAS_OCTET: f32 = 2.6;
 
-/// Combien de lignes du vidage sont à l'écran.
+/// Le moins de lignes du vidage qu'on accepte de montrer.
 ///
-/// UN NOMBRE DE LIGNES, et non une hauteur disponible. Lire la place
-/// qui reste serait lire une dimension que ce panneau FIXE lui-même
-/// quand il vit dans une fenêtre qui épouse son contenu : la zone
-/// prendrait la hauteur offerte, la fenêtre grandirait pour la
-/// contenir, ce qui agrandirait l'offre, et ainsi de suite. Ce panneau
-/// a déjà payé cette leçon une fois, sur la largeur, à propos de
-/// l'inspecteur — voir plus bas.
-const LIGNES_VUES: usize = 22;
+/// UN PLANCHER, et non une hauteur. Le vidage prend la place qui
+/// reste ; ce nombre dit seulement à partir de quand il vaut mieux
+/// déborder que montrer trois lignes. Huit, c'est de quoi voir un
+/// motif se répéter.
+///
+/// Il y avait ici un nombre de lignes FIXE — vingt-deux — et la raison
+/// écrite était la bonne crainte : lire la place qu'on occupe, dans
+/// une fenêtre qui épouse son contenu, se reboucle. Mesuré le
+/// 28 octobre 2026, ce n'est pas ce qui se passe : la zone qui porte
+/// ce panneau est une `ScrollArea` à `auto_shrink` faux, donc elle
+/// IMPOSE sa hauteur au lieu de l'épouser, et `available_height` est
+/// stable dès la deuxième image — 365, 708 puis 806 pixels sur trois
+/// tailles d'écran, sans jamais bouger ensuite.
+///
+/// Le nombre fixe, lui, était faux dans les deux sens : sur un grand
+/// écran il restait 663 pixels sous la règle et le vidage n'en prenait
+/// que 330, soit la moitié du panneau en blanc ; sur un petit il n'en
+/// restait que 174, et le vidage débordait de 156, si bien qu'un
+/// second ascenseur paraissait à côté du sien.
+const LIGNES_MIN: usize = 8;
+
+/// La largeur qu'il faut à l'inspecteur pour vivre dans une colonne à
+/// droite du vidage plutôt que sous lui.
+///
+/// Sous le vidage, il lui prenait sa hauteur pendant que le quart droit
+/// du panneau restait vide — et la grille ne gagne rien à être bornée à
+/// une largeur de LECTURE, qui est faite pour de la prose. À côté, la
+/// place perdue sert, et le vidage garde toute la hauteur.
+///
+/// Deux cent soixante pixels : de quoi poser « float64 LE » et
+/// « 2.074285e-317 » sur une ligne, ce qui est la plus longue que
+/// l'inspecteur ait à écrire depuis qu'un flottant illisible se dit en
+/// notation scientifique. En dessous, il se replierait plus qu'il ne se
+/// lirait, et il vaut mieux l'empiler.
+///
+/// Trois cents d'abord, et mesuré ensuite : dans l'onglet d'analyse, la
+/// grille à trente-deux octets prend 1072 des 1346 pixels offerts, et
+/// les 274 qui restent tombaient six pixels sous la barre. L'inspecteur
+/// repassait sous la grille pour six pixels.
+const INSPECTEUR_LARGEUR_MIN: f32 = 260.0;
+
+/// La hauteur que le bas du panneau se réserve quand un octet est
+/// choisi.
+///
+/// Il la prenait TOUTE : quatre cents pixels de position, de boutons,
+/// d'aide et de lectures, posés sous un vidage qui gardait ses
+/// vingt-deux lignes — et les dernières lectures se faisaient couper
+/// par le bord. Bornée, cette place est connue d'avance : le vidage
+/// sait ce qui lui reste, et ce qui dépasse se fait défiler là où il
+/// est, sans emmener le panneau avec lui.
+const INSPECTEUR_MAX: f32 = 250.0;
 
 /// Où chaque colonne du vidage commence, en pixels depuis le bord
 /// gauche de la ligne.
@@ -316,6 +366,11 @@ fn nombre(texte: &str) -> Option<usize> {
 }
 
 impl ReModule for HexEditorModule {
+    /// Une grille, et non de la prose : voir `ReModule::pleine_largeur`.
+    fn pleine_largeur(&self) -> bool {
+        true
+    }
+
     fn section(&self) -> ReSection {
         ReSection::Bytes
     }
@@ -346,6 +401,10 @@ impl ReModule for HexEditorModule {
         self.venu_de = None;
         self.sections = sections_par_position(ctx.binary);
         if self.par_ligne == 0 {
+            // `Default` rend faux, et ce n'est pas ce qu'on veut : une
+            // grille suit la place qu'on lui donne tant qu'on ne lui a
+            // rien imposé. Posé ici, où le module se découvre.
+            self.largeur_auto = true;
             self.par_ligne = PAR_LIGNE;
         }
         // Et la colonne des adresses ne paraît que si elle apprend
@@ -414,6 +473,10 @@ impl ReModule for HexEditorModule {
         // précédente / suivante » — le fichier défile d'un bout à
         // l'autre, et il n'a jamais eu de pages.
         if self.par_ligne == 0 {
+            // `Default` rend faux, et ce n'est pas ce qu'on veut : une
+            // grille suit la place qu'on lui donne tant qu'on ne lui a
+            // rien imposé. Posé ici, où le module se découvre.
+            self.largeur_auto = true;
             self.par_ligne = PAR_LIGNE;
         }
         ui.horizontal_wrapped(|ui| {
@@ -447,19 +510,44 @@ impl ReModule for HexEditorModule {
             ui.separator();
             ui.weak(format!("{} {}", octets.len(), ctx.t("octets", "bytes")));
             ui.separator();
-            // COMBIEN D'OCTETS PAR LIGNE, et choisi à la main plutôt que
-            // déduit de la largeur disponible. Trente-deux remplit un
-            // panneau large et fait sauter aux yeux un motif qui se
-            // répète ; huit tient dans un panneau étroit. Mais lire la
-            // largeur offerte pour en décider serait lire une dimension
-            // que ce panneau fixe lui-même dès qu'il vit dans une
-            // fenêtre qui épouse son contenu — c'est exactement la
-            // boucle qui a fait gonfler la fenêtre d'analyse jusqu'à
-            // déborder de l'écran (voir l'inspecteur, plus bas). Un
-            // réglage ne se reboucle pas.
+            // COMBIEN D'OCTETS PAR LIGNE. Trente-deux remplit un panneau
+            // large et fait sauter aux yeux un motif qui se répète ;
+            // huit tient dans un panneau étroit.
+            //
+            // C'ÉTAIT UN RÉGLAGE À LA MAIN, seize par défaut, et la
+            // raison écrite était la même crainte que pour la hauteur :
+            // lire la largeur offerte serait lire une dimension que ce
+            // panneau fixe lui-même. Mesuré le 28 octobre 2026 dans
+            // l'onglet d'analyse : mille trois cent quarante-six pixels
+            // offerts, six cent six pris — SEPT CENT QUARANTE de vide,
+            // plus que la grille entière —, et la largeur relevée ne
+            // bouge pas d'une image à l'autre, parce que la zone qui
+            // porte ce panneau impose la sienne au lieu de l'épouser.
+            //
+            // Le réglage reste, et fige ce qu'on a choisi : on veut
+            // parfois comparer deux fichiers sur la même grille.
             ui.weak(ctx.t("par ligne", "per row"));
+            if ui
+                .selectable_label(self.largeur_auto, ctx.t("auto", "auto"))
+                .on_hover_text(ctx.t(
+                    "Le plus d'octets par ligne que la largeur permet.",
+                    "As many bytes per row as the width allows.",
+                ))
+                .clicked()
+            {
+                self.largeur_auto = true;
+            }
             for largeur in LARGEURS {
-                ui.selectable_value(&mut self.par_ligne, largeur, largeur.to_string());
+                if ui
+                    .selectable_label(
+                        !self.largeur_auto && self.par_ligne == largeur,
+                        largeur.to_string(),
+                    )
+                    .clicked()
+                {
+                    self.largeur_auto = false;
+                    self.par_ligne = largeur;
+                }
             }
             // La colonne des adresses, qu'on peut retirer : sur un
             // fichier qu'aucun segment ne porte — un tampon brut, une
@@ -492,18 +580,24 @@ impl ReModule for HexEditorModule {
             let entrée = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
             ui.selectable_value(&mut self.recherche_hex, false, ctx.t("texte", "text"));
             ui.selectable_value(&mut self.recherche_hex, true, "hex");
+            // PRÉCÉDENT À GAUCHE, SUIVANT À DROITE, comme partout
+            // ailleurs. Ils étaient dans l'autre ordre — « › ‹ » —, et
+            // les deux flèches pointaient l'une vers l'autre : rien à
+            // l'écran ne disait plus laquelle avance. L'ordre venait de
+            // ce que « suivant » est l'action par défaut, celle
+            // d'Entrée ; elle l'est restée, sans avoir à passer devant.
+            if framed_button(ui, "\u{2039}")
+                .on_hover_text(ctx.t("Précédent", "Previous"))
+                .clicked()
+            {
+                cherche = Some(true);
+            }
             if framed_button(ui, "\u{203a}")
                 .on_hover_text(ctx.t("Suivant", "Next"))
                 .clicked()
                 || entrée
             {
                 cherche = Some(false);
-            }
-            if framed_button(ui, "\u{2039}")
-                .on_hover_text(ctx.t("Précédent", "Previous"))
-                .clicked()
-            {
-                cherche = Some(true);
             }
         });
         if let Some(précédent) = cherche {
@@ -580,6 +674,25 @@ impl ReModule for HexEditorModule {
             crate::imports::virtual_address(octets, octets.len() as u64 / 2).unwrap_or(0) as usize,
         );
         let chiffres = format!("{plus_haut:x}").len().max(6).div_ceil(2) * 2;
+        // LE PLUS D'OCTETS QUE LA LARGEUR PERMET, tant qu'on ne l'a pas
+        // figé. On essaie du plus large au plus étroit et l'on garde le
+        // premier qui tient ; si aucun ne tient, le plus étroit, et la
+        // zone se dote d'une barre horizontale — ce qui est la bonne
+        // réponse dans un panneau où rien ne tiendrait.
+        let par_ligne = if self.largeur_auto {
+            // Deux barres de moins, comme la zone : voir `zone_large`.
+            let barre = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin;
+            let offert = ui.available_width() - 2.0 * barre;
+            LARGEURS
+                .iter()
+                .rev()
+                .copied()
+                .find(|n| Colonnes::new(chasse, *n, adresses, chiffres).largeur <= offert)
+                .unwrap_or(LARGEURS[0])
+        } else {
+            par_ligne
+        };
+        self.par_ligne = par_ligne;
         let cols = Colonnes::new(chasse, par_ligne, adresses, chiffres);
         let lignes = octets.len().div_ceil(par_ligne);
         // LA LARGEUR VUE EST BORNÉE PAR CE QU'ON OFFRE, et c'est un
@@ -606,8 +719,15 @@ impl ReModule for HexEditorModule {
         // La zone est donc bornée à « vidage + barre », et la règle à
         // la VUE, c'est-à-dire à ce qui reste une fois la barre posée.
         let barre = ui.spacing().scroll.bar_width + ui.spacing().scroll.bar_inner_margin;
-        let zone_large = (cols.largeur + barre).min(ui.available_width());
-        let vue = (zone_large - barre).max(chasse * 20.0);
+        // DEUX FOIS LA BARRE, et mesuré : egui la retranche une fois de
+        // la largeur qu'on impose, et une fois encore pour le rectangle
+        // intérieur. Bornée à « vidage + une barre », la zone n'offrait
+        // au vidage que sa largeur MOINS quatorze pixels, et se dotait
+        // d'une barre horizontale pour ces quatorze-là — sur la
+        // disposition qui remplit le panneau, c'est-à-dire précisément
+        // celle qu'on venait de choisir pour lui.
+        let zone_large = (cols.largeur + 2.0 * barre).min(ui.available_width());
+        let vue = (zone_large - 2.0 * barre).max(chasse * 20.0);
 
         // LA RÈGLE DES COLONNES, au-dessus du vidage et alignée au
         // pixel sur lui. Sans elle on compte les colonnes avec le
@@ -678,9 +798,43 @@ impl ReModule for HexEditorModule {
         // pages : `show_rows` ne construit que les lignes visibles, si
         // bien qu'un fichier de plusieurs mégaoctets se parcourt sans
         // que rien ne soit peint hors de l'écran.
+        // AUCUN ÉCART ENTRE LES LIGNES, et posé ICI, avant la zone.
+        //
+        // Il l'était à l'intérieur, et c'était trop tard : `show_rows`
+        // compte ses lignes AVANT d'appeler ce qu'on lui donne, et il
+        // les compte à `hauteur + item_spacing.y`. Relevé le 28 octobre
+        // 2026 : une zone de six cent trente pixels, quarante-deux
+        // lignes demandées, TRENTE ET UNE peintes — six cent trente
+        // divisé par vingt, et non par quinze. Les cent soixante-cinq
+        // pixels qui manquaient restaient blancs AU BAS DE LA ZONE, et
+        // l'on cherchait le défaut dans la fenêtre.
+        //
+        // Le nombre de lignes figé d'avant portait le même écart sans
+        // que personne le voie : « vingt-deux » en montrait seize.
+        ui.spacing_mut().item_spacing.y = 0.0;
+        // CE QUI RESTE, et non un nombre écrit d'avance : voir
+        // `LIGNES_MIN`, qui porte la mesure.
+        // À CÔTÉ PLUTÔT QUE DESSOUS, dès qu'il y a la largeur : le
+        // vidage garde alors toute la hauteur, et l'inspecteur n'a plus
+        // à se serrer dans deux cent cinquante pixels.
+        // La largeur offerte, relevée AVANT que la grille ne la
+        // consomme : c'est elle qui borne la colonne de droite. Prendre
+        // `max_rect` à la place la laissait s'étendre au-delà de ce que
+        // le panneau montre, et le panneau se dotait d'une barre
+        // horizontale dont il n'avait pas l'usage.
+        let largeur_offerte = ui.available_width();
+        let bord_droit = ui.cursor().left() + largeur_offerte;
+        let en_colonne = largeur_offerte >= zone_large + INSPECTEUR_LARGEUR_MIN + 12.0;
+        let réserve = if self.choisi.is_some() && !en_colonne {
+            INSPECTEUR_MAX + 16.0
+        } else {
+            hauteur + 12.0
+        };
+        let lignes_vues = (((ui.available_height() - réserve) / hauteur).floor() as isize)
+            .max(LIGNES_MIN as isize) as usize;
         let mut zone = egui::ScrollArea::both()
             .id_salt("hex_dump")
-            .max_height(hauteur * LIGNES_VUES as f32)
+            .max_height(hauteur * lignes_vues as f32)
             // LARGEUR : la zone épouse le vidage. Elle réclamait toute
             // la place offerte, ce qui posait son ascenseur à l'autre
             // bout du panneau — à quarante pixels de ce qu'il fait
@@ -689,7 +843,9 @@ impl ReModule for HexEditorModule {
             //
             // HAUTEUR : imposée, et c'est l'inverse. Une hauteur qui
             // épouse son contenu dans une fenêtre qui épouse le sien se
-            // reboucle, et ce panneau connaît la chanson.
+            // reboucle, et ce panneau connaît la chanson. Imposée ne
+            // veut pas dire figée : c'est la place offerte qui la
+            // donne, et c'est tout l'objet de `LIGNES_MIN`.
             //
             // `both` plutôt que `vertical` : à trente-deux octets par
             // ligne dans un panneau étroit, le vidage dépasse, et ce
@@ -704,13 +860,9 @@ impl ReModule for HexEditorModule {
         // la réponse.
         if let Some(off) = self.amener.take() {
             let y = (off / par_ligne) as f32 * hauteur;
-            zone = zone.vertical_scroll_offset((y - hauteur * (LIGNES_VUES as f32 / 3.0)).max(0.0));
+            zone = zone.vertical_scroll_offset((y - hauteur * (lignes_vues as f32 / 3.0)).max(0.0));
         }
         let sortie = zone.show_rows(ui, hauteur, lignes, |ui, plage| {
-            // Aucun écart vertical : c'est ce qui rend le pas d'une
-            // ligne exactement égal à `hauteur`, et donc le saut
-            // calculable.
-            ui.spacing_mut().item_spacing.y = 0.0;
             for index in plage.clone() {
                 let début = index * par_ligne;
                 let fin = (début + par_ligne).min(octets.len());
@@ -1113,8 +1265,234 @@ impl ReModule for HexEditorModule {
             }
         }
 
+        if en_colonne {
+            // LA PLACE À DROITE DU VIDAGE, celle qui restait vide. On
+            // la prend sans imbriquer le vidage dans une colonne : il a
+            // déjà dit où il s'arrête, et c'est tout ce qu'il faut
+            // savoir pour poser l'inspecteur à côté de lui.
+            let à_droite = egui::Rect::from_min_max(
+                egui::pos2(vues.right() + 16.0, vues.top()),
+                egui::pos2(bord_droit, vues.bottom()),
+            );
+            if à_droite.width() >= INSPECTEUR_LARGEUR_MIN {
+                ui.painter().vline(
+                    à_droite.left() - 8.0,
+                    vues.y_range(),
+                    egui::Stroke::new(1.0, visuals.weak_text_color().gamma_multiply(0.4)),
+                );
+                ui.scope_builder(egui::UiBuilder::new().max_rect(à_droite), |ui| {
+                    self.bas_du_panneau(ui, ctx, octets, &visuals, à_droite.height());
+                });
+            }
+        } else {
+            self.bas_du_panneau(ui, ctx, octets, &visuals, INSPECTEUR_MAX);
+        }
+    }
+}
+
+/// Lit ce qu'on cherche : une suite d'octets hexadécimaux (« 7f 45 4c »
+/// ou « 7f454c »), ou un texte pris tel quel. Rien pour une saisie vide
+/// ou un hexadécimal impair — on ne devine pas un demi-octet.
+fn motif(query: &str, hex: bool) -> Option<Vec<u8>> {
+    let q = query.trim();
+    if q.is_empty() {
+        return None;
+    }
+    if !hex {
+        return Some(q.as_bytes().to_vec());
+    }
+    let nettoyé: String = q.chars().filter(|c| !c.is_whitespace()).collect();
+    if nettoyé.is_empty() || !nettoyé.len().is_multiple_of(2) {
+        return None;
+    }
+    let octets = nettoyé.as_bytes();
+    let mut out = Vec::with_capacity(octets.len() / 2);
+    let mut i = 0;
+    while i < octets.len() {
+        let paire = std::str::from_utf8(&octets[i..i + 2]).ok()?;
+        out.push(u8::from_str_radix(paire, 16).ok()?);
+        i += 2;
+    }
+    Some(out)
+}
+
+/// Cherche le motif dans les octets, à partir de `depuis`, dans un sens ou
+/// l'autre. Revient au début (ou à la fin) quand il n'y a plus rien devant
+/// — chercher à nouveau fait le tour, comme dans un éditeur.
+fn trouver(octets: &[u8], motif: &[u8], depuis: usize, précédent: bool) -> Option<usize> {
+    if motif.is_empty() || motif.len() > octets.len() {
+        return None;
+    }
+    let dernier = octets.len() - motif.len();
+    let occupe = |i: usize| &octets[i..i + motif.len()] == motif;
+    if précédent {
+        (0..=dernier)
+            .rev()
+            .find(|&i| i < depuis && occupe(i))
+            .or_else(|| (0..=dernier).rev().find(|&i| occupe(i)))
+    } else {
+        (depuis..=dernier)
+            .find(|&i| occupe(i))
+            .or_else(|| (0..=dernier).find(|&i| occupe(i)))
+    }
+}
+
+/// L'inspecteur de données : comment lire les octets à partir du curseur,
+/// dans les formats qu'un désassembleur rencontre. C'est l'outil phare de
+/// 010 Editor, et le plus pédagogique — « ces quatre octets, c'est ce
+/// nombre-là ». En petit-boutien (`LE`), celui du x86 : l'octet de poids
+/// faible d'abord, ce qui déroute tant qu'on ne l'a pas vu une fois.
+///
+/// Fonction libre, pour l'éprouver sans interface.
+/// Un flottant écrit pour être LU.
+///
+/// `to_string` d'un `f64` rend tous les chiffres qu'il faut pour le
+/// relire exactement — et pour un motif d'octets quelconque, cela
+/// donne « 0.000…0002074285 » sur trois cents caractères. Relevé sur
+/// la capture du 28 octobre 2026 : trois lignes pleines qui sortaient
+/// de la colonne de l'inspecteur.
+///
+/// Ce n'est pas un nombre qu'on lit, c'est une forme qu'on reconnaît :
+/// la notation scientifique dit en quinze signes ce que trois cents ne
+/// disaient pas. Les valeurs ordinaires, elles, gardent leur écriture
+/// ordinaire — un `1.5` ne gagne rien à devenir `1.5e0`.
+fn flottant(valeur: f64) -> String {
+    if valeur == 0.0 || !valeur.is_finite() {
+        return valeur.to_string();
+    }
+    let ampleur = valeur.abs();
+    if (1e-4..1e16).contains(&ampleur) {
+        let écrit = valeur.to_string();
+        if écrit.len() <= 24 {
+            return écrit;
+        }
+    }
+    format!("{valeur:.6e}")
+}
+
+fn inspecter(octets: &[u8], be: bool) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    let Some(&b) = octets.first() else {
+        return out;
+    };
+    // Un octet seul ne dépend pas de l'ordre des octets.
+    out.push(("int8", (b as i8).to_string()));
+    out.push(("uint8", b.to_string()));
+    out.push(("binaire", format!("{b:08b}")));
+    out.push((
+        "caractère",
+        if (0x20..0x7f).contains(&b) {
+            (b as char).to_string()
+        } else {
+            "·".to_owned()
+        },
+    ));
+    if octets.len() >= 2 {
+        let a = <[u8; 2]>::try_from(&octets[..2]).unwrap();
+        let (i, u) = if be {
+            (
+                i16::from_be_bytes(a).to_string(),
+                u16::from_be_bytes(a).to_string(),
+            )
+        } else {
+            (
+                i16::from_le_bytes(a).to_string(),
+                u16::from_le_bytes(a).to_string(),
+            )
+        };
+        out.push((if be { "int16 BE" } else { "int16 LE" }, i));
+        out.push((if be { "uint16 BE" } else { "uint16 LE" }, u));
+    }
+    if octets.len() >= 4 {
+        let a = <[u8; 4]>::try_from(&octets[..4]).unwrap();
+        let (i, u, f) = if be {
+            (
+                i32::from_be_bytes(a).to_string(),
+                u32::from_be_bytes(a).to_string(),
+                flottant(f32::from_be_bytes(a) as f64),
+            )
+        } else {
+            (
+                i32::from_le_bytes(a).to_string(),
+                u32::from_le_bytes(a).to_string(),
+                flottant(f32::from_le_bytes(a) as f64),
+            )
+        };
+        out.push((if be { "int32 BE" } else { "int32 LE" }, i));
+        out.push((if be { "uint32 BE" } else { "uint32 LE" }, u));
+        out.push((if be { "float32 BE" } else { "float32 LE" }, f));
+    }
+    if octets.len() >= 8 {
+        let a = <[u8; 8]>::try_from(&octets[..8]).unwrap();
+        let (i, u, f) = if be {
+            (
+                i64::from_be_bytes(a).to_string(),
+                u64::from_be_bytes(a).to_string(),
+                flottant(f64::from_be_bytes(a)),
+            )
+        } else {
+            (
+                i64::from_le_bytes(a).to_string(),
+                u64::from_le_bytes(a).to_string(),
+                flottant(f64::from_le_bytes(a)),
+            )
+        };
+        out.push((if be { "int64 BE" } else { "int64 LE" }, i));
+        out.push((if be { "uint64 BE" } else { "uint64 LE" }, u));
+        out.push((if be { "float64 BE" } else { "float64 LE" }, f));
+    }
+    out
+}
+
+/// Applique un chiffre hexadécimal à la frappe en place.
+///
+/// Rend le nouvel état d'attente et, quand l'octet est complet, la valeur
+/// à écrire. Premier quartet : on le garde (poids fort), rien à écrire.
+/// Second : l'octet est `haut<<4 | bas`, et l'attente retombe.
+fn frapper(nibble: Option<u8>, chiffre: u8) -> (Option<u8>, Option<u8>) {
+    match nibble {
+        None => (Some(chiffre), None),
+        Some(haut) => (None, Some((haut << 4) | chiffre)),
+    }
+}
+
+impl HexEditorModule {
+    /// Le bas du panneau : l'octet choisi, ce qu'il vaut lu dans
+    /// chaque format, et de quoi le remplacer.
+    ///
+    /// À PART, parce qu'il se pose à deux endroits : sous le vidage
+    /// quand le panneau est étroit, et DANS UNE COLONNE À DROITE dès
+    /// qu'il y a la largeur. Sous le vidage, il lui prenait quatre
+    /// cents pixels de hauteur et se faisait couper par le bas, dans
+    /// un panneau dont le quart droit était vide.
+    fn bas_du_panneau(
+        &mut self,
+        ui: &mut egui::Ui,
+        ctx: &ReContext,
+        octets: &[u8],
+        visuals: &egui::Visuals,
+        hauteur_max: f32,
+    ) {
         // L'octet choisi, et de quoi le remplacer.
-        if let Some(off) = self.choisi {
+        let Some(off) = self.choisi else {
+            ui.add_space(4.0);
+            ui.weak(ctx.t(
+                "Cliquez un octet pour le choisir.",
+                "Click a byte to pick it.",
+            ));
+            return;
+        };
+        // BORNÉ, ET DÉFILANT CHEZ LUI. Ce bloc fait quatre cents pixels
+        // quand toutes les lectures tiennent ; posé sans borne sous un
+        // vidage qui prenait déjà sa place, il sortait par le bas et
+        // l'on allait chercher `int64` en faisant défiler la fenêtre
+        // entière — alors qu'il y avait du vide juste au-dessus.
+        egui::ScrollArea::vertical()
+            .id_salt("hex_inspecteur")
+            .max_height(hauteur_max)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+            {
             ui.add_space(8.0);
             ui.separator();
             // OÙ L'ON EST, avant ce qu'on y voit. Une position seule ne
@@ -1303,8 +1681,8 @@ impl ReModule for HexEditorModule {
                 ui.weak(format!(
                     "{colonne} — {} ; {geste}, Tab {}",
                     ctx.t(
-                        "flèches pour se déplacer, Maj+flèches pour choisir plusieurs                          octets, Ctrl+A pour tout prendre, Ctrl+C pour emporter, Ctrl+V                          pour rapporter dans le champ",
-                        "arrows to move, Shift+arrows to pick several bytes, Ctrl+A to                          take everything, Ctrl+C to copy, Ctrl+V to bring back into the                          field",
+                        "flèches pour se déplacer, Maj+flèches pour choisir plusieurs octets, Ctrl+A pour tout prendre, Ctrl+C pour emporter, Ctrl+V pour rapporter dans le champ",
+                        "arrows to move, Shift+arrows to pick several bytes, Ctrl+A to take everything, Ctrl+C to copy, Ctrl+V to bring back into the field",
                     ),
                     ctx.t("pour changer de colonne", "to switch column"),
                 ));
@@ -1380,153 +1758,8 @@ impl ReModule for HexEditorModule {
                     }
                 }
             }
-        } else {
-            ui.add_space(4.0);
-            ui.weak(ctx.t(
-                "Cliquez un octet pour le choisir.",
-                "Click a byte to pick it.",
-            ));
         }
-    }
-}
-
-/// Lit ce qu'on cherche : une suite d'octets hexadécimaux (« 7f 45 4c »
-/// ou « 7f454c »), ou un texte pris tel quel. Rien pour une saisie vide
-/// ou un hexadécimal impair — on ne devine pas un demi-octet.
-fn motif(query: &str, hex: bool) -> Option<Vec<u8>> {
-    let q = query.trim();
-    if q.is_empty() {
-        return None;
-    }
-    if !hex {
-        return Some(q.as_bytes().to_vec());
-    }
-    let nettoyé: String = q.chars().filter(|c| !c.is_whitespace()).collect();
-    if nettoyé.is_empty() || !nettoyé.len().is_multiple_of(2) {
-        return None;
-    }
-    let octets = nettoyé.as_bytes();
-    let mut out = Vec::with_capacity(octets.len() / 2);
-    let mut i = 0;
-    while i < octets.len() {
-        let paire = std::str::from_utf8(&octets[i..i + 2]).ok()?;
-        out.push(u8::from_str_radix(paire, 16).ok()?);
-        i += 2;
-    }
-    Some(out)
-}
-
-/// Cherche le motif dans les octets, à partir de `depuis`, dans un sens ou
-/// l'autre. Revient au début (ou à la fin) quand il n'y a plus rien devant
-/// — chercher à nouveau fait le tour, comme dans un éditeur.
-fn trouver(octets: &[u8], motif: &[u8], depuis: usize, précédent: bool) -> Option<usize> {
-    if motif.is_empty() || motif.len() > octets.len() {
-        return None;
-    }
-    let dernier = octets.len() - motif.len();
-    let occupe = |i: usize| &octets[i..i + motif.len()] == motif;
-    if précédent {
-        (0..=dernier)
-            .rev()
-            .find(|&i| i < depuis && occupe(i))
-            .or_else(|| (0..=dernier).rev().find(|&i| occupe(i)))
-    } else {
-        (depuis..=dernier)
-            .find(|&i| occupe(i))
-            .or_else(|| (0..=dernier).find(|&i| occupe(i)))
-    }
-}
-
-/// L'inspecteur de données : comment lire les octets à partir du curseur,
-/// dans les formats qu'un désassembleur rencontre. C'est l'outil phare de
-/// 010 Editor, et le plus pédagogique — « ces quatre octets, c'est ce
-/// nombre-là ». En petit-boutien (`LE`), celui du x86 : l'octet de poids
-/// faible d'abord, ce qui déroute tant qu'on ne l'a pas vu une fois.
-///
-/// Fonction libre, pour l'éprouver sans interface.
-fn inspecter(octets: &[u8], be: bool) -> Vec<(&'static str, String)> {
-    let mut out = Vec::new();
-    let Some(&b) = octets.first() else {
-        return out;
-    };
-    // Un octet seul ne dépend pas de l'ordre des octets.
-    out.push(("int8", (b as i8).to_string()));
-    out.push(("uint8", b.to_string()));
-    out.push(("binaire", format!("{b:08b}")));
-    out.push((
-        "caractère",
-        if (0x20..0x7f).contains(&b) {
-            (b as char).to_string()
-        } else {
-            "·".to_owned()
-        },
-    ));
-    if octets.len() >= 2 {
-        let a = <[u8; 2]>::try_from(&octets[..2]).unwrap();
-        let (i, u) = if be {
-            (
-                i16::from_be_bytes(a).to_string(),
-                u16::from_be_bytes(a).to_string(),
-            )
-        } else {
-            (
-                i16::from_le_bytes(a).to_string(),
-                u16::from_le_bytes(a).to_string(),
-            )
-        };
-        out.push((if be { "int16 BE" } else { "int16 LE" }, i));
-        out.push((if be { "uint16 BE" } else { "uint16 LE" }, u));
-    }
-    if octets.len() >= 4 {
-        let a = <[u8; 4]>::try_from(&octets[..4]).unwrap();
-        let (i, u, f) = if be {
-            (
-                i32::from_be_bytes(a).to_string(),
-                u32::from_be_bytes(a).to_string(),
-                f32::from_be_bytes(a).to_string(),
-            )
-        } else {
-            (
-                i32::from_le_bytes(a).to_string(),
-                u32::from_le_bytes(a).to_string(),
-                f32::from_le_bytes(a).to_string(),
-            )
-        };
-        out.push((if be { "int32 BE" } else { "int32 LE" }, i));
-        out.push((if be { "uint32 BE" } else { "uint32 LE" }, u));
-        out.push((if be { "float32 BE" } else { "float32 LE" }, f));
-    }
-    if octets.len() >= 8 {
-        let a = <[u8; 8]>::try_from(&octets[..8]).unwrap();
-        let (i, u, f) = if be {
-            (
-                i64::from_be_bytes(a).to_string(),
-                u64::from_be_bytes(a).to_string(),
-                f64::from_be_bytes(a).to_string(),
-            )
-        } else {
-            (
-                i64::from_le_bytes(a).to_string(),
-                u64::from_le_bytes(a).to_string(),
-                f64::from_le_bytes(a).to_string(),
-            )
-        };
-        out.push((if be { "int64 BE" } else { "int64 LE" }, i));
-        out.push((if be { "uint64 BE" } else { "uint64 LE" }, u));
-        out.push((if be { "float64 BE" } else { "float64 LE" }, f));
-    }
-    out
-}
-
-/// Applique un chiffre hexadécimal à la frappe en place.
-///
-/// Rend le nouvel état d'attente et, quand l'octet est complet, la valeur
-/// à écrire. Premier quartet : on le garde (poids fort), rien à écrire.
-/// Second : l'octet est `haut<<4 | bas`, et l'attente retombe.
-fn frapper(nibble: Option<u8>, chiffre: u8) -> (Option<u8>, Option<u8>) {
-    match nibble {
-        None => (Some(chiffre), None),
-        Some(haut) => (None, Some((haut << 4) | chiffre)),
+            });
     }
 }
 
@@ -1600,6 +1833,30 @@ mod tests {
             adresses_utiles(&elf(0x400000)),
             "chargé ailleurs, la colonne apprend quelque chose"
         );
+    }
+
+    /// Un flottant se lit, ou se dit en notation scientifique.
+    ///
+    /// `to_string` d'un `f64` rend tous les chiffres nécessaires pour
+    /// le relire exactement : sur un motif d'octets quelconque, trois
+    /// cents caractères de zéros qui sortaient de la colonne.
+    #[test]
+    fn un_flottant_ne_deborde_jamais_de_sa_ligne() {
+        // Ce qui se lit garde son écriture ordinaire.
+        assert_eq!(flottant(1.5), "1.5");
+        assert_eq!(flottant(0.0), "0");
+        assert_eq!(flottant(-42.0), "-42");
+        // Ce qui ne se lit pas se dit autrement — et tient.
+        let minuscule = f64::from_le_bytes([0x88, 0xf0, 0x3f, 0, 0, 0, 0, 0]);
+        let écrit = flottant(minuscule);
+        assert!(
+            écrit.len() <= 24,
+            "un flottant doit tenir sur sa ligne : {écrit:?} ({} signes)",
+            écrit.len()
+        );
+        assert!(écrit.contains('e'), "en notation scientifique : {écrit:?}");
+        // Et l'on ne perd rien de ce qui compte : l'ordre de grandeur.
+        assert!(flottant(f64::INFINITY).contains("inf"), "l'infini se nomme");
     }
 
     #[test]

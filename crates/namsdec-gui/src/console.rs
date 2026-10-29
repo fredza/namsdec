@@ -10,6 +10,16 @@
 
 use super::*;
 
+/// Les marges du cadre qui entoure la fenêtre de sortie : huit en
+/// haut, huit en bas.
+///
+/// Elles sont écrites ici parce que TROIS calculs doivent compter la
+/// même chose — ce que la console demande, le plancher qu'elle se
+/// donne, et le cadre lui-même. Elles ne figuraient dans aucun des
+/// deux premiers, et une console qui demande moins que son propre
+/// plancher arrive à l'écran coincée à son minimum.
+pub(crate) const MARGES_DE_LA_SORTIE: f32 = 16.0;
+
 /// Ce qu'une boîte SANS ASCENSEUR peut montrer de la fin d'une sortie :
 /// autant de lignes qu'il en tient, et combien restent au-dessus.
 ///
@@ -114,11 +124,31 @@ impl NamsdecApp {
                         .max(1)
                 })
                 .unwrap_or(1),
-            ConsoleTab::Diagnostics => self.diagnostics.len().max(1),
+            // Trois lignes par simplification : son titre, et deux
+            // pour l'explication repliée.
+            ConsoleTab::Diagnostics => {
+                (self.diagnostics.len() + self.combien_de_simplifications() * 3).max(1)
+            }
             // Une ligne par ligne chaude, plus l'en-tête et le total.
             ConsoleTab::Profile => self.line_visits().len().max(1) + 2,
         };
         // Les onglets, le séparateur et les marges du panneau.
+        //
+        // CE NOMBRE A L'AIR FAUX ET NE L'EST PAS. La rangée d'onglets
+        // mesure `ONGLET_HAUTEUR` — 26 —, et non la hauteur du texte
+        // d'un bouton — 15 : la formule semble donc compter onze pixels
+        // de moins que la console n'en occupe. Corrigé le 28 octobre
+        // 2026, puis DÉFAIT sur mesure : avec `ONGLET_HAUTEUR + 28`, la
+        // console réclame onze pixels de plus, les obtient, et une ligne
+        // de sa sortie se fait rogner par le bas — vu sur la capture de
+        // la scène « console / Output (en marche) », à comparer avec la
+        // même avant le changement, où rien n'est coupé.
+        //
+        // Autrement dit, ce qui ressemble à une sous-estimation est ce
+        // qui tient : réclamer la hauteur exacte fait déborder le
+        // panneau, et un panneau qui déborde vole la place de son voisin
+        // au lieu de la rendre. Le pourquoi n'est pas ici ; la mesure,
+        // si.
         let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
         // La zone de saisie, comptée ligne à ligne comme elle se dessine.
         //
@@ -135,7 +165,14 @@ impl NamsdecApp {
         let entrée = self
             .console_input_estimate(ui)
             .max(self.console_input_height.unwrap_or(0.0));
-        let contenu = ligne * lignes.min(12) as f32;
+        // La sortie, et les marges du cadre qui l'entoure : huit en
+        // haut, huit en bas, qui ne figuraient nulle part. La hauteur
+        // demandée tombait donc SOUS le plancher que la même console se
+        // donne plus loin, et egui, la voyant à son minimum, changeait
+        // le pointeur de sa poignée en flèche à sens unique. Deux
+        // formules pour une même console doivent compter les mêmes
+        // choses.
+        let contenu = ligne * lignes.min(12) as f32 + MARGES_DE_LA_SORTIE;
         (chrome + entrée + contenu).max(CONSOLE_MIN_HEIGHT)
     }
 
@@ -182,6 +219,40 @@ impl NamsdecApp {
                 hauteur += rangée * 3.0;
             }
         }
+        // LA PHRASE DU DESSOUS, qui n'était comptée nulle part.
+        //
+        // Sous la rangée « Entrée : », la zone dit encore une chose :
+        // combien d'octets attendent d'être lus, ou — quand rien dans
+        // le programme ne les lira — ce que la saisie deviendra. Cette
+        // ligne-là manquait au compte, et c'est elle qu'on perdait :
+        // console figée à la poignée et environnement déplié, il n'en
+        // restait que trois pixels de haut sur quinze, un filet de
+        // sommets de lettres au ras de la barre de statut.
+        //
+        // Le mensonge est en deux temps. La zone réclame ce que cette
+        // fonction annonce ; quand elle en veut plus, egui la RAMÈNE à
+        // la place disponible en gardant son bas, si bien que la
+        // hauteur relevée à l'image suivante est celle qu'on lui a
+        // allouée — jamais celle qu'il lui fallait. Le `max` avec cette
+        // mesure ne rattrape donc rien : c'est ici, et nulle part
+        // ailleurs, que le compte doit être juste.
+        let dit_quelque_chose_dessous = self
+            .emulator
+            .as_ref()
+            .is_some_and(|emulator| emulator.pending_input() > 0)
+            || (!matches!(self.status, Status::WaitingForInput) && !self.program_reads);
+        if dit_quelque_chose_dessous {
+            hauteur += rangée;
+        }
+        // Le code de sortie, annoncé au-dessus de la saisie dès que le
+        // programme s'est terminé : son trait de séparation et sa ligne.
+        if self
+            .emulator
+            .as_ref()
+            .is_some_and(|emulator| emulator.exit_code().is_some())
+        {
+            hauteur += rangée + 6.0 + ui.spacing().item_spacing.y * 2.0;
+        }
         // Ce qui n'est pas une rangée, compté terme à terme plutôt
         // qu'arrondi : un forfait de 24 px paraissait large et manquait
         // de neuf — juste assez pour couper la rangée « Entrée » en
@@ -220,24 +291,51 @@ impl NamsdecApp {
     /// hautes de rien.
     pub(crate) fn console_panel_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
-        ui.horizontal_wrapped(|ui| {
-            for tab in ConsoleTab::ALL {
-                // Le compte des diagnostics se lit sur l'onglet : c'est
-                // ce qui fait remarquer un avertissement qu'on n'était
-                // pas allé chercher.
-                let label = if tab == ConsoleTab::Diagnostics && !self.diagnostics.is_empty() {
-                    format!("{} ({})", tab.label(s), self.diagnostics.len())
+        // LE MÊME IDIOME D'ONGLETS QUE PARTOUT AILLEURS. Ces trois-là
+        // étaient des `selectable_label` : l'onglet choisi prenait le
+        // bleu plein de la sélection, c'est-à-dire l'apparence d'un
+        // bouton d'action — dans la fenêtre des préférences, l'onglet
+        // « Général » et le bouton « OK » se peignaient pareil. Un
+        // sélecteur et une commande ne doivent pas se ressembler.
+        //
+        // `rangée_d_onglets` en prévenait : « le jour où l'une des deux
+        // divergerait, l'application aurait trois idiomes d'onglets au
+        // lieu de deux ». Elle en avait trois, et son inventaire ne les
+        // comptait pas — la console et les préférences n'étaient pas
+        // passées par elle.
+        //
+        // Le compte des diagnostics se lit sur l'onglet : c'est ce qui
+        // fait remarquer un avertissement qu'on n'était pas allé
+        // chercher.
+        let libellés: Vec<String> = ConsoleTab::ALL
+            .iter()
+            .map(|tab| {
+                // Les simplifications comptent avec les diagnostics :
+                // elles sont dans le même onglet, et un compteur qui
+                // n'annonce qu'une partie de ce qu'il y a à lire est
+                // pire que pas de compteur.
+                if *tab == ConsoleTab::Diagnostics
+                    && self.diagnostics.len() + self.combien_de_simplifications() > 0
+                {
+                    format!(
+                        "{} ({})",
+                        tab.label(s),
+                        self.diagnostics.len() + self.combien_de_simplifications()
+                    )
                 } else {
                     tab.label(s).to_owned()
-                };
-                if ui
-                    .selectable_label(self.console_tab == tab, label)
-                    .clicked()
-                {
-                    self.console_tab = tab;
                 }
-            }
-        });
+            })
+            .collect();
+        let étiquettes: Vec<(&str, Option<&str>)> =
+            libellés.iter().map(|l| (l.as_str(), None)).collect();
+        let actif = ConsoleTab::ALL
+            .iter()
+            .position(|tab| *tab == self.console_tab)
+            .unwrap_or(0);
+        if let Some(rang) = rangée_d_onglets(ui, self.theme, &étiquettes, actif, 0.0, |_| {}) {
+            self.console_tab = ConsoleTab::ALL[rang];
+        }
         ui.separator();
         match self.console_tab {
             ConsoleTab::Output => self.output_ui(ui),
@@ -472,6 +570,80 @@ impl NamsdecApp {
         }
     }
 
+    /// Combien de simplifications l'exécution en cours a touchées.
+    ///
+    /// Zéro quand aucun programme ne tourne : le recensement complet
+    /// est dans le manuel, l'onglet ne compte que ce qui a eu lieu.
+    pub(crate) fn combien_de_simplifications(&self) -> usize {
+        self.emulator
+            .as_ref()
+            .map(|emulator| emulator.touched_simplifications().len())
+            .unwrap_or(0)
+    }
+
+    /// Les comportements que l'exécution en cours a simplifiés, chacun
+    /// avec ce qu'il change.
+    ///
+    /// Rien quand il n'y a rien : une rubrique « aucune approximation »
+    /// affichée en permanence devient du décor, et ce n'est pas le but.
+    /// Ce qui est montré ici est ce que CE programme a touché — le
+    /// recensement complet est dans le manuel, sous « arrondi ».
+    pub(crate) fn simplifications_ui(&mut self, ui: &mut egui::Ui) {
+        let (lang, theme) = (self.lang, self.theme);
+        let fr = lang == Lang::Fr;
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let vues = emulator.touched_simplifications();
+        if vues.is_empty() {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(
+                theme.warn,
+                if fr {
+                    "Ce que cette exécution a simplifié :"
+                } else {
+                    "What this run simplified:"
+                },
+            );
+            // Vers la fiche qui tient le recensement entier, et dit
+            // aussi ce qui N'EST PAS simplifié — la précision double,
+            // par exemple, où namsdec répond bit pour bit.
+            if small_framed_button(
+                ui,
+                theme,
+                if fr {
+                    "Lire la fiche « arrondi »"
+                } else {
+                    "Read the \"rounding\" entry"
+                },
+            )
+            .clicked()
+            {
+                self.help = Some(("arrondi".to_owned(), namsdec_doc::lookup("arrondi")));
+                self.help_back.clear();
+                self.help_query.clear();
+                self.show_help = true;
+            }
+        });
+        for quoi in vues {
+            ui.colored_label(
+                theme.warn,
+                egui::RichText::new(format!("• {}", limites::titre(lang, quoi))).monospace(),
+            );
+            ui.indent(("simplification", quoi.cle()), |ui| {
+                // `prose` et non un label simple : les explications
+                // citent des instructions entre accents graves, et un
+                // accent grave peint tel quel est un caractère parasite
+                // qui dit au lecteur que personne n'a regardé.
+                let texte = limites::explication(lang, quoi);
+                ui.label(prose(ui, theme, texte));
+            });
+        }
+        ui.separator();
+    }
+
     /// Ce que nasm a dit de la source, une ligne par diagnostic.
     pub(crate) fn diagnostics_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
@@ -511,13 +683,33 @@ impl NamsdecApp {
             ui.colored_label(theme.dim, egui::RichText::new(commande).monospace());
         }
         ui.separator();
-        if self.diagnostics.is_empty() {
-            ui.colored_label(theme.dim, s.no_diagnostics);
-            return;
-        }
+        // TOUT CE QUI GRANDIT VA DANS LA ZONE DÉFILANTE — la rubrique
+        // des simplifications comprise. Posée au-dessus d'elle, elle
+        // poussait le panneau : à 800x520, la rangée d'onglets de la
+        // console se peignait sur les numéros de ligne de l'éditeur.
+        // C'est le défaut d'A 9.37, « un panneau qui déborde vole la
+        // place de son voisin », et il revient par tout contenu qu'on
+        // ajoute en dehors du défilement. Seules l'annonce et les deux
+        // commandes restent fixes : leur hauteur, elle, ne dépend de
+        // rien.
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
             .show(ui, |ui| {
+                // Ce que l'exécution a simplifié, s'il y a lieu, et en
+                // TÊTE : c'est l'information que la barre d'état vient
+                // de nommer, et celui qui vient la lire ne doit pas
+                // avoir à défiler. Le compteur de l'onglet la compte
+                // avec les diagnostics de nasm, sans quoi il
+                // promettrait « (1) » et montrerait autre chose.
+                //
+                // Ici et non dans la sortie du programme : ce n'est pas
+                // le programme qui parle, c'est namsdec, et mélanger
+                // les deux voix dans un même flux est le plus sûr moyen
+                // de faire douter de ce qu'on lit.
+                self.simplifications_ui(ui);
+                if self.diagnostics.is_empty() {
+                    ui.colored_label(theme.dim, s.no_diagnostics);
+                }
                 for d in &self.diagnostics {
                     let color = if d.severity == Severity::Error {
                         theme.bad
@@ -601,7 +793,7 @@ impl NamsdecApp {
         // Posée en bas du panneau, la saisie ne bouge plus quoi qu'écrive
         // le programme.
         if self.console_shows_input() {
-            egui::Panel::bottom("console_input")
+            let zone = egui::Panel::bottom("console_input")
                 .resizable(false)
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| {
@@ -622,25 +814,70 @@ impl NamsdecApp {
                         );
                     }
                     self.console_input_ui(ui, pending);
+                    // CE QUE LE CONTENU VOULAIT, ET NON CE QU'ON LUI A
+                    // DONNÉ.
+                    //
+                    // La hauteur se relevait sur l'état du panneau,
+                    // c'est-à-dire sur son rectangle — et egui RAMÈNE ce
+                    // rectangle à la place disponible quand le contenu
+                    // déborde, en gardant son bas. La mesure rendait
+                    // donc la place allouée, jamais la hauteur voulue :
+                    // le panneau restait court parce qu'il était court,
+                    // et le `max` qu'on en faisait plus loin ne
+                    // rattrapait rien.
+                    //
+                    // `min_rect` est l'autre mesure, celle du CONTENU :
+                    // ce que les rangées ont réellement pris, qu'il y
+                    // ait eu la place ou non. C'est elle qui dit à
+                    // l'image suivante combien réserver, et c'est elle
+                    // qui a fait réapparaître les deux rangées du haut —
+                    // les arguments et l'en-tête de l'environnement —
+                    // que le fond de la sortie recouvrait.
+                    ui.min_rect().height()
                 });
-            // Ce que la zone a vraiment pris : c'est cela qu'il faudra
-            // réserver à l'image suivante.
-            self.console_input_height =
-                egui::containers::panel::PanelState::load(ui.ctx(), egui::Id::new("console_input"))
-                    .map(|état| état.outer_rect.height())
-                    .filter(|hauteur| *hauteur > 1.0);
+            self.console_input_height = Some(zone.inner).filter(|hauteur| *hauteur > 1.0);
         } else {
             self.console_input_height = None;
         }
 
         // Le reste de la hauteur revient à la sortie, sur le fond sombre
         // d'un terminal.
+        //
+        // Elle se contente de ce qui reste, fût-ce une demi-ligne :
+        // essayé de lui donner des lignes entières en lui imposant une
+        // hauteur, et REFUSÉ sur mesure — le « jamais moins d'une
+        // ligne » qu'il fallait pour une console serrée la faisait
+        // déborder sur ses voisins, et quatre invariants l'ont dit dans
+        // la minute. Une zone qui défile a le droit de couper ; ce
+        // qu'on protège, c'est la rangée où l'on tape, qui ne défile
+        // pas.
         egui::Frame::new()
             .fill(ui.visuals().extreme_bg_color)
-            .inner_margin(egui::Margin::same(8))
+            .inner_margin(egui::Margin::same((MARGES_DE_LA_SORTIE / 2.0) as i8))
             .show(ui, |ui| {
                 egui::ScrollArea::vertical()
                     .auto_shrink([false, false])
+                    // UNE ZONE DÉFILANTE RÉCLAME SOIXANTE-QUATRE PIXELS
+                    // SI ON NE LUI DIT RIEN, et les prend même quand il
+                    // n'en reste que sept — elle est peinte AVANT la
+                    // saisie dans l'ordre des formes, mais son fond est
+                    // opaque et couvre donc ce qui a été peint avant
+                    // elle. Console figée à la poignée, la rangée des
+                    // arguments et l'en-tête de l'environnement
+                    // disparaissaient ainsi sous le fond du terminal :
+                    // présents, mesurables, invisibles.
+                    //
+                    // Zéro, et non une ligne : la sortie a un
+                    // ascenseur, elle sait donc n'en montrer aucune:
+                    // tandis que la rangée où l'on tape, elle, ne sait
+                    // pas se replier. Qui se serre est celui qui peut.
+                    //
+                    // C'est aussi ce qui laisse à la poignée de quoi
+                    // être tirée : une console dont le plancher vaut
+                    // exactement ce qu'elle demande est coincée à son
+                    // minimum, et egui change alors son pointeur en
+                    // flèche à sens unique.
+                    .min_scrolled_height(0.0)
                     // Ce que le programme vient d'écrire est ce qu'on veut
                     // lire : la vue suit le bas, comme un terminal.
                     .stick_to_bottom(true)
@@ -1251,6 +1488,9 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
         let fr = self.lang == Lang::Fr;
+        // La largeur que les dix cartes partageront, relevée avant la
+        // première : voir `module_card_width`.
+        let large = module_card_width(ui);
 
         module_card(
             ui,
@@ -1259,6 +1499,7 @@ impl NamsdecApp {
             true,
             theme.good,
             s.module_core_detail,
+            large,
         );
 
         let (asm_ok, asm_status) = match &self.nasm_info {
@@ -1286,6 +1527,7 @@ impl NamsdecApp {
             asm_ok,
             if asm_ok { theme.good } else { theme.bad },
             &asm_status,
+            large,
         );
 
         let disasm_status = match &self.assemble_state {
@@ -1311,6 +1553,7 @@ impl NamsdecApp {
             self.assemble_state.is_some(),
             theme.accent,
             &disasm_status,
+            large,
         );
 
         let emu_status = match &self.emulator {
@@ -1341,6 +1584,7 @@ impl NamsdecApp {
             self.emulator.is_some(),
             theme.accent,
             &emu_status,
+            large,
         );
 
         let titles = self.re_registry.titles(self.lang.code());
@@ -1370,6 +1614,7 @@ impl NamsdecApp {
             true,
             theme.good,
             &re_status,
+            large,
         );
 
         // Les modules d'analyse, un par ligne plutôt qu'en énumération
@@ -1407,6 +1652,7 @@ impl NamsdecApp {
                 Some(racine) => format!("{} {}", s.modules_explorer_root, racine.display()),
                 None => s.modules_explorer_none.to_string(),
             },
+            large,
         );
 
         module_card(
@@ -1420,6 +1666,7 @@ impl NamsdecApp {
             } else {
                 format!("{} instruction entries", namsdec_doc::count())
             },
+            large,
         );
 
         let exercices = self
@@ -1448,6 +1695,7 @@ impl NamsdecApp {
             } else {
                 s.modules_inactive.to_string()
             },
+            large,
         );
 
         let thèmes = namsdec_theme::all().len();
@@ -1468,6 +1716,7 @@ impl NamsdecApp {
                     self.theme_files.len()
                 )
             },
+            large,
         );
 
         let (maj_ok, maj_couleur, maj_texte) = match &self.update_result {
@@ -1482,6 +1731,7 @@ impl NamsdecApp {
             maj_ok,
             maj_couleur,
             &maj_texte,
+            large,
         );
 
         // Et ce qui vient de fichiers : thèmes et outils déposés dans le

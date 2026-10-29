@@ -152,13 +152,13 @@ pub fn markdown(lang: &str) -> String {
     });
     out.push_str(&if fr {
         format!(
-            "{} fiches : les instructions que namsdec exécute, les              directives de NASM, le préprocesseur, et les notions que              tout le reste suppose.
+            "{} fiches : les instructions que namsdec exécute, les directives de NASM, le préprocesseur, et les notions que tout le reste suppose.
 ",
             count()
         )
     } else {
         format!(
-            "{} sheets: the instructions namsdec runs, NASM's              directives, the preprocessor, and the concepts everything              else takes for granted.
+            "{} sheets: the instructions namsdec runs, NASM's directives, the preprocessor, and the concepts everything else takes for granted.
 ",
             count()
         )

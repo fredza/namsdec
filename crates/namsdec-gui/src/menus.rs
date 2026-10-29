@@ -569,7 +569,7 @@ impl NamsdecApp {
                         self.dispatch(Action::RunToCursor);
                         ui.close();
                     }
-                    ui.add_enabled_ui(self.running, |ui| {
+                    ui.add_enabled_ui(self.running || self.assembling(), |ui| {
                         if ui
                             .button(s.action_stop)
                             .on_disabled_hover_text(s.why_nothing_running)
@@ -1071,7 +1071,7 @@ impl NamsdecApp {
                     self.dispatch(Action::StepBack);
                 }
             });
-            ui.add_enabled_ui(self.running, |ui| {
+            ui.add_enabled_ui(self.running || self.assembling(), |ui| {
                 if icon_button(ui, icon_stop, s.action_stop)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,

@@ -259,7 +259,7 @@ fn opening_a_binary_never_lays_out_the_whole_listing() {
     }
     assert!(
         plus_grande <= 2,
-        "la plus grande galère peinte porte {plus_grande} rangées : le listing          est remis en page d'un bloc quelque part"
+        "la plus grande galère peinte porte {plus_grande} rangées : le listing est remis en page d'un bloc quelque part"
     );
     // Les images se suivent sans rien reposer : le compteur ne bouge
     // plus une fois la première passée (il compte la mesure du pas, qui
@@ -678,6 +678,63 @@ fn the_visible_rows_are_the_same_the_dichotomy_finds_them() {
 /// et ce serait exactement le défaut qu'on vient de corriger si cela
 /// revenait à chaque image.
 ///
+/// Un texte énorme se pose sans couleur, et c'est la pose qu'on épargne.
+///
+/// LE GEL D'ENTRÉE EN INSERTION, mesuré : sur deux cent mille lignes,
+/// la première image coûtait 2,9 secondes. Ce n'est pas la coloration
+/// qui les prend — elle en vaut 437 millisecondes — mais ce qu'elle
+/// PRODUIT : un job de 1 200 001 sections, six par ligne, qu'egui met
+/// 2,46 s à poser. Le même texte en une seule section se pose en 1,13.
+///
+/// Au-delà du seuil, le job ne porte donc qu'une section. Mesuré
+/// après : 2,95 s tombent à 1,02, et 763 ms à 285 sur cinquante mille
+/// lignes. Le mode Normal, lui, garde ses couleurs — il ne pose que
+/// les lignes qu'il montre.
+#[test]
+fn un_texte_enorme_se_pose_sans_couleur() {
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let petit = "    mov rax, 1\n    hlt\n";
+    let gros: String = (0..30_000).map(|i| format!("    mov rax, {i}\n")).collect();
+    assert!(
+        gros.len() > crate::syntax::SANS_COULEUR_AU_DELÀ,
+        "le texte d'épreuve doit dépasser le seuil : {} octets",
+        gros.len()
+    );
+
+    let sections = |texte: &str| -> usize {
+        let mut combien = 0;
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1200.0, 800.0),
+            )),
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(entrée, |ui| {
+            combien = crate::syntax::highlight(ui, app.theme, texte, f32::INFINITY)
+                .sections
+                .len();
+        });
+        sortie.textures_delta.clear();
+        combien
+    };
+
+    // Un texte ordinaire est coloré : plusieurs sections par ligne.
+    let petites = sections(petit);
+    assert!(
+        petites >= 4,
+        "un texte ordinaire doit rester coloré : {petites} sections"
+    );
+    // Un texte énorme n'en porte qu'une, et c'est tout le gain.
+    assert_eq!(
+        sections(&gros),
+        1,
+        "au-delà du seuil, le texte se pose d'un bloc"
+    );
+}
+
 /// En Insertion, le champ de texte reprend la main : il a sa propre
 /// manière de reconnaître le texte (`layout_code`), et le relevé ne lui
 /// sert pas.

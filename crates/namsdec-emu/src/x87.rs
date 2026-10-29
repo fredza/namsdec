@@ -11,7 +11,7 @@ use iced_x86::{Instruction, MemorySize, Mnemonic, OpKind, Register};
 use namsdec_core::{RFlags, Width, X87};
 
 use crate::vector::FpOp;
-use crate::{EmuError, Emulator, OperandRole, round_even, to_integer};
+use crate::{EmuError, Emulator, OperandRole, Simplification, round_even, to_integer};
 
 /// L'indice de la dernière opérande, s'il y en a une. Le décodeur rend
 /// explicites les opérandes implicites du x87 — `fcom st1` devient
@@ -154,17 +154,40 @@ impl Emulator {
 
             M::Fchs => self.x87_map(|v| -v),
             M::Fabs => self.x87_map(f64::abs),
-            M::Fsqrt => self.x87_map(f64::sqrt),
-            M::Fsin => self.x87_map(f64::sin),
-            M::Fcos => self.x87_map(f64::cos),
-            M::Frndint => self.x87_map(round_even),
-            M::F2xm1 => self.x87_map(|v| v.exp2() - 1.0),
+            M::Fsqrt => {
+                let v = self.cpu.regs.x87.get(0).sqrt();
+                let v = self.shorten_x87(v);
+                self.cpu.regs.x87.set(0, v);
+            }
+            // Les transcendantes : le x87 les calcule sur son format
+            // étendu et avec son propre polynôme, namsdec les confie à
+            // la bibliothèque de Rust. Les derniers bits diffèrent, et
+            // le contrôle de précision ne s'y applique pas même sur le
+            // vrai processeur.
+            M::Fsin => {
+                self.note_simplification(Simplification::X87Transcendantes);
+                self.x87_map(f64::sin)
+            }
+            M::Fcos => {
+                self.note_simplification(Simplification::X87Transcendantes);
+                self.x87_map(f64::cos)
+            }
+            M::Frndint => {
+                let mode = self.cpu.regs.x87;
+                self.x87_map(|v| mode.round_to_integer(v));
+            }
+            M::F2xm1 => {
+                self.note_simplification(Simplification::X87Transcendantes);
+                self.x87_map(|v| v.exp2() - 1.0)
+            }
             M::Fsincos => {
+                self.note_simplification(Simplification::X87Transcendantes);
                 let v = self.cpu.regs.x87.get(0);
                 self.cpu.regs.x87.set(0, v.sin());
                 self.cpu.regs.x87.push(v.cos());
             }
             M::Fptan => {
+                self.note_simplification(Simplification::X87Transcendantes);
                 let v = self.cpu.regs.x87.get(0);
                 self.cpu.regs.x87.set(0, v.tan());
                 // La constante 1 empilée derrière : un héritage du
@@ -173,12 +196,14 @@ impl Emulator {
                 self.cpu.regs.x87.push(1.0);
             }
             M::Fpatan => {
+                self.note_simplification(Simplification::X87Transcendantes);
                 let x = self.cpu.regs.x87.get(0);
                 let y = self.cpu.regs.x87.get(1);
                 self.cpu.regs.x87.set(1, y.atan2(x));
                 self.cpu.regs.x87.pop();
             }
             M::Fyl2x => {
+                self.note_simplification(Simplification::X87Transcendantes);
                 let x = self.cpu.regs.x87.get(0);
                 let y = self.cpu.regs.x87.get(1);
                 self.cpu.regs.x87.set(1, y * x.log2());
@@ -192,6 +217,9 @@ impl Emulator {
             M::Fprem | M::Fprem1 => {
                 let a = self.cpu.regs.x87.get(0);
                 let b = self.cpu.regs.x87.get(1);
+                // `fprem1` est le reste de l'IEEE : son quotient
+                // s'arrondit au plus proche, quel que soit le mode
+                // réglé dans le mot de contrôle.
                 let r = if instr.mnemonic() == M::Fprem {
                     a % b
                 } else {
@@ -201,6 +229,7 @@ impl Emulator {
                 // C2 dirait « reste partiel, recommencez » ; ici le
                 // calcul est complet du premier coup.
                 self.cpu.regs.x87.status &= !X87::C2;
+                self.note_simplification(Simplification::X87FpremEnUnPas);
             }
 
             M::Fcom | M::Fcomp | M::Fcompp | M::Fucom | M::Fucomp | M::Fucompp | M::Ftst => {
@@ -276,6 +305,7 @@ impl Emulator {
             }
 
             M::Fstsw | M::Fnstsw => {
+                self.note_simplification(Simplification::X87MotDEtatPartiel);
                 let word = self.cpu.regs.x87.status_word();
                 match instr.op_kind(0) {
                     OpKind::Register => self.set_reg(instr.op_register(0), u64::from(word))?,
@@ -289,15 +319,24 @@ impl Emulator {
             M::Fstcw | M::Fnstcw => {
                 let addr = self.effective_address(instr, 0)?;
                 self.record_memory(addr, 2);
-                // Le mot de contrôle au repos : précision étendue,
-                // arrondi au plus proche, toutes les exceptions masquées.
-                self.cpu.mem.write_u16(addr, 0x037f)?;
+                self.cpu.mem.write_u16(addr, self.cpu.regs.x87.control)?;
             }
-            // Le mode d'arrondi ne change rien ici : tout est calculé en
-            // double précision, et l'arrondi au plus proche est le seul
-            // simulé. L'instruction est acceptée pour que le programme
-            // qui l'écrit continue de tourner.
-            M::Fldcw => {}
+            // Le mot de contrôle est un vrai registre : ce qu'un
+            // programme y pose gouverne l'arrondi des conversions et la
+            // précision des opérations de base, et se relit tel quel.
+            //
+            // Ce qu'il ne gouverne pas ici : les six bits de masquage
+            // d'exception (0 à 5). Aucune exception n'est levée, donc
+            // les démasquer ne change rien — c'est recensé sous
+            // `X87ExceptionsMasquees`.
+            M::Fldcw => {
+                let addr = self.effective_address(instr, 0)?;
+                let word = self.cpu.mem.read_u16(addr)?;
+                self.cpu.regs.x87.control = word;
+                if word & 0x003f != 0x003f {
+                    self.note_simplification(Simplification::X87ExceptionsMasquees);
+                }
+            }
             M::Finit | M::Fninit => self.cpu.regs.x87.reset(),
             M::Ffree | M::Ffreep => {
                 let i = last_operand(instr)
@@ -325,7 +364,7 @@ impl Emulator {
     /// La valeur d'un opérande flottant : une case de la pile, ou ce que
     /// la mémoire contient — un flottant simple, double ou étendu, ou un
     /// entier de 16, 32 ou 64 bits pour les formes `fi…`.
-    fn read_fp_operand(&self, instr: &Instruction, op_index: u32) -> Result<f64, EmuError> {
+    fn read_fp_operand(&mut self, instr: &Instruction, op_index: u32) -> Result<f64, EmuError> {
         if let Some(i) = st_operand(instr, op_index) {
             return Ok(self.cpu.regs.x87.get(i));
         }
@@ -333,7 +372,10 @@ impl Emulator {
         Ok(match instr.memory_size() {
             MemorySize::Float32 => f64::from(f32::from_bits(self.cpu.mem.read_u32(addr)?)),
             MemorySize::Float64 => f64::from_bits(self.cpu.mem.read_u64(addr)?),
-            MemorySize::Float80 => f80_to_f64(self.cpu.mem.bytes_at(addr, 10)?),
+            MemorySize::Float80 => {
+                self.note_simplification(Simplification::X87FormatEtenduEnMemoire);
+                f80_to_f64(self.cpu.mem.bytes_at(addr, 10)?)
+            }
             MemorySize::Int16 => f64::from(self.cpu.mem.read_u16(addr)? as i16),
             MemorySize::Int32 => f64::from(self.cpu.mem.read_u32(addr)? as i32),
             MemorySize::Int64 => self.cpu.mem.read_u64(addr)? as i64 as f64,
@@ -357,10 +399,12 @@ impl Emulator {
         truncate: bool,
     ) -> Result<(), EmuError> {
         let addr = self.effective_address(instr, op_index)?;
+        // `fisttp` tranche vers zéro quoi qu'il arrive ; les autres
+        // suivent le mode réglé dans le mot de contrôle.
         let rounded = if truncate {
             value.trunc()
         } else {
-            round_even(value)
+            self.cpu.regs.x87.round_to_integer(value)
         };
         match instr.memory_size() {
             MemorySize::Float32 => {
@@ -372,6 +416,7 @@ impl Emulator {
                 self.cpu.mem.write_u64(addr, value.to_bits())?;
             }
             MemorySize::Float80 => {
+                self.note_simplification(Simplification::X87FormatEtenduEnMemoire);
                 self.record_memory(addr, 10);
                 self.cpu.mem.write_bytes(addr, &f64_to_f80(value))?;
             }
@@ -432,6 +477,7 @@ impl Emulator {
         } else {
             op.apply64(a, src)
         };
+        let result = self.shorten_x87(result);
         self.cpu.regs.x87.set(dest, result);
         if pop {
             self.cpu.regs.x87.pop();
@@ -441,7 +487,7 @@ impl Emulator {
 
     /// Ce à quoi `fcom` et ses variantes comparent le sommet : `st1` par
     /// défaut, la case ou la valeur nommée sinon.
-    fn x87_comparand(&self, instr: &Instruction) -> Result<f64, EmuError> {
+    fn x87_comparand(&mut self, instr: &Instruction) -> Result<f64, EmuError> {
         match last_operand(instr) {
             // `fcom` tout court compare le sommet à celui d'en dessous.
             None => Ok(self.cpu.regs.x87.get(1)),

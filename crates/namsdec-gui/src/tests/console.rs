@@ -257,11 +257,21 @@ fn the_console_takes_the_height_of_what_it_has_to_say() {
     };
 
     // Rien à dire : la console se réduit à ses onglets et à son champ.
+    //
+    // LE MINIMUM CONSTANT NE CONNAÎT PAS LES MARGES DU CADRE de la
+    // sortie — seize pixels qu'une console, même vide, peint toujours.
+    // La comparaison se faisait contre `CONSOLE_MIN_HEIGHT` seul, et
+    // elle passait tant que ces seize pixels manquaient aussi au calcul
+    // de la hauteur demandée : deux erreurs qui se tenaient chaud. La
+    // console demandait alors moins que le plancher qu'elle se donne
+    // elle-même, et arrivait à l'écran coincée à son minimum.
+    let vide = CONSOLE_MIN_HEIGHT + crate::console::MARGES_DE_LA_SORTIE;
     let mut app = NamsdecApp::default();
-    let vide = mesure(&mut app);
+    let mesurée = mesure(&mut app);
     assert!(
-        vide <= CONSOLE_MIN_HEIGHT + 1.0,
-        "une console vide réclame {vide} pixels"
+        mesurée <= vide + 1.0,
+        "une console vide réclame {mesurée} pixels, et non les {vide} de ses \
+         onglets, de son cadre et d'une ligne"
     );
 
     // Vingt lignes écrites : elle grandit, mais pas sans fin.
@@ -1642,5 +1652,268 @@ fn les_commandes_ne_sont_dites_lancees_que_si_elles_l_ont_ete() {
         let s = strings(lang);
         assert!(!s.assemble_commands.trim().is_empty());
         assert!(!s.assemble_commands_future.trim().is_empty());
+    }
+}
+
+/// Rien de la zone de saisie n'est coupé ni recouvert, à quelque
+/// hauteur que soit la console.
+///
+/// Sous la rangée « Entrée : », la zone dit encore une chose : combien
+/// d'octets attendent d'être lus, ou — quand rien dans le programme ne
+/// les lira — ce que la saisie deviendra. Console figée à la poignée et
+/// environnement déplié, il n'en restait que TROIS pixels de haut sur
+/// quinze : un filet de sommets de lettres au ras de la barre de
+/// statut, qu'on prenait pour un trait.
+///
+/// La phrase n'était comptée nulle part dans `console_input_estimate`,
+/// et la mesure de l'image précédente ne pouvait pas rattraper
+/// l'oubli : quand la zone réclame plus que la place, egui la RAMÈNE à
+/// la place disponible en gardant son bas, si bien que la hauteur
+/// relevée est celle qu'on lui a allouée, jamais celle qu'il lui
+/// fallait — le panneau restait court parce qu'il était court.
+///
+/// L'AUTRE MOITIÉ DU CONTRÔLE — et c'est elle qui a trouvé le second
+/// défaut. Une zone défilante réclame soixante-quatre pixels quand on
+/// ne lui dit rien, et les prend même s'il n'en reste que sept : la
+/// fenêtre de sortie s'étendait alors sur la saisie et peignait son
+/// fond opaque par-dessus. La rangée des arguments et l'en-tête de
+/// l'environnement étaient là, entiers, mesurables — et invisibles.
+/// Aucune mesure de découpage ne bouge dans ce cas ; il faut regarder
+/// l'ORDRE des formes.
+///
+/// Éprouvé en remettant chacun des deux défauts : le premier fait
+/// rougir le découpage sur quinze scènes, le second le recouvrement.
+#[test]
+fn nothing_of_the_input_area_is_ever_cut_off_or_covered() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let s = strings(Lang::Fr);
+    // Ce que la zone de saisie écrit, d'un bout à l'autre : l'attente,
+    // les arguments, l'environnement, la rangée où l'on tape, et la
+    // phrase du dessous.
+    let à_elle = [
+        s.console_waiting,
+        s.console_waiting_how,
+        s.console_args,
+        s.console_args_apply,
+        s.console_env,
+        s.console_env_hint,
+        s.console_input_label,
+        s.console_input_hint,
+        s.console_send,
+        s.console_eof,
+        s.console_no_read,
+    ];
+    let mut coupés: Vec<String> = Vec::new();
+    for écran in [700.0_f32, 900.0, 1209.0] {
+        // Automatique, puis trois hauteurs figées comme on les fige :
+        // en tirant la poignée.
+        for figée in [None, Some(130.0_f32), Some(200.0), Some(260.0)] {
+            for env in [false, true] {
+                for lit in [false, true] {
+                    let ctx = egui::Context::default();
+                    let mut app = NamsdecApp {
+                        show_console: true,
+                        console_tab: ConsoleTab::Output,
+                        ..Default::default()
+                    };
+                    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
+                    app.console_env_open = env;
+                    app.program_reads = lit;
+                    app.console_height = figée;
+                    app.apply_theme(&ctx);
+                    let input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(1600.0, écran),
+                        )),
+                        ..Default::default()
+                    };
+                    // Quatre images : une surface ancrée ne connaît sa
+                    // hauteur qu'après s'être disposée une fois, et la
+                    // console s'ajuste à ce qu'elle a relevé.
+                    for _ in 0..4 {
+                        coupés.clear();
+                        let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+                        for (rang, clipped) in output.shapes.iter().enumerate() {
+                            let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                                continue;
+                            };
+                            if !à_elle
+                                .iter()
+                                .any(|texte| t.galley.text().starts_with(texte))
+                            {
+                                continue;
+                            }
+                            // Ce qui est peint APRÈS ce texte et le
+                            // couvre d'un fond opaque. On s'en tient
+                            // aux fonds pleins : le liseré de l'attente
+                            // et les survols sont translucides, et ils
+                            // ont le droit de passer dessus.
+                            let encre_du_texte = egui::Rect::from_min_size(t.pos, t.galley.size());
+                            for dessus in output.shapes.iter().skip(rang + 1) {
+                                let egui::epaint::Shape::Rect(r) = &dessus.shape else {
+                                    continue;
+                                };
+                                if r.fill.a() < 255 {
+                                    continue;
+                                }
+                                let couvert =
+                                    encre_du_texte.intersect(r.rect.intersect(dessus.clip_rect));
+                                if couvert.is_positive()
+                                    && couvert.height() > encre_du_texte.height() * 0.5
+                                    && couvert.width() > encre_du_texte.width() * 0.5
+                                {
+                                    coupés.push(format!(
+                                        "écran {écran:.0}, console {figée:?}, \
+                                         environnement {env} : « {} » recouvert par un fond \
+                                         {:?} peint après lui",
+                                        t.galley.text().chars().take(32).collect::<String>(),
+                                        r.fill,
+                                    ));
+                                }
+                            }
+                            for ligne in t.galley.rows.iter() {
+                                let encre = ligne
+                                    .rect_without_leading_space()
+                                    .translate(t.pos.to_vec2());
+                                if !encre.is_positive() {
+                                    continue;
+                                }
+                                let vu = encre.intersect(clipped.clip_rect);
+                                if vu.height() + 0.5 < encre.height() {
+                                    coupés.push(format!(
+                                        "écran {écran:.0}, console {figée:?}, \
+                                         environnement {env} : « {} » {:.0} px de haut sur {:.0}",
+                                        ligne.text().chars().take(32).collect::<String>(),
+                                        vu.height().max(0.0),
+                                        encre.height()
+                                    ));
+                                }
+                            }
+                        }
+                        output.textures_delta.clear();
+                    }
+                    assert!(
+                        coupés.is_empty(),
+                        "la zone de saisie est coupée : {coupés:#?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// La rubrique des simplifications paraît dans Diagnostics quand le
+/// programme en a touché une, et pas avant.
+///
+/// Trois choses mesurées sur ce qui est PEINT, et non sur le code :
+/// la rubrique est absente d'un programme qui ne touche pas au
+/// coprocesseur ; elle paraît avec son titre et son explication dès
+/// qu'un `fsin` est passé ; et aucune de ses lignes n'est rognée en
+/// hauteur par la découpe du panneau — une explication de quatre lignes
+/// dans une console basse est exactement le cas où une rubrique
+/// nouvelle vole la place des diagnostics de nasm.
+#[test]
+fn les_simplifications_paraissent_dans_les_diagnostics() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    const SANS_X87: &str = "\
+section .text
+global _start
+_start:
+    mov rax, 60
+    xor edi, edi
+    syscall
+";
+    // `fsin` et rien d'autre : une seule simplification touchée, donc
+    // une seule ligne attendue — un programme qui en toucherait quatre
+    // ne dirait pas si la rubrique les montre toutes ou se répète.
+    const AVEC_X87: &str = "\
+section .data
+angle dq 1.0
+sortie dq 0.0
+
+section .text
+global _start
+_start:
+    fld qword [angle]
+    fsin
+    fstp qword [sortie]
+    hlt
+";
+
+    for lang in [Lang::Fr, Lang::En] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            lang,
+            show_console: true,
+            source: SANS_X87.to_owned(),
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        for _ in 0..40 {
+            app.do_step();
+        }
+        app.console_tab = ConsoleTab::Diagnostics;
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+        let peint = |lignes: &[(String, egui::Rect)], quoi: &str| {
+            lignes.iter().any(|(t, _)| t.contains(quoi))
+        };
+        let annonce = if lang == Lang::Fr {
+            "Ce que cette exécution a simplifié"
+        } else {
+            "What this run simplified"
+        };
+        assert!(
+            !peint(&lignes, annonce),
+            "un programme sans x87 ne doit rien annoncer ({lang:?})"
+        );
+
+        // Le même écran, avec un programme qui touche le coprocesseur.
+        app.source = AVEC_X87.to_owned();
+        app.do_assemble();
+        for _ in 0..40 {
+            app.do_step();
+        }
+        app.console_tab = ConsoleTab::Diagnostics;
+        let (_, lignes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+        assert!(
+            peint(&lignes, annonce),
+            "`fsin` a été exécuté : la rubrique doit paraître ({lang:?}) — \
+             peint : {:?}",
+            lignes.iter().map(|(t, _)| t).take(24).collect::<Vec<_>>()
+        );
+        let titre = limites::titre(lang, namsdec_emu::Simplification::X87Transcendantes);
+        // La puce est devant le titre : on cherche le titre, pas la
+        // ligne entière.
+        assert!(
+            peint(&lignes, titre),
+            "le titre de la simplification est peint ({lang:?}) : {titre}"
+        );
+        let explication =
+            limites::explication(lang, namsdec_emu::Simplification::X87Transcendantes);
+        // Un fragment, et non la phrase : egui replie l'explication sur
+        // plusieurs lignes, et aucune ne porte le texte entier. Pris
+        // dans le plus long morceau SANS accent grave, parce que
+        // `prose` découpe le texte à chacun pour peindre le code en
+        // monospace — un fragment à cheval sur un accent grave ne
+        // serait jamais peint d'un seul tenant.
+        let début: String = explication
+            .split('`')
+            .step_by(2)
+            .max_by_key(|morceau| morceau.len())
+            .unwrap_or(explication)
+            .trim()
+            .chars()
+            .take(18)
+            .collect();
+        assert!(
+            peint(&lignes, &début),
+            "l'explication est peinte et non seulement le titre ({lang:?}) : {début}"
+        );
     }
 }

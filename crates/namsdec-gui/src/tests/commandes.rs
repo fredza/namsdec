@@ -1157,11 +1157,11 @@ fn les_touches_s_ecrivent_comme_le_manuel_les_ecrit() {
     };
     assert!(
         !assemblage.contains("\" puis \""),
-        "le manuel sépare encore les touches d'une séquence par « puis » :          l'écran écrit « Espace s i »"
+        "le manuel sépare encore les touches d'une séquence par « puis » : l'écran écrit « Espace s i »"
     );
     assert!(
         assemblage.contains("_minuscule("),
-        "le manuel doit écrire les lettres d'une séquence en minuscule,          comme l'écran"
+        "le manuel doit écrire les lettres d'une séquence en minuscule, comme l'écran"
     );
 
     // La forme complète, telle qu'on la lit dans la prose du projet.

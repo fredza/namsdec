@@ -2441,3 +2441,192 @@ fn sans_decompilateur_la_vue_se_presente_avant_de_donner_sa_notice() {
         &source[i..i + 200]
     );
 }
+
+/// Une recette d'épreuve : des commandes qu'on écrit soi-même, pour
+/// éprouver l'installation sans rien installer.
+///
+/// `produces` désigne un fichier qui n'existera jamais : les contrôles
+/// qui suivent arrêtent ou font échouer la recette avant la fin, et
+/// c'est volontaire — une installation qui RÉUSSIT appelle
+/// `declare_tool`, lequel écrit dans les fichiers de l'utilisateur. Un
+/// contrôle n'a rien à y faire.
+fn recette_d_epreuve(dossier: &Path, commandes: &[&str]) -> namsdec_disasm::install::Recipe {
+    namsdec_disasm::install::Recipe {
+        tool: "epreuve",
+        steps: commandes
+            .iter()
+            .map(|script| namsdec_disasm::install::Step {
+                about_fr: "épreuve".to_owned(),
+                about_en: "test".to_owned(),
+                command: "sh".to_owned(),
+                args: vec!["-c".to_owned(), (*script).to_owned()],
+                cwd: None,
+            })
+            .collect(),
+        requires: Vec::new(),
+        cost_fr: "",
+        cost_en: "",
+        produces: dossier.join("jamais-produit"),
+        source: "",
+        teaches_fr: "",
+        teaches_en: "",
+    }
+}
+
+/// Attend que le travail d'installation ait conclu, et rend ce qu'il a
+/// conclu. Borné : un contrôle qui attend sans fin ne dit rien.
+fn attendre_l_installation(app: &mut NamsdecApp) -> Option<Result<PathBuf, String>> {
+    let fin = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while std::time::Instant::now() < fin {
+        if let Some(job) = &app.install_job
+            && let Some(conclu) = job.outcome.lock().expect("le résultat").take()
+        {
+            return Some(conclu);
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    None
+}
+
+/// Arrêter une installation rend la main **pendant** l'étape, et
+/// emporte la descendance de la commande.
+///
+/// Les deux moitiés du défaut de P3, reproduites avant d'être
+/// corrigées : le drapeau d'arrêt n'était consulté qu'ENTRE deux
+/// étapes — donc jamais pendant la compilation dont on voulait sortir —
+/// et les lecteurs étaient rejoints sans échéance, si bien qu'un
+/// petit-fils tenant le tube ouvert faisait attendre trente secondes un
+/// arrêt demandé au bout de trois cents millisecondes.
+///
+/// Le témoin distingue « arrêté » de « abandonné » : s'il apparaît,
+/// c'est que le descendant a continué sa vie.
+#[test]
+fn arreter_une_installation_emporte_la_descendance() {
+    if namsdec_disasm::known::program_path("sh").is_none() {
+        return;
+    }
+    let dossier = tempfile::tempdir().expect("un dossier");
+    let témoin = dossier.path().join("le-petit-fils-a-survecu");
+    // Durées courtes : même si ce contrôle échoue, rien ne traîne sur
+    // la machine plus de huit secondes.
+    let script = format!(
+        "echo je commence; (sleep 1.5; touch {}) & sleep 8",
+        témoin.to_string_lossy()
+    );
+    let mut app = NamsdecApp::default();
+    app.start_install(recette_d_epreuve(dossier.path(), &[&script]));
+    assert!(app.install_job.is_some(), "le travail est lancé");
+
+    // Le temps que l'étape commence, puis on demande l'arrêt — comme le
+    // bouton « Arrêter » de la fenêtre d'installation.
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    let début = std::time::Instant::now();
+    app.install_job
+        .as_ref()
+        .expect("le travail")
+        .cancel
+        .store(true, std::sync::atomic::Ordering::Relaxed);
+
+    let conclu = attendre_l_installation(&mut app).expect("le travail conclut");
+    assert!(conclu.is_err(), "arrêté, donc pas un succès : {conclu:?}");
+    assert!(
+        début.elapsed() < std::time::Duration::from_secs(3),
+        "la main est rendue pendant l'étape, pas à sa fin : {:?}",
+        début.elapsed()
+    );
+    let journal = app.install_job.as_ref().expect("le travail").log.copie();
+    assert!(
+        journal.iter().any(|l| l.contains("je commence")),
+        "ce que l'étape avait écrit n'est pas perdu : {journal:?}"
+    );
+
+    std::thread::sleep(std::time::Duration::from_secs(3));
+    assert!(
+        !témoin.exists(),
+        "le petit-fils a survécu à l'arrêt : il a posé {}",
+        témoin.display()
+    );
+}
+
+/// Une étape qui échoue arrête la recette, en disant son code.
+#[test]
+fn une_etape_qui_echoue_arrete_l_installation_en_le_disant() {
+    if namsdec_disasm::known::program_path("sh").is_none() {
+        return;
+    }
+    let dossier = tempfile::tempdir().expect("un dossier");
+    let mut app = NamsdecApp::default();
+    app.start_install(recette_d_epreuve(
+        dossier.path(),
+        &[
+            "echo première étape",
+            "echo ça rate >&2; exit 4",
+            // Celle-ci ne doit jamais tourner.
+            &format!(
+                "touch {}",
+                dossier.path().join("troisieme").to_string_lossy()
+            ),
+        ],
+    ));
+    let conclu = attendre_l_installation(&mut app).expect("le travail conclut");
+    let raison = conclu.expect_err("une étape a échoué");
+    assert!(
+        raison.contains("code 4"),
+        "le code exact, et non « ça n'a pas marché » : {raison}"
+    );
+    assert!(
+        !dossier.path().join("troisieme").exists(),
+        "la recette s'arrête à l'étape qui a échoué"
+    );
+    let journal = app.install_job.as_ref().expect("le travail").log.copie();
+    assert!(
+        journal.iter().any(|l| l.contains("ça rate")),
+        "la sortie d'erreur est au journal, à sa place dans l'ordre : {journal:?}"
+    );
+}
+
+/// Le journal de l'installation est borné dans les deux sens : le
+/// nombre de lignes, et la taille d'une ligne.
+///
+/// Une sortie sans aucun retour à la ligne faisait grossir le tampon
+/// sans que rien ne l'arrête — cinquante méga-octets en trois secondes,
+/// mesuré. Le garde-fou des deux mille lignes ne voyait rien passer,
+/// puisqu'il n'y avait jamais de ligne.
+#[test]
+fn le_journal_d_installation_est_borne_dans_les_deux_sens() {
+    if namsdec_disasm::known::program_path("sh").is_none() {
+        return;
+    }
+    let dossier = tempfile::tempdir().expect("un dossier");
+    let mut app = NamsdecApp::default();
+    app.start_install(recette_d_epreuve(
+        dossier.path(),
+        &[
+            // Beaucoup de lignes, puis une seule très longue, puis un
+            // échec pour que la recette conclue sans rien déclarer.
+            "seq 1 5000",
+            "printf 'B%.0s' $(seq 1 300000)",
+            "exit 1",
+        ],
+    ));
+    let conclu = attendre_l_installation(&mut app).expect("le travail conclut");
+    assert!(
+        conclu.is_err(),
+        "la dernière étape échoue exprès : {conclu:?}"
+    );
+    let journal = app.install_job.as_ref().expect("le travail").log.copie();
+    assert!(
+        journal.len() <= 2000,
+        "le nombre de lignes est borné : {}",
+        journal.len()
+    );
+    let plus_longue = journal.iter().map(String::len).max().unwrap_or(0);
+    assert!(
+        plus_longue < 128 * 1024,
+        "et la taille d'une ligne aussi : {plus_longue} octets"
+    );
+    assert!(
+        journal.iter().any(|l| l.contains("ligne coupée")),
+        "la coupe est dite plutôt que silencieuse"
+    );
+}

@@ -403,6 +403,13 @@ impl NamsdecApp {
     /// ouvrir un binaire doit y mener quelque part.
     /// L'état de travail, rangé tel quel pour y revenir.
     pub(crate) fn take_tab(&mut self) -> OpenTab {
+        // L'ASSEMBLAGE EN COURS NE SUIT PAS L'ONGLET. Il travaille sur
+        // un texte qu'on vient de ranger, et sa révision ne vaudra plus
+        // rien au retour — `source_mut`, juste en dessous, la fait
+        // avancer. Le laisser courir, c'est garder un nasm occupé et
+        // une barre qui tourne pour un résultat qui sera jeté ; on
+        // l'arrête, et l'on repart d'un Ctrl+Maj+B quand on revient.
+        self.cancel_assemble();
         OpenTab {
             path: self.current_file.take(),
             file_mtime: self.file_mtime,
@@ -923,11 +930,11 @@ impl NamsdecApp {
             let machine = elf.machine.name();
             self.status = Status::Error(if self.lang == Lang::Fr {
                 format!(
-                    "{name} est un ELF {machine} : namsdec ne lit que x86-64.                      Les octets restent consultables, le listing ne veut rien dire."
+                    "{name} est un ELF {machine} : namsdec ne lit que x86-64. Les octets restent consultables, le listing ne veut rien dire."
                 )
             } else {
                 format!(
-                    "{name} is a {machine} ELF: namsdec only reads x86-64.                      The bytes stay inspectable, the listing means nothing."
+                    "{name} is a {machine} ELF: namsdec only reads x86-64. The bytes stay inspectable, the listing means nothing."
                 )
             });
             return false;

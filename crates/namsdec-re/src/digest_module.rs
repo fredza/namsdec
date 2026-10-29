@@ -1,3 +1,4 @@
+use crate::vue::{Bloc, Fragment, Vue};
 use crate::{ReContext, ReModule, ReSection, digest};
 
 /// L'identité du fichier : sa taille et ses empreintes.
@@ -41,71 +42,83 @@ impl ReModule for DigestModule {
         self.crc32 = digest::crc32(ctx.binary);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    /// Ce que ce panneau montre — premier module passé par la
+    /// frontière de P7, et choisi pour cela : un tableau, du texte, et
+    /// une action. Rien de ce qu'il décrit ici ne suppose egui.
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.taille == 0 {
-            ui.weak(ctx.t(
-                "Rien de chargé : il n'y a pas de fichier à empreindre.",
-                "Nothing loaded: there is no file to fingerprint.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Rien de chargé : il n'y a pas de fichier à empreindre.",
+                        "Nothing loaded: there is no file to fingerprint.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
-        let mut à_copier: Option<String> = None;
-        egui::Grid::new("digest_grid")
-            .num_columns(2)
-            .min_col_width(0.0)
-            .striped(true)
-            .show(ui, |ui| {
-                ui.label(ctx.t("Taille", "Size"));
-                ui.monospace(format!("{} {}", self.taille, ctx.t("octets", "bytes")));
-                ui.end_row();
-
-                // Cliquables, les deux : une empreinte sert à être
-                // collée quelque part, pas à être recopiée à la main.
-                ui.label("SHA-256");
-                if crate::clickable_label(
-                    ui,
-                    egui::Label::new(egui::RichText::new(&self.sha256).monospace()),
+        let copier = ctx.t("Cliquer pour copier", "Click to copy");
+        Some(
+            Vue::neuve()
+                .bloc(Bloc::Tableau {
+                    colonnes: Vec::new(),
+                    rangées: vec![
+                        vec![
+                            ctx.t("Taille", "Size").into(),
+                            Fragment::dit(format!("{} {}", self.taille, ctx.t("octets", "bytes")))
+                                .code()
+                                .into(),
+                        ],
+                        vec![
+                            "SHA-256".into(),
+                            // Une empreinte sert à être collée quelque
+                            // part, pas à être recopiée à la main.
+                            Fragment::dit(&self.sha256)
+                                .code()
+                                .copiable()
+                                .survol(copier)
+                                .into(),
+                        ],
+                        vec![
+                            "CRC-32".into(),
+                            Fragment::dit(format!("{:08x}", self.crc32))
+                                .code()
+                                .copiable()
+                                .survol(copier)
+                                .into(),
+                        ],
+                    ],
+                    rayé: true,
+                })
+                .texte(
+                    Fragment::dit(ctx.t(
+                        "SHA-256 identifie le fichier : deux contenus différents ne la \
+                         partagent pas. CRC-32 ne fait que dire s'il est arrivé entier — on \
+                         en fabrique deux identiques sans peine, et elle ne prouve donc rien.",
+                        "SHA-256 identifies the file: two different contents never share one. \
+                         CRC-32 only says whether it arrived intact — two identical ones are \
+                         easy to build, so it proves nothing.",
+                    ))
+                    .faible(),
                 )
-                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                .clicked()
-                {
-                    à_copier = Some(self.sha256.clone());
-                }
-                ui.end_row();
+                .texte(
+                    Fragment::dit(ctx.t(
+                        "Ni MD5 ni SHA-1 : ce sont des empreintes cassées, et les afficher à \
+                         côté d'une bonne sans le dire apprendrait le faux.",
+                        "No MD5 or SHA-1: those are broken, and showing them beside a sound \
+                         one without saying so would teach something false.",
+                    ))
+                    .faible(),
+                ),
+        )
+    }
 
-                ui.label("CRC-32");
-                let crc = format!("{:08x}", self.crc32);
-                if crate::clickable_label(
-                    ui,
-                    egui::Label::new(egui::RichText::new(&crc).monospace()),
-                )
-                .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                .clicked()
-                {
-                    à_copier = Some(crc);
-                }
-                ui.end_row();
-            });
-        if let Some(texte) = à_copier {
-            ui.ctx().copy_text(texte);
+    /// Dérivé de la vue, et c'est tout l'objet de P7 : une seule
+    /// description du panneau, peinte par un traducteur commun.
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
         }
-
-        ui.add_space(4.0);
-        ui.weak(ctx.t(
-            "SHA-256 identifie le fichier : deux contenus différents ne la partagent pas. \
-             CRC-32 ne fait que dire s'il est arrivé entier — on en fabrique deux identiques \
-             sans peine, et elle ne prouve donc rien.",
-            "SHA-256 identifies the file: two different contents never share one. CRC-32 only \
-             says whether it arrived intact — two identical ones are easy to build, so it \
-             proves nothing.",
-        ));
-        ui.add_space(2.0);
-        ui.weak(ctx.t(
-            "Ni MD5 ni SHA-1 : ce sont des empreintes cassées, et les afficher à côté d'une \
-             bonne sans le dire apprendrait le faux.",
-            "No MD5 or SHA-1: those are broken, and showing them beside a sound one without \
-             saying so would teach something false.",
-        ));
     }
 }
 
@@ -150,5 +163,59 @@ mod tests {
         let module = DigestModule::default();
         assert_eq!(module.taille, 0);
         assert!(module.sha256.is_empty());
+    }
+
+    /// Ce que le panneau montre se lit **sans le peindre**, et c'est
+    /// toute la raison d'être de la frontière de P7.
+    ///
+    /// Avant, cette vérification demandait un contexte egui, une
+    /// surface, un thème, et finissait par comparer des rectangles.
+    /// Elle lit maintenant du texte — et le même texte part dans un
+    /// rapport ou dans un export.
+    #[test]
+    fn ce_que_le_panneau_montre_se_lit_sans_le_peindre() {
+        let binaire = b"\x7fELF et la suite du fichier".to_vec();
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &binaire,
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = DigestModule::default();
+
+        // Rien de chargé : une seule ligne, et elle le dit.
+        let vide = module.vue(&ctx).expect("une vue, même vide");
+        assert_eq!(vide.blocs.len(), 1);
+        assert!(
+            matches!(&vide.blocs[0], Bloc::Texte(ligne) if ligne.texte_nu().contains("Rien de chargé")),
+            "{:?}",
+            vide.blocs[0]
+        );
+
+        module.on_binary_loaded(&ctx);
+        let vue = module.vue(&ctx).expect("une vue");
+        let Some(Bloc::Tableau { rangées, .. }) = vue.blocs.first() else {
+            panic!("le panneau commence par son tableau : {:?}", vue.blocs);
+        };
+        assert_eq!(rangées.len(), 3, "taille, SHA-256, CRC-32");
+        assert_eq!(rangées[1][0].texte_nu(), "SHA-256");
+        assert_eq!(
+            rangées[1][1].texte_nu(),
+            digest::hex(&digest::sha256(&binaire)),
+            "l'empreinte montrée est celle du fichier"
+        );
+        assert!(
+            rangées[1][1].fragments[0].copiable,
+            "et elle se copie d'un clic"
+        );
+
+        // Et la vue entière se sérialise : c'est ce qui la rend
+        // utilisable par autre chose que namsdec.
+        let json = serde_json::to_string(&vue).expect("la vue sort de l'outil");
+        assert!(json.contains("SHA-256"), "{json}");
     }
 }

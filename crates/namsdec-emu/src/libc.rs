@@ -1378,7 +1378,7 @@ fn table_ctype(emu: &mut Emulator, laquelle: &str) -> Result<u64, EmuError> {
 ///
 /// Une fois et pas davantage : un programme qui essaie d'ouvrir trois
 /// cents fichiers noierait sa propre sortie sous le même message.
-fn sans_fichiers(emu: &mut Emulator, quoi: &str) {
+pub(crate) fn sans_fichiers(emu: &mut Emulator, quoi: &str) {
     if emu.dit_sans_fichiers {
         return;
     }

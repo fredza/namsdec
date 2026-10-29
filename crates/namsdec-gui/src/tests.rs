@@ -113,6 +113,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("labels.rs", include_str!("labels.rs")),
     ("keybindings.rs", include_str!("keybindings.rs")),
     ("jobs.rs", include_str!("jobs.rs")),
+    ("limites.rs", include_str!("limites.rs")),
     ("listing.rs", include_str!("listing.rs")),
     ("loader.rs", include_str!("loader.rs")),
     ("maximize.rs", include_str!("maximize.rs")),
@@ -874,6 +875,17 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
             app.show_input_dialog = true;
         }),
         ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
+        // LA FENÊTRE DES EXERCICES N'Y ÉTAIT PAS, et c'est la plus
+        // longue liste que namsdec sache peindre : cent huit titres,
+        // leur énoncé, leur palier, leurs fiches utiles. Aucun
+        // invariant ne l'avait jamais regardée — ni recouvrement, ni
+        // découpage, ni taille —, et le parcours vient d'y gagner douze
+        // entrées.
+        ("exercices", "exercises_window_v2", |app| {
+            app.exercises = true;
+            app.exercise_packs = vec![builtin_pack()];
+            app.show_exercises = true;
+        }),
         // LA PALETTE N'ÉTAIT PAS AU BANC, et c'est une fenêtre comme
         // les autres : elle a une largeur fixe, une liste qui défile et
         // un champ de saisie. Elle y entre le jour où ses lignes se
@@ -933,6 +945,32 @@ boucle:
     mov rax, 60
     xor rdi, rdi
     syscall
+";
+
+/// Un programme qui touche quatre des sept simplifications du
+/// coprocesseur : la précision étendue (toute addition y suffit), le
+/// format 80 bits en mémoire, une transcendante, et le mot d'état.
+///
+/// Quatre et non une, parce que c'est la rubrique DÉPLIÉE qu'on veut
+/// regarder : une ligne tient partout, quatre titres suivis de quatre
+/// explications repliées sont ce qui déborde.
+const PROGRAMME_QUI_SIMPLIFIE: &str = "\
+section .data
+angle  dq 1.0
+sortie dq 0.0
+etendu dt 0.0
+
+section .text
+global _start
+_start:
+    fld qword [angle]
+    fadd qword [angle]
+    fstp tword [etendu]
+    fld tword [etendu]
+    fsin
+    fstsw ax
+    fstp qword [sortie]
+    hlt
 ";
 
 /// Tout ce que le banc regarde : les quatorze fenêtres et les cinq
@@ -1029,6 +1067,29 @@ fn scènes() -> Vec<Scène> {
                     }
                     app.show_console = true;
                     app.console_tab = onglet;
+                }),
+            ));
+        }
+        // L'ONGLET DIAGNOSTICS AVEC SA RUBRIQUE DES SIMPLIFICATIONS.
+        // La scène « console / Diagnostics » ci-dessus ne la montre
+        // pas : le programme du banc ne touche pas le coprocesseur, et
+        // la rubrique ne paraît que si l'exécution l'a touchée — ce qui
+        // est voulu, mais laisse sans mesure le seul état où elle existe.
+        // Celui-ci exécute un `fsin`, et la rubrique se peint avec ses
+        // titres et ses explications sur plusieurs lignes : c'est l'état
+        // où un contenu neuf vole la place des diagnostics de nasm.
+        if marche {
+            scènes.push((
+                "console / Diagnostics, simplifications".to_owned(),
+                None,
+                Box::new(|app| {
+                    app.source = PROGRAMME_QUI_SIMPLIFIE.to_owned();
+                    app.do_assemble();
+                    for _ in 0..40 {
+                        app.do_step();
+                    }
+                    app.show_console = true;
+                    app.console_tab = ConsoleTab::Diagnostics;
                 }),
             ));
         }
@@ -1134,6 +1195,76 @@ fn scènes() -> Vec<Scène> {
             app.count_pending = Some(4242);
         }),
     ));
+    // LA CONSOLE D'UN BINAIRE CHARGÉ, HAUTEUR FIGÉE À LA POIGNÉE.
+    //
+    // C'est la console la plus chargée que l'application sache peindre :
+    // un binaire ouvert y ajoute les arguments et l'environnement, et
+    // l'environnement déplié y ajoute encore une aide et un champ de
+    // deux lignes. Les trois scènes « console / … » la regardaient sur
+    // un programme assemblé, qui n'a ni l'un ni l'autre, et toujours en
+    // hauteur automatique — celle que namsdec calcule lui-même.
+    //
+    // Les deux manques se cumulaient précisément là où la phrase du
+    // dessous se faisait couper : hauteur figée, environnement déplié,
+    // il n'en restait que trois pixels sur quinze.
+    if let Some(octets) = binaire_fabriqué() {
+        scènes.push((
+            "console / binaire chargé, hauteur figée".to_owned(),
+            None,
+            Box::new(move |app| {
+                app.load_elf(&octets, NOM_FABRIQUÉ);
+                app.show_console = true;
+                app.console_tab = ConsoleTab::Output;
+                app.console_env_open = true;
+                // Une hauteur qu'on a tirée soi-même : c'est là que la
+                // console cesse de suivre ce qu'elle a à dire, et que
+                // le compte de la zone de saisie doit être juste.
+                app.console_height = Some(200.0);
+            }),
+        ));
+    }
+    // L'ÉDITEUR BINAIRE EN FENÊTRE AGRANDIE : la seule disposition où
+    // son inspecteur se pose à côté du vidage, donc celle qu'on veut
+    // voir. Elle avait dû être retirée le 28 octobre 2026 — le banc
+    // triait les formes d'une fenêtre sur la LARGEUR de leur découpe,
+    // et une fenêtre agrandie est aussi large que l'écran, si bien que
+    // les textes de l'éditeur de code passaient le tri. Le tri se fait
+    // maintenant sur l'ORDRE des formes, et la scène est revenue.
+    if let Some(octets) = binaire_fabriqué() {
+        scènes.push((
+            "analyse / éditeur binaire, fenêtre agrandie".to_owned(),
+            Some("analysis_window"),
+            Box::new(move |app| {
+                app.load_elf(&octets, NOM_FABRIQUÉ);
+                app.show_analysis = true;
+                app.analysis_module = "hex_editor".to_owned();
+                app.toggle_maximized(NamsdecApp::ANALYSIS_WINDOW);
+            }),
+        ));
+    }
+    // Un appel système refusé : la barre de statut en rouge, le message
+    // le plus long que namsdec sache y mettre, et la fenêtre qui redit
+    // ce que le programme avait écrit avant de s'arrêter.
+    //
+    // AUCUNE scène ne montrait l'application EN ERREUR, et c'est
+    // pourtant l'écran sur lequel on tombe quand quelque chose ne va
+    // pas — celui qu'on photographie pour le signaler. Les invariants
+    // n'avaient jamais regardé cette barre-là remplie.
+    scènes.push((
+        "barre de statut / un appel système refusé".to_owned(),
+        None,
+        Box::new(|app| {
+            app.status = Status::Error(crate::errors::emu(
+                app.lang,
+                &namsdec_emu::EmuError::UnsupportedSyscall {
+                    backend: "namsdec",
+                    number: 2,
+                },
+            ));
+            app.show_console = true;
+            app.console_tab = ConsoleTab::Output;
+        }),
+    ));
     scènes
 }
 
@@ -1199,25 +1330,58 @@ fn ce_qui_est_écrit_sur(
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         let cadre =
             id.and_then(|id| egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect()));
-        for clipped in &sortie.shapes {
+        // SON PROPRE FOND, et l'ordre des formes. Une fenêtre peint
+        // d'abord le rectangle opaque de son cadre, puis ce qu'elle a
+        // à dire : tout ce qui vient APRÈS ce rectangle est à elle.
+        //
+        // C'est le tri le plus sûr, et il a remplacé celui qui se
+        // faisait sur la LARGEUR de la découpe — une fenêtre découpe
+        // son contenu à sa propre largeur, un panneau à celle de
+        // l'écran. Juste, tant que la fenêtre est plus étroite que
+        // l'écran. AGRANDIE, elle l'est autant, et les textes de
+        // l'éditeur de code derrière elle passaient le tri : les
+        // invariants accusaient alors la fenêtre de faire son métier,
+        // qui est de couvrir. Une scène a dû être retirée pour cela le
+        // 28 octobre 2026.
+        let fond = cadre.and_then(|c| {
+            sortie.shapes.iter().position(|clipped| {
+                // Il COÏNCIDE avec le cadre, il ne fait pas que le
+                // contenir : le fond de l'écran contient aussi toutes
+                // les fenêtres, et le prendre pour l'une d'elles
+                // revenait à ne plus trier du tout.
+                // SON REMPLISSAGE NE COMPTE PAS, seulement sa place.
+                // Une fenêtre ordinaire peint un fond plein ; une
+                // fenêtre AGRANDIE dans la zone de travail n'en peint
+                // aucun — c'est le panneau derrière qui le fournit —,
+                // et il ne reste que le trait de son cadre, en alpha
+                // zéro. Il est peint au même moment, avant le contenu,
+                // et c'est tout ce qu'on lui demande.
+                matches!(&clipped.shape, egui::epaint::Shape::Rect(r)
+                    if r.rect.contains_rect(c.shrink(2.0))
+                        && c.expand(8.0).contains_rect(r.rect))
+            })
+        });
+        for (rang, clipped) in sortie.shapes.iter().enumerate() {
             // Ce que la fenêtre peint *elle-même*, et non ce qui se
             // trouve sous elle. Sans ce tri, un registre caché derrière
             // la fenêtre d'aide passait pour un recouvrement — et cela
             // n'arrivait qu'une fois un programme chargé, c'est-à-dire
             // jamais dans les tests d'alors.
-            //
-            // Le tri se fait sur la LARGEUR du rectangle de découpe. Une
-            // fenêtre découpe son contenu à sa propre largeur ; un
-            // panneau, lui, est découpé à celle de l'écran ou part de
-            // son bord — jamais à l'intérieur d'une fenêtre. La hauteur
-            // ne dirait rien : egui laisse au découpage d'une fenêtre
-            // plus de hauteur qu'elle n'en occupe.
-            if cadre.is_some_and(|c| {
-                let large = c.x_range().expand(2.0);
-                !large.contains(clipped.clip_rect.left())
-                    || !large.contains(clipped.clip_rect.right())
-            }) {
-                continue;
+            match fond {
+                Some(fond) if rang <= fond => continue,
+                // Pas de fond trouvé — une surface qui n'en peint pas,
+                // ou un cadre qu'on ne sait pas situer : on retombe sur
+                // la largeur de la découpe, qui vaut pour tout ce qui
+                // n'est pas agrandi.
+                None if cadre.is_some_and(|c| {
+                    let large = c.x_range().expand(2.0);
+                    !large.contains(clipped.clip_rect.left())
+                        || !large.contains(clipped.clip_rect.right())
+                }) =>
+                {
+                    continue;
+                }
+                _ => {}
             }
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 for ligne in &t.galley.rows {

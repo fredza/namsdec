@@ -4,6 +4,147 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.9-beta.2 — 28 octobre 2026
+
+**Ce que namsdec comprend d'un binaire ne vit plus seulement à l'écran**
+- Les panneaux d'analyse **décrivent** ce qu'ils montrent au lieu de le
+  dessiner directement : neuf des douze sont passés par cette frontière.
+  Rien ne change à l'écran — c'est vérifié capture par capture, au pixel
+  — mais ce qu'un panneau montre peut désormais être lu, exporté ou
+  repris par autre chose que la fenêtre.
+- Au passage, trois incohérences corrigées : l'espacement entre blocs
+  était décidé panneau par panneau (4 px ici, 2 px là), les couleurs de
+  verdict étaient écrites en dur au lieu de suivre le thème, et les
+  colonnes d'un tableau n'avaient pas le même air d'un panneau à
+  l'autre.
+- Dans **UPX**, les lignes de sortie et les deux commandes se copient
+  maintenant d'un clic : c'est la ligne d'origine qu'on recopie dans une
+  recherche quand upx refuse.
+
+**Arrêter une installation l'arrête vraiment**
+- Le bouton **Arrêter** rend la main en une demi-seconde, et **pendant
+  l'étape en cours** — pas à la fin de la compilation dont on voulait
+  précisément sortir. Mesuré avant : l'enfant mourait en 300 ms, la main
+  revenait 30 secondes plus tard, le temps qu'un programme lancé par la
+  commande veuille bien fermer sa sortie.
+- La commande **emporte sa descendance** : ce qu'elle avait elle-même
+  lancé s'arrête avec elle. Ce qui échappe est dit plutôt que promis —
+  un descendant détaché par `setsid` ne reçoit pas le signal.
+- Même sans rien demander : une étape finie n'est plus annoncée « en
+  cours » pendant que l'un de ses descendants vit sa vie.
+- Le journal est **borné dans les deux sens**. Il l'était en nombre de
+  lignes ; il ne l'était pas en taille de ligne, et une sortie sans
+  aucun retour à la ligne avalait 50 Mo en trois secondes.
+- **Trente minutes par étape**, et non les deux de la décompilation :
+  une compilation d'outil peut légitimement durer un quart d'heure.
+
+**L'assemblage ne gèle plus la fenêtre**
+- `nasm` et `ld` travaillent **dans un fil à part** : la fenêtre continue
+  de répondre, la barre d'état dit depuis combien de temps ça dure, et
+  **Stop arrête l'assembleur** — ce bouton était grisé pendant le seul
+  travail dont on veuille vraiment sortir.
+- **Dix secondes au plus**, après quoi l'outil est arrêté et namsdec le
+  dit. Une seule ligne valide suffit à sortir de l'échelle ordinaire :
+  `times 2000000000 nop` occupe nasm bien au-delà de vingt secondes,
+  pendant lesquelles il n'y avait plus ni image ni clavier. Le chiffre
+  vient d'une mesure : sept lignes s'assemblent en 4 ms, vingt-deux
+  mille en 52 ms.
+- **Un résultat tardif ne remplace plus ce qui est à l'écran.** Si le
+  texte a changé — ou si l'on a changé d'onglet — pendant que nasm
+  travaillait, le listing qui arrive décrit un autre programme : il est
+  jeté, au lieu de faire pointer la gouttière et les points d'arrêt sur
+  des lignes qui ont bougé.
+- Le listing de nasm est lu **borné** : `%rep 400000` en produit
+  quarante méga-octets, lus jusqu'ici en entier.
+- Même traitement pour les autres appels extérieurs : l'assemblage d'une
+  instruction seule, les deux sondes `--version` du démarrage, et `upx`,
+  qui avait son propre guetteur — un délai tenu pour le processus mais
+  pas pour ses descendants.
+
+**Le coprocesseur obéit enfin à son mot de contrôle**
+- `fldcw` **compte** : l'arrondi réglé gouverne `fist`, `fistp` et
+  `frndint`. `fistp` de 3,5 rend 4 au plus proche, 3 par troncature, 4
+  vers le haut et 3 vers le bas — et `fistp` de -3,5 vers le bas rend
+  -4, parce que « vers le bas » n'est pas « vers zéro ». `fisttp`
+  tranche quoi qu'on règle, c'est sa raison d'être.
+- `fnstcw` rend **ce qu'on y a écrit** et non plus une constante. Le
+  prologue de beaucoup de routines de conversion fait exactement cette
+  danse : garder l'ancien mot, tronquer, remettre. `finit` remet 0x037f.
+- Le **contrôle de précision** est simulé : à 24 bits, chaque opération
+  de base s'arrondit au format simple (racine de 2 rend
+  1,4142135381698608, comme le matériel) ; à 53 bits, namsdec **est** le
+  matériel, puisque c'est la double précision qu'il calcule.
+- Et ce qui reste approximé **se dit**, au moment où le programme le
+  touche : la barre d'état le nomme, l'onglet Diagnostics le garde avec
+  ce que ça change, et la fiche **F1 « arrondi »** porte le recensement
+  des sept points. Le principal : la précision étendue — le réglage par
+  défaut — est approximée par la double, et (1+1e-18)-1 rend 9,76e-19
+  sur le matériel contre zéro ici. Posez `fldcw` à 0x027f et les deux
+  redeviennent identiques.
+
+**Ce qu'un programme demande au noyau**
+- `lseek` répond au lieu d'arrêter le programme : il n'y a ni fichier ni
+  position derrière l'entrée et la sortie de namsdec, et `-ESPIPE` est
+  ce que rend un vrai noyau pour un tube ou un terminal. Un binaire C++
+  ordinaire mourait dessus après avoir écrit sa première ligne.
+- **`open`, `openat`, `stat`, `lstat`, `access` répondent « introuvable »**
+  au lieu de s'arrêter, comme `fopen` le fait depuis longtemps : le
+  programme suit alors sa branche d'erreur, qui est souvent la moitié
+  intéressante. La console le dit une fois. Ouvrir pour créer rend
+  `-EROFS` — ce qui manque alors n'est pas le fichier mais l'endroit où
+  l'écrire. La même question recevait jusqu'ici deux réponses opposées
+  selon que le binaire était lié dynamiquement ou statiquement.
+- `newfstatat` lit enfin son chemin : il décrivait la sortie standard à
+  un programme qui demandait `/etc/passwd`.
+- Un appel refusé se **nomme** : « l'appel système 8 (lseek) » plutôt
+  que le seul numéro. Et l'aide qui l'accompagne n'énumère plus quatre
+  appels sur quarante-huit — elle dit la ligne de partage, qui ne se
+  périme pas.
+
+**Le point d'arrêt qu'un programme se pose à lui-même**
+- `int3` va au gestionnaire de `SIGTRAP` que le programme a installé,
+  avec un **vrai cadre de signal** : un gestionnaire qui réécrit
+  l'adresse de reprise pour sauter par-dessus un leurre est obéi. C'est
+  la dernière pièce du montage anti-débogage, après `ptrace`, `clone` et
+  `tgkill`. Deux binaires du corpus d'épreuve passent de l'arrêt sec à
+  leur écran d'accueil.
+- Sans gestionnaire installé, l'exécution s'arrête en le disant : sur
+  une vraie machine, ce signal tuerait le programme.
+
+**L'éditeur binaire**
+- Le vidage **prend la place qu'on lui donne** — en hauteur comme en
+  largeur. Le nombre de lignes se calcule sur la hauteur offerte ; le
+  nombre d'octets par ligne suit la largeur (`auto`, et 8/16/32 pour
+  figer). Dans l'onglet d'analyse, la grille passe de 606 à 1072 pixels.
+- L'inspecteur se pose **à côté** du vidage dès qu'il y a la largeur, au
+  lieu de lui prendre quatre cents pixels de hauteur et de se faire
+  couper par le bas.
+- Un flottant illisible se dit en notation scientifique : `float64`
+  s'étalait sur trois lignes de zéros.
+- Les deux flèches de la recherche ne pointent plus l'une vers l'autre.
+
+**La console**
+- La phrase sous la rangée « Entrée : » ne se fait plus couper, et le
+  fond de la fenêtre de sortie ne recouvre plus les rangées
+  « Arguments » et « Variables d'environnement ».
+
+**Les textes**
+- Dix-neuf phrases portaient le retrait de leur source — jusqu'à
+  vingt-six espaces au milieu d'un mot —, et s'affichaient en deux blocs
+  qu'on lisait dans le désordre.
+
+**Le parcours**
+- Le programme d'accueil annonçait « quatre-vingt-seize exercices »
+  alors qu'il y en a cent huit — la première phrase qu'on lit en
+  ouvrant namsdec.
+- **Douze exercices de rétro-ingénierie**, répartis sur trois paliers :
+  la signature d'un fichier, ce qu'un `strings` laisse voir, la
+  comparaison et le saut qui en dépend, un aiguillage vu du
+  désassemblage, les chaînes cachées par XOR, la garde `ptrace`, `int3`
+  et son gestionnaire, l'entropie d'une zone, un gadget ROP, et l'octet
+  qui change tout. Le parcours compte **cent huit étapes**, dont cent
+  une avec un but vérifiable.
+
 ## 0.2.9-beta.1 — 15 octobre 2026
 
 **Le masque s'applique**

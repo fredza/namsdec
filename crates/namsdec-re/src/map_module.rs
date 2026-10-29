@@ -1,3 +1,4 @@
+use crate::vue::{Bloc, Fragment, Ligne, Ton, Vue};
 use crate::{ReContext, ReModule, ReSection, elf_scan, entropy};
 
 /// La carte du fichier : ses segments et ses sections.
@@ -110,116 +111,139 @@ impl ReModule for MapModule {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.segments.is_empty() && self.sections.is_empty() {
-            ui.weak(ctx.t(
-                "Pas d'en-tête ELF : il n'y a ni segment ni section à cartographier.",
-                "No ELF header: there is neither segment nor section to map.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Pas d'en-tête ELF : il n'y a ni segment ni section à cartographier.",
+                        "No ELF header: there is neither segment nor section to map.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
 
-        ui.label(
-            egui::RichText::new(ctx.t(
-                "Segments — ce que le noyau charge",
-                "Segments — what the kernel loads",
-            ))
-            .strong(),
-        );
-        ui.add_space(2.0);
-        egui::Grid::new("map_segments")
-            .num_columns(5)
-            .striped(true)
-            .min_col_width(0.0)
-            .spacing([14.0, 3.0])
-            .show(ui, |ui| {
-                for entête in [
-                    ctx.t("Type", "Type"),
-                    ctx.t("Droits", "Rights"),
-                    ctx.t("Dans le fichier", "In the file"),
-                    ctx.t("En mémoire", "In memory"),
-                    ctx.t("Taille", "Size"),
-                ] {
-                    ui.weak(entête);
-                }
-                ui.end_row();
-                for segment in &self.segments {
-                    ui.monospace(segment.kind);
-                    // Les droits en couleur : `wx` sur le même segment
-                    // est ce qu'on cherche du regard, et le lire dans
-                    // une colonne grise ne le donne pas.
-                    let inquiétant = segment.droits.contains('w') && segment.droits.contains('x');
-                    ui.monospace(egui::RichText::new(&segment.droits).color(if inquiétant {
-                        egui::Color32::from_rgb(0xe0, 0x6c, 0x5e)
-                    } else {
-                        ui.visuals().text_color()
-                    }));
-                    ui.monospace(format!("{:#x} + {:#x}", segment.offset, segment.filesz));
-                    ui.monospace(format!("{:#x}", segment.vaddr));
-                    ui.monospace(format!("{:#x}", segment.memsz));
-                    ui.end_row();
-                }
-            });
+        let entête = |texte: &str| -> Ligne { Fragment::dit(texte).faible().into() };
+        let mut vue = Vue::neuve()
+            .texte(
+                Fragment::dit(ctx.t(
+                    "Segments — ce que le noyau charge",
+                    "Segments — what the kernel loads",
+                ))
+                .fort(),
+            )
+            .bloc(Bloc::Tableau {
+                colonnes: vec![
+                    entête(ctx.t("Type", "Type")),
+                    entête(ctx.t("Droits", "Rights")),
+                    entête(ctx.t("Dans le fichier", "In the file")),
+                    entête(ctx.t("En mémoire", "In memory")),
+                    entête(ctx.t("Taille", "Size")),
+                ],
+                rangées: self
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        // Les droits en couleur : `wx` sur le même
+                        // segment est ce qu'on cherche du regard, et le
+                        // lire dans une colonne grise ne le donne pas.
+                        //
+                        // Un VERDICT et non une teinte, depuis P7 : le
+                        // module dit « inquiétant », l'interface dit
+                        // laquelle de ses couleurs porte ce mot — et un
+                        // thème peut changer sans qu'on touche ici.
+                        let inquiétant =
+                            segment.droits.contains('w') && segment.droits.contains('x');
+                        let droits = Fragment::dit(&segment.droits).code();
+                        vec![
+                            Fragment::dit(segment.kind).code().into(),
+                            if inquiétant {
+                                droits.ton(Ton::Mauvais)
+                            } else {
+                                droits
+                            }
+                            .into(),
+                            Fragment::dit(format!("{:#x} + {:#x}", segment.offset, segment.filesz))
+                                .code()
+                                .into(),
+                            Fragment::dit(format!("{:#x}", segment.vaddr)).code().into(),
+                            Fragment::dit(format!("{:#x}", segment.memsz)).code().into(),
+                        ]
+                    })
+                    .collect(),
+                rayé: true,
+            })
+            .texte(
+                Fragment::dit(ctx.t(
+                    "Sections — ce que l'éditeur de liens a rangé",
+                    "Sections — what the linker laid out",
+                ))
+                .fort(),
+            );
 
-        ui.add_space(8.0);
-        ui.label(
-            egui::RichText::new(ctx.t(
-                "Sections — ce que l'éditeur de liens a rangé",
-                "Sections — what the linker laid out",
-            ))
-            .strong(),
-        );
-        ui.add_space(2.0);
         if self.sections.is_empty() {
-            ui.weak(ctx.t(
-                "Aucune : le binaire a été dépouillé de sa table de sections. Il tourne \
-                 quand même — le noyau ne lit que les segments.",
-                "None: the binary was stripped of its section table. It still runs — the \
-                 kernel only reads the segments.",
-            ));
-            return;
+            return Some(
+                vue.texte(
+                    Fragment::dit(ctx.t(
+                        "Aucune : le binaire a été dépouillé de sa table de sections. Il tourne \
+                     quand même — le noyau ne lit que les segments.",
+                        "None: the binary was stripped of its section table. It still runs — the \
+                     kernel only reads the segments.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
-        egui::Grid::new("map_sections")
-            .num_columns(6)
-            .striped(true)
-            .min_col_width(0.0)
-            .spacing([14.0, 3.0])
-            .show(ui, |ui| {
-                for entête in [
-                    ctx.t("Nom", "Name"),
-                    ctx.t("Droits", "Rights"),
-                    ctx.t("Adresse", "Address"),
-                    ctx.t("Dans le fichier", "In the file"),
-                    ctx.t("Taille", "Size"),
-                    ctx.t("Entropie", "Entropy"),
-                ] {
-                    ui.weak(entête);
-                }
-                ui.end_row();
-                for section in &self.sections {
-                    ui.monospace(&section.nom);
-                    ui.monospace(&section.droits);
-                    ui.monospace(format!("{:#x}", section.addr));
-                    ui.monospace(format!("{:#x}", section.offset));
-                    ui.monospace(format!("{:#x}", section.taille));
-                    match section.entropie {
-                        Some(valeur) => {
-                            let verdict = entropy::Verdict::of(valeur);
-                            ui.monospace(format!(
+
+        vue = vue.bloc(Bloc::Tableau {
+            colonnes: vec![
+                entête(ctx.t("Nom", "Name")),
+                entête(ctx.t("Droits", "Rights")),
+                entête(ctx.t("Adresse", "Address")),
+                entête(ctx.t("Dans le fichier", "In the file")),
+                entête(ctx.t("Taille", "Size")),
+                entête(ctx.t("Entropie", "Entropy")),
+            ],
+            rangées: self
+                .sections
+                .iter()
+                .map(|section| {
+                    vec![
+                        Fragment::dit(&section.nom).code().into(),
+                        Fragment::dit(&section.droits).code().into(),
+                        Fragment::dit(format!("{:#x}", section.addr)).code().into(),
+                        Fragment::dit(format!("{:#x}", section.offset))
+                            .code()
+                            .into(),
+                        Fragment::dit(format!("{:#x}", section.taille))
+                            .code()
+                            .into(),
+                        match section.entropie {
+                            Some(valeur) => Fragment::dit(format!(
                                 "{valeur:.2} — {}",
-                                verdict.label(ctx.lang.starts_with("fr"))
-                            ));
-                        }
-                        // Un blanc dit mieux qu'un zéro : `.bss`
-                        // n'occupe rien dans le fichier, et lire là
-                        // reviendrait à raconter le contenu du voisin.
-                        None => {
-                            ui.weak("—");
-                        }
-                    }
-                    ui.end_row();
-                }
-            });
+                                entropy::Verdict::of(valeur).label(ctx.lang.starts_with("fr"))
+                            ))
+                            .code()
+                            .into(),
+                            // Un blanc dit mieux qu'un zéro : `.bss`
+                            // n'occupe rien dans le fichier, et lire là
+                            // reviendrait à raconter le contenu du
+                            // voisin.
+                            None => Fragment::dit("—").faible().into(),
+                        },
+                    ]
+                })
+                .collect(),
+            rayé: true,
+        });
+        Some(vue)
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
+        }
     }
 }
 

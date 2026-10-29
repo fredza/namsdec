@@ -310,7 +310,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Au premier lancement, l'éditeur contient un programme d'accueil. Trois gestes "
          "suffisent pour le voir tourner :"),
         ("liste", [
-         "<b>Assembler</b> (Ctrl+Maj+B) : nasm et ld font leur travail. Les erreurs "
+         "<b>Assembler</b> (Ctrl+Maj+B) : nasm et ld font leur travail, <b>dans un fil à "
+         "part</b> — la fenêtre continue de répondre pendant ce temps, la barre d'état dit "
+         "depuis combien de temps ça dure, et <b>Stop</b> arrête l'assembleur. Les erreurs "
          "apparaissent dans l'onglet Diagnostics, chacune cliquable vers sa ligne.",
          "<b>Pas à pas</b> (Espace puis s puis i) : une instruction à la fois. Le bandeau "
          "du panneau droit montre ce qui vient, puis ce qui a changé.",
@@ -321,6 +323,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Le programme s'arrête sur <font face='Courier'>hlt</font> ou sur l'appel système "
          "<font face='Courier'>exit</font>. Un programme que rien n'arrête est signalé dès "
          "l'assemblage : il continuerait dans ce qui suit son code, ce qui n'a aucun sens."),
+        ("note",
+         "<b>Dix secondes</b>, et pas une de plus : c'est ce que namsdec accorde à nasm et "
+         "à ld, après quoi il les arrête et le dit. La mesure derrière ce chiffre&nbsp;: un "
+         "programme de sept lignes s'assemble en 4&nbsp;ms, un de vingt-deux mille lignes "
+         "en 52&nbsp;ms — deux ordres de grandeur de marge pour tout ce qu'on écrit à la "
+         "main. Mais une seule ligne valide suffit à sortir de cette échelle&nbsp;: "
+         "<font face='Courier'>times 2000000000 nop</font> décrit deux milliards "
+         "d'instructions, et nasm y réfléchit bien au-delà de vingt secondes. Si vous "
+         "écrivez volontairement un programme énorme, c'est la limite que vous "
+         "rencontrerez."),
 
         ("h1", "La fenêtre"),
         ("h2", "La barre de titre"),
@@ -335,7 +347,9 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "C'est là aussi que vivent les <b>sept indicateurs</b> (CF, PF, AF, ZF, SF, DF, "
          "OF), en pastilles : la barre de titre est toujours visible et ne se replie "
          "jamais, on les a donc sous les yeux à chaque pas, à droite du nom du fichier — toujours affichés, tous à zéro tant qu'aucun programme n'a tourné. "
-         "Vert quand l'indicateur est levé, grisé sinon. Ce sont de simples <b>témoins</b> : "
+         "Chacun est <b>creusé</b> dans le fond, et celui qui est levé teinte ce creux "
+         "de vert : à l'écran, ce qui est à un se voit à la tache avant qu'on ait lu "
+         "le chiffre. Ce sont de simples <b>témoins</b> : "
          "on les lit, on ne les règle pas — ils disent ce que la dernière instruction a "
          "produit. Le survol les présente en entier — nom développé, rôle, et s'ils sont "
          "posés ou retombés. DF compris, que les instructions de chaîne lisent."),
@@ -486,6 +500,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "un onglet de fichier est un rectangle plein, marqué en haut et muni d'une "
          "croix ; un onglet de vue est une étiquette soulignée, et il ne se "
          "ferme pas — une façon de regarder ne s'abandonne pas, on en change."),
+        ("p",
+         "Et cette seconde forme est celle de <b>toutes</b> les rangées d'onglets de "
+         "namsdec : les vues, les cinq onglets du panneau latéral, les pages des "
+         "préférences, les trois onglets de la console, les familles de fonctions de "
+         "la calculatrice. Un onglet choisi est <b>souligné</b>, jamais rempli — le "
+         "bleu plein reste à ce qui <i>agit</i> : « OK », « Assembler », « Envoyer ». "
+         "Un sélecteur et une commande ne doivent pas se ressembler."),
         ("p",
          "Neuf vues, rangées dans l'ordre d'une lecture et non dans celui du menu : ce "
          "qu'on écrit, puis ce que la machine en a fait, puis ce qu'on en comprend, puis "
@@ -797,7 +818,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Console</b> — ce que le programme écrit lui-même, par "
          "<font face='Courier'>write</font>. C'est aussi là qu'on lui parle.",
          "<b>Diagnostics</b> — ce que nasm a eu à dire, les avertissements que namsdec "
-         "ajoute, et les deux commandes réellement lancées, prêtes à copier.",
+         "ajoute, ce que l'exécution en cours a <b>simplifié</b>, et les deux commandes "
+         "réellement lancées, prêtes à copier.",
          "<b>Profil</b> — les lignes classées par temps passé dedans : passages, part du "
          "total, et un clic qui y emmène. <b>Le numéro de ligne se clique</b>, comme la "
          "ligne elle-même&nbsp;: seul le texte y menait, tout à droite de la rangée et "
@@ -856,6 +878,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "que de faire dispara\u00eetre le champ. Entr\u00e9e envoie, \u00c9chap rend le "
          "clavier \u00e0 l'\u00e9diteur, et « Fin d'entr\u00e9e » ferme l'entr\u00e9e pour "
          "un programme qui lit jusqu'au bout."),
+        ("p",
+         "Le haut de la console se tire pour lui donner plus ou moins de place. "
+         "<b>Ce qu'on serre alors est la sortie, jamais la saisie</b> : les "
+         "arguments, l'environnement, la rangée o\u00f9 l'on tape et la phrase qui "
+         "la suit restent entiers, et la console refuse de descendre sous ce "
+         "qu'ils demandent. La sortie, elle, a un ascenseur — elle sait n'en "
+         "montrer qu'une ligne, et le dire. Qui se serre est celui qui peut."),
         ("h1", "Exécuter, et revenir en arrière"),
         ("h2", "Avancer"),
         ("table", [
@@ -918,6 +947,50 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Une fiche <b>F1</b> existe pour chacune, et un contrôle empêche le manuel de dire "
          "qu'une instruction n'est pas simulée alors qu'elle s'exécute : la documentation "
          "d'un outil qui apprend ne peut pas être en retard sur l'outil."),
+
+        ("h2", "Le coprocesseur, l'arrondi, et ce que namsdec simplifie"),
+        ("p",
+         "Avant SSE, les calculs à virgule passaient par le <b>8087</b> : une pile de "
+         "huit cases au lieu de registres nommés, et un format interne de "
+         "<b>80&nbsp;bits</b>. C'est encore par lui que la plupart des cours font leur "
+         "premier calcul à virgule, et c'est à peu près le seul endroit du processeur où "
+         "un <b>réglage</b> change la réponse d'une instruction."),
+        ("p",
+         "Ce réglage est le <b>mot de contrôle</b>, que "
+         "<font face='Courier'>fldcw</font> écrit et "
+         "<font face='Courier'>fnstcw</font> relit. Ses bits 10 et 11 disent comment "
+         "arrondir&nbsp;: au plus proche (et l'exacte moitié vers le pair), vers moins "
+         "l'infini, vers plus l'infini, ou vers zéro. Aucun n'est plus juste que les "
+         "autres&nbsp;: <font face='Courier'>fistp</font> de 3,5 rend <b>4</b> au plus "
+         "proche et <b>3</b> par troncature. Les bits 8 et 9 disent sur combien de bits "
+         "de mantisse arrondir chaque opération&nbsp;: 24, 53 ou 64. Le mot au repos vaut "
+         "0x037f — précision étendue, arrondi au plus proche —, et "
+         "<font face='Courier'>finit</font> le remet là."),
+        ("p",
+         "namsdec honore ce réglage&nbsp;: ce qu'on pose dans le mot se relit, et "
+         "l'arrondi gouverne <font face='Courier'>fist</font>, "
+         "<font face='Courier'>fistp</font> et <font face='Courier'>frndint</font> — "
+         "<font face='Courier'>fisttp</font> tranchant toujours vers zéro, c'est sa "
+         "raison d'être. À <b>53&nbsp;bits</b>, namsdec <b>est</b> le processeur&nbsp;: "
+         "il calcule nativement en double précision. À 24&nbsp;bits, il arrondit chaque "
+         "opération de base au format simple."),
+        ("p",
+         "Reste ce qu'il simplifie, et la fiche <b>F1</b> « arrondi » en tient le "
+         "recensement complet. Le principal&nbsp;: la précision <b>étendue</b> — qui est "
+         "le réglage par défaut — est approximée par la double. Le vrai x87 garde onze "
+         "bits de mantisse de plus, et un calcul qui les exploite diverge&nbsp;: sur le "
+         "programme d'épreuve, (1 + 10<super>-18</super>) - 1 rend 9,76 × "
+         "10<super>-19</super> sur le matériel et <b>zéro</b> dans namsdec. Posez "
+         "<font face='Courier'>fldcw</font> à 0x027f et les deux redeviennent identiques."),
+        ("note",
+         "Les approximations <b>se disent</b>, et au moment où elles se produisent&nbsp;: "
+         "la barre d'état nomme celle que le programme vient de toucher, et l'onglet "
+         "<b>Diagnostics</b> les garde toutes avec ce qu'elles changent — son compteur "
+         "les ajoute à celui des avertissements de nasm, pour qu'il n'annonce pas moins "
+         "qu'il n'y a à lire. Une seule fois chacune — un avertissement répété à chaque pas n'est plus lu. Ce qui est "
+         "annoncé a été <b>mesuré</b> contre le processeur de la machine&nbsp;: "
+         "<font face='Courier'>cargo run -p namsdec-emu --example oracle_x87</font> "
+         "refait la mesure, vingt cas, et nomme les écarts attendus comme les autres."),
 
         ("h2", "Les points d'arrêt"),
         ("p",
@@ -1376,6 +1449,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>rax == 0xf</font> — que namsdec dit « atteint » ou « pas "
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
+        ("p",
+         "<b>Le parcours n'apprend pas qu'à écrire.</b> Une douzaine d'étapes apprennent "
+         "à <b>lire</b> un binaire — ce qui est l'autre moitié du métier, et ce que font "
+         "les panneaux d'analyse de namsdec. Elles commencent tôt, avant même de savoir "
+         "ce qu'est une pile : la signature qui nomme un fichier, ce qu'un "
+         "<font face='Courier'>strings</font> laisse voir, la différence entre une "
+         "position dans le fichier et une adresse en mémoire. Elles continuent par ce "
+         "qu'un contrôle d'accès a l'air d'être vu du désassemblage — une comparaison, "
+         "un saut, un calcul à dérouler —, et finissent sur ce qui ne veut pas être lu : "
+         "des chaînes cachées par XOR, une garde <font face='Courier'>ptrace</font>, un "
+         "<font face='Courier'>int3</font> et son gestionnaire, l'entropie d'une zone, "
+         "un gadget ROP, et l'octet qui change tout. Chacune <b>dit où regarder</b> : "
+         "c'est le geste qu'on vient apprendre, pas la syntaxe.",),
         ("p",
          "<b>Les autres sont des démonstrations</b> : des programmes à regarder tourner, "
          "sans rien à y réussir — le tout premier du parcours en est un, qui montre ce "
@@ -1879,6 +1965,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Outils › Correctifs, avec l\'octet d\'avant, et <b>rien n\'atteint le disque</b> "
          "tant qu\'on n\'enregistre pas soi-même, vers un fichier qu\'on choisit — jamais "
          "par-dessus l\'original.",
+         "<b>Autant d'octets par ligne que la largeur permet.</b> <font face='Courier'>auto</font> "
+         "est le réglage de départ : la grille passe à trente-deux octets dès qu'ils "
+         "tiennent, et un motif qui se répète toutes les trente-deux positions saute "
+         "alors aux yeux. <b>8</b>, <b>16</b> ou <b>32</b> figent le choix — on veut "
+         "parfois comparer deux fichiers sur la même grille, ou retrouver la disposition "
+         "de <font face='Courier'>xxd</font>.",
+         "<b>Le vidage prend la place qu'on lui donne.</b> Agrandir la fenêtre d'analyse "
+         "montre plus d'octets, et pas plus de blanc : le nombre de lignes se calcule "
+         "sur la hauteur offerte. Et dès qu'il y a la largeur — <b>la pastille verte</b> "
+         "de la fenêtre la donne —, l'inspecteur passe dans une <b>colonne à droite</b> "
+         "du vidage au lieu de se poser dessous : choisir un octet ne coûte plus la "
+         "moitié de ce qu'on regardait. Les autres panneaux restent bornés à une largeur "
+         "de lecture, qui est faite pour des phrases ; une grille d'octets, elle, gagne "
+         "à chaque pixel.",
          "<b>Plusieurs octets à la fois.</b> <b>Maj+clic</b> et <b>Maj+flèches</b> tendent "
          "une sélection ; le panneau dit ce qu\'on tient — « 3 octets, 0x2050 … 0x2052 » "
          "—, et le curseur garde un trait sous sa cellule pour qu\'on sache lequel des "
@@ -2407,6 +2507,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>fork</font> qui se surveille lui-même, la lecture de "
          "<font face='Courier'>/proc/self/status</font> : toutes posent la même question, "
          "et toutes se répondent de la même façon.",
+         "<b>Le <font face='Courier'>int3</font> qu'un programme se pose à lui-même</b> "
+         "est la même question encore. Il installe un gestionnaire de "
+         "<font face='Courier'>SIGTRAP</font>, exécute "
+         "<font face='Courier'>int3</font>, et regarde s'il a été appelé : sous un "
+         "débogueur, c'est le débogueur qui reçoit le point d'arrêt, et le gestionnaire "
+         "ne tourne pas. namsdec l'appelle — avec un vrai cadre de signal, de sorte "
+         "qu'un gestionnaire qui réécrit l'adresse de reprise pour sauter par-dessus un "
+         "leurre soit obéi. Sans gestionnaire installé, l'exécution s'arrête : sur une "
+         "vraie machine, ce signal tuerait le programme.",
         ]),
 
         ("h2", "Un programme qui se déballe — et qui résiste"),
@@ -2615,6 +2724,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "ailleurs, <b>Localiser le binaire…</b> (voir ci-dessus) reste la voie : on montre une "
          "fois où est <font face='Courier'>x64-disassembler</font>, et il devient prêt."),
         ("note",
+         "<b>Une installation s'arrête quand on le demande</b>, et pendant l'étape en cours "
+         "— pas à la fin de la compilation dont on voulait précisément sortir. Le bouton "
+         "<b>Arrêter</b> rend la main en une demi-seconde, et la commande emporte sa "
+         "descendance&nbsp;: les programmes qu'elle avait elle-même lancés s'arrêtent avec "
+         "elle. Ce qui échappe à cette règle est dit plutôt que promis&nbsp;: un descendant "
+         "qui s'est détaché dans son propre groupe (<font face='Courier'>setsid</font>) ne "
+         "reçoit pas le signal. Chaque étape a par ailleurs trente minutes — et non les deux "
+         "de la décompilation&nbsp;: une compilation d'outil peut légitimement durer un quart "
+         "d'heure, un décompilateur qui n'a pas répondu en deux minutes ne répondra pas."),
+        ("note",
          "<b>Rizin seul ne décompile pas</b> : la commande <font face='Courier'>pdg</font> vient "
          "du greffon <font face='Courier'>rz-ghidra</font>. Là où il n'est pas empaqueté, "
          "<font face='Courier'>rz-pm -i rz-ghidra</font> l'installe. namsdec vérifie sa présence "
@@ -2685,6 +2804,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "(l'onglet RE, les exercices, la décompilation par un outil extérieur, et le module "
          "qui va chercher et construit ces outils). Rien d'optionnel n'est obligatoire : "
          "namsdec tourne sans."),
+        ("p",
+         "Chaque composant tient dans une <b>carte</b>, et les cartes partagent une "
+         "largeur : c'est une liste, et une liste s'aligne sur un bord droit. Une "
+         "pastille dit l'état — vert sain, rouge en panne, bleu actif avec des "
+         "données, gris inactif —, suivie du nom, de la version, et d'une ligne qui "
+         "dit ce que le composant fait ou pourquoi il dort."),
         ("p",
          "Des thèmes et des désassembleurs supplémentaires s'installent comme les séries "
          "d'exercices : un fichier déposé dans "
@@ -3080,11 +3205,29 @@ def main():
         "s'exécute entier.",
         "Pas de système de fichiers : `fopen` répond « introuvable », ce qui est la "
         "vérité — il n'y a pas de fichier — et laisse le programme suivre sa branche "
-        "d'erreur, souvent la moitié intéressante. La console le dit la première fois.",
+        "d'erreur, souvent la moitié intéressante. La console le dit la première fois. "
+        "<b>L'appel système répond de même</b> : `open`, `openat`, `stat`, `access`. "
+        "Cette réponse-là ne valait d'abord que pour un binaire lié dynamiquement, qui "
+        "passe par la fonction ; un binaire lié statiquement fait le même travail par "
+        "l'appel système et s'arrêtait net. La même question recevait deux réponses "
+        "selon la façon dont le programme avait été lié.",
         "Pas de processus ni de bibliothèque chargée à l'exécution : `fork`, `execvp`, "
         "`dlopen` restent refusés en se nommant, et le resteront.",
-        "Les appels système qui touchent au monde — `mmap`, `open`, `fork` — sont nommés "
-        "mais pas exécutés. namsdec le dit dès l'assemblage, avec la ligne.",
+        "Les appels système : namsdec rend ce qu'un programme demande pour tourner seul "
+        "— lire, écrire, prendre de la mémoire, se renseigner sur lui-même, et tout ce "
+        "qu'une bibliothèque C fait avant d'arriver à <font face='Courier'>main</font>. "
+        "Ceux qui touchent au dehors — `execve`, `socket`, `connect` — sont <b>nommés</b> "
+        "mais pas exécutés : namsdec le dit dès l'assemblage, avec la ligne, et le "
+        "module <b>Appels système</b> marque chacun d'eux. Un appel refusé s'arrête en "
+        "donnant son numéro <i>et</i> son nom.",
+        "Le x87 à sa pleine précision : le mot de contrôle est honoré — arrondi dirigé, "
+        "précision à 24 et 53 bits —, mais la précision <b>étendue</b> à 64 bits, qui est "
+        "le réglage par défaut, est approximée par la double. Les transcendantes "
+        "(`fsin`, `fcos`, `fyl2x`…) viennent de la bibliothèque de Rust et non du "
+        "polynôme du coprocesseur, et aucune exception flottante n'est levée. Sept "
+        "points en tout, recensés dans la fiche <b>F1</b> « arrondi », annoncés dans "
+        "l'onglet Diagnostics quand un programme les touche, et mesurés par "
+        "`cargo run -p namsdec-emu --example oracle_x87`.",
         "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
     ]))
     blocs.append(("h1", "Signaler une anomalie"))
