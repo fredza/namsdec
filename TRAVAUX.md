@@ -50,7 +50,7 @@ points avant d'ajouter de nouveaux modules sans rapport avec eux.
 | **P4** apprentissage / analyse | `[ ]` | Le seul lot qui demande un avis plutôt qu'une mesure : trois organisations à éprouver, pas une refonte validée. **Tauri a été envisagé puis écarté le 29 octobre** — voir P7. |
 | **P5** sous-états de `NamsdecApp` | `[ ]` | — |
 | **P6** commentaires historiques | `[ ]` | — |
-| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 aux trois quarts : **9 modules passés**. Ne restent que les trois qui peignent vraiment. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
+| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 presque close : **10 modules sur 12**. Ne restent que le graphe d'appels et l'éditeur binaire. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
 
 Ce que les trois premiers lots ont en commun, et qui vaut pour les
 suivants : **chacun partait d'un risque déduit du code, et chacun s'est
@@ -605,12 +605,57 @@ elle se paie seule, et elle est le prérequis de toute alternative.
       des liens vers le listing. Les fonctions deviennent des
       `Repliable`, le bouton une action.
 
-      Restent les trois qui peignent **vraiment** : entropie, graphe
-      d'appels, éditeur binaire. Ceux-là exposeront des **valeurs** —
-      une entropie par tranche, des nœuds et des arêtes, des octets et
-      leur adresse — et le dessin restera à l'interface, qui seule sait
-      de quelle largeur elle dispose. C'est la dernière forme de la
-      frontière à concevoir.
+      **L'entropie suit, et avec elle la forme « dessin »** —
+      `Bloc::Dessin(Dessin::Profil { valeurs, taille_tranche, total })`.
+      Le module ne dit plus qu'une **valeur par tranche** ; les
+      260 lignes qui décident « une colonne par pixel, et la plus haute
+      des tranches qu'elle recouvre » ont déménagé dans le peintre,
+      parce que cette décision n'a de sens qu'une fois la largeur
+      connue. Les verdicts passent par `Ton` : le module dit
+      « mauvais » selon les seuils d'`entropy::seuils`, l'interface
+      choisit la teinte.
+      **La capture a trouvé deux choses que les contrôles ne voyaient
+      pas.** (1) Une vraie inexactitude : j'avais déduit la taille du
+      fichier de `tranches × taille_tranche`, mais **la dernière
+      tranche est plus courte** — la règle d'adresses sous le profil
+      était graduée jusqu'à `0x2300` au lieu de `0x22c8`, soit
+      cinquante-six octets qui n'existent pas. Le total est maintenant
+      **dit** par le module, non déduit. (2) Les points médians de la
+      ligne de résumé s'étaient collés à leurs voisins, parce que
+      j'avais fondu trois étiquettes distinctes en un seul `format!`.
+      Séparées de nouveau, la ligne est identique au pixel.
+      **Les deux sont retenues par un contrôle**, et chacun a été
+      éprouvé en remettant le défaut : le premier choisit une taille de
+      `0x22c8` — que la tranche ne divise pas — et vérifie que la
+      déduction se trompe VRAIMENT là, sans quoi il ne distinguerait
+      pas les deux façons de compter ; le second compte les points
+      médians comme fragments à part.
+
+      **Restent deux modules**, et ce sont les deux derniers de P7 :
+
+      * **le graphe d'appels** (`call_graph_module`, 864 lignes, 6
+        interactions, `painter`). Il attend une forme
+        `Dessin::Graphe { nœuds, arêtes }` à concevoir sur le même
+        principe que le profil : des **valeurs**, et le placement à
+        l'interface — c'est elle qui sait de quelle surface elle
+        dispose.
+      * **l'éditeur binaire** (`hex_editor_module`, 1 966 lignes, 15
+        interactions). De loin le plus gros du projet, et le plus
+        interactif : saisie, sélection, navigation. Il demandera
+        probablement `Dessin::Octets { base, octets }` **plus** une
+        notion de sélection que le vocabulaire n'a pas encore. À
+        prendre en dernier, et sans doute en plusieurs fois.
+
+      **Le protocole, qui a servi dix fois et qu'il suffit de
+      reprendre :** lire le `fn ui` entier ; remplacer **la méthode
+      seule**, jusqu'à sa propre accolade — pas jusqu'au marqueur
+      suivant, c'est ainsi que `build_rule` a disparu de `yara` ;
+      sortir dans une méthode à part ce qui est un COMPORTEMENT (une
+      bascule, un dépliage) pour pouvoir l'éprouver sans peindre ;
+      comparer la capture **au pixel** avec celle d'avant ; et, quand
+      la scène du banc ne montre que le cas vide — c'est arrivé pour
+      `patterns`, `imports` et `digest` —, écrire un contrôle qui lit
+      la vue sur des données bâties à la main.
       Les quatre qui peignent vraiment — entropie, graphe d'appels,
       éditeur binaire, décompilation —, plus `xrefs` et `imports`, qui
       gardent en propre ce que l'utilisateur a déplié.

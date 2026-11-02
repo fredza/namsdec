@@ -9161,7 +9161,7 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      déménagera dans `namsdec-gui` quand les douze modules seront
      passés, et `namsdec-re` perdra egui.
 
-     NEUF MODULES SUR DOUZE, et chacun a appris quelque chose :
+     DIX MODULES SUR DOUZE, et chacun a appris quelque chose :
        — `digest`, le pilote : son `ui()` tient en trois lignes et
          DÉRIVE de sa vue. Une seule description du panneau, donc pas
          deux qui divergent.
@@ -9216,9 +9216,28 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      egui, deux images et la collecte des formes de texte pour lire ce
      qu'une fiche dit. Il lit maintenant des blocs.
 
-     RESTENT LES TROIS QUI PEIGNENT VRAIMENT — entropie, graphe
-     d'appels, éditeur binaire. Ceux-là exposeront des VALEURS et non un
-     dessin : le profil d'entropie décide « une colonne par pixel, la
-     plus haute des tranches qu'elle recouvre », ce qui n'a de sens
-     qu'une fois la largeur connue. C'est à l'interface, et c'est la
-     dernière forme de la frontière à concevoir.
+     L'ENTROPIE, ET LA FORME « DESSIN ». Le module ne dit plus qu'une
+     valeur par tranche ; les 260 lignes de dessin sont parties dans le
+     peintre. C'est le cas qui montre le mieux à quoi sert la
+     frontière : « une colonne par pixel, et la plus haute des tranches
+     qu'elle recouvre » est une décision qui n'a de sens qu'une fois la
+     largeur connue — donc dans l'interface, et nulle part ailleurs.
+
+     ET LA CAPTURE A TROUVÉ UNE INEXACTITUDE QUE RIEN D'AUTRE NE VOYAIT.
+     J'avais déduit la taille du fichier de `tranches ×
+     taille_tranche` ; or la DERNIÈRE TRANCHE EST PLUS COURTE. La règle
+     d'adresses sous le profil se graduait donc jusqu'à 0x2300 au lieu
+     de 0x22c8 — cinquante-six octets qui n'existent pas, sur lesquels
+     un clic aurait mené hors du fichier. Le total est maintenant DIT
+     par le module et non déduit, et le champ porte la raison.
+     Second écart, plus bénin : trois étiquettes fondues en un seul
+     `format!` avaient collé les points médians à leurs voisins.
+     Séparées de nouveau, la ligne est identique au pixel.
+     Les deux sont retenues par un contrôle, et chacun a été éprouvé en
+     remettant le défaut.
+
+     RESTENT LE GRAPHE D'APPELS ET L'ÉDITEUR BINAIRE. Le premier attend
+     une forme `Dessin::Graphe` sur le principe du profil. Le second —
+     1 966 lignes, quinze interactions — est le plus gros du projet et
+     demandera une notion de sélection que le vocabulaire n'a pas
+     encore. À prendre en dernier, et en plusieurs fois.

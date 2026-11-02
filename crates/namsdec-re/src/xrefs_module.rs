@@ -368,7 +368,9 @@ mod tests {
                     Bloc::Jauge { texte, .. } => {
                         vus.extend(texte.fragments.iter().map(|f| f.texte.clone()))
                     }
-                    Bloc::Code(_) | Bloc::Trait => {}
+                    // Ni le code ni un dessin ne portent de fragments :
+                    // leur contenu est la donnée, d'un bloc.
+                    Bloc::Code(_) | Bloc::Dessin(_) | Bloc::Trait => {}
                 }
             }
         }

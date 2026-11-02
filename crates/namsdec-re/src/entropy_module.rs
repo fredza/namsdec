@@ -1,5 +1,23 @@
 use crate::entropy::{self, Range, Verdict, Window, seuils};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button};
+use crate::vue::{Bloc, Dessin, Fragment, Ligne, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
+
+/// Le verdict d'une mesure d'entropie, dit en TON et non en couleur.
+///
+/// La table des teintes vit dans le peintre, avec son dégradé continu ;
+/// ici on ne dit que ce que la valeur VAUT. Les seuils sont ceux de
+/// `entropy::seuils`, comme partout ailleurs — la phrase du bas du
+/// panneau, les couleurs du profil et ce verdict parlent du même
+/// réglage, et doivent donc le lire au même endroit.
+fn teinte(entropie: f64) -> Ton {
+    if entropie >= seuils::EMPAQUETÉ {
+        Ton::Mauvais
+    } else if entropie >= seuils::DENSE_CODE {
+        Ton::Attention
+    } else {
+        Ton::Normal
+    }
+}
 
 /// Le profil d'entropie du fichier, tranche par tranche.
 ///
@@ -77,176 +95,237 @@ impl ReModule for EntropyModule {
         self.packers = crate::packer::detect(ctx.binary);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.windows.is_empty() {
-            ui.weak(ctx.t(
-                "Rien à mesurer : aucun fichier chargé.",
-                "Nothing to measure: no file loaded.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Rien à mesurer : aucun fichier chargé.",
+                        "Nothing to measure: no file loaded.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
-
         let fr = ctx.lang.starts_with("fr");
         // Ce qu'on lit d'abord : le chiffre et son verdict. Puis le
         // découpage, parce qu'un profil ne veut rien dire sans la
         // taille de ses tranches — une bosse sur 256 octets et une
         // bosse sur 64 kilo-octets ne disent pas la même chose.
-        ui.horizontal_wrapped(|ui| {
-            ui.label(ctx.t("Sur tout le fichier", "Whole file"));
-            ui.monospace(format!("{:.2}", self.whole));
-            ui.weak(Verdict::of(self.whole).label(fr));
-            ui.weak("·");
-            ui.weak(format!(
-                "{} {} {} {}",
-                self.windows.len(),
-                ctx.t("tranches de", "windows of"),
-                octets(self.window),
-                ctx.t("chacune", "each"),
-            ));
-            ui.weak("·");
-            ui.weak(format!(
-                "{} {}",
-                octets(self.size),
-                ctx.t("en tout", "in all")
-            ));
-        });
-
-        ui.add_space(6.0);
-        if let Some((offset, target)) = profil(ui, ctx, &self.windows, self.window) {
-            // Un clic dans le profil mène à l'adresse — quand cette
-            // position du fichier est projetée quelque part.
-            if let Some(addr) = self.adresse_de(offset) {
-                self.demande = Some(ReRequest::GoTo { addr, target });
-            }
-        }
-        ui.add_space(8.0);
-        échelle(ui, ctx);
+        let mut blocs = vec![
+            Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("Sur tout le fichier", "Whole file")),
+                    Fragment::dit(format!("{:.2}", self.whole)).code(),
+                    Fragment::dit(Verdict::of(self.whole).label(fr)).faible(),
+                    // Des fragments SÉPARÉS, et non une seule chaîne :
+                    // chacun est une étiquette à part, et l'interface
+                    // les espace comme elle espace des mots voisins.
+                    // Fondus en un seul `format!`, les points médians
+                    // se collaient à leurs voisins — vu sur la capture.
+                    Fragment::dit("·").faible(),
+                    Fragment::dit(format!(
+                        "{} {} {} {}",
+                        self.windows.len(),
+                        ctx.t("tranches de", "windows of"),
+                        octets(self.window),
+                        ctx.t("chacune", "each"),
+                    ))
+                    .faible(),
+                    Fragment::dit("·").faible(),
+                    Fragment::dit(format!(
+                        "{} {}",
+                        octets(self.size),
+                        ctx.t("en tout", "in all")
+                    ))
+                    .faible(),
+                ]
+                .into(),
+            ),
+            // LE PROFIL : des valeurs, et rien d'autre. Comment on les
+            // peint — une colonne par pixel, la plus haute de celles
+            // qu'elle recouvre — appartient à qui connaît la largeur.
+            Bloc::Dessin(Dessin::Profil {
+                valeurs: self.windows.iter().map(|f| f.entropy).collect(),
+                taille_tranche: self.window,
+                total: self.size,
+            }),
+        ];
 
         // L'empaqueteur quand il se nomme : la mesure dit « il y a
         // quelque chose d'illisible ici », le nom dit quoi en faire.
         // Avant les plages, parce que c'est la réponse et non un détail
         // de plus.
         for empaqueteur in &self.packers {
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.strong(
-                    egui::RichText::new(empaqueteur.name)
-                        .color(egui::Color32::from_rgb(0xf4, 0x87, 0x71)),
-                );
-                // La preuve avec le nom, toujours : « c'est de l'UPX »
-                // sans dire pourquoi demande de faire confiance.
-                ui.monospace(empaqueteur.clue.label(ctx.lang));
-            });
-            ui.indent(empaqueteur.name, |ui| {
-                ui.weak(empaqueteur.text(ctx.lang));
-            });
+            blocs.push(Bloc::Texte(
+                vec![
+                    Fragment::dit(empaqueteur.name).ton(Ton::Mauvais),
+                    // La preuve avec le nom, toujours : « c'est de
+                    // l'UPX » sans dire pourquoi demande de faire
+                    // confiance.
+                    Fragment::dit(format!(" {}", empaqueteur.clue.label(ctx.lang))).code(),
+                ]
+                .into(),
+            ));
+            blocs.push(Bloc::Retrait(vec![Bloc::Texte(
+                Fragment::dit(empaqueteur.text(ctx.lang)).faible().into(),
+            )]));
         }
 
-        ui.add_space(8.0);
         // LES PLAGES, avec leurs adresses. Le dessin dit « il se passe
         // quelque chose vers le tiers du fichier » ; cette table dit
-        // où, en positions ET en adresses, et le clic y emmène. Sans
-        // elle, il fallait relever le décalage au survol puis le
-        // convertir de tête.
-        ui.strong(format!(
-            "{} ({})",
-            ctx.t("Plages", "Ranges"),
-            self.ranges.len()
+        // où, en positions ET en adresses, et le clic y emmène.
+        blocs.push(Bloc::Texte(
+            Fragment::dit(format!(
+                "{} ({})",
+                ctx.t("Plages", "Ranges"),
+                self.ranges.len()
+            ))
+            .fort()
+            .into(),
         ));
-        ui.weak(ctx.t(
-            "Les tranches voisines qui disent la même chose, réunies. L'adresse mène \
-             au listing ; la position, elle, se retrouve dans le vidage et dans \
-             l'éditeur binaire.",
-            "Neighbouring windows that say the same thing, joined. The address leads \
-             to the listing; the file position is what the dump and the binary \
-             editor use.",
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Les tranches voisines qui disent la même chose, réunies. L'adresse mène \
+                 au listing ; la position, elle, se retrouve dans le vidage et dans \
+                 l'éditeur binaire.",
+                "Neighbouring windows that say the same thing, joined. The address leads \
+                 to the listing; the file position is what the dump and the binary \
+                 editor use.",
+            ))
+            .faible()
+            .into(),
         ));
-        ui.add_space(4.0);
-        let mut demande: Option<ReRequest> = None;
         let plus_dense = self
             .ranges
             .iter()
             .enumerate()
             .max_by(|a, b| a.1.haute.total_cmp(&b.1.haute))
             .map(|(rang, _)| rang);
-        egui::Grid::new("entropy_ranges")
-            .num_columns(5)
-            .min_col_width(0.0)
-            .striped(true)
-            .show(ui, |ui| {
-                ui.weak(ctx.t("position", "position"));
-                ui.weak(ctx.t("taille", "size"));
-                ui.weak(ctx.t("adresse", "address"));
-                ui.weak(ctx.t("entropie", "entropy"));
-                ui.weak(ctx.t("ce que c'est", "what it is"));
-                ui.end_row();
-                for (rang, plage) in self.ranges.iter().enumerate().take(PLAGES_MONTRÉES) {
-                    ui.monospace(format!("{:#x}..{:#x}", plage.offset, plage.end()));
-                    ui.monospace(octets(plage.len));
-                    match self.addresses.get(rang).copied().flatten() {
-                        Some(addr) => {
-                            if let Some(cible) = clickable_address(ui, ctx, addr) {
-                                demande = Some(ReRequest::GoTo {
-                                    addr,
-                                    target: cible,
-                                });
+        let entête = |texte: &str| -> Ligne { Fragment::dit(texte).faible().into() };
+        blocs.push(Bloc::Tableau {
+            colonnes: vec![
+                entête(ctx.t("position", "position")),
+                entête(ctx.t("taille", "size")),
+                entête(ctx.t("adresse", "address")),
+                entête(ctx.t("entropie", "entropy")),
+                entête(ctx.t("ce que c'est", "what it is")),
+            ],
+            rangées: self
+                .ranges
+                .iter()
+                .enumerate()
+                .take(PLAGES_MONTRÉES)
+                .map(|(rang, plage)| {
+                    // La mesure dit le VERDICT, pas la couleur : c'est
+                    // la règle de P7, et c'est ce qui laisse un thème
+                    // changer sans qu'on touche ici.
+                    let verdict = teinte(plage.entropy());
+                    vec![
+                        Fragment::dit(format!("{:#x}..{:#x}", plage.offset, plage.end()))
+                            .code()
+                            .into(),
+                        Fragment::dit(octets(plage.len)).code().into(),
+                        match self.addresses.get(rang).copied().flatten() {
+                            Some(addr) => {
+                                Fragment::dit(format!("{addr:#010x}")).mène_à(addr).into()
                             }
-                        }
-                        // Une position que rien ne projette en mémoire :
-                        // l'en-tête, la table des symboles, le
-                        // remplissage de fin. Le dire plutôt que de
-                        // laisser une case vide.
-                        None => {
-                            ui.weak(ctx.t("hors mémoire", "not mapped"));
-                        }
-                    }
-                    let couleur = entropy_color(plage.entropy());
-                    ui.monospace(
-                        egui::RichText::new(format!("{:.2}", plage.entropy())).color(couleur),
-                    );
-                    // Le verdict en un mot : la phrase entière, dans
-                    // une table à cinq colonnes, court au-delà du bord
-                    // d'un panneau étroit. Elle est sous la légende,
-                    // où elle a la place de s'expliquer.
-                    let mot = plage.verdict.short(fr);
-                    if plus_dense == Some(rang) {
-                        ui.strong(egui::RichText::new(mot).color(couleur));
-                    } else {
-                        ui.weak(mot);
-                    }
-                    ui.end_row();
-                }
-            });
+                            // Une position que rien ne projette en
+                            // mémoire : l'en-tête, la table des
+                            // symboles, le remplissage de fin. Le dire
+                            // plutôt que de laisser une case vide.
+                            None => Fragment::dit(ctx.t("hors mémoire", "not mapped"))
+                                .faible()
+                                .into(),
+                        },
+                        Fragment::dit(format!("{:.2}", plage.entropy()))
+                            .code()
+                            .ton(verdict)
+                            .into(),
+                        // Le verdict en un mot : la phrase entière,
+                        // dans une table à cinq colonnes, court au-delà
+                        // du bord d'un panneau étroit. Elle est sous la
+                        // légende, où elle a la place de s'expliquer.
+                        if plus_dense == Some(rang) {
+                            Fragment::dit(plage.verdict.short(fr)).ton(verdict).into()
+                        } else {
+                            Fragment::dit(plage.verdict.short(fr)).faible().into()
+                        },
+                    ]
+                })
+                .collect(),
+            rayé: true,
+        });
         if self.ranges.len() > PLAGES_MONTRÉES {
-            ui.weak(format!(
-                "… {} {}",
-                self.ranges.len() - PLAGES_MONTRÉES,
-                ctx.t("plages de plus", "more ranges")
+            blocs.push(Bloc::Texte(
+                Fragment::dit(format!(
+                    "… {} {}",
+                    self.ranges.len() - PLAGES_MONTRÉES,
+                    ctx.t("plages de plus", "more ranges")
+                ))
+                .faible()
+                .into(),
             ));
-        }
-        if demande.is_some() {
-            self.demande = demande;
         }
 
         // Ce que la mesure ne dit pas. Une entropie haute sur un petit
         // bloc n'est pas une preuve, et laisser croire le contraire
         // ferait chercher un empaqueteur là où il n'y en a pas.
-        ui.add_space(6.0);
+        //
         // Le chiffre vient de `entropy::seuils` : la phrase, les
         // couleurs et le repère tracé en travers du profil parlent du
         // même réglage, et doivent donc le lire au même endroit.
-        ui.weak(if fr {
-            format!(
-                "Une piste, non un verdict : un bloc de code dense monte à {} sans être \
-                 chiffré.",
-                format!("{:.1}", seuils::DENSE_CODE).replace('.', ",")
-            )
-        } else {
-            format!(
-                "A hint, not a verdict: dense code reaches {:.1} without being encrypted.",
-                seuils::DENSE_CODE
-            )
-        });
+        blocs.push(Bloc::Texte(
+            Fragment::dit(if fr {
+                format!(
+                    "Une piste, non un verdict : un bloc de code dense monte à {} sans être \
+                     chiffré.",
+                    format!("{:.1}", seuils::DENSE_CODE).replace('.', ",")
+                )
+            } else {
+                format!(
+                    "A hint, not a verdict: dense code reaches {:.1} without being encrypted.",
+                    seuils::DENSE_CODE
+                )
+            })
+            .faible()
+            .into(),
+        ));
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
+        }
+        for action in &gestes.actions {
+            // Un clic dans le profil mène à l'adresse — quand cette
+            // position du fichier est projetée quelque part. Le peintre
+            // ne connaît que la position ; la table des adresses est
+            // ici.
+            let Some(reste) = action.strip_prefix(crate::vue_peinte::PROFIL_ALLER) else {
+                continue;
+            };
+            let Some((position, cible)) = reste.split_once(':') else {
+                continue;
+            };
+            let Ok(position) = position.parse::<usize>() else {
+                continue;
+            };
+            let target = match cible {
+                "octets" => crate::GoTarget::Bytes,
+                _ => crate::GoTarget::Listing,
+            };
+            if let Some(addr) = self.adresse_de(position) {
+                self.demande = Some(ReRequest::GoTo { addr, target });
+            }
+        }
     }
 }
 
@@ -270,7 +349,7 @@ impl EntropyModule {
 }
 
 /// Une taille, écrite comme on la lit : en octets, en Ko, en Mo.
-fn octets(n: usize) -> String {
+pub(crate) fn octets(n: usize) -> String {
     const KO: usize = 1024;
     const MO: usize = 1024 * KO;
     if n >= MO {
@@ -282,67 +361,6 @@ fn octets(n: usize) -> String {
     }
 }
 
-/// La couleur d'une tranche selon son entropie, en dégradé continu.
-///
-/// Du vert (régulier, inoffensif) au violet (maximal — chiffré ou
-/// compressé), en passant par le vert-jaune, le jaune, l'orangé,
-/// l'orange, le rouge et le magenta. **Neuf arrêts et non cinq** : avec
-/// cinq, tout l'intervalle du code ordinaire — 5,5 à 6,5, celui où se
-/// joue la lecture d'un vrai binaire — tenait dans une seule teinte, et
-/// deux blocs qu'un demi-bit sépare paraissaient identiques.
-///
-/// Les arrêts sont posés là où le sens bascule : le texte vers 4-5, le
-/// code dense vers 6, le soupçon d'empaquetage vers 7, l'aléa pur à 8.
-///
-/// Couleurs fixes, et non tirées du thème : c'est une échelle de mesure,
-/// elle doit dire la même chose d'un thème à l'autre.
-fn entropy_color(entropy: f64) -> egui::Color32 {
-    const ARRÊTS: [(f32, egui::Color32); 9] = [
-        (0.0, egui::Color32::from_rgb(0x3f, 0xb9, 0x50)), // vert
-        (3.0, egui::Color32::from_rgb(0x8b, 0xc3, 0x4a)), // vert-jaune
-        (4.0, egui::Color32::from_rgb(0xd2, 0xa8, 0x06)), // jaune
-        (5.0, egui::Color32::from_rgb(0xdd, 0x8a, 0x0c)), // jaune orangé
-        (6.0, egui::Color32::from_rgb(0xe0, 0x7b, 0x1f)), // orange
-        (6.5, egui::Color32::from_rgb(0xec, 0x63, 0x34)), // orange rouge
-        (7.0, egui::Color32::from_rgb(0xf8, 0x51, 0x49)), // rouge
-        (7.5, egui::Color32::from_rgb(0xd5, 0x5a, 0xb0)), // magenta
-        (8.0, egui::Color32::from_rgb(0xa3, 0x71, 0xf7)), // violet
-    ];
-    let e = entropy as f32;
-    for paire in ARRÊTS.windows(2) {
-        let (v0, c0) = paire[0];
-        let (v1, c1) = paire[1];
-        if e <= v1 {
-            let t = ((e - v0) / (v1 - v0)).clamp(0.0, 1.0);
-            let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
-            return egui::Color32::from_rgb(
-                m(c0.r(), c1.r()),
-                m(c0.g(), c1.g()),
-                m(c0.b(), c1.b()),
-            );
-        }
-    }
-    ARRÊTS[ARRÊTS.len() - 1].1
-}
-
-/// La hauteur du profil : ample, mais jamais plus que la moitié de la
-/// fenêtre.
-///
-/// Trente-six pixels de haut sur cinq cents de large écrasaient tout :
-/// entre 5,8 et 6,6 — l'écart qui sépare du code d'un bloc suspect —,
-/// il y avait trois pixels, et l'on ne voyait rien. Il faut de la
-/// hauteur pour lire une courbe.
-///
-/// La borne est celle que l'usage a demandée : **jamais plus de la
-/// moitié du viewport**. Un dessin qui prend tout l'écran n'est plus un
-/// indice parmi d'autres, c'est le panneau tout entier — et il reste
-/// quatre rubriques à lire dessous.
-pub(crate) fn hauteur_du_profil(viewport: f32) -> f32 {
-    const VOULUE: f32 = 240.0;
-    const MINIMUM: f32 = 60.0;
-    VOULUE.min(viewport * 0.5).max(MINIMUM.min(viewport * 0.5))
-}
-
 /// Combien de repères d'adresse la règle porte, pour cette largeur.
 ///
 /// Un repère tous les cent soixante pixels environ : assez pour situer
@@ -350,276 +368,6 @@ pub(crate) fn hauteur_du_profil(viewport: f32) -> f32 {
 /// hexadécimal fait huit caractères.
 pub(crate) fn repères(largeur: f32) -> usize {
     ((largeur / 160.0).floor() as usize).clamp(2, 10)
-}
-
-/// Le profil : une colonne par tranche, du bas vers le haut, l'échelle
-/// allant de 0 à 8 — **toujours**, et non de la plus basse à la plus
-/// haute valeur vue : une échelle qui s'ajuste ferait paraître
-/// spectaculaire l'écart entre 5,9 et 6,1, et l'oeil y verrait une
-/// bosse qui n'existe pas.
-///
-/// Rend la position du fichier sur laquelle on a cliqué, s'il y en a
-/// une : le dessin désigne des endroits, et la seule chose qu'on veuille
-/// en faire est d'aller voir.
-fn profil(
-    ui: &mut egui::Ui,
-    ctx: &ReContext,
-    windows: &[Window],
-    taille_tranche: usize,
-) -> Option<(usize, crate::GoTarget)> {
-    let hauteur = hauteur_du_profil(ui.ctx().viewport_rect().height());
-    // Pleine largeur : c'est une carte du fichier, et une carte se lit
-    // d'autant mieux qu'elle est large. La borne de 520 pixels d'avant
-    // tassait trois cents tranches dans un timbre-poste.
-    let largeur = ui.available_width().max(120.0);
-    let (rect, réponse) = ui.allocate_exact_size(
-        egui::vec2(largeur, hauteur),
-        egui::Sense::click().union(egui::Sense::hover()),
-    );
-    let peintre = ui.painter_at(rect);
-    let visuels = ui.visuals().clone();
-    peintre.rect_filled(rect, 2.0, visuels.extreme_bg_color);
-
-    let y_de = |bits: f64| rect.bottom() - (bits / 8.0).clamp(0.0, 1.0) as f32 * hauteur;
-
-    // Les lignes de niveau, graduées en bits par octet : sans elles,
-    // les hauteurs ne se comparent qu'entre elles, et l'on ne sait pas
-    // si une barre est haute dans l'absolu.
-    let police = egui::TextStyle::Small.resolve(ui.style());
-    for bits in [2.0, 4.0, 6.0] {
-        let y = y_de(bits);
-        peintre.line_segment(
-            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-            egui::Stroke::new(1.0, visuels.weak_text_color().gamma_multiply(0.35)),
-        );
-    }
-
-    // Une colonne par pixel, et la PLUS HAUTE des tranches qu'elle
-    // recouvre : sur un fichier qui porte plus de tranches que le
-    // dessin n'a de pixels, prendre la moyenne effacerait exactement ce
-    // qu'on cherche — le petit bloc dense au milieu du calme.
-    let colonnes = largeur.floor().max(1.0) as usize;
-    let n = windows.len();
-    for colonne in 0..colonnes {
-        let début = colonne * n / colonnes;
-        let fin = (((colonne + 1) * n).div_ceil(colonnes))
-            .min(n)
-            .max(début + 1);
-        let Some(haute) = windows.get(début..fin).and_then(|tranche| {
-            tranche
-                .iter()
-                .map(|f| f.entropy)
-                .fold(None, |acc: Option<f64>, e| {
-                    Some(acc.map_or(e, |a: f64| a.max(e)))
-                })
-        }) else {
-            continue;
-        };
-        let x = rect.left() + colonne as f32;
-        let barre = egui::Rect::from_min_max(
-            egui::pos2(x, y_de(haute)),
-            egui::pos2(x + 1.0, rect.bottom()),
-        );
-        // La couleur suit l'entropie en dégradé continu : on lit la
-        // montée sans avoir à comparer des hauteurs entre elles, et
-        // l'extrême — le chiffré, le compressé — se détache en violet.
-        peintre.rect_filled(barre, 0.0, entropy_color(haute));
-    }
-
-    // Les graduations APRÈS les barres : peintes avant, le « 2 » et le
-    // « 4 » disparaissaient sous la courbe dès que celle-ci montait, et
-    // l'échelle ne se lisait plus qu'à moitié.
-    for bits in [2.0, 4.0, 6.0] {
-        let y = y_de(bits);
-        let chiffre = format!("{bits:.0}");
-        let place =
-            peintre.layout_no_wrap(chiffre.clone(), police.clone(), visuels.weak_text_color());
-        let fond = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + 2.0, y - place.size().y - 1.0),
-            place.size() + egui::vec2(4.0, 2.0),
-        );
-        peintre.rect_filled(fond, 2.0, visuels.extreme_bg_color.gamma_multiply(0.8));
-        peintre.text(
-            egui::pos2(rect.left() + 4.0, y - 1.0),
-            egui::Align2::LEFT_BOTTOM,
-            chiffre,
-            police.clone(),
-            visuels.weak_text_color(),
-        );
-    }
-
-    // Le repère d'empaquetage : la ligne au-dessus de laquelle il n'y a
-    // plus de structure à voir. La valeur vient de `entropy::seuils`,
-    // comme celle qui décide des couleurs.
-    let seuil = y_de(seuils::EMPAQUETÉ);
-    peintre.line_segment(
-        [
-            egui::pos2(rect.left(), seuil),
-            egui::pos2(rect.right(), seuil),
-        ],
-        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xf8, 0x51, 0x49)),
-    );
-    peintre.text(
-        egui::pos2(rect.right() - 4.0, seuil - 2.0),
-        egui::Align2::RIGHT_BOTTOM,
-        format!(
-            "{} {}",
-            format!("{:.1}", seuils::EMPAQUETÉ).replace('.', ","),
-            ctx.t("empaqueté", "packed")
-        ),
-        police.clone(),
-        egui::Color32::from_rgb(0xf8, 0x51, 0x49),
-    );
-
-    // LA RÈGLE DES ADRESSES, sous le dessin : sans elle, une bosse « au
-    // tiers du fichier » ne se retrouve nulle part. Les positions sont
-    // celles du FICHIER — c'est lui qu'on mesure —, et la table des
-    // plages donne l'adresse en mémoire en regard.
-    let (règle, _) = ui.allocate_exact_size(egui::vec2(largeur, 16.0), egui::Sense::hover());
-    let peintre = ui.painter_at(règle.expand(2.0));
-    let total = windows.last().map_or(0, |f| f.offset + f.len);
-    let combien = repères(largeur);
-    for repère in 0..=combien {
-        let part = repère as f32 / combien as f32;
-        let x = rect.left() + part * largeur;
-        peintre.line_segment(
-            [egui::pos2(x, règle.top()), egui::pos2(x, règle.top() + 4.0)],
-            egui::Stroke::new(1.0, visuels.weak_text_color()),
-        );
-        let position = (total as f64 * part as f64) as usize;
-        let ancrage = if repère == 0 {
-            egui::Align2::LEFT_TOP
-        } else if repère == combien {
-            egui::Align2::RIGHT_TOP
-        } else {
-            egui::Align2::CENTER_TOP
-        };
-        peintre.text(
-            egui::pos2(x, règle.top() + 5.0),
-            ancrage,
-            format!("{position:#x}"),
-            police.clone(),
-            visuels.weak_text_color(),
-        );
-    }
-
-    // Au survol, la tranche visée se dit : sa plage, sa mesure, son
-    // verdict. Et ce qu'un clic ferait — personne ne clique sur ce qui
-    // n'a pas l'air cliquable.
-    let mut cliqué = None;
-    if let Some(position) = réponse.hover_pos() {
-        let part = ((position.x - rect.left()) / largeur).clamp(0.0, 0.999_9);
-        let index = ((part * n as f32) as usize).min(n.saturating_sub(1));
-        if let Some(fenêtre) = windows.get(index) {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            réponse.clone().on_hover_text(format!(
-                "{:#x}..{:#x}  ({})\n{:.2} — {}\n{}",
-                fenêtre.offset,
-                fenêtre.offset + fenêtre.len,
-                octets(taille_tranche),
-                fenêtre.entropy,
-                Verdict::of(fenêtre.entropy).label(ctx.lang.starts_with("fr")),
-                ctx.t(
-                    "Cliquer : aller voir cette tranche — dans le code, ou dans les octets",
-                    "Click: go and see this slice — in the code, or in the bytes"
-                ),
-            ));
-            if réponse.clicked() {
-                cliqué = Some(fenêtre.offset);
-            }
-        }
-    }
-    // LA TRANCHE VISÉE EST RETENUE, et le menu s'ouvre à l'image
-    // suivante : entre le clic et le choix, la souris a quitté la
-    // tranche pour aller sur l'entrée du menu, et la relire sous le
-    // pointeur mènerait ailleurs qu'où l'on a cliqué.
-    let visée = ui.id().with("tranche_visée");
-    if let Some(offset) = cliqué {
-        ui.data_mut(|d| d.insert_temp(visée, offset));
-    }
-    let mut choix = None;
-    egui::Popup::menu(&réponse).show(|ui| {
-        if framed_button(ui, ctx.t("Dans le code désassemblé", "In the disassembly")).clicked() {
-            choix = Some(crate::GoTarget::Listing);
-            ui.close();
-        }
-        if framed_button(ui, ctx.t("Dans l'éditeur binaire", "In the binary editor")).clicked() {
-            choix = Some(crate::GoTarget::Bytes);
-            ui.close();
-        }
-    });
-    let cible = choix?;
-    let offset = ui.data(|d| d.get_temp::<usize>(visée))?;
-    Some((offset, cible))
-}
-
-/// L'échelle de couleurs, graduée.
-///
-/// Une rampe sans graduation ne se lit pas : on voit « du rouge » sans
-/// savoir si c'est 6,9 ou 7,8 — or c'est exactement ce qui sépare du
-/// code dense d'un bloc chiffré. La barre porte donc ses huit
-/// graduations, et les cinq verdicts sont écrits sous la zone qui leur
-/// correspond.
-fn échelle(ui: &mut egui::Ui, ctx: &ReContext) {
-    let fr = ctx.lang.starts_with("fr");
-    let largeur = ui.available_width().clamp(160.0, 560.0);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(largeur, 12.0), egui::Sense::hover());
-    let peintre = ui.painter_at(rect);
-    // Un pixel par colonne : la rampe est continue, et c'est ce qu'elle
-    // doit montrer.
-    let colonnes = largeur.floor().max(1.0) as usize;
-    for colonne in 0..colonnes {
-        let bits = 8.0 * colonne as f64 / colonnes as f64;
-        let x = rect.left() + colonne as f32;
-        peintre.rect_filled(
-            egui::Rect::from_min_max(
-                egui::pos2(x, rect.top()),
-                egui::pos2(x + 1.0, rect.bottom()),
-            ),
-            0.0,
-            entropy_color(bits),
-        );
-    }
-    // Les graduations : zéro à huit bits par octet.
-    let police = egui::TextStyle::Small.resolve(ui.style());
-    let (règle, _) = ui.allocate_exact_size(egui::vec2(largeur, 14.0), egui::Sense::hover());
-    let peintre = ui.painter_at(règle.expand(2.0));
-    let couleur = ui.visuals().weak_text_color();
-    for bits in 0..=8 {
-        let part = bits as f32 / 8.0;
-        let x = rect.left() + part * largeur;
-        peintre.line_segment(
-            [egui::pos2(x, règle.top()), egui::pos2(x, règle.top() + 3.0)],
-            egui::Stroke::new(1.0, couleur),
-        );
-        let ancrage = match bits {
-            0 => egui::Align2::LEFT_TOP,
-            8 => egui::Align2::RIGHT_TOP,
-            _ => egui::Align2::CENTER_TOP,
-        };
-        peintre.text(
-            egui::pos2(x, règle.top() + 4.0),
-            ancrage,
-            format!("{bits}"),
-            police.clone(),
-            couleur,
-        );
-    }
-    // Et ce que chaque zone veut dire, dans sa couleur.
-    ui.add_space(2.0);
-    ui.horizontal_wrapped(|ui| {
-        ui.weak(ctx.t("bits par octet :", "bits per byte:"));
-        for (milieu, verdict) in [
-            (0.75, Verdict::Flat),
-            (3.25, Verdict::Text),
-            (5.9, Verdict::Code),
-            (7.0, Verdict::Mixed),
-            (7.9, Verdict::Random),
-        ] {
-            ui.label(egui::RichText::new(verdict.label(fr)).color(entropy_color(milieu)));
-            ui.weak("·");
-        }
-    });
 }
 
 #[cfg(test)]
@@ -641,6 +389,11 @@ mod tests {
 
     /// Le dégradé va du vert au violet, en montant avec l'entropie.
     ///
+    /// Le dégradé lui-même a suivi le dessin dans `vue_peinte` — c'est
+    /// une décision de présentation, et le module ne dit plus que des
+    /// valeurs. Le contrôle, lui, reste ici : ce qu'il éprouve est une
+    /// propriété de l'ENTROPIE, pas du peintre.
+    ///
     /// Les deux bouts sont les couleurs posées ; entre eux, la teinte
     /// change de façon monotone — le rouge monte sans discontinuité. C'est
     /// ce qui permet de lire la nature d'un bloc à sa couleur seule.
@@ -648,28 +401,28 @@ mod tests {
     fn the_gradient_climbs_from_green_to_purple() {
         // Les extrêmes sont exactement les arrêts annoncés.
         assert_eq!(
-            entropy_color(0.0),
+            crate::vue_peinte::entropy_color(0.0),
             egui::Color32::from_rgb(0x3f, 0xb9, 0x50)
         );
         assert_eq!(
-            entropy_color(8.0),
+            crate::vue_peinte::entropy_color(8.0),
             egui::Color32::from_rgb(0xa3, 0x71, 0xf7)
         );
         // Au-delà de l'échelle, on reste au violet, jamais rien de plus.
         assert_eq!(
-            entropy_color(9.0),
+            crate::vue_peinte::entropy_color(9.0),
             egui::Color32::from_rgb(0xa3, 0x71, 0xf7)
         );
         // Le bas est vert (vert dominant), le haut vire au violet (bleu
         // revenu). Entre les deux, le rouge croît sans jamais redescendre.
-        let bas = entropy_color(1.0);
+        let bas = crate::vue_peinte::entropy_color(1.0);
         assert!(
             bas.g() > bas.r() && bas.g() > bas.b(),
             "le bas doit être vert : {bas:?}"
         );
         let mut rouge_avant = 0u8;
         for pas in 0..=80 {
-            let r = entropy_color(pas as f64 / 10.0).r();
+            let r = crate::vue_peinte::entropy_color(pas as f64 / 10.0).r();
             // De 0 à 7 (rouge au sommet), le rouge ne décroît pas.
             if pas <= 70 {
                 assert!(
@@ -690,7 +443,7 @@ mod tests {
     #[test]
     fn the_profile_never_takes_more_than_half_the_window() {
         for fenêtre in [120.0f32, 300.0, 600.0, 820.0, 1100.0, 2160.0] {
-            let hauteur = hauteur_du_profil(fenêtre);
+            let hauteur = crate::vue_peinte::hauteur_du_profil(fenêtre);
             assert!(
                 hauteur <= fenêtre * 0.5 + 0.01,
                 "{fenêtre} px de haut : le profil en prend {hauteur}"
@@ -700,7 +453,10 @@ mod tests {
         // Sur un grand écran, la hauteur est celle qu'on veut, et non
         // la moitié de l'écran : une bande de huit cents pixels de haut
         // ne se lit pas mieux qu'une de deux cent quarante.
-        assert_eq!(hauteur_du_profil(2160.0), hauteur_du_profil(1080.0));
+        assert_eq!(
+            crate::vue_peinte::hauteur_du_profil(2160.0),
+            crate::vue_peinte::hauteur_du_profil(1080.0)
+        );
     }
 
     /// L'échelle distingue ce qu'un demi-bit sépare.
@@ -713,7 +469,10 @@ mod tests {
     #[test]
     fn the_scale_tells_apart_what_half_a_bit_separates() {
         let écart = |a: f64, b: f64| -> i32 {
-            let (x, y) = (entropy_color(a), entropy_color(b));
+            let (x, y) = (
+                crate::vue_peinte::entropy_color(a),
+                crate::vue_peinte::entropy_color(b),
+            );
             (x.r() as i32 - y.r() as i32).abs()
                 + (x.g() as i32 - y.g() as i32).abs()
                 + (x.b() as i32 - y.b() as i32).abs()
@@ -864,5 +623,87 @@ mod tests {
         let module = EntropyModule::default();
         assert_eq!(module.title("fr"), "Entropie");
         assert_eq!(module.title("en"), "Entropy");
+    }
+    /// LA TAILLE DU FICHIER EST DITE, ET NON DÉDUITE DES TRANCHES.
+    ///
+    /// C'est le défaut que la capture a trouvé : la dernière tranche
+    /// est plus COURTE que les autres, et `tranches × taille_tranche`
+    /// place donc la fin du fichier au-delà de sa fin réelle. La règle
+    /// d'adresses sous le profil se graduait jusqu'à `0x2300` sur un
+    /// fichier qui s'arrête à `0x22c8` — cinquante-six octets qui
+    /// n'existent pas, et un clic au bout menait hors du fichier.
+    ///
+    /// Le contrôle choisit exprès une taille qui n'est pas un multiple
+    /// de la tranche : c'est le seul cas où la déduction se trompe, et
+    /// c'est le cas ordinaire.
+    #[test]
+    fn the_profile_says_the_file_size_instead_of_deducing_it() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        // 0x22c8 octets : la taille vue sur la capture, et surtout un
+        // nombre que la tranche ne divise pas.
+        let binaire = vec![0x41u8; 0x22c8];
+        let mut module = EntropyModule::default();
+        let ctx = contexte(&binaire, &cpu);
+        module.on_binary_loaded(&ctx);
+        let vue = module.vue(&ctx).expect("le module rend une vue");
+        let Some(Dessin::Profil {
+            valeurs,
+            taille_tranche,
+            total,
+        }) = vue.blocs.iter().find_map(|bloc| match bloc {
+            Bloc::Dessin(dessin) => Some(dessin.clone()),
+            _ => None,
+        })
+        else {
+            panic!("le profil est dans la vue : {:?}", vue.blocs);
+        };
+        assert_eq!(total, binaire.len(), "la taille mesurée, et pas une autre");
+        // Et la déduction se trompe VRAIMENT ici : sans quoi le
+        // contrôle passerait en ne regardant rien.
+        let déduite = valeurs.len() * taille_tranche;
+        assert!(
+            déduite > total,
+            "la dernière tranche doit être plus courte, sinon ce contrôle \
+             ne distingue pas les deux façons de compter : {déduite} vs {total}"
+        );
+    }
+
+    /// LES POINTS MÉDIANS DE LA LIGNE DE RÉSUMÉ SONT DES FRAGMENTS À
+    /// PART.
+    ///
+    /// Second écart vu sur la capture : fondus dans un `format!` avec
+    /// le texte qui les suit, ils se collaient à leurs voisins — c'est
+    /// l'interface qui espace des étiquettes voisines, et elle ne peut
+    /// pas le faire à l'intérieur d'une chaîne.
+    #[test]
+    fn the_middots_of_the_summary_are_fragments_of_their_own() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let binaire = vec![0x41u8; 0x2000];
+        let mut module = EntropyModule::default();
+        let ctx = contexte(&binaire, &cpu);
+        module.on_binary_loaded(&ctx);
+        let vue = module.vue(&ctx).expect("le module rend une vue");
+        let Some(Bloc::Texte(ligne)) = vue.blocs.first() else {
+            panic!("la première ligne est le résumé : {:?}", vue.blocs);
+        };
+        let collés: Vec<&str> = ligne
+            .fragments
+            .iter()
+            .map(|f| f.texte.as_str())
+            .filter(|t| t.contains('\u{b7}') && t.trim() != "\u{b7}")
+            .collect();
+        assert!(
+            collés.is_empty(),
+            "un point médian collé à son voisin : {collés:?}"
+        );
+        assert_eq!(
+            ligne
+                .fragments
+                .iter()
+                .filter(|f| f.texte.trim() == "\u{b7}")
+                .count(),
+            2,
+            "deux séparateurs, un par étiquette ajoutée"
+        );
     }
 }

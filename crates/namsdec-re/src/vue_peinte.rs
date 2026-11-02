@@ -15,7 +15,9 @@
 //! plus besoin d'egui du tout et ce fichier déménagera dans
 //! `namsdec-gui`. C'est la fin visée, pas une promesse pour demain.
 
-use crate::vue::{Bloc, Fragment, Ligne, Ton, Vue};
+use crate::entropy::{Verdict, seuils};
+use crate::entropy_module::{octets, repères};
+use crate::vue::{Bloc, Dessin, Fragment, Ligne, Ton, Vue};
 use crate::{ReContext, ReRequest};
 
 /// Peint la vue, et rend ce que l'utilisateur a demandé en route.
@@ -92,6 +94,7 @@ fn premier_texte(blocs: &[Bloc]) -> String {
             }
             Bloc::Retrait(dedans) => Some(premier_texte(dedans)),
             Bloc::Code(texte) => Some(texte.clone()),
+            Bloc::Dessin(_) => None,
             Bloc::Trait => None,
         })
         .unwrap_or_default()
@@ -129,6 +132,27 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             ui.indent(id, |ui| {
                 peindre_suite(ui, ctx, blocs, gestes);
             });
+        }
+        Bloc::Dessin(Dessin::Profil {
+            valeurs,
+            taille_tranche,
+            total,
+        }) => {
+            if let Some((position, cible)) = profil(ui, ctx, valeurs, *taille_tranche, *total) {
+                // Une POSITION DU FICHIER, et non une adresse : seul
+                // le module sait ce que cette position devient en
+                // mémoire — il en tient la table, relevée une fois au
+                // chargement. L'action la lui rend telle quelle.
+                gestes.actions.push(format!(
+                    "{PROFIL_ALLER}{position}:{}",
+                    match cible {
+                        crate::GoTarget::Listing => "listing",
+                        crate::GoTarget::Bytes => "octets",
+                    }
+                ));
+            }
+            ui.add_space(ESPACE_ENTRE_BLOCS);
+            échelle(ui, ctx);
         }
         Bloc::Code(texte) => {
             // Par le rendu du pseudo-code du projet : il colore les
@@ -348,3 +372,353 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
 
 /// Le vert des verdicts favorables. Voir `riche` pour le pourquoi.
 const VERT: egui::Color32 = egui::Color32::from_rgb(0x4e, 0xc9, 0xb0);
+
+/// L'action qu'un clic dans le profil engendre : la position du
+/// fichier, puis où l'on veut aller. Le module la décode — lui seul
+/// sait traduire une position en adresse.
+pub const PROFIL_ALLER: &str = "profil:aller:";
+
+// --- Le profil d'entropie, et son échelle -----------------------------
+//
+// Deux cent soixante lignes de dessin, qui vivaient dans
+// `entropy_module`. Elles décident « une colonne par pixel, et la plus
+// haute des tranches qu'elle recouvre » — une décision qui n'a de sens
+// qu'une fois la largeur connue, c'est-à-dire ici. Le module, lui, n'a
+// plus qu'une chose à dire : une valeur par tranche.
+
+/// La hauteur du profil : ample, mais jamais plus que la moitié de la
+/// fenêtre.
+///
+/// Trente-six pixels de haut sur cinq cents de large écrasaient tout :
+/// entre 5,8 et 6,6 — l'écart qui sépare du code d'un bloc suspect —,
+/// il y avait trois pixels, et l'on ne voyait rien. Il faut de la
+/// hauteur pour lire une courbe.
+///
+/// La borne est celle que l'usage a demandée : **jamais plus de la
+/// moitié du viewport**. Un dessin qui prend tout l'écran n'est plus un
+/// indice parmi d'autres, c'est le panneau tout entier — et il reste
+/// quatre rubriques à lire dessous.
+pub(crate) fn hauteur_du_profil(viewport: f32) -> f32 {
+    const VOULUE: f32 = 240.0;
+    const MINIMUM: f32 = 60.0;
+    VOULUE.min(viewport * 0.5).max(MINIMUM.min(viewport * 0.5))
+}
+
+/// La couleur d'une tranche selon son entropie, en dégradé continu.
+///
+/// Du vert (régulier, inoffensif) au violet (maximal — chiffré ou
+/// compressé), en passant par le vert-jaune, le jaune, l'orangé,
+/// l'orange, le rouge et le magenta. **Neuf arrêts et non cinq** : avec
+/// cinq, tout l'intervalle du code ordinaire — 5,5 à 6,5, celui où se
+/// joue la lecture d'un vrai binaire — tenait dans une seule teinte, et
+/// deux blocs qu'un demi-bit sépare paraissaient identiques.
+///
+/// Les arrêts sont posés là où le sens bascule : le texte vers 4-5, le
+/// code dense vers 6, le soupçon d'empaquetage vers 7, l'aléa pur à 8.
+///
+/// Couleurs fixes, et non tirées du thème : c'est une échelle de mesure,
+/// elle doit dire la même chose d'un thème à l'autre.
+pub(crate) fn entropy_color(entropy: f64) -> egui::Color32 {
+    const ARRÊTS: [(f32, egui::Color32); 9] = [
+        (0.0, egui::Color32::from_rgb(0x3f, 0xb9, 0x50)), // vert
+        (3.0, egui::Color32::from_rgb(0x8b, 0xc3, 0x4a)), // vert-jaune
+        (4.0, egui::Color32::from_rgb(0xd2, 0xa8, 0x06)), // jaune
+        (5.0, egui::Color32::from_rgb(0xdd, 0x8a, 0x0c)), // jaune orangé
+        (6.0, egui::Color32::from_rgb(0xe0, 0x7b, 0x1f)), // orange
+        (6.5, egui::Color32::from_rgb(0xec, 0x63, 0x34)), // orange rouge
+        (7.0, egui::Color32::from_rgb(0xf8, 0x51, 0x49)), // rouge
+        (7.5, egui::Color32::from_rgb(0xd5, 0x5a, 0xb0)), // magenta
+        (8.0, egui::Color32::from_rgb(0xa3, 0x71, 0xf7)), // violet
+    ];
+    let e = entropy as f32;
+    for paire in ARRÊTS.windows(2) {
+        let (v0, c0) = paire[0];
+        let (v1, c1) = paire[1];
+        if e <= v1 {
+            let t = ((e - v0) / (v1 - v0)).clamp(0.0, 1.0);
+            let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+            return egui::Color32::from_rgb(
+                m(c0.r(), c1.r()),
+                m(c0.g(), c1.g()),
+                m(c0.b(), c1.b()),
+            );
+        }
+    }
+    ARRÊTS[ARRÊTS.len() - 1].1
+}
+
+/// Le profil : une colonne par tranche, du bas vers le haut, l'échelle
+/// allant de 0 à 8 — **toujours**, et non de la plus basse à la plus
+/// haute valeur vue : une échelle qui s'ajuste ferait paraître
+/// spectaculaire l'écart entre 5,9 et 6,1, et l'oeil y verrait une
+/// bosse qui n'existe pas.
+///
+/// Rend la position du fichier sur laquelle on a cliqué, s'il y en a
+/// une : le dessin désigne des endroits, et la seule chose qu'on veuille
+/// en faire est d'aller voir.
+fn profil(
+    ui: &mut egui::Ui,
+    ctx: &ReContext,
+    valeurs: &[f64],
+    taille_tranche: usize,
+    total: usize,
+) -> Option<(usize, crate::GoTarget)> {
+    let hauteur = hauteur_du_profil(ui.ctx().viewport_rect().height());
+    // Pleine largeur : c'est une carte du fichier, et une carte se lit
+    // d'autant mieux qu'elle est large. La borne de 520 pixels d'avant
+    // tassait trois cents tranches dans un timbre-poste.
+    let largeur = ui.available_width().max(120.0);
+    let (rect, réponse) = ui.allocate_exact_size(
+        egui::vec2(largeur, hauteur),
+        egui::Sense::click().union(egui::Sense::hover()),
+    );
+    let peintre = ui.painter_at(rect);
+    let visuels = ui.visuals().clone();
+    peintre.rect_filled(rect, 2.0, visuels.extreme_bg_color);
+
+    let y_de = |bits: f64| rect.bottom() - (bits / 8.0).clamp(0.0, 1.0) as f32 * hauteur;
+
+    // Les lignes de niveau, graduées en bits par octet : sans elles,
+    // les hauteurs ne se comparent qu'entre elles, et l'on ne sait pas
+    // si une barre est haute dans l'absolu.
+    let police = egui::TextStyle::Small.resolve(ui.style());
+    for bits in [2.0, 4.0, 6.0] {
+        let y = y_de(bits);
+        peintre.line_segment(
+            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+            egui::Stroke::new(1.0, visuels.weak_text_color().gamma_multiply(0.35)),
+        );
+    }
+
+    // Une colonne par pixel, et la PLUS HAUTE des tranches qu'elle
+    // recouvre : sur un fichier qui porte plus de tranches que le
+    // dessin n'a de pixels, prendre la moyenne effacerait exactement ce
+    // qu'on cherche — le petit bloc dense au milieu du calme.
+    let colonnes = largeur.floor().max(1.0) as usize;
+    let n = valeurs.len();
+    for colonne in 0..colonnes {
+        let début = colonne * n / colonnes;
+        let fin = (((colonne + 1) * n).div_ceil(colonnes))
+            .min(n)
+            .max(début + 1);
+        let Some(haute) = valeurs.get(début..fin).and_then(|tranche| {
+            tranche.iter().copied().fold(None, |acc: Option<f64>, e| {
+                Some(acc.map_or(e, |a: f64| a.max(e)))
+            })
+        }) else {
+            continue;
+        };
+        let x = rect.left() + colonne as f32;
+        let barre = egui::Rect::from_min_max(
+            egui::pos2(x, y_de(haute)),
+            egui::pos2(x + 1.0, rect.bottom()),
+        );
+        // La couleur suit l'entropie en dégradé continu : on lit la
+        // montée sans avoir à comparer des hauteurs entre elles, et
+        // l'extrême — le chiffré, le compressé — se détache en violet.
+        peintre.rect_filled(barre, 0.0, entropy_color(haute));
+    }
+
+    // Les graduations APRÈS les barres : peintes avant, le « 2 » et le
+    // « 4 » disparaissaient sous la courbe dès que celle-ci montait, et
+    // l'échelle ne se lisait plus qu'à moitié.
+    for bits in [2.0, 4.0, 6.0] {
+        let y = y_de(bits);
+        let chiffre = format!("{bits:.0}");
+        let place =
+            peintre.layout_no_wrap(chiffre.clone(), police.clone(), visuels.weak_text_color());
+        let fond = egui::Rect::from_min_size(
+            egui::pos2(rect.left() + 2.0, y - place.size().y - 1.0),
+            place.size() + egui::vec2(4.0, 2.0),
+        );
+        peintre.rect_filled(fond, 2.0, visuels.extreme_bg_color.gamma_multiply(0.8));
+        peintre.text(
+            egui::pos2(rect.left() + 4.0, y - 1.0),
+            egui::Align2::LEFT_BOTTOM,
+            chiffre,
+            police.clone(),
+            visuels.weak_text_color(),
+        );
+    }
+
+    // Le repère d'empaquetage : la ligne au-dessus de laquelle il n'y a
+    // plus de structure à voir. La valeur vient de `entropy::seuils`,
+    // comme celle qui décide des couleurs.
+    let seuil = y_de(seuils::EMPAQUETÉ);
+    peintre.line_segment(
+        [
+            egui::pos2(rect.left(), seuil),
+            egui::pos2(rect.right(), seuil),
+        ],
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(0xf8, 0x51, 0x49)),
+    );
+    peintre.text(
+        egui::pos2(rect.right() - 4.0, seuil - 2.0),
+        egui::Align2::RIGHT_BOTTOM,
+        format!(
+            "{} {}",
+            format!("{:.1}", seuils::EMPAQUETÉ).replace('.', ","),
+            ctx.t("empaqueté", "packed")
+        ),
+        police.clone(),
+        egui::Color32::from_rgb(0xf8, 0x51, 0x49),
+    );
+
+    // LA RÈGLE DES ADRESSES, sous le dessin : sans elle, une bosse « au
+    // tiers du fichier » ne se retrouve nulle part. Les positions sont
+    // celles du FICHIER — c'est lui qu'on mesure —, et la table des
+    // plages donne l'adresse en mémoire en regard.
+    let (règle, _) = ui.allocate_exact_size(egui::vec2(largeur, 16.0), egui::Sense::hover());
+    let peintre = ui.painter_at(règle.expand(2.0));
+    let combien = repères(largeur);
+    for repère in 0..=combien {
+        let part = repère as f32 / combien as f32;
+        let x = rect.left() + part * largeur;
+        peintre.line_segment(
+            [egui::pos2(x, règle.top()), egui::pos2(x, règle.top() + 4.0)],
+            egui::Stroke::new(1.0, visuels.weak_text_color()),
+        );
+        let position = (total as f64 * part as f64) as usize;
+        let ancrage = if repère == 0 {
+            egui::Align2::LEFT_TOP
+        } else if repère == combien {
+            egui::Align2::RIGHT_TOP
+        } else {
+            egui::Align2::CENTER_TOP
+        };
+        peintre.text(
+            egui::pos2(x, règle.top() + 5.0),
+            ancrage,
+            format!("{position:#x}"),
+            police.clone(),
+            visuels.weak_text_color(),
+        );
+    }
+
+    // Au survol, la tranche visée se dit : sa plage, sa mesure, son
+    // verdict. Et ce qu'un clic ferait — personne ne clique sur ce qui
+    // n'a pas l'air cliquable.
+    let mut cliqué = None;
+    if let Some(position) = réponse.hover_pos() {
+        let part = ((position.x - rect.left()) / largeur).clamp(0.0, 0.999_9);
+        let index = ((part * n as f32) as usize).min(n.saturating_sub(1));
+        if let Some(valeur) = valeurs.get(index).copied() {
+            // La position vient du RANG : une tranche fait toujours la
+            // même taille, et la dernière n'est plus courte que du
+            // reste. Le module donnait ces offsets ; les redonner
+            // aurait été dire deux fois la même chose.
+            let position = index * taille_tranche;
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            réponse.clone().on_hover_text(format!(
+                "{:#x}..{:#x}  ({})\n{:.2} — {}\n{}",
+                position,
+                (position + taille_tranche).min(total),
+                octets(taille_tranche),
+                valeur,
+                Verdict::of(valeur).label(ctx.lang.starts_with("fr")),
+                ctx.t(
+                    "Cliquer : aller voir cette tranche — dans le code, ou dans les octets",
+                    "Click: go and see this slice — in the code, or in the bytes"
+                ),
+            ));
+            if réponse.clicked() {
+                cliqué = Some(position);
+            }
+        }
+    }
+    // LA TRANCHE VISÉE EST RETENUE, et le menu s'ouvre à l'image
+    // suivante : entre le clic et le choix, la souris a quitté la
+    // tranche pour aller sur l'entrée du menu, et la relire sous le
+    // pointeur mènerait ailleurs qu'où l'on a cliqué.
+    let visée = ui.id().with("tranche_visée");
+    if let Some(offset) = cliqué {
+        ui.data_mut(|d| d.insert_temp(visée, offset));
+    }
+    let mut choix = None;
+    egui::Popup::menu(&réponse).show(|ui| {
+        if crate::framed_button(ui, ctx.t("Dans le code désassemblé", "In the disassembly"))
+            .clicked()
+        {
+            choix = Some(crate::GoTarget::Listing);
+            ui.close();
+        }
+        if crate::framed_button(ui, ctx.t("Dans l'éditeur binaire", "In the binary editor"))
+            .clicked()
+        {
+            choix = Some(crate::GoTarget::Bytes);
+            ui.close();
+        }
+    });
+    let cible = choix?;
+    let offset = ui.data(|d| d.get_temp::<usize>(visée))?;
+    Some((offset, cible))
+}
+
+/// L'échelle de couleurs, graduée.
+///
+/// Une rampe sans graduation ne se lit pas : on voit « du rouge » sans
+/// savoir si c'est 6,9 ou 7,8 — or c'est exactement ce qui sépare du
+/// code dense d'un bloc chiffré. La barre porte donc ses huit
+/// graduations, et les cinq verdicts sont écrits sous la zone qui leur
+/// correspond.
+fn échelle(ui: &mut egui::Ui, ctx: &ReContext) {
+    let fr = ctx.lang.starts_with("fr");
+    let largeur = ui.available_width().clamp(160.0, 560.0);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(largeur, 12.0), egui::Sense::hover());
+    let peintre = ui.painter_at(rect);
+    // Un pixel par colonne : la rampe est continue, et c'est ce qu'elle
+    // doit montrer.
+    let colonnes = largeur.floor().max(1.0) as usize;
+    for colonne in 0..colonnes {
+        let bits = 8.0 * colonne as f64 / colonnes as f64;
+        let x = rect.left() + colonne as f32;
+        peintre.rect_filled(
+            egui::Rect::from_min_max(
+                egui::pos2(x, rect.top()),
+                egui::pos2(x + 1.0, rect.bottom()),
+            ),
+            0.0,
+            entropy_color(bits),
+        );
+    }
+    // Les graduations : zéro à huit bits par octet.
+    let police = egui::TextStyle::Small.resolve(ui.style());
+    let (règle, _) = ui.allocate_exact_size(egui::vec2(largeur, 14.0), egui::Sense::hover());
+    let peintre = ui.painter_at(règle.expand(2.0));
+    let couleur = ui.visuals().weak_text_color();
+    for bits in 0..=8 {
+        let part = bits as f32 / 8.0;
+        let x = rect.left() + part * largeur;
+        peintre.line_segment(
+            [egui::pos2(x, règle.top()), egui::pos2(x, règle.top() + 3.0)],
+            egui::Stroke::new(1.0, couleur),
+        );
+        let ancrage = match bits {
+            0 => egui::Align2::LEFT_TOP,
+            8 => egui::Align2::RIGHT_TOP,
+            _ => egui::Align2::CENTER_TOP,
+        };
+        peintre.text(
+            egui::pos2(x, règle.top() + 4.0),
+            ancrage,
+            format!("{bits}"),
+            police.clone(),
+            couleur,
+        );
+    }
+    // Et ce que chaque zone veut dire, dans sa couleur.
+    ui.add_space(2.0);
+    ui.horizontal_wrapped(|ui| {
+        ui.weak(ctx.t("bits par octet :", "bits per byte:"));
+        for (milieu, verdict) in [
+            (0.75, Verdict::Flat),
+            (3.25, Verdict::Text),
+            (5.9, Verdict::Code),
+            (7.0, Verdict::Mixed),
+            (7.9, Verdict::Random),
+        ] {
+            ui.label(egui::RichText::new(verdict.label(fr)).color(entropy_color(milieu)));
+            ui.weak("·");
+        }
+    });
+}

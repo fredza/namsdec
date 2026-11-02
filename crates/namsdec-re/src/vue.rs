@@ -96,12 +96,50 @@ pub enum Bloc {
     /// quoi une adresse mène chez elle. Un rapport en reçoit du code
     /// lisible, ce qui est exactement ce qu'il veut.
     Code(String),
+    /// Des valeurs qu'une interface peint à sa façon.
+    ///
+    /// C'est ici que la frontière gagne le plus. Le profil d'entropie
+    /// décide « une colonne par pixel, et la plus haute des tranches
+    /// qu'elle recouvre » — une décision qui n'a de sens qu'une fois la
+    /// largeur connue, c'est-à-dire dans l'interface et nulle part
+    /// ailleurs. Le module, lui, n'a qu'une chose à dire : voici une
+    /// valeur par tranche.
+    Dessin(Dessin),
     /// Un groupe en retrait, sans titre.
     ///
     /// Le retrait dit un rattachement : ces lignes-ci développent la
     /// précédente. Sans lui, une liste de détails se lit comme une
     /// suite de faits indépendants.
     Retrait(Vec<Bloc>),
+}
+
+/// Ce qu'un module donne à dessiner, en valeurs.
+///
+/// Un enum fermé et non un sac d'octets : les formes sont connues —
+/// elles ont été comptées avant d'être écrites — et une variante
+/// nouvelle doit obliger chaque peintre à dire ce qu'il en fait. Un
+/// `serde_json::Value` aurait laissé passer n'importe quoi en silence.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Dessin {
+    /// Un profil : une valeur par tranche, et ce que pèse une tranche.
+    ///
+    /// L'échelle n'est pas dite ici : c'est au peintre de savoir que
+    /// l'entropie va de zéro à huit bits par octet. Le module donne des
+    /// mesures, pas une mise en page.
+    Profil {
+        valeurs: Vec<f64>,
+        /// Combien d'octets du fichier chaque valeur résume.
+        taille_tranche: usize,
+        /// La taille mesurée, en octets.
+        ///
+        /// Dite, et non déduite de `valeurs.len() * taille_tranche` :
+        /// la DERNIÈRE tranche est plus courte que les autres, et la
+        /// déduction plaçait la fin du fichier cinquante-six octets
+        /// trop loin. La règle d'adresses sous le profil s'en trouvait
+        /// graduée sur une taille qui n'existe pas — vu sur la capture,
+        /// `0x2300` au lieu de `0x22c8`.
+        total: usize,
+    },
 }
 
 /// Une ligne : des fragments mis bout à bout.
