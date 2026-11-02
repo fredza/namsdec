@@ -710,12 +710,44 @@ elle se paie seule, et elle est le prérequis de toute alternative.
 
       **Reste un module** :
 
-      * **l'éditeur binaire** (`hex_editor_module`, 1 966 lignes, 15
-        interactions). De loin le plus gros du projet, et le plus
-        interactif : saisie, sélection, navigation. Il demandera
-        probablement `Dessin::Octets { base, octets }` **plus** une
-        notion de sélection que le vocabulaire n'a pas encore. À
-        prendre en dernier, et sans doute en plusieurs fois.
+      * **l'éditeur binaire** (`hex_editor_module`, 1 966 lignes, dont
+        856 pour le seul `fn ui`). **Relevé fait avant d'y toucher**,
+        comme au début de P7 — et il déplace la question.
+
+        Ce qu'il emploie et que le vocabulaire n'a pas : une
+        **case à cocher** (1 occurrence dans tout le crate, la
+        sienne), des **étiquettes à bascule** (2, les siennes), une
+        **zone bornée qui défile** (4 occurrences, 3 à lui et 1 au
+        vidage), une **liste déroulante** (1, au détour). Autrement
+        dit : **des formes à un seul usage**, et le fichier `vue.rs`
+        dit en tête pourquoi c'est un signal d'arrêt — « une vue assez
+        riche pour tout décrire serait un second HTML ».
+
+        Et surtout le **clavier**. La grille prend le focus et consomme
+        **vingt-six touches** : quatre flèches, page haut et bas, début
+        et fin, Échap, Ctrl+A, Tab, les seize chiffres hexadécimaux,
+        plus les événements de texte qu'elle retire de la file. Chacune
+        déplace un curseur ou étend une sélection. Une vue, elle, ne
+        connaît ni focus ni touche — et lui en apprendre reviendrait à
+        refaire la gestion du clavier en protocole de chaînes, ce qui
+        serait payer le prix d'une frontière sans en avoir le gain.
+
+        **Ce que je propose, et la raison :** la frontière s'arrête
+        ici, et c'est une conclusion de P7, pas un échec. Ce que la vue
+        sert à faire sortir de namsdec, c'est **ce que namsdec
+        comprend** d'un binaire — un profil d'entropie, un graphe
+        d'appels, des figures, des empreintes. Une grille d'octets avec
+        un curseur n'est pas une compréhension, c'est un
+        **instrument** ; et ce qu'un rapport voudrait de ce panneau —
+        la liste des octets changés — existe déjà ailleurs, dans les
+        correctifs. Reste que **l'inspecteur** (« ce que cet octet vaut
+        lu en int8, en float32, en date ») est, lui, de la
+        compréhension pure : `inspecter()` rend déjà des paires
+        nom/valeur sans toucher à egui, et c'est la part qui mérite de
+        passer — seule, et sans emporter la grille avec elle.
+
+        À décider avant d'écrire la moindre ligne : le relevé est là,
+        la décision ne l'est pas.
 
       **Le protocole, qui a servi dix fois et qu'il suffit de
       reprendre :** lire le `fn ui` entier ; remplacer **la méthode
