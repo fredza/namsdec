@@ -50,7 +50,7 @@ points avant d'ajouter de nouveaux modules sans rapport avec eux.
 | **P4** apprentissage / analyse | `[ ]` | Le seul lot qui demande un avis plutôt qu'une mesure : trois organisations à éprouver, pas une refonte validée. **Tauri a été envisagé puis écarté le 29 octobre** — voir P7. |
 | **P5** sous-états de `NamsdecApp` | `[ ]` | — |
 | **P6** commentaires historiques | `[ ]` | — |
-| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 presque close : **10 modules sur 12**. Ne restent que le graphe d'appels et l'éditeur binaire. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
+| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 presque close : **11 modules sur 12**. Ne reste que l'éditeur binaire. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
 
 Ce que les trois premiers lots ont en commun, et qui vaut pour les
 suivants : **chacun partait d'un risque déduit du code, et chacun s'est
@@ -631,14 +631,85 @@ elle se paie seule, et elle est le prérequis de toute alternative.
       pas les deux façons de compter ; le second compte les points
       médians comme fragments à part.
 
-      **Restent deux modules**, et ce sont les deux derniers de P7 :
+      **Le graphe d'appels suit — onze sur douze**, avec
+      `Dessin::Graphe { nœuds, arêtes }` : des nœuds dans l'ordre où on
+      les lit, leur distance à la racine, et les arêtes entre eux. Rien
+      du placement n'est dit — ni pas vertical, ni indentation, ni
+      largeur de boîte —, et les deux cents lignes qui en décident sont
+      passées au peintre avec les tirets et la pointe ouverte d'UML. Ce
+      que le module disait en deux drapeaux (`accent`, `renvoi`), il le
+      dit en **`Ton`** : « fort » pour ce par quoi on entre dans le
+      programme, « faible » pour ce qui est déjà déplié ailleurs.
 
-      * **le graphe d'appels** (`call_graph_module`, 864 lignes, 6
-        interactions, `painter`). Il attend une forme
-        `Dessin::Graphe { nœuds, arêtes }` à concevoir sur le même
-        principe que le profil : des **valeurs**, et le placement à
-        l'interface — c'est elle qui sait de quelle surface elle
-        dispose.
+      Trois formes nouvelles, chacune comptée avant d'être écrite :
+
+      * **`Bloc::Champ`** — treize champs de saisie dans sept modules,
+        relevés. Le texte en cours de frappe appartient à **celui qui
+        peint**, comme l'état d'ouverture d'un repliable : le module ne
+        l'apprend qu'à la validation, ce qui laisse `vue()` n'emprunter
+        `self` qu'en lecture. La largeur se dit en **caractères** — le
+        module sait qu'on y écrit une adresse, l'interface sait ce que
+        mesurent ses caractères ; les sept largeurs en dur d'avant P7
+        (90, 110, 120, 140, 160, 200, 220 pixels) étaient sept réglages
+        pour une seule question.
+      * **`vue::Nœud`** — les trois compartiments d'une classe UML, en
+        texte : ce que la fonction EST, son nom, ce qu'on en mesure.
+      * **`Fragment::à_la_main`** — « ceci vient de votre main », un
+        FAIT ; le fond léger qui le distingue est choisi par
+        l'interface.
+
+      **Une mesure a décidé de la forme des fiches.** Le détail d'une
+      fonction, c'est jusqu'à deux cents lignes de pseudo-code décodées
+      une à une ; une vue se rebâtit à chaque image ; les quarante
+      fonctions montrées coûtent **2,6 ms en release et 8,5 ms en
+      debug** — sur un budget de 16,7 ms — pour du texte que personne
+      ne regarde, puisque les fiches sont fermées au départ (mesuré sur
+      `croackpocalypse`, 7 443 lignes). Le module retient donc **une
+      fiche ouverte à la fois**, comme `imports`, et ne compose que
+      celle-là. Un contrôle compte les tableaux de la vue : zéro quand
+      rien n'est ouvert, un quand une fiche l'est.
+
+      **Et quatre défauts trouvés en chemin, dont trois d'avant P7.**
+
+      1. **Une action sans encadré se peignait en bouton.** La vue dit
+         depuis le premier jour qu'une action fait un **lien** par
+         défaut et qu'un encadré se demande (`Fragment::bouton`) ; le
+         peintre encadrait tout, et le drapeau ne servait à rien. Les
+         noms d'`imports` étaient des textes soulignés avant P7 — ils
+         étaient devenus cinquante boutons dans une colonne.
+      2. **Le titre d'un repliable perdait son ton.** Peint en texte
+         nu, `Fragment::dit(nom).code().fort()` s'écrivait comme une
+         phrase ordinaire : un nom de fonction en chasse
+         proportionnelle, dans le panneau de décompilation.
+      3. **Une fonction de 18 446 744 073 697 542 199 octets.** Vue sur
+         la capture. Un `call` vers une adresse quelconque — ce que
+         produit la moindre figure d'anti-désassemblage, et ce que
+         porte le binaire d'épreuve — fabriquait une « fonction » là-bas,
+         et la fonction d'AVANT allait jusqu'à elle. Sa fiche demandait
+         les instructions d'un intervalle large comme la mémoire. Les
+         débuts de fonction sont désormais bornés au code, comme les
+         appels calculés l'étaient déjà ; l'appel, lui, reste compté.
+      4. **Une cellule de tableau qui ne tient pas courait hors du
+         panneau.** egui ne replie pas le texte dans une disposition
+         horizontale, et une grille en est une. Les deux premières
+         façons de corriger ont été **réfutées par la mesure**, et
+         c'est ce que la séance a de plus utile à garder : *replier*
+         réduisait l'en-tête « the listing reads » à sept pixels sur
+         trois lignes, par-dessus sa voisine ; *élider à la largeur
+         disponible* faisait boule de neige — une grille garde la
+         largeur de ses colonnes d'une image sur l'autre, couper à
+         cette largeur retire une lettre, qui rétrécit la colonne, qui
+         recoupe le texte : « SHA-256 » devenait « … » en trois images.
+         La borne se tire donc des largeurs **naturelles**, mesurées
+         sans contrainte, et ne touche que la colonne la plus large.
+         Tant qu'un tableau tient, **rien ne change, pas un pixel**.
+
+      **111 captures sur 113 identiques au pixel.** Les deux autres :
+      le graphe d'appels, et la poignée d'ascenseur de la vue
+      d'ensemble — son contenu a changé de quelques pixels de haut.
+
+      **Reste un module** :
+
       * **l'éditeur binaire** (`hex_editor_module`, 1 966 lignes, 15
         interactions). De loin le plus gros du projet, et le plus
         interactif : saisie, sélection, navigation. Il demandera

@@ -73,6 +73,25 @@ pub enum Bloc {
     Trait,
     /// Quelque chose est en train de se faire, et on dit quoi.
     Attente(Ligne),
+    /// Un champ où l'on tape, et ce que sa validation demande.
+    ///
+    /// **Le texte en cours de frappe appartient à celui qui peint**,
+    /// comme l'état d'ouverture d'un [`Bloc::Repliable`] : le module
+    /// n'apprend ce qui est écrit qu'au moment où l'on valide. C'est ce
+    /// qui permet à `vue()` de n'emprunter `self` qu'en lecture — un
+    /// `TextEdit` veut un `&mut String`, et le lui donner aurait rendu
+    /// la vue dépendante du geste en cours au lieu de ce que le panneau
+    /// MONTRE.
+    ///
+    /// Compté avant d'être écrit, comme le reste du vocabulaire :
+    /// **treize champs dans sept modules** — « aller à » dans le graphe
+    /// d'appels et dans l'éditeur binaire, un filtre dans les outils et
+    /// les figures, un nom à donner dans les fonctions, une tranche à
+    /// vider, une adresse de détour, des octets à écrire. Douze sont
+    /// d'une seule ligne ; le treizième — le code d'un détour — est un
+    /// éditeur de plusieurs lignes, et attendra sa propre forme plutôt
+    /// qu'un drapeau de plus ici.
+    Champ(Champ),
     /// Un intertitre et ce qu'il introduit.
     Section { titre: Ligne, blocs: Vec<Bloc> },
     /// Ce qui se replie derrière son titre.
@@ -140,6 +159,147 @@ pub enum Dessin {
         /// `0x2300` au lieu de `0x22c8`.
         total: usize,
     },
+    /// Un graphe orienté : des boîtes, et qui mène à qui.
+    ///
+    /// **Rien du placement n'est dit** — ni position, ni taille, ni
+    /// indentation, ni le pas qui sépare deux boîtes. Ce sont des
+    /// pixels, et les pixels dépendent de la surface dont on dispose et
+    /// de ce que mesure un caractère : l'interface le sait, le module
+    /// non. Ce qu'il dit est la STRUCTURE — des nœuds dans l'ordre où
+    /// on les lit, leur distance à la racine, et les arêtes entre eux.
+    Graphe {
+        /// Dans l'ordre de lecture : la racine, puis sa descendance.
+        nœuds: Vec<Nœud>,
+        /// `(de, à)`, par rang dans `nœuds`.
+        ///
+        /// Dites, et non déduites des profondeurs : deux nœuds voisins
+        /// de profondeurs 1 et 2 ne sont pas forcément parent et
+        /// enfant, et c'est l'appel qui est le fait — pas la place que
+        /// le nœud occupe dans la liste.
+        arêtes: Vec<(usize, usize)>,
+    },
+}
+
+/// Une boîte d'un graphe : ce qu'elle est, ce qu'elle dit, où elle mène.
+///
+/// Les trois compartiments d'une classe UML, parce que c'est la forme
+/// que le graphe d'appels a prise : ce que la fonction EST, son nom, et
+/// ce qu'on en mesure. Le dessin — le cadre à angles droits, le filet
+/// entre les compartiments, les guillemets du stéréotype — appartient
+/// au peintre ; ici il n'y a que du texte et un fait.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Nœud {
+    /// Ce que la boîte EST, en un mot : « entrée », « main »,
+    /// « renvoi ». Déjà traduit — c'est du contenu, pas un drapeau.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub stéréotype: Option<String>,
+    pub titre: String,
+    /// Les lignes du compartiment du bas : ce qu'on mesure de ce nœud.
+    pub corps: Vec<String>,
+    /// Où mène un clic sur la boîte, quand il mène quelque part.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub mène_à: Option<u64>,
+    /// Combien de pas depuis la racine.
+    pub profondeur: usize,
+    /// `Fort` : par où l'on entre dans le programme — ça se voit en
+    /// premier. `Faible` : déjà déplié ailleurs, et non redéployé ici.
+    /// `Normal` : une fonction comme les autres.
+    pub ton: Ton,
+}
+
+/// Un champ de saisie : ce qu'il demande, et de quoi il a l'air.
+///
+/// `action` est le nom de ce que la validation demande — la valeur
+/// tapée le suit, séparée par un deux-points : « graphe:aller:0x401136 ».
+/// Un NOM et non la demande elle-même, pour la même raison que partout
+/// ailleurs dans ce fichier : la vue reste du texte, et c'est le module
+/// qui sait ce qu'« aller » veut dire chez lui.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct Champ {
+    pub action: String,
+    /// Ce qui s'écrit à gauche du champ.
+    pub étiquette: Ligne,
+    /// Ce que le champ contient — et ce qui remplace ce qu'on a tapé
+    /// quand le module en change d'avis.
+    ///
+    /// C'est ainsi que « Défaut » rend son nom d'origine à une fonction
+    /// sans que le module tienne le tampon de frappe : il propose une
+    /// autre valeur, et l'interface voit que la proposition a changé.
+    pub valeur: String,
+    /// Ce qui s'écrit en gris dans un champ vide : un EXEMPLE de ce
+    /// qu'on y attend, jamais une valeur qu'on croirait déjà posée.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub indice: Option<String>,
+    /// En chasse fixe : une adresse, des octets, un nom de symbole.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub code: bool,
+    /// Combien de caractères le champ doit pouvoir montrer.
+    ///
+    /// Des CARACTÈRES et non des pixels : le module sait ce qu'on écrit
+    /// dans son champ — « 0x401136 » en fait huit —, l'interface sait
+    /// ce que ses caractères mesurent. Les largeurs en dur des modules
+    /// d'avant P7 — 90, 110, 120, 140, 160, 200, 220 pixels — étaient
+    /// sept réglages pour une seule question.
+    pub caractères: usize,
+    /// Les boutons posés à droite, sur la même rangée.
+    ///
+    /// Celui qui porte la MÊME action que le champ le valide, tout
+    /// comme la touche Entrée ; les autres font ce que leur action dit.
+    /// Pas de règle de rang — « le premier valide » serait une
+    /// convention invisible dans les données.
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub boutons: Vec<Fragment>,
+}
+
+impl Champ {
+    /// Un champ qui demandera `action` quand on le validera.
+    pub fn pour(action: impl Into<String>) -> Self {
+        Self {
+            action: action.into(),
+            // Vingt caractères : de quoi écrire une adresse de
+            // soixante-quatre bits et son `0x`, ce qui est le contenu
+            // le plus fréquent de ces champs.
+            caractères: 20,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn étiquette(mut self, étiquette: impl Into<Ligne>) -> Self {
+        self.étiquette = étiquette.into();
+        self
+    }
+
+    #[must_use]
+    pub fn valeur(mut self, valeur: impl Into<String>) -> Self {
+        self.valeur = valeur.into();
+        self
+    }
+
+    #[must_use]
+    pub fn indice(mut self, indice: impl Into<String>) -> Self {
+        self.indice = Some(indice.into());
+        self
+    }
+
+    #[must_use]
+    pub fn code(mut self) -> Self {
+        self.code = true;
+        self
+    }
+
+    #[must_use]
+    pub fn caractères(mut self, combien: usize) -> Self {
+        self.caractères = combien;
+        self
+    }
+
+    /// Ajoute un bouton à droite du champ.
+    #[must_use]
+    pub fn bouton(mut self, bouton: Fragment) -> Self {
+        self.boutons.push(bouton);
+        self
+    }
 }
 
 /// Une ligne : des fragments mis bout à bout.
@@ -241,6 +401,18 @@ pub struct Fragment {
     /// doit lui retirer.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub étiquette: Option<String>,
+    /// Ce fragment porte quelque chose que l'utilisateur a fait **à la
+    /// main** — un nom qu'il a donné, un octet qu'il a changé.
+    ///
+    /// Un FAIT et non un fond : dans une liste qui peut compter des
+    /// centaines de fonctions, ce qu'on a nommé soi-même doit se
+    /// retrouver d'un coup d'œil, et c'est l'interface qui décide
+    /// comment — un fond léger aujourd'hui. Deux panneaux le font déjà
+    /// de leur côté (le graphe d'appels et les fonctions), chacun avec
+    /// sa teinte écrite sur place : c'est exactement ce que la
+    /// frontière doit leur retirer.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub à_la_main: bool,
     /// Un bouton qu'on ne peut pas presser maintenant.
     ///
     /// Grisé et NON caché, parce que ce sont deux messages différents :
@@ -320,6 +492,13 @@ impl Fragment {
     #[must_use]
     pub fn étiquette(mut self, nom: impl Into<String>) -> Self {
         self.étiquette = Some(nom.into());
+        self
+    }
+
+    /// Marque ce fragment comme venant de la main de l'utilisateur.
+    #[must_use]
+    pub fn à_la_main(mut self) -> Self {
+        self.à_la_main = true;
         self
     }
 
@@ -427,6 +606,53 @@ mod tests {
         assert!(!json.contains("inactif"), "{json}");
         assert!(!json.contains("bouton"), "{json}");
         assert!(!json.contains("étiquette"), "{json}");
+        assert!(!json.contains("à_la_main"), "{json}");
+    }
+
+    /// Un champ et un graphe font l'aller-retour comme le reste.
+    ///
+    /// Les deux formes ajoutées pour le graphe d'appels : un champ de
+    /// saisie, et un dessin qui n'est plus une courbe mais des boîtes.
+    /// Si l'aller-retour en perdait une part, la vue ne sortirait plus
+    /// de namsdec entière — ce qui est la seule raison d'être de ce
+    /// fichier.
+    #[test]
+    fn un_champ_et_un_graphe_font_l_aller_retour() {
+        let vue = Vue::neuve()
+            .bloc(Bloc::Champ(
+                Champ::pour("graphe:aller")
+                    .étiquette("Aller à :")
+                    .indice("0x401000")
+                    .code()
+                    .caractères(20)
+                    .bouton(Fragment::dit("Y aller").bouton("graphe:aller")),
+            ))
+            .bloc(Bloc::Dessin(Dessin::Graphe {
+                nœuds: vec![
+                    Nœud {
+                        stéréotype: Some("entrée".to_owned()),
+                        titre: "_start".to_owned(),
+                        corps: vec!["0x401000 · 32 octets".to_owned()],
+                        mène_à: Some(0x401000),
+                        profondeur: 0,
+                        ton: Ton::Fort,
+                    },
+                    Nœud {
+                        titre: "sub_401136".to_owned(),
+                        profondeur: 1,
+                        ..Nœud::default()
+                    },
+                ],
+                arêtes: vec![(0, 1)],
+            }))
+            .bloc(Bloc::Repliable {
+                titre: "sub_401136".into(),
+                ouvert: false,
+                blocs: vec![Bloc::Code("return 0;".to_owned())],
+            });
+        let json = serde_json::to_string(&vue).expect("la vue se sérialise");
+        let relue: Vue = serde_json::from_str(&json).expect("et se relit");
+        assert_eq!(vue, relue);
     }
 
     /// Un bouton dit ce qu'il demande, par un nom — et non par la

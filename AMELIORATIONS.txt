@@ -9161,7 +9161,7 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      déménagera dans `namsdec-gui` quand les douze modules seront
      passés, et `namsdec-re` perdra egui.
 
-     DIX MODULES SUR DOUZE, et chacun a appris quelque chose :
+     ONZE MODULES SUR DOUZE, et chacun a appris quelque chose :
        — `digest`, le pilote : son `ui()` tient en trois lignes et
          DÉRIVE de sa vue. Une seule description du panneau, donc pas
          deux qui divergent.
@@ -9236,8 +9236,48 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Les deux sont retenues par un contrôle, et chacun a été éprouvé en
      remettant le défaut.
 
-     RESTENT LE GRAPHE D'APPELS ET L'ÉDITEUR BINAIRE. Le premier attend
-     une forme `Dessin::Graphe` sur le principe du profil. Le second —
-     1 966 lignes, quinze interactions — est le plus gros du projet et
-     demandera une notion de sélection que le vocabulaire n'a pas
-     encore. À prendre en dernier, et en plusieurs fois.
+     LE GRAPHE D'APPELS, ONZIÈME MODULE. `Dessin::Graphe { nœuds,
+     arêtes }` : l'ordre de lecture, la distance à la racine, et qui
+     appelle qui. Rien du placement — les deux cents lignes qui en
+     décident, tirets et pointe ouverte d'UML compris, sont au peintre.
+     Les deux drapeaux du module (`accent`, `renvoi`) sont devenus un
+     `Ton`.
+     Trois formes nouvelles, comptées avant d'être écrites :
+     `Bloc::Champ` (treize champs de saisie dans sept modules ; le
+     texte en cours de frappe appartient à l'interface, et la largeur
+     se dit en CARACTÈRES), `vue::Nœud`, et `Fragment::à_la_main`.
+
+     UNE MESURE A DÉCIDÉ DE LA FORME DES FICHES. Une vue se rebâtit à
+     chaque image ; le détail des quarante fonctions montrées coûte
+     2,6 ms en release et 8,5 ms en debug — sur 16,7 ms — pour du texte
+     que personne ne regarde, les fiches étant fermées au départ. Une
+     seule fiche ouverte à la fois, comme `imports`, et le module ne
+     compose que celle-là. Un contrôle compte les tableaux de la vue.
+
+     QUATRE DÉFAUTS TROUVÉS EN CHEMIN, DONT TROIS D'AVANT P7.
+       — Une action sans encadré se peignait en BOUTON : la vue promet
+         un lien par défaut (`Fragment::bouton`) et le peintre
+         encadrait tout. Les noms d'`imports`, textes soulignés avant
+         P7, étaient devenus cinquante boutons dans une colonne.
+       — Le titre d'un repliable perdait son ton : un nom de fonction
+         en chasse proportionnelle dans le panneau de décompilation.
+       — UNE FONCTION DE 18 446 744 073 697 542 199 OCTETS, vue sur la
+         capture. Un `call` vers une adresse quelconque fabriquait une
+         « fonction » là-bas, et celle d'avant allait jusqu'à elle. Les
+         débuts de fonction sont bornés au code, comme les appels
+         calculés l'étaient déjà ; l'appel reste compté.
+       — Une cellule de tableau qui ne tient pas courait hors du
+         panneau. DEUX CORRECTIONS RÉFUTÉES PAR LA MESURE avant la
+         bonne : replier réduisait un en-tête à sept pixels sur trois
+         lignes, par-dessus sa voisine ; élider à la largeur disponible
+         faisait boule de neige — une grille garde la largeur de ses
+         colonnes d'une image sur l'autre, et « SHA-256 » devenait
+         « … » en trois images. La borne vient des largeurs
+         NATURELLES, et ne touche que la colonne la plus large.
+
+     111 CAPTURES SUR 113 IDENTIQUES AU PIXEL. Les deux autres : le
+     graphe d'appels, et la poignée d'ascenseur de la vue d'ensemble.
+
+     RESTE L'ÉDITEUR BINAIRE — 1 966 lignes, quinze interactions, le
+     plus gros du projet. Il demandera une notion de sélection que le
+     vocabulaire n'a pas encore. À prendre en plusieurs fois.

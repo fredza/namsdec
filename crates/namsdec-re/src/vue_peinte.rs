@@ -17,7 +17,7 @@
 
 use crate::entropy::{Verdict, seuils};
 use crate::entropy_module::{octets, repères};
-use crate::vue::{Bloc, Dessin, Fragment, Ligne, Ton, Vue};
+use crate::vue::{Bloc, Champ, Dessin, Fragment, Ligne, Nœud, Ton, Vue};
 use crate::{ReContext, ReRequest};
 
 /// Peint la vue, et rend ce que l'utilisateur a demandé en route.
@@ -93,6 +93,7 @@ fn premier_texte(blocs: &[Bloc]) -> String {
                 rangées.first().and_then(|r| r.first()).map(Ligne::texte_nu)
             }
             Bloc::Retrait(dedans) => Some(premier_texte(dedans)),
+            Bloc::Champ(champ) => Some(champ.action.clone()),
             Bloc::Code(texte) => Some(texte.clone()),
             Bloc::Dessin(_) => None,
             Bloc::Trait => None,
@@ -185,12 +186,34 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             ouvert,
             blocs,
         } => {
-            egui::CollapsingHeader::new(titre.texte_nu())
+            // LE TITRE AU TON QU'IL PORTE, et non en texte nu : le
+            // détail d'une fonction s'écrit en chasse fixe, et un nom
+            // donné à la main se distingue par un fond léger. Peint nu,
+            // le repliable perdait les deux.
+            let en_tête = match titre.fragments.as_slice() {
+                [seul] => riche(ui, seul),
+                _ => egui::RichText::new(titre.texte_nu()),
+            };
+            egui::CollapsingHeader::new(en_tête)
                 .id_salt(titre.texte_nu())
                 .default_open(*ouvert)
                 .show(ui, |ui| {
                     peindre_suite(ui, ctx, blocs, gestes);
                 });
+        }
+        Bloc::Champ(champ) => peindre_champ(ui, ctx, champ, gestes),
+        Bloc::Dessin(Dessin::Graphe { nœuds, arêtes }) => {
+            if let Some(addr) = graphe(ui, nœuds, arêtes) {
+                // Vers le CODE, sans demander : une boîte de ce graphe
+                // est une fonction, et une fonction se lit
+                // désassemblée. Le choix se pose pour une adresse
+                // écrite — une chaîne, une table, un bourrage peuvent
+                // être l'un ou l'autre —, pas pour celle-ci.
+                gestes.demande = Some(ReRequest::GoTo {
+                    addr,
+                    target: crate::GoTarget::Listing,
+                });
+            }
         }
         Bloc::Tableau {
             colonnes,
@@ -221,6 +244,12 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             } else {
                 id
             };
+            // CE QUI DÉBORDERAIT EST BORNÉ AVANT D'ÊTRE PEINT. Voir
+            // `plafonds_des_colonnes` : dans le cas ordinaire, tout
+            // vaut `None` et rien ne change.
+            const AIR_ENTRE_COLONNES: f32 = 14.0;
+            let plafonds =
+                plafonds_des_colonnes(ui, colonnes, rangées, colonnes_max, AIR_ENTRE_COLONNES);
             egui::Grid::new(("vue_tableau", id))
                 .num_columns(colonnes_max)
                 .min_col_width(0.0)
@@ -232,7 +261,7 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
                 // s'en remettaient au défaut d'egui, plus serré.
                 // Un seul rythme vaut mieux que deux, et c'est le plus
                 // lisible des deux qu'on garde.
-                .spacing([14.0, 3.0])
+                .spacing([AIR_ENTRE_COLONNES, 3.0])
                 .striped(*rayé)
                 .show(ui, |ui| {
                     if !colonnes.is_empty() {
@@ -244,14 +273,14 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
                         // qui décide à la place des modules — soit
                         // exactement ce qu'on lui reproche quand elle
                         // est trop riche.
-                        for titre in colonnes {
-                            peindre_ligne(ui, ctx, titre, gestes);
+                        for (rang, titre) in colonnes.iter().enumerate() {
+                            peindre_ligne_bornée(ui, ctx, titre, plafonds[rang], gestes);
                         }
                         ui.end_row();
                     }
                     for rangée in rangées {
-                        for cellule in rangée {
-                            peindre_ligne(ui, ctx, cellule, gestes);
+                        for (rang, cellule) in rangée.iter().enumerate() {
+                            peindre_ligne_bornée(ui, ctx, cellule, plafonds[rang], gestes);
                         }
                         ui.end_row();
                     }
@@ -260,8 +289,95 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
     }
 }
 
+/// Jusqu'où chaque colonne a le droit d'aller, quand le tableau ne
+/// tient pas dans la largeur qu'on lui donne.
+///
+/// `None` partout dans le cas ordinaire — et c'est voulu : tant que le
+/// tableau tient, rien ne change, pas un pixel. Une table qui déborde
+/// voit en revanche sa colonne LA PLUS LARGE bornée à ce qui reste ;
+/// les étroites ne sont jamais touchées, parce que rogner « adresse »
+/// pour faire tenir du pseudo-code ne ferait que perdre les deux.
+///
+/// La borne est tirée des largeurs NATURELLES, mesurées sans
+/// contrainte. C'est ce qui la rend sûre : une grille garde la largeur
+/// de ses colonnes d'une image sur l'autre, et une borne tirée de
+/// `available_width()` serait donc tirée du dessin précédent — à la
+/// deuxième image « SHA-256 » devenait « … », à la troisième il ne
+/// restait rien. Vu sur la capture du panneau des empreintes, et c'est
+/// le piège même d'egui : une mesure reprise en entrée de la suivante.
+fn plafonds_des_colonnes(
+    ui: &egui::Ui,
+    colonnes: &[Ligne],
+    rangées: &[Vec<Ligne>],
+    combien: usize,
+    espacement: f32,
+) -> Vec<Option<f32>> {
+    let mut naturelles = vec![0.0f32; combien];
+    for rangée in std::iter::once(colonnes).chain(rangées.iter().map(Vec::as_slice)) {
+        for (rang, cellule) in rangée.iter().enumerate().take(combien) {
+            naturelles[rang] = naturelles[rang].max(largeur_naturelle(ui, cellule));
+        }
+    }
+    let total: f32 = naturelles.iter().sum::<f32>() + espacement * (combien.max(1) - 1) as f32;
+    let dispo = ui.available_width();
+    if total <= dispo || combien == 0 {
+        return vec![None; combien];
+    }
+    let (plus_large, _) = naturelles
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.total_cmp(b))
+        .expect("au moins une colonne");
+    let autres: f32 = naturelles
+        .iter()
+        .enumerate()
+        .filter(|(rang, _)| *rang != plus_large)
+        .map(|(_, l)| *l)
+        .sum();
+    // Jamais moins de quarante pixels : une colonne réduite à trois
+    // points ne dit plus rien, et mieux vaut alors déborder un peu que
+    // de ne rien montrer du tout.
+    let borne = (dispo - espacement * (combien - 1) as f32 - autres).max(40.0);
+    let mut plafonds = vec![None; combien];
+    plafonds[plus_large] = Some(borne);
+    plafonds
+}
+
+/// La largeur qu'une ligne prendrait si rien ne la contraignait.
+fn largeur_naturelle(ui: &egui::Ui, ligne: &Ligne) -> f32 {
+    ligne
+        .fragments
+        .iter()
+        .map(|fragment| {
+            let galley = egui::WidgetText::from(riche(ui, fragment)).into_galley(
+                ui,
+                Some(egui::TextWrapMode::Extend),
+                f32::INFINITY,
+                egui::TextStyle::Body,
+            );
+            // Un bouton encadré porte sa marge : la mesurer au texte
+            // seul ferait croire qu'il tient là où il déborde.
+            galley.size().x + if fragment.action.is_some() { 16.0 } else { 0.0 }
+        })
+        .sum()
+}
+
 /// Une ligne, fragment par fragment, sur une seule rangée qui se replie.
 fn peindre_ligne(ui: &mut egui::Ui, ctx: &ReContext, ligne: &Ligne, gestes: &mut Gestes) {
+    peindre_ligne_bornée(ui, ctx, ligne, None, gestes);
+}
+
+/// La même, avec une largeur à ne pas dépasser.
+///
+/// Le plafond ne vient que des tableaux, et il est `None` partout
+/// ailleurs — voir `plafonds_des_colonnes`.
+fn peindre_ligne_bornée(
+    ui: &mut egui::Ui,
+    ctx: &ReContext,
+    ligne: &Ligne,
+    plafond: Option<f32>,
+    gestes: &mut Gestes,
+) {
     // UN SEUL FRAGMENT : pas de rangée. C'est le cas de la grande
     // majorité des lignes, et ce n'est pas qu'une économie — une rangée
     // repliable laisse son contenu prendre la largeur disponible, et le
@@ -269,28 +385,70 @@ fn peindre_ligne(ui: &mut egui::Ui, ctx: &ReContext, ligne: &Ligne, gestes: &mut
     // s'étirait alors bien au-delà du mot. Vu sur la capture du panneau
     // Empreintes, en comparant avec l'avant.
     if let [seul] = ligne.fragments.as_slice() {
-        peindre_fragment(ui, ctx, seul, gestes);
+        peindre_fragment_borné(ui, ctx, seul, plafond, gestes);
         return;
     }
     ui.horizontal_wrapped(|ui| {
         for fragment in &ligne.fragments {
-            peindre_fragment(ui, ctx, fragment, gestes);
+            peindre_fragment_borné(ui, ctx, fragment, plafond, gestes);
         }
     });
 }
 
 fn peindre_fragment(ui: &mut egui::Ui, ctx: &ReContext, fragment: &Fragment, gestes: &mut Gestes) {
+    peindre_fragment_borné(ui, ctx, fragment, None, gestes);
+}
+
+fn peindre_fragment_borné(
+    ui: &mut egui::Ui,
+    ctx: &ReContext,
+    fragment: &Fragment,
+    plafond: Option<f32>,
+    gestes: &mut Gestes,
+) {
     if let Some(quoi) = &fragment.action {
-        // Par le bouton encadré du projet : il se voit SANS qu'on le
-        // survole, ce que le thème plat ne donne pas tout seul.
-        let bouton = ui.add_enabled(!fragment.inactif, crate::framed(ui, fragment.texte.clone()));
-        let bouton = match &fragment.survol {
-            // Au survol ET quand il est grisé : un bouton éteint qui ne
-            // dit pas pourquoi fait chercher la raison ailleurs.
-            Some(texte) => bouton.on_hover_text(texte).on_disabled_hover_text(texte),
-            None => bouton,
+        if fragment.bouton {
+            // Par le bouton encadré du projet : il se voit SANS qu'on
+            // le survole, ce que le thème plat ne donne pas tout seul.
+            let bouton =
+                ui.add_enabled(!fragment.inactif, crate::framed(ui, fragment.texte.clone()));
+            let bouton = match &fragment.survol {
+                // Au survol ET quand il est grisé : un bouton éteint qui
+                // ne dit pas pourquoi fait chercher la raison ailleurs.
+                Some(texte) => bouton.on_hover_text(texte).on_disabled_hover_text(texte),
+                None => bouton,
+            };
+            if bouton.clicked() {
+                gestes.actions.push(quoi.clone());
+            }
+            return;
+        }
+        // UN LIEN, ET NON UN BOUTON ENCADRÉ, et c'est la correction
+        // d'une divergence : la vue dit depuis le début qu'une action
+        // fait un lien par défaut et qu'un encadré se demande
+        // (`Fragment::bouton`), mais le peintre encadrait TOUT. Les
+        // noms d'`imports` étaient des textes soulignés avant P7 ; ils
+        // sont devenus cinquante boutons dans une colonne, ce qui est
+        // exactement ce que le vocabulaire voulait éviter.
+        //
+        // La couleur de lien est posée ici : le module a dit un ton —
+        // « fort », « code » —, et « ceci se clique » est de la
+        // présentation.
+        if fragment.inactif {
+            let réponse = ui.add_enabled(false, egui::Label::new(riche(ui, fragment)));
+            if let Some(texte) = &fragment.survol {
+                réponse.on_disabled_hover_text(texte);
+            }
+            return;
+        }
+        let couleur = ui.visuals().hyperlink_color;
+        let réponse =
+            crate::clickable_label(ui, egui::Label::new(riche(ui, fragment).color(couleur)));
+        let réponse = match &fragment.survol {
+            Some(texte) => réponse.on_hover_text(texte),
+            None => réponse,
         };
-        if bouton.clicked() {
+        if réponse.clicked() {
             gestes.actions.push(quoi.clone());
         }
         return;
@@ -318,15 +476,39 @@ fn peindre_fragment(ui: &mut egui::Ui, ctx: &ReContext, fragment: &Fragment, ges
         }
         return;
     }
-    let réponse = étiquette(ui, fragment);
+    let réponse = étiquette(ui, fragment, plafond);
     if let Some(texte) = &fragment.survol {
         réponse.on_hover_text(texte);
     }
 }
 
-fn étiquette(ui: &mut egui::Ui, fragment: &Fragment) -> egui::Response {
+fn étiquette(ui: &mut egui::Ui, fragment: &Fragment, plafond: Option<f32>) -> egui::Response {
     let texte = riche(ui, fragment);
-    ui.label(texte)
+    // SANS PLAFOND, RIEN NE CHANGE : c'est le cas partout hors des
+    // tableaux, et des tableaux qui tiennent — c'est-à-dire presque
+    // partout.
+    let Some(borne) = plafond else {
+        return ui.label(texte);
+    };
+    let entière = egui::WidgetText::from(texte.clone()).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Body,
+    );
+    if entière.size().x <= borne + 0.5 {
+        return ui.add(egui::Label::new(entière));
+    }
+    let coupée = egui::WidgetText::from(texte).into_galley(
+        ui,
+        Some(egui::TextWrapMode::Truncate),
+        borne,
+        egui::TextStyle::Body,
+    );
+    // Ce qui manque se lit au survol : une élision sans recours est une
+    // information perdue.
+    ui.add(egui::Label::new(coupée))
+        .on_hover_text(fragment.texte.clone())
 }
 
 /// Le ton, traduit dans les couleurs du thème en vigueur.
@@ -348,6 +530,15 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
     {
         return texte.color(famille.color());
     }
+    // CE QUI VIENT DE LA MAIN DE L'UTILISATEUR PORTE UN FOND LÉGER, et
+    // garde par-dessus le ton que le module a dit : un nom donné à la
+    // main s'écrit en chasse fixe comme les autres, il se repère en
+    // plus. D'où un fond posé avant le ton, et non à sa place.
+    let texte = if fragment.à_la_main {
+        texte.background_color(visuals.selection.bg_fill.gamma_multiply(0.25))
+    } else {
+        texte
+    };
     match fragment.ton {
         Ton::Normal => texte,
         Ton::Faible => texte.color(visuals.weak_text_color()),
@@ -372,6 +563,374 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
 
 /// Le vert des verdicts favorables. Voir `riche` pour le pourquoi.
 const VERT: egui::Color32 = egui::Color32::from_rgb(0x4e, 0xc9, 0xb0);
+
+/// Ce que l'interface retient d'un champ entre deux images.
+///
+/// Deux textes et non un : ce qui est TAPÉ, et ce que le module
+/// PROPOSAIT la dernière fois. Sans le second, on ne saurait pas
+/// distinguer « le module a changé d'avis » de « l'utilisateur est en
+/// train d'écrire », et l'un des deux écraserait l'autre à chaque
+/// image — soit le champ se vide sous les doigts, soit « Défaut » ne
+/// rend plus rien.
+#[derive(Clone)]
+struct Frappe {
+    proposée: String,
+    tapée: String,
+}
+
+/// Un champ de saisie, son étiquette et ses boutons, sur une rangée.
+///
+/// LE TAMPON DE FRAPPE VIT ICI, dans la mémoire d'egui, et non dans le
+/// module : c'est le même partage que l'état d'ouverture d'un
+/// repliable. Le module n'apprend ce qui est écrit qu'au moment où l'on
+/// valide — par la touche Entrée, ou par le bouton qui porte la même
+/// action que le champ.
+fn peindre_champ(ui: &mut egui::Ui, ctx: &ReContext, champ: &Champ, gestes: &mut Gestes) {
+    let id = ui.id().with(("vue_champ", &champ.action));
+    let mut frappe = ui.data(|d| d.get_temp::<Frappe>(id)).unwrap_or(Frappe {
+        proposée: champ.valeur.clone(),
+        tapée: champ.valeur.clone(),
+    });
+    // Le module a changé d'avis : sa valeur l'emporte sur ce qui est
+    // tapé. C'est ainsi que « Défaut » rend son nom d'origine à une
+    // fonction sans que le module tienne le tampon.
+    if frappe.proposée != champ.valeur {
+        frappe.proposée = champ.valeur.clone();
+        frappe.tapée = champ.valeur.clone();
+    }
+    // UNE LARGEUR EN CARACTÈRES, convertie ici et nulle part ailleurs :
+    // le module dit « vingt caractères », l'interface sait ce que
+    // mesurent les siens.
+    let style = if champ.code {
+        egui::TextStyle::Monospace
+    } else {
+        egui::TextStyle::Body
+    };
+    let police = style.resolve(ui.style());
+    let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
+    // Plus la marge intérieure du champ, sans quoi le dernier caractère
+    // écrit touche le cadre.
+    let largeur = champ.caractères as f32 * glyphe + 8.0;
+
+    let mut validé = false;
+    let mut locaux = Gestes::default();
+    ui.horizontal(|ui| {
+        if !champ.étiquette.fragments.is_empty() {
+            peindre_ligne(ui, ctx, &champ.étiquette, &mut locaux);
+        }
+        let mut édition = egui::TextEdit::singleline(&mut frappe.tapée).desired_width(largeur);
+        if champ.code {
+            édition = édition.font(egui::TextStyle::Monospace);
+        }
+        if let Some(indice) = &champ.indice {
+            édition = édition.hint_text(indice.clone());
+        }
+        let réponse = ui.add(édition);
+        // Entrée valide, comme partout ailleurs dans namsdec : un champ
+        // qui demande d'aller chercher le bouton à la souris fait taper
+        // l'adresse deux fois sur trois.
+        validé = réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        for bouton in &champ.boutons {
+            peindre_fragment(ui, ctx, bouton, &mut locaux);
+        }
+    });
+    // Le bouton qui porte la MÊME action que le champ le valide ; les
+    // autres demandent ce qu'ils disent.
+    for action in locaux.actions.drain(..) {
+        if action == champ.action {
+            validé = true;
+        } else {
+            gestes.actions.push(action);
+        }
+    }
+    if let Some(demande) = locaux.demande {
+        gestes.demande = Some(demande);
+    }
+    if validé {
+        gestes
+            .actions
+            .push(format!("{}:{}", champ.action, frappe.tapée));
+    }
+    ui.data_mut(|d| d.insert_temp(id, frappe));
+}
+
+// --- Le graphe d'appels ----------------------------------------------
+//
+// Deux cents lignes de dessin, qui vivaient dans `call_graph_module`.
+// Elles décident d'un pas vertical, d'une indentation, d'une largeur de
+// boîte en caractères — c'est-à-dire des pixels, et les pixels sont le
+// métier de l'interface. Le module, lui, dit la structure : des nœuds,
+// leur distance à la racine, et les arêtes entre eux.
+
+/// Le graphe, dessiné comme un vrai diagramme : une boîte peinte et
+/// cliquable par nœud, reliée à son parent par un connecteur fléché.
+///
+/// Peint sur un canevas unique (`allocate_painter`) plutôt qu'empilé en
+/// widgets : c'est ce qui en fait un graphe et non une liste. Une
+/// première version posait des boutons dans une colonne et traçait des
+/// traits par-dessus ; aux couleurs discrètes du thème, cela ne se
+/// lisait pas comme un graphe. Ici les boîtes ont un fond et un cadre
+/// francs, et les liens portent une flèche — on voit qui appelle qui.
+///
+/// Rend l'adresse de la boîte cliquée, s'il y en a une.
+fn graphe(ui: &mut egui::Ui, nœuds: &[Nœud], arêtes: &[(usize, usize)]) -> Option<u64> {
+    if nœuds.is_empty() {
+        return None;
+    }
+    // Les couleurs, relevées du thème avant d'emprunter `ui` pour le
+    // canevas. Celles d'un graphe doivent se voir : on ne prend pas les
+    // fonds estompés qui servent aux fiches.
+    let v = ui.visuals();
+    let couleur_texte = v.text_color();
+    let couleur_faible = v.weak_text_color();
+    let couleur_accent = v.hyperlink_color;
+    let couleur_cadre = v.widgets.noninteractive.fg_stroke.color;
+    let fond_boîte = v.extreme_bg_color;
+    let fond_accent = v.selection.bg_fill.gamma_multiply(0.45);
+    let fond_survol = v.widgets.hovered.bg_fill;
+    let couleur_trait = couleur_texte.gamma_multiply(0.55);
+
+    let police = egui::FontId::monospace(12.0);
+    let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
+    let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
+    const PAD_X: f32 = 8.0;
+    const PAD_Y: f32 = 4.0;
+    const INDENT_X: f32 = 30.0;
+    /// Combien de lignes le compartiment du bas porte, au plus.
+    ///
+    /// Le pas doit valoir la PLUS HAUTE des boîtes — celle qui porte un
+    /// stéréotype ET le plus de lignes de corps —, sinon elle mord sur
+    /// sa voisine du dessous.
+    const LIGNES_DE_CORPS: usize = 2;
+    let lignes_de_corps = nœuds
+        .iter()
+        .map(|n| n.corps.len())
+        .max()
+        .unwrap_or(LIGNES_DE_CORPS)
+        .max(LIGNES_DE_CORPS);
+    let pas_vertical = (1 + lignes_de_corps + 1) as f32 * hauteur_ligne + PAD_Y * 4.0 + 10.0;
+
+    // UNE BOÎTE À COMPARTIMENTS, COMME UNE CLASSE EN UML.
+    //
+    // C'était une suite de rectangles d'une ligne — « nom 0x401136 » —,
+    // ce qui tient de la liste indentée plus que du diagramme. Demandé
+    // le 20 octobre : « pour le graphe du programme un style UML et non
+    // une suite de boîtes ».
+    //
+    // La grammaire d'UML est reprise là où elle dit quelque chose de
+    // vrai sur un graphe d'appels, et nulle part ailleurs :
+    //
+    // - un **stéréotype** entre guillemets français pour ce que le nœud
+    //   EST — « entrée », « main », « renvoi » ;
+    // - un **compartiment de titre**, le nom, séparé par un filet ;
+    // - un **compartiment de corps**, ce qu'on mesure ;
+    // - une **dépendance** entre les boîtes, qui en UML se trace en
+    //   TIRETS avec une pointe OUVERTE. C'est exactement ce qu'un appel
+    //   est : « A dépend de B ». Un trait plein à pointe pleine dirait
+    //   une association, qui ne veut rien dire ici.
+    struct Boîte {
+        rect: egui::Rect,
+        accent: bool,
+        renvoi: bool,
+    }
+    let mut boîtes: Vec<Boîte> = Vec::with_capacity(nœuds.len());
+    let mut largeur_max = 0.0f32;
+    for (i, nœud) in nœuds.iter().enumerate() {
+        let plus_large = nœud
+            .corps
+            .iter()
+            .map(|l| l.chars().count())
+            .chain(std::iter::once(nœud.titre.chars().count()))
+            // Le stéréotype porte ses guillemets : quatre caractères de
+            // plus, et c'est l'interface qui les ajoute.
+            .chain(nœud.stéréotype.iter().map(|s| s.chars().count() + 4))
+            .max()
+            .unwrap_or(0);
+        let largeur = plus_large as f32 * glyphe + PAD_X * 2.0;
+        // UNE LIGNE PAR LIGNE PEINTE, et c'est la correction d'un
+        // défaut vu à l'écran : le compte oubliait que le compartiment
+        // du bas en porte DEUX, et la seconde — « 0 appelants · 13
+        // appels » — se peignait sous le trait du cadre, hors de la
+        // boîte.
+        let lignes = 1 + nœud.corps.len() + usize::from(nœud.stéréotype.is_some());
+        let hauteur = lignes as f32 * hauteur_ligne + PAD_Y * 4.0;
+        let x = nœud.profondeur as f32 * INDENT_X;
+        let y = i as f32 * pas_vertical;
+        largeur_max = largeur_max.max(x + largeur);
+        boîtes.push(Boîte {
+            rect: egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(largeur, hauteur)),
+            // UN TON, ET NON DEUX DRAPEAUX : le module dit « fort » de
+            // ce par quoi on entre dans le programme et « faible » de
+            // ce qui est déjà déplié ailleurs ; l'interface en fait un
+            // cadre d'accent ou un texte estompé.
+            accent: nœud.ton == Ton::Fort,
+            renvoi: nœud.ton == Ton::Faible,
+        });
+    }
+    let hauteur_totale = nœuds.len() as f32 * pas_vertical;
+
+    let (réponse, peintre) = ui.allocate_painter(
+        egui::vec2(largeur_max.max(120.0), hauteur_totale.max(40.0)),
+        egui::Sense::click(),
+    );
+    let origine = réponse.rect.min.to_vec2();
+    let décalé = |r: egui::Rect| r.translate(origine);
+    let pointeur = réponse.hover_pos();
+
+    // Les connecteurs d'abord : ils passent sous les boîtes.
+    //
+    // EN TIRETS, ET À POINTE OUVERTE : c'est ainsi qu'UML trace une
+    // DÉPENDANCE, et une dépendance est exactement ce qu'un appel est —
+    // « celle-ci a besoin de celle-là ». Un trait plein à pointe pleine
+    // dirait une association, c'est-à-dire un lien durable entre deux
+    // objets, ce qui ne veut rien dire ici.
+    let trait_ = egui::Stroke::new(1.5, couleur_trait);
+    for &(de, à) in arêtes {
+        let (Some(parent), Some(enfant)) = (boîtes.get(de), boîtes.get(à)) else {
+            continue;
+        };
+        let rp = décalé(parent.rect);
+        let rn = décalé(enfant.rect);
+        let x_rail = rp.left() + 13.0;
+        let y_enfant = rn.center().y;
+        tirets(
+            &peintre,
+            egui::pos2(x_rail, rp.bottom()),
+            egui::pos2(x_rail, y_enfant),
+            trait_,
+        );
+        tirets(
+            &peintre,
+            egui::pos2(x_rail, y_enfant),
+            egui::pos2(rn.left(), y_enfant),
+            trait_,
+        );
+        flèche(&peintre, egui::pos2(rn.left(), y_enfant), couleur_trait);
+    }
+
+    // Puis les boîtes, et le clic qui mène à l'adresse.
+    let mut cliquée = None;
+    let mut sur_une_boîte = false;
+    for (nœud, boîte) in nœuds.iter().zip(&boîtes) {
+        let rect = décalé(boîte.rect);
+        let survol = pointeur.is_some_and(|p| rect.contains(p));
+        sur_une_boîte |= survol && nœud.mène_à.is_some();
+        let fond = if survol {
+            fond_survol
+        } else if boîte.accent {
+            fond_accent
+        } else {
+            fond_boîte
+        };
+        // UN RECTANGLE À ANGLES DROITS : une classe UML n'a pas de
+        // coins arrondis, et c'est le premier signe qui dit qu'on lit un
+        // diagramme et non une liste de pastilles.
+        peintre.rect_filled(rect, 0.0, fond);
+        peintre.rect_stroke(
+            rect,
+            0.0,
+            egui::Stroke::new(
+                if boîte.accent { 2.0 } else { 1.0 },
+                if boîte.accent {
+                    couleur_accent
+                } else {
+                    couleur_cadre
+                },
+            ),
+            egui::StrokeKind::Inside,
+        );
+        let couleur = if boîte.renvoi {
+            couleur_faible
+        } else {
+            couleur_texte
+        };
+        let mut y = rect.top() + PAD_Y;
+        // Le stéréotype, entre guillemets français comme UML l'écrit :
+        // « entrée », « main », « renvoi ».
+        if let Some(stéréotype) = &nœud.stéréotype {
+            peintre.text(
+                egui::pos2(rect.center().x, y),
+                egui::Align2::CENTER_TOP,
+                format!("\u{ab}{stéréotype}\u{bb}"),
+                police.clone(),
+                couleur_faible,
+            );
+            y += hauteur_ligne;
+        }
+        // Le compartiment de titre, centré comme un nom de classe.
+        peintre.text(
+            egui::pos2(rect.center().x, y),
+            egui::Align2::CENTER_TOP,
+            &nœud.titre,
+            police.clone(),
+            couleur,
+        );
+        y += hauteur_ligne + PAD_Y;
+        // LE FILET QUI SÉPARE LES DEUX COMPARTIMENTS. C'est lui qui
+        // fait une classe plutôt qu'une étiquette encadrée.
+        peintre.line_segment(
+            [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
+            egui::Stroke::new(1.0, couleur_cadre),
+        );
+        y += PAD_Y;
+        for ligne in &nœud.corps {
+            peintre.text(
+                egui::pos2(rect.left() + PAD_X, y),
+                egui::Align2::LEFT_TOP,
+                ligne,
+                police.clone(),
+                couleur_faible,
+            );
+            y += hauteur_ligne;
+        }
+        if survol && réponse.clicked() {
+            cliquée = nœud.mène_à;
+        }
+    }
+
+    // Le curseur dit que les boîtes mènent quelque part.
+    if sur_une_boîte {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    cliquée
+}
+
+/// Un segment en TIRETS, parce qu'egui n'en trace pas tout seul.
+///
+/// Le motif est fixe — six pixels de trait, quatre de vide — et non
+/// proportionnel à la longueur : deux dépendances de longueurs
+/// différentes doivent se ressembler, sinon le tireté se lit comme une
+/// information qu'il ne porte pas.
+fn tirets(peintre: &egui::Painter, de: egui::Pos2, à: egui::Pos2, trait_: egui::Stroke) {
+    const TRAIT: f32 = 6.0;
+    const VIDE: f32 = 4.0;
+    let total = de.distance(à);
+    if total <= f32::EPSILON {
+        return;
+    }
+    let pas = (à - de) / total;
+    let mut parcouru = 0.0;
+    while parcouru < total {
+        let fin = (parcouru + TRAIT).min(total);
+        peintre.line_segment([de + pas * parcouru, de + pas * fin], trait_);
+        parcouru = fin + VIDE;
+    }
+}
+
+/// La pointe d'une DÉPENDANCE UML : deux traits, et rien entre eux.
+///
+/// Elle était pleine — un triangle rempli —, ce qui en UML désigne une
+/// autre relation. Une pointe ouverte, deux segments en V, est celle
+/// d'une dépendance ou d'une association simple, et c'est ce qu'un
+/// appel est. La forme porte donc une information juste, au lieu d'en
+/// porter une fausse.
+fn flèche(peintre: &egui::Painter, bout: egui::Pos2, couleur: egui::Color32) {
+    const T: f32 = 7.0;
+    let trait_ = egui::Stroke::new(1.5, couleur);
+    let arrière = bout - egui::vec2(T, 0.0);
+    peintre.line_segment([bout, arrière + egui::vec2(0.0, T * 0.55)], trait_);
+    peintre.line_segment([bout, arrière - egui::vec2(0.0, T * 0.55)], trait_);
+}
 
 /// L'action qu'un clic dans le profil engendre : la position du
 /// fichier, puis où l'on veut aller. Le module la décode — lui seul

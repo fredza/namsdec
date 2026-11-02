@@ -366,6 +366,7 @@ mod tests {
                     titre,
                     ouvert,
                     blocs,
+                    ..
                 } => Some((titre.fragments[0].texte.as_str(), *ouvert, blocs.len())),
                 _ => None,
             })

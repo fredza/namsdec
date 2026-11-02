@@ -98,7 +98,22 @@ struct Ligne {
 /// les tailles qu'egui garde d'une image sur l'autre, et c'est la
 /// seconde qui ressemble à ce qu'on voit.
 fn relevé(module: &mut dyn ReModule, ctx: &ReContext, largeur: f32) -> Vec<Ligne> {
-    let egui_ctx = egui::Context::default();
+    relevé_sur(&egui::Context::default(), module, ctx, largeur)
+}
+
+/// Le même relevé, sur un contexte egui QU'ON GARDE.
+///
+/// Un contexte neuf oublie ce que l'interface retient entre deux
+/// images — ce qui est ouvert, ce qui est tapé, ce qui a le clavier.
+/// Pour mesurer un panneau APRÈS un clic, il faut donc le même contexte
+/// qu'au clic ; `relevé` en fabrique un à chaque fois parce que ses
+/// panneaux à lui sont mesurés au repos.
+fn relevé_sur(
+    egui_ctx: &egui::Context,
+    module: &mut dyn ReModule,
+    ctx: &ReContext,
+    largeur: f32,
+) -> Vec<Ligne> {
     let entrée = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
@@ -1472,5 +1487,397 @@ fn the_selection_can_be_copied_and_the_clipboard_lands_in_the_field() {
     assert!(
         écrits.iter().any(|t| t == "de ad be ef"),
         "le collage doit se lire dans le champ avant d'être écrit"
+    );
+}
+
+/// UNE ACTION SANS ENCADRÉ SE PEINT EN LIEN, ET NON EN BOUTON.
+///
+/// Le vocabulaire des vues le dit depuis le premier jour :
+/// « par défaut une action fait un lien — du texte qu'on clique, comme
+/// une adresse —, parce que c'est la forme la plus fréquente et la plus
+/// discrète. Un bouton encadré dit « ceci va LANCER quelque chose ».
+///
+/// Le peintre, lui, encadrait TOUT, et le drapeau `bouton` ne servait à
+/// rien.
+///
+/// Ce n'était pas une subtilité : les noms de fonctions importées
+/// étaient des textes soulignés avant P7 — `clickable_label`, la seule
+/// grammaire du cliquable dans ce projet —, et la migration les a
+/// changés en cinquante boutons encadrés dans une colonne.
+///
+/// Le contrôle mesure ce qui est peint : un encadré pose un rectangle
+/// autour de son texte, un lien pose un trait dessous.
+#[test]
+fn une_action_sans_encadre_se_peint_en_lien() {
+    use namsdec_re::vue::{Bloc, Fragment, Vue};
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    let compte = |vue: &Vue| {
+        let egui_ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(600.0, 400.0),
+            )),
+            ..Default::default()
+        };
+        let mut cadres = 0usize;
+        let mut traits = 0usize;
+        for _ in 0..2 {
+            cadres = 0;
+            traits = 0;
+            let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+                namsdec_re::vue_peinte::peindre_tout(ui, &ctx, vue);
+            });
+            for clipped in &sortie.shapes {
+                match &clipped.shape {
+                    // Le cadre d'un bouton : un rectangle à coins
+                    // arrondis, assez large pour porter son texte.
+                    egui::epaint::Shape::Rect(r) if r.rect.width() > 20.0 => cadres += 1,
+                    // Le trait du cliquable : `clickable_label` le pose
+                    // sous le texte, sur toute sa largeur.
+                    egui::epaint::Shape::LineSegment { points, .. }
+                        if (points[0].y - points[1].y).abs() < 0.5
+                            && (points[1].x - points[0].x).abs() > 10.0 =>
+                    {
+                        traits += 1
+                    }
+                    _ => {}
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        (cadres, traits)
+    };
+
+    // Un lien : un trait, pas de cadre.
+    let (cadres, traits) =
+        compte(&Vue::neuve().texte(Fragment::dit("printf").agit("fiche:printf")));
+    assert_eq!(cadres, 0, "une action sans encadré ne pose pas de cadre");
+    assert_eq!(traits, 1, "elle pose le trait du cliquable");
+
+    // Un bouton encadré : un cadre, et pas de trait.
+    let (cadres, traits) =
+        compte(&Vue::neuve().texte(Fragment::dit("Identifier").bouton("upx:lister")));
+    assert_eq!(cadres, 1, "un encadré se voit sans qu'on le survole");
+    assert_eq!(traits, 0, "et ne porte pas le trait d'un lien");
+
+    // Et les deux formes coexistent dans la même vue, chacune la sienne.
+    let (cadres, traits) = compte(
+        &Vue::neuve().bloc(Bloc::Texte(
+            vec![
+                Fragment::dit("printf").agit("fiche:printf"),
+                Fragment::dit("Identifier").bouton("upx:lister"),
+            ]
+            .into(),
+        )),
+    );
+    assert_eq!((cadres, traits), (1, 1));
+}
+
+/// LE TITRE D'UN REPLIABLE GARDE LE TON QUE LE MODULE A DIT.
+///
+/// Peint en texte nu, un titre perdait sa chasse fixe et son gras : le
+/// panneau de décompilation demande `Fragment::dit(nom).code().fort()`
+/// pour ses fonctions, et les voyait s'écrire comme une phrase
+/// ordinaire. Un nom de fonction en chasse proportionnelle n'est pas
+/// qu'une question de goût — c'est ce qui distingue `sub_401136` d'un
+/// mot de la langue.
+#[test]
+fn le_titre_d_un_repliable_garde_son_ton() {
+    use namsdec_re::vue::{Bloc, Fragment, Vue};
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    let vue = Vue::neuve().bloc(Bloc::Repliable {
+        titre: Fragment::dit("sub_401136").code().into(),
+        ouvert: false,
+        blocs: vec![Bloc::Texte("dedans".into())],
+    });
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(600.0, 400.0),
+        )),
+        ..Default::default()
+    };
+    let mut chasses: Vec<egui::FontFamily> = Vec::new();
+    for _ in 0..2 {
+        chasses.clear();
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+            namsdec_re::vue_peinte::peindre_tout(ui, &ctx, &vue);
+        });
+        for clipped in &sortie.shapes {
+            let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                continue;
+            };
+            if t.galley.text() != "sub_401136" {
+                continue;
+            }
+            chasses.extend(
+                t.galley
+                    .job
+                    .sections
+                    .iter()
+                    .map(|s| s.format.font_id.family.clone()),
+            );
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(
+        !chasses.is_empty(),
+        "le titre du repliable n'a pas été relevé — le contrôle ne mesure rien"
+    );
+    assert!(
+        chasses.iter().all(|f| *f == egui::FontFamily::Monospace),
+        "un titre dit `code` s'écrit en chasse fixe : {chasses:?}"
+    );
+}
+
+/// OUVRIR UNE FICHE DU GRAPHE D'APPELS : ELLE S'OUVRE, ET RIEN N'Y
+/// DÉBORDE.
+///
+/// Le banc ne montre ce panneau qu'au repos, toutes fiches fermées —
+/// c'est-à-dire l'état où il n'y a presque rien à mesurer. Le contenu
+/// d'une fiche (un nom qu'on change, l'adresse, et jusqu'à deux cents
+/// lignes d'octets et de pseudo-code en trois colonnes) n'était donc
+/// mesuré nulle part.
+///
+/// Le contrôle clique vraiment le nom de la fonction, comme on le
+/// ferait, puis mesure ce qui est peint : la table paraît, rien ne
+/// court au-delà du bord, et deux textes ne se recouvrent pas.
+#[test]
+fn ouvrir_une_fiche_du_graphe_montre_son_code_sans_deborder() {
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    // Étroite comme une colonne partagée : c'est la largeur où trois
+    // colonnes d'une table de code se marchent dessus.
+    const LARGEUR: f32 = 560.0;
+    let mut module = namsdec_re::CallGraphModule::default();
+    module.on_binary_loaded(&ctx);
+    let egui_ctx = egui::Context::default();
+
+    // Le titre de la fiche : il porte l'adresse et « octets », et se
+    // trouve SOUS l'arbre — les boîtes de l'arbre, elles, sont peintes
+    // sur un canevas et portent les mêmes mots autrement.
+    let lignes = relevé_sur(&egui_ctx, &mut module, &ctx, LARGEUR);
+    let titre = lignes
+        .iter()
+        .filter(|l| l.texte.contains("octets") && l.texte.contains("0x"))
+        .max_by(|a, b| a.encre.top().total_cmp(&b.encre.top()))
+        .map(|l| l.encre.center())
+        .expect("le nom d'une fonction doit se lire sous « Le détail des fonctions »");
+    let avant = lignes.len();
+
+    let clic = |où: egui::Pos2, module: &mut dyn ReModule| {
+        for pressé in [true, false] {
+            let mut entrée = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(LARGEUR, 2400.0),
+                )),
+                ..Default::default()
+            };
+            if pressé {
+                entrée.events.push(egui::Event::PointerMoved(où));
+            }
+            entrée.events.push(egui::Event::PointerButton {
+                pos: où,
+                button: egui::PointerButton::Primary,
+                pressed: pressé,
+                modifiers: egui::Modifiers::NONE,
+            });
+            let mut sortie = egui_ctx.run_ui(entrée, |ui| module.ui(ui, &ctx));
+            sortie.textures_delta.clear();
+            let _ = module.take_request();
+        }
+    };
+    clic(titre, &mut module);
+
+    let ouvertes = relevé_sur(&egui_ctx, &mut module, &ctx, LARGEUR);
+    let dit = |quoi: &str| ouvertes.iter().any(|l| l.texte.contains(quoi));
+    assert!(
+        ouvertes.len() > avant,
+        "la fiche ouverte doit peindre plus que la fermée : {} puis {}",
+        avant,
+        ouvertes.len()
+    );
+    assert!(dit("pseudo-code"), "la table de code paraît");
+    assert!(dit("Nom :"), "et le champ qui renomme");
+
+    // Rien ne court au-delà d'un bord, et deux textes ne se recouvrent
+    // pas : les trois colonnes d'une table de code sont exactement ce
+    // qui se marche dessus dans une colonne étroite.
+    let rognées: Vec<&str> = ouvertes
+        .iter()
+        .filter(|l| l.rognée && !l.élidée)
+        .map(|l| l.texte.as_str())
+        .collect();
+    assert!(
+        rognées.is_empty(),
+        "du texte court au-delà de son bord : {rognées:?}"
+    );
+    for (i, une) in ouvertes.iter().enumerate() {
+        for autre in &ouvertes[i + 1..] {
+            if une.clip != autre.clip {
+                continue;
+            }
+            let croisement = une.encre.shrink(1.0).intersect(autre.encre.shrink(1.0));
+            assert!(
+                croisement.width() <= 0.0 || croisement.height() <= 0.0,
+                "« {} » {:?} recouvre « {} » {:?}",
+                une.texte,
+                une.encre,
+                autre.texte,
+                autre.encre
+            );
+        }
+    }
+
+    // Et le même clic referme : la fiche est une bascule, comme
+    // partout ailleurs.
+    clic(titre, &mut module);
+    let refermée = relevé_sur(&egui_ctx, &mut module, &ctx, LARGEUR);
+    assert!(
+        !refermée.iter().any(|l| l.texte.contains("pseudo-code")),
+        "un second clic referme la fiche"
+    );
+}
+
+/// UN TABLEAU QUI TIENT NE S'ÉLIDE JAMAIS — et celui qui déborde
+/// n'élide QUE sa colonne la plus large.
+///
+/// Une grille egui garde la largeur de ses colonnes d'une image sur
+/// l'autre. Borner une cellule à « ce qui reste » revient donc à la
+/// borner à ce qu'elle mesurait à l'image précédente : on y perd une
+/// lettre, la colonne rétrécit d'autant, et l'on recommence. Mesuré sur
+/// le panneau des empreintes : à la deuxième image « SHA-256 » devenait
+/// « … », et il n'en restait plus rien à la troisième.
+///
+/// D'où la règle : la borne se tire des largeurs NATURELLES, mesurées
+/// sans contrainte, et jamais de ce qui a été peint.
+#[test]
+fn un_tableau_qui_tient_ne_s_elide_pas() {
+    use namsdec_re::vue::{Bloc, Fragment, Vue};
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    // Deux colonnes « nom / valeur », comme le panneau des empreintes.
+    let vue = Vue::neuve().bloc(Bloc::Tableau {
+        colonnes: vec![],
+        rangées: vec![
+            vec!["Taille".into(), Fragment::dit("8904 octets").code().into()],
+            vec![
+                "SHA-256".into(),
+                Fragment::dit("d76a20e1f02468fdf0ef7394028a62a2f4a61a232c7a0f86486f9572444d8ff3")
+                    .code()
+                    .into(),
+            ],
+            vec!["CRC-32".into(), Fragment::dit("4f44292f").code().into()],
+        ],
+        rayé: false,
+    });
+    let peint = |largeur: f32| {
+        let egui_ctx = egui::Context::default();
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, 400.0),
+            )),
+            ..Default::default()
+        };
+        // Le texte ET son élision : une galée élidée garde son texte
+        // entier — c'est la LIGNE peinte qui s'arrête sur « … ». Lire
+        // le texte seul ferait passer le contrôle sans rien regarder.
+        let mut textes: Vec<(String, bool)> = Vec::new();
+        // QUATRE images, et c'est le cœur du contrôle : le défaut ne se
+        // voyait qu'à partir de la deuxième, et s'aggravait ensuite.
+        for _ in 0..4 {
+            textes.clear();
+            let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+                namsdec_re::vue_peinte::peindre_tout(ui, &ctx, &vue);
+            });
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    textes.push((t.galley.text().to_owned(), t.galley.elided));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        textes
+    };
+
+    // Large : tout tient, donc rien n'est coupé.
+    let larges = peint(900.0);
+    for attendu in ["Taille", "SHA-256", "CRC-32", "8904 octets"] {
+        assert!(
+            larges.iter().any(|(t, _)| t == attendu),
+            "« {attendu} » doit être peint : {larges:?}"
+        );
+    }
+    let coupés: Vec<&str> = larges
+        .iter()
+        .filter(|(_, élidée)| *élidée)
+        .map(|(t, _)| t.as_str())
+        .collect();
+    assert!(
+        coupés.is_empty(),
+        "un tableau qui tient ne coupe rien : {coupés:?}"
+    );
+
+    // Étroit : l'empreinte — la colonne la plus large — est coupée, et
+    // les étiquettes de gauche ne le sont pas. Rogner « SHA-256 » pour
+    // faire tenir une empreinte ferait perdre les deux.
+    let étroits = peint(260.0);
+    for attendu in ["Taille", "SHA-256", "CRC-32"] {
+        assert!(
+            étroits.iter().any(|(t, élidée)| t == attendu && !élidée),
+            "« {attendu} » reste entier même à l'étroit : {étroits:?}"
+        );
+    }
+    assert!(
+        étroits
+            .iter()
+            .any(|(t, élidée)| t.starts_with("d76a20e1") && *élidée),
+        "l'empreinte, elle, s'élide : {étroits:?}"
     );
 }

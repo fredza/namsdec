@@ -704,6 +704,10 @@ mod tests {
                         vus.extend(rangées.iter().flatten().flat_map(|l| &l.fragments))
                     }
                     Bloc::Jauge { texte, .. } => vus.extend(&texte.fragments),
+                    Bloc::Champ(champ) => {
+                        vus.extend(&champ.étiquette.fragments);
+                        vus.extend(&champ.boutons);
+                    }
                     // Le code n'a pas de fragments : son texte est
                     // la donnée, d'un bloc.
                     // Ni le code ni un dessin ne portent de fragments :

@@ -590,6 +590,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "liste, elles, gardent le trait au survol seulement&nbsp;: un trait sous chacune "
          "des trois cents lignes d'un listing ne serait plus un signe, seulement du bruit."),
 
+        ("note",
+         "<b>Une cellule de tableau qui ne tient pas s'arrête sur « … », et le survol "
+         "rend ce qui manque.</b> Elle courait jusque-là hors du panneau, où elle était "
+         "simplement perdue. C'est la colonne la PLUS LARGE qui cède — une empreinte, un "
+         "pseudo-code — et jamais les étroites&nbsp;: rogner « SHA-256 » pour faire tenir "
+         "une empreinte ferait perdre les deux. Tant que le tableau tient, rien n'est "
+         "coupé."),
+
         ("h2", "Ce que l'éditeur sait faire"),
         ("p",
          "En mode NORMAL, les déplacements sont ceux de vim : "
@@ -1873,7 +1881,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Une fonction déjà dépliée ailleurs devient un <b>renvoi</b>, pour que l'arbre reste "
          "fini même quand le code boucle. On clique une boîte pour "
          "<b>aller la voir</b> dans le listing, et un champ <b>Aller à</b> mène à n'importe "
-         "quelle adresse tapée. Sous l'arbre, chaque fonction se déplie sur son <b>nom</b> "
+         "quelle adresse tapée. Sous l'arbre, on <b>clique le nom</b> d'une fonction pour "
+         "ouvrir sa fiche — <b>une seule à la fois</b> : quarante fiches dépliées ne se "
+         "parcourent plus, et les composer toutes à chaque image coûterait le sixième "
+         "d'une image pour du texte que personne ne regarde. La fiche porte son <b>nom</b> "
          "(qu'on peut <b>changer</b> — <font face='Courier'>sub_10450</font> devient "
          "« vérifie_clé », et « Défaut » lui rend son nom d'origine), son <b>code "
          "binaire</b> — les octets bruts — et son <b>pseudo-code</b> — ce que chaque "

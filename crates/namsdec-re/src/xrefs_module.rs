@@ -365,6 +365,14 @@ mod tests {
                             .flat_map(|l| &l.fragments)
                             .map(|f| f.texte.clone()),
                     ),
+                    Bloc::Champ(champ) => vus.extend(
+                        champ
+                            .étiquette
+                            .fragments
+                            .iter()
+                            .chain(&champ.boutons)
+                            .map(|f| f.texte.clone()),
+                    ),
                     Bloc::Jauge { texte, .. } => {
                         vus.extend(texte.fragments.iter().map(|f| f.texte.clone()))
                     }

@@ -167,7 +167,24 @@ pub fn discover_with(
 
     let mut débuts: BTreeMap<u64, Origin> = BTreeMap::new();
     for cible in appels.keys() {
-        débuts.insert(*cible, Origin::Called);
+        // SEULEMENT CE QUI TOMBE DANS LE CODE, comme pour les appels
+        // calculés quelques lignes plus haut — et c'est la correction
+        // d'un défaut qu'on voyait sans le lire.
+        //
+        // Un `call` dont l'adresse est du hasard — ce que produit la
+        // moindre figure d'anti-désassemblage, et ce que porte le
+        // binaire d'épreuve du banc — fabriquait une « fonction » à une
+        // adresse quelconque. La fonction D'AVANT allait alors jusqu'à
+        // elle : le panneau du graphe d'appels écrivait
+        // « 0x400100 · 18446744073697542199 octets », et sa fiche
+        // demandait toutes les instructions d'un intervalle qui couvre
+        // la mémoire entière.
+        //
+        // L'appel, lui, reste compté : il a bien eu lieu, et son
+        // appelant le porte. C'est la FONCTION qui n'existe pas.
+        if dans_le_code.contains(cible) {
+            débuts.insert(*cible, Origin::Called);
+        }
     }
     if disasm.iter().any(|i| i.address == entry) {
         débuts.insert(entry, Origin::Entry);
@@ -400,5 +417,55 @@ mod tests {
         let ordre = by_importance(&fonctions);
         assert_eq!(ordre[0].origin, Origin::Entry, "l'entrée avant le reste");
         assert!(ordre.len() >= 2);
+    }
+    /// UN APPEL VERS NULLE PART NE FABRIQUE PAS DE FONCTION — et
+    /// surtout, n'étire pas celle d'avant jusqu'à lui.
+    ///
+    /// Chaque fonction va jusqu'au début de la suivante. Quand un
+    /// `call` vise une adresse quelconque — ce que produit la moindre
+    /// figure d'anti-désassemblage —, cette adresse devenait un début
+    /// de fonction, et la fonction précédente allait jusqu'à elle. Le
+    /// panneau du graphe d'appels écrivait alors
+    /// « 0x400100 · 18446744073697542199 octets », vu sur une capture
+    /// du binaire d'épreuve ; et la fiche de cette fonction demandait
+    /// les instructions d'un intervalle large comme la mémoire.
+    ///
+    /// L'appel, lui, reste compté : il a bien eu lieu.
+    #[test]
+    fn a_call_to_nowhere_makes_no_function() {
+        // 0x1000: call 0xffffffffff88c138 (très loin d'ici)
+        // 0x1005: ret
+        let code = [0xe8, 0x2e, 0xc0, 0x88, 0xff, 0xc3];
+        let disasm = namsdec_disasm::disassemble(&code, 0x1000);
+        let trouvées = discover(&disasm, 0x1000);
+        assert!(
+            trouvées
+                .iter()
+                .all(|f| f.start >= 0x1000 && f.start < 0x1010),
+            "une fonction hors du code découvert : {:?}",
+            trouvées.iter().map(|f| f.start).collect::<Vec<_>>()
+        );
+        // Et aucune fonction ne mesure plus que le code lui-même.
+        for f in &trouvées {
+            assert!(
+                f.size() <= code.len() as u64,
+                "{:#x} fait {} octets, le code en fait {}",
+                f.start,
+                f.size(),
+                code.len()
+            );
+        }
+        // L'appel est compté chez l'appelante : c'est le fait, et il
+        // ne disparaît pas avec la fausse fonction.
+        let entrée = trouvées
+            .iter()
+            .find(|f| f.start == 0x1000)
+            .expect("le point d'entrée est une fonction");
+        assert_eq!(entrée.calls.len(), 1, "l'appel est compté");
+        assert!(
+            entrée.calls[0] > 0x1_0000_0000,
+            "et sa cible est bien hors du code : {:#x}",
+            entrée.calls[0]
+        );
     }
 }

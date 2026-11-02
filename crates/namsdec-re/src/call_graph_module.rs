@@ -20,8 +20,21 @@
 //!   **pseudo-code** (ce que chaque instruction fait, en clair).
 
 use crate::functions::{Function, Origin, by_importance, discover_with};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button};
+use crate::vue::{Bloc, Champ, Dessin, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
 use std::collections::HashMap;
+
+/// L'adresse tapée dans « aller à » ; la valeur suit l'action.
+const ALLER: &str = "call_graph:aller";
+
+/// La fiche d'une fonction s'ouvre ou se referme ; son adresse suit.
+const FICHE: &str = "call_graph:fiche:";
+
+/// Le nom qu'on donne à une fonction : son adresse, puis le nom.
+const RENOMMER: &str = "call_graph:renommer:";
+
+/// Rendre à une fonction son nom d'origine ; son adresse suit.
+const DÉFAUT: &str = "call_graph:défaut:";
 
 /// Combien de fonctions l'arbre et le détail montrent, au plus.
 ///
@@ -64,12 +77,16 @@ pub struct CallGraphModule {
     main: Option<u64>,
     /// Les rangs des fonctions montrées, les plus employées d'abord.
     montrées: Vec<usize>,
-    /// Ce qu'on a tapé dans « aller à une adresse ».
-    aller_à: String,
     /// Dit quand l'adresse tapée ne se lit pas, pour l'écrire sous le champ.
     aller_à_erreur: bool,
-    /// Le nom en cours de frappe pour chaque fonction, par adresse.
-    édition: HashMap<u64, String>,
+    /// La fonction dont la fiche est ouverte, s'il y en a une.
+    ///
+    /// Une seule à la fois, et le module la retient lui-même plutôt que
+    /// de la laisser à l'interface : le détail d'une fonction se
+    /// compose de son pseudo-code, et bâtir les quarante à chaque image
+    /// coûte 2,6 ms en release pour du texte que personne ne regarde.
+    /// Voir [`CallGraphModule::fiche`] pour la mesure.
+    ouverte: Option<u64>,
 }
 
 impl CallGraphModule {
@@ -191,538 +208,393 @@ impl ReModule for CallGraphModule {
             .take(MAX_FONCTIONS)
             .filter_map(|f| self.par_adresse.get(&f.start).copied())
             .collect();
-        // Les tampons de frappe d'un autre binaire n'ont plus de sens :
+        // La fiche ouverte parlait d'une fonction d'un autre binaire :
         // ses adresses ne sont pas celles-ci.
-        self.édition.clear();
+        self.ouverte = None;
+        self.aller_à_erreur = false;
+    }
+
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let mut blocs = vec![Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Un programme n'est pas une liste d'instructions mais un réseau de \
+                 fonctions qui s'appellent. Voici ce réseau, déplié depuis le point \
+                 d'entrée : chaque boîte est une fonction, chaque trait un appel. On \
+                 clique une boîte pour aller la voir dans le listing ; on déplie une \
+                 fonction, plus bas, pour lire ses octets et ce qu'ils font.",
+                "A program is not a list of instructions but a web of functions that \
+                 call one another. Here is that web, unfolded from the entry point: \
+                 each box is a function, each line a call. Click a box to go to it in \
+                 the listing; unfold a function, below, to read its bytes and what \
+                 they do.",
+            ))
+            .faible()
+            .into(),
+        )];
+
+        if self.functions.is_empty() {
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Rien à tracer : aucun code n'est chargé.",
+                    "Nothing to trace: no code is loaded.",
+                ))
+                .faible()
+                .into(),
+            ));
+            return Some(Vue { blocs });
+        }
+
+        // « ALLER À » : une adresse tapée, et on y va dans le listing.
+        //
+        // Le texte en cours de frappe appartient à l'interface — voir
+        // `vue::Champ` : le module ne l'apprend qu'à la validation, ce
+        // qui lui permet de décrire son panneau sans emprunt mutable.
+        blocs.push(Bloc::Champ(
+            Champ::pour(ALLER)
+                .étiquette(ctx.t("Aller à :", "Go to:"))
+                .indice("0x401000")
+                .code()
+                .bouton(Fragment::dit(ctx.t("Y aller", "Go")).bouton(ALLER)),
+        ));
+        if self.aller_à_erreur {
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Cette adresse ne se lit pas : attendez un nombre, en hexadécimal \
+                     (0x401000) ou en décimal.",
+                    "That address does not read: a number is expected, in hex \
+                     (0x401000) or decimal.",
+                ))
+                .faible()
+                .into(),
+            ));
+        }
+
+        blocs.push(Bloc::Trait);
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t("L'arbre des appels", "The call tree"))
+                .fort()
+                .into(),
+        ));
+        let (nœuds, arêtes) = self.graphe(ctx);
+        if nœuds.is_empty() {
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Pas de racine d'où partir : ni point d'entrée ni `main` connus.",
+                    "No root to start from: neither entry point nor `main` is known.",
+                ))
+                .faible()
+                .into(),
+            ));
+        } else {
+            blocs.push(Bloc::Dessin(Dessin::Graphe { nœuds, arêtes }));
+            if self.functions.len() > self.montrées.len() {
+                blocs.push(Bloc::Texte(
+                    Fragment::dit(format!(
+                        "… {} {}",
+                        self.functions.len() - self.montrées.len(),
+                        ctx.t(
+                            "fonctions de plus, moins employées, non tracées",
+                            "more functions, less used, not traced"
+                        )
+                    ))
+                    .faible()
+                    .into(),
+                ));
+            }
+        }
+
+        blocs.push(Bloc::Trait);
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t("Le détail des fonctions", "Function details"))
+                .fort()
+                .into(),
+        ));
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Pour chaque fonction, ses octets et leur traduction. Un nom se \
+                 clique pour ouvrir sa fiche.",
+                "For each function, its bytes and their translation. Click a name to \
+                 open its card.",
+            ))
+            .faible()
+            .into(),
+        ));
+        for rang in &self.montrées {
+            blocs.extend(self.fiche(ctx, *rang));
+        }
+        Some(Vue { blocs })
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.weak(ctx.t(
-            "Un programme n'est pas une liste d'instructions mais un réseau de \
-             fonctions qui s'appellent. Voici ce réseau, déplié depuis le point \
-             d'entrée : chaque boîte est une fonction, chaque trait un appel. On \
-             clique une boîte pour aller la voir dans le listing ; on déplie une \
-             fonction, plus bas, pour lire ses octets et ce qu'ils font.",
-            "A program is not a list of instructions but a web of functions that \
-             call one another. Here is that web, unfolded from the entry point: \
-             each box is a function, each line a call. Click a box to go to it in \
-             the listing; unfold a function, below, to read its bytes and what \
-             they do.",
-        ));
-
-        if self.functions.is_empty() {
-            ui.add_space(6.0);
-            ui.weak(ctx.t(
-                "Rien à tracer : aucun code n'est chargé.",
-                "Nothing to trace: no code is loaded.",
-            ));
+        let Some(vue) = self.vue(ctx) else {
             return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        // Relevé pendant le dessin, posé après : la vue emprunte
+        // `self`, et le module ne peut donc pas s'écrire dedans.
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
         }
-
-        ui.add_space(8.0);
-        self.aller_à_une_adresse(ui, ctx);
-
-        ui.add_space(10.0);
-        ui.separator();
-        ui.add_space(6.0);
-        ui.strong(ctx.t("L'arbre des appels", "The call tree"));
-        ui.add_space(4.0);
-        self.dessiner_arbre(ui, ctx);
-
-        ui.add_space(12.0);
-        ui.separator();
-        ui.add_space(6.0);
-        ui.strong(ctx.t("Le détail des fonctions", "Function details"));
-        ui.weak(ctx.t(
-            "Pour chaque fonction, ses octets et leur traduction.",
-            "For each function, its bytes and their translation.",
-        ));
-        ui.add_space(4.0);
-        self.dessiner_détails(ui, ctx);
+        for action in &gestes.actions {
+            self.agir(action);
+        }
     }
 }
 
 impl CallGraphModule {
-    /// Le champ « aller à une adresse », et ce qu'il comprend.
-    fn aller_à_une_adresse(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.horizontal(|ui| {
-            ui.label(ctx.t("Aller à :", "Go to:"));
-            let champ = ui.add(
-                egui::TextEdit::singleline(&mut self.aller_à)
-                    .hint_text("0x401000")
-                    .desired_width(140.0)
-                    .font(egui::TextStyle::Monospace),
-            );
-            let validé = champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if framed_button(ui, ctx.t("Y aller", "Go")).clicked() || validé {
-                match lire_adresse(&self.aller_à) {
-                    Some(addr) => {
-                        // Une adresse TAPÉE dans ce champ, et non une
-                        // adresse cliquée : on la cherche dans le code,
-                        // c'est l'objet de ce panneau.
-                        self.demande = Some(ReRequest::GoTo {
-                            addr,
-                            target: crate::GoTarget::Listing,
-                        });
-                        self.aller_à_erreur = false;
-                    }
-                    None => self.aller_à_erreur = !self.aller_à.trim().is_empty(),
-                }
+    /// L'arbre, dit en nœuds et en arêtes : des VALEURS, et pas un
+    /// dessin.
+    ///
+    /// Le placement n'est pas ici — ni le pas vertical, ni
+    /// l'indentation, ni la largeur d'une boîte. Ce sont des pixels, et
+    /// seule l'interface sait de quelle surface elle dispose et ce que
+    /// mesure un de ses caractères. Ce que le module dit est la
+    /// structure : qui est là, à quelle distance de la racine, et qui
+    /// appelle qui.
+    fn graphe(&self, ctx: &ReContext) -> (Vec<crate::vue::Nœud>, Vec<(usize, usize)>) {
+        let arbre = self.arbre();
+        let mut nœuds = Vec::with_capacity(arbre.len());
+        let mut arêtes = Vec::new();
+        for (rang, nœud) in arbre.iter().enumerate() {
+            let f = &self.functions[nœud.fonction];
+            nœuds.push(crate::vue::Nœud {
+                stéréotype: match (nœud.renvoi, f.origin) {
+                    // Le renvoi l'emporte : c'est ce qu'il faut savoir
+                    // de cette boîte-là, déjà dépliée ailleurs.
+                    (true, _) => Some(ctx.t("renvoi", "repeat").to_owned()),
+                    (false, Origin::Entry) => Some(ctx.t("entrée", "entry").to_owned()),
+                    (false, Origin::Main) => Some("main".to_owned()),
+                    (false, Origin::Called) => None,
+                },
+                titre: ctx.display_name(f.start, &f.name()),
+                corps: vec![
+                    format!("{:#x} · {} {}", f.start, f.size(), ctx.t("octets", "bytes")),
+                    format!(
+                        "{} {} · {} {}",
+                        f.callers,
+                        ctx.t("appelants", "callers"),
+                        f.calls.len(),
+                        ctx.t("appels", "calls")
+                    ),
+                ],
+                mène_à: Some(f.start),
+                profondeur: nœud.profondeur,
+                // UN TON, et non deux drapeaux : « fort » pour ce par
+                // quoi on entre dans le programme, « faible » pour ce
+                // qui est déjà déplié ailleurs. L'interface en fait un
+                // cadre d'accent ou un texte estompé — c'est elle qui
+                // connaît ses teintes.
+                ton: match (nœud.renvoi, f.origin) {
+                    (true, _) => Ton::Faible,
+                    (false, Origin::Entry | Origin::Main) => Ton::Fort,
+                    (false, Origin::Called) => Ton::Normal,
+                },
+            });
+            if let Some(parent) = nœud.parent {
+                arêtes.push((parent, rang));
             }
-        });
-        if self.aller_à_erreur {
-            ui.weak(ctx.t(
-                "Cette adresse ne se lit pas : attendez un nombre, en hexadécimal \
-                 (0x401000) ou en décimal.",
-                "That address does not read: a number is expected, in hex \
-                 (0x401000) or decimal.",
-            ));
         }
+        (nœuds, arêtes)
     }
 
-    /// L'arbre, dessiné comme un vrai diagramme : une boîte peinte et
-    /// cliquable par nœud, reliée à son parent par un connecteur fléché.
+    /// La fiche d'une fonction : son nom qu'on clique, et ce qu'elle
+    /// porte quand elle est ouverte.
     ///
-    /// Peint sur un canevas unique (`allocate_painter`) plutôt qu'empilé
-    /// en widgets : c'est ce qui en fait un graphe et non une liste. Une
-    /// première version posait des boutons dans une colonne et traçait
-    /// des traits par-dessus ; aux couleurs discrètes du thème, cela ne
-    /// se lisait pas comme un graphe. Ici les boîtes ont un fond et un
-    /// cadre francs, et les liens portent une flèche — on voit qui appelle
-    /// qui.
-    fn dessiner_arbre(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        let nœuds = self.arbre();
-        if nœuds.is_empty() {
-            ui.weak(ctx.t(
-                "Pas de racine d'où partir : ni point d'entrée ni `main` connus.",
-                "No root to start from: neither entry point nor `main` is known.",
+    /// UNE SEULE FICHE À LA FOIS, et c'est une mesure qui l'a décidé :
+    /// le détail d'une fonction se compose de son pseudo-code, soit
+    /// jusqu'à deux cents lignes décodées une à une. Les quarante
+    /// fonctions montrées, bâties à chaque image, coûtent 2,6 ms en
+    /// release et 8,5 ms en debug — sur un budget de 16,7 ms — pour du
+    /// texte que personne ne regarde, puisque les fiches sont fermées
+    /// au départ. Mesuré sur `croackpocalypse` : 7 443 lignes.
+    ///
+    /// C'est le même partage que dans `imports`, et pour une raison de
+    /// lecture en plus : une liste de quarante fonctions toutes
+    /// dépliées ne se parcourt pas.
+    fn fiche(&self, ctx: &ReContext, rang: usize) -> Vec<Bloc> {
+        let f = &self.functions[rang];
+        let nom = ctx.display_name(f.start, &f.name());
+        let ouverte = self.ouverte == Some(f.start);
+        // Le nom, l'adresse et la taille : de quoi reconnaître la
+        // fonction sans ouvrir sa fiche.
+        let titre = Fragment::dit(format!(
+            "{}   {:#010x}   {} {}",
+            nom,
+            f.start,
+            f.size(),
+            ctx.t("octets", "bytes"),
+        ))
+        .code()
+        .agit(format!("{FICHE}{:#x}", f.start))
+        .survol(if ouverte {
+            ctx.t("Refermer cette fiche", "Close this card")
+        } else {
+            ctx.t(
+                "Ouvrir : les octets de cette fonction, et ce qu'ils font",
+                "Open: this function's bytes, and what they do",
+            )
+        });
+        // Rebaptisée à la main : elle se distingue des fonctions encore
+        // anonymes, dans une liste qui peut en compter des centaines.
+        // Le FAIT est dit ici, la teinte est choisie par l'interface.
+        let titre = if ctx.user_name(f.start).is_some() {
+            titre.à_la_main()
+        } else {
+            titre
+        };
+        let mut blocs = vec![Bloc::Texte(titre.into())];
+        if !ouverte {
+            return blocs;
+        }
+
+        let mut dedans = vec![
+            // Renommer : on comprend une fonction, on lui donne un nom.
+            // « Défaut » rend son `sub_xxxx` — se dédire fait partie de
+            // nommer.
+            Bloc::Champ(
+                Champ::pour(format!("{RENOMMER}{:#x}", f.start))
+                    .étiquette(ctx.t("Nom :", "Name:"))
+                    .valeur(nom)
+                    .code()
+                    .caractères(28)
+                    .bouton(
+                        Fragment::dit(ctx.t("Renommer", "Rename"))
+                            .bouton(format!("{RENOMMER}{:#x}", f.start)),
+                    )
+                    .bouton(
+                        Fragment::dit(ctx.t("Défaut", "Default"))
+                            .bouton(format!("{DÉFAUT}{:#x}", f.start))
+                            .survol(ctx.t("Rendre son nom d'origine", "Restore its original name")),
+                    ),
+            ),
+            Bloc::Texte(
+                Fragment::dit(format!("{:#010x}", f.start))
+                    .code()
+                    .mène_à(f.start)
+                    .into(),
+            ),
+        ];
+        let instrs = self.instructions(ctx, f);
+        if instrs.is_empty() {
+            dedans.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Aucune instruction désassemblée dans cette plage.",
+                    "No disassembled instruction in this range.",
+                ))
+                .faible()
+                .into(),
             ));
+        } else {
+            dedans.push(table_des_instructions(ctx, instrs));
+            if instrs.len() > MAX_INSTRUCTIONS {
+                dedans.push(Bloc::Texte(
+                    Fragment::dit(format!(
+                        "… {} {}",
+                        instrs.len() - MAX_INSTRUCTIONS,
+                        ctx.t("instructions de plus", "more instructions")
+                    ))
+                    .faible()
+                    .into(),
+                ));
+            }
+        }
+        blocs.push(Bloc::Retrait(dedans));
+        blocs
+    }
+
+    /// Ce que le panneau fait d'une action, sans rien peindre.
+    ///
+    /// À part de `ui()` pour être éprouvé : c'est le comportement, et
+    /// le vérifier en relevant des galées de texte revenait à mesurer
+    /// la fenêtre pour savoir ce que le module retient.
+    fn agir(&mut self, action: &str) {
+        if let Some(adresse) = action.strip_prefix(ALLER).and_then(|r| r.strip_prefix(':')) {
+            match lire_adresse(adresse) {
+                // Une adresse TAPÉE dans ce champ, et non une adresse
+                // cliquée : on la cherche dans le code, c'est l'objet
+                // de ce panneau.
+                Some(addr) => {
+                    self.demande = Some(ReRequest::GoTo {
+                        addr,
+                        target: crate::GoTarget::Listing,
+                    });
+                    self.aller_à_erreur = false;
+                }
+                None => self.aller_à_erreur = !adresse.trim().is_empty(),
+            }
             return;
         }
-
-        // Les couleurs, relevées du thème avant d'emprunter `ui` pour le
-        // canevas. Celles d'un graphe doivent se voir : on ne prend pas
-        // les fonds estompés qui servent aux fiches.
-        let v = ui.visuals();
-        let couleur_texte = v.text_color();
-        let couleur_faible = v.weak_text_color();
-        let couleur_accent = v.hyperlink_color;
-        let couleur_cadre = v.widgets.noninteractive.fg_stroke.color;
-        let fond_boîte = v.extreme_bg_color;
-        let fond_accent = v.selection.bg_fill.gamma_multiply(0.45);
-        let fond_survol = v.widgets.hovered.bg_fill;
-        let couleur_trait = couleur_texte.gamma_multiply(0.55);
-
-        let police = egui::FontId::monospace(12.0);
-        let hauteur_ligne = ui.ctx().fonts_mut(|f| f.row_height(&police));
-        let glyphe = ui.ctx().fonts_mut(|f| f.glyph_width(&police, '0')).max(1.0);
-        const PAD_X: f32 = 8.0;
-        const PAD_Y: f32 = 4.0;
-        const INDENT_X: f32 = 30.0;
-        /// Combien de lignes le compartiment du bas porte.
-        const LIGNES_DE_CORPS: usize = 2;
-        // Le pas doit valoir la PLUS HAUTE des boîtes — celle qui porte
-        // un stéréotype —, sinon elle mord sur sa voisine du dessous.
-        let pas_vertical = (1 + LIGNES_DE_CORPS + 1) as f32 * hauteur_ligne + PAD_Y * 4.0 + 10.0;
-
-        // UNE BOÎTE À COMPARTIMENTS, COMME UNE CLASSE EN UML.
-        //
-        // C'était une suite de rectangles d'une ligne — « nom 0x401136 »
-        // —, ce qui tient de la liste indentée plus que du diagramme.
-        // Demandé le 20 octobre : « pour le graphe du programme un style
-        // UML et non une suite de boîtes ».
-        //
-        // La grammaire d'UML est reprise là où elle dit quelque chose de
-        // vrai sur un graphe d'appels, et nulle part ailleurs :
-        //
-        // - un **stéréotype** entre guillemets français pour ce que la
-        //   fonction EST — « entrée », « main », « renvoi » ;
-        // - un **compartiment de titre**, le nom, séparé par un filet ;
-        // - un **compartiment de corps**, ce qu'on mesure : l'adresse,
-        //   la taille, qui l'appelle et ce qu'elle appelle ;
-        // - une **dépendance** entre les boîtes, qui en UML se trace en
-        //   TIRETS avec une pointe OUVERTE. C'est exactement ce qu'un
-        //   appel est : « A dépend de B ». Un trait plein à pointe
-        //   pleine dirait une association, qui ne veut rien dire ici.
-        struct Boîte {
-            rect: egui::Rect,
-            /// Le stéréotype, s'il y en a un : « entrée », « main »…
-            stéréotype: Option<String>,
-            titre: String,
-            /// Les lignes du compartiment du bas.
-            corps: Vec<String>,
-            addr: u64,
-            accent: bool,
-            renvoi: bool,
-        }
-        let mut boîtes: Vec<Boîte> = Vec::with_capacity(nœuds.len());
-        let mut largeur_max = 0.0f32;
-        for (i, nœud) in nœuds.iter().enumerate() {
-            let f = &self.functions[nœud.fonction];
-            let accent = matches!(f.origin, Origin::Entry | Origin::Main);
-            let titre = ctx.display_name(f.start, &f.name());
-            let stéréotype = match (nœud.renvoi, f.origin) {
-                // Le renvoi l'emporte : c'est ce qu'il faut savoir de
-                // cette boîte-là, déjà dépliée ailleurs.
-                (true, _) => Some(ctx.t("renvoi", "repeat").to_owned()),
-                (false, Origin::Entry) => Some(ctx.t("entrée", "entry").to_owned()),
-                (false, Origin::Main) => Some("main".to_owned()),
-                (false, Origin::Called) => None,
+        if let Some(adresse) = action.strip_prefix(FICHE) {
+            let Some(addr) = lire_adresse(adresse) else {
+                return;
             };
-            let corps = vec![
-                format!("{:#x} · {} {}", f.start, f.size(), ctx.t("octets", "bytes")),
-                format!(
-                    "{} {} · {} {}",
-                    f.callers,
-                    ctx.t("appelants", "callers"),
-                    f.calls.len(),
-                    ctx.t("appels", "calls")
-                ),
-            ];
-            let plus_large = corps
-                .iter()
-                .map(|l| l.chars().count())
-                .chain(std::iter::once(titre.chars().count()))
-                .chain(stéréotype.iter().map(|s| s.chars().count() + 4))
-                .max()
-                .unwrap_or(0);
-            let largeur = plus_large as f32 * glyphe + PAD_X * 2.0;
-            // UNE LIGNE PAR LIGNE PEINTE, et c'est la correction d'un
-            // défaut vu à l'écran : le compte oubliait que le
-            // compartiment du bas en porte DEUX, et la seconde —
-            // « 0 appelants · 13 appels » — se peignait sous le trait
-            // du cadre, hors de la boîte.
-            let lignes = 1 + corps.len() + usize::from(stéréotype.is_some());
-            let hauteur = lignes as f32 * hauteur_ligne + PAD_Y * 4.0;
-            let x = nœud.profondeur as f32 * INDENT_X;
-            let y = i as f32 * pas_vertical;
-            largeur_max = largeur_max.max(x + largeur);
-            boîtes.push(Boîte {
-                rect: egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(largeur, hauteur)),
-                stéréotype,
-                titre,
-                corps,
-                addr: f.start,
-                accent,
-                renvoi: nœud.renvoi,
+            // Un second clic referme : c'est la même touche qui ouvre
+            // et qui ferme, comme dans les autres panneaux.
+            self.ouverte = (self.ouverte != Some(addr)).then_some(addr);
+            return;
+        }
+        if let Some(reste) = action.strip_prefix(RENOMMER) {
+            // L'adresse, puis le nom — et le nom garde ses deux-points
+            // s'il en porte : on ne coupe qu'une fois.
+            let Some((adresse, nom)) = reste.split_once(':') else {
+                return;
+            };
+            if let Some(addr) = lire_adresse(adresse) {
+                self.demande = Some(ReRequest::Rename {
+                    addr,
+                    name: nom.to_owned(),
+                });
+            }
+            return;
+        }
+        if let Some(adresse) = action.strip_prefix(DÉFAUT)
+            && let Some(addr) = lire_adresse(adresse)
+        {
+            // Un nom vide EST la demande de rendre le nom d'origine.
+            self.demande = Some(ReRequest::Rename {
+                addr,
+                name: String::new(),
             });
         }
-        let hauteur_totale = nœuds.len() as f32 * pas_vertical;
-
-        let (réponse, peintre) = ui.allocate_painter(
-            egui::vec2(largeur_max.max(120.0), hauteur_totale.max(40.0)),
-            egui::Sense::click(),
-        );
-        let origine = réponse.rect.min.to_vec2();
-        let décalé = |r: egui::Rect| r.translate(origine);
-        let pointeur = réponse.hover_pos();
-
-        // Les connecteurs d'abord : ils passent sous les boîtes.
-        //
-        // EN TIRETS, ET À POINTE OUVERTE : c'est ainsi qu'UML trace une
-        // DÉPENDANCE, et une dépendance est exactement ce qu'un appel
-        // est — « celle-ci a besoin de celle-là ». Un trait plein à
-        // pointe pleine dirait une association, c'est-à-dire un lien
-        // durable entre deux objets, ce qui ne veut rien dire ici.
-        let trait_ = egui::Stroke::new(1.5, couleur_trait);
-        for (i, nœud) in nœuds.iter().enumerate() {
-            let Some(parent) = nœud.parent else { continue };
-            let rp = décalé(boîtes[parent].rect);
-            let rn = décalé(boîtes[i].rect);
-            let x_rail = rp.left() + 13.0;
-            let y_enfant = rn.center().y;
-            tirets(
-                &peintre,
-                egui::pos2(x_rail, rp.bottom()),
-                egui::pos2(x_rail, y_enfant),
-                trait_,
-            );
-            tirets(
-                &peintre,
-                egui::pos2(x_rail, y_enfant),
-                egui::pos2(rn.left(), y_enfant),
-                trait_,
-            );
-            flèche(&peintre, egui::pos2(rn.left(), y_enfant), couleur_trait);
-        }
-
-        // Puis les boîtes, et le clic qui mène à l'adresse.
-        let mut demande: Option<ReRequest> = None;
-        let mut sur_une_boîte = false;
-        for boîte in &boîtes {
-            let rect = décalé(boîte.rect);
-            let survol = pointeur.is_some_and(|p| rect.contains(p));
-            sur_une_boîte |= survol;
-            let fond = if survol {
-                fond_survol
-            } else if boîte.accent {
-                fond_accent
-            } else {
-                fond_boîte
-            };
-            // UN RECTANGLE À ANGLES DROITS : une classe UML n'a pas de
-            // coins arrondis, et c'est le premier signe qui dit qu'on
-            // lit un diagramme et non une liste de pastilles.
-            peintre.rect_filled(rect, 0.0, fond);
-            peintre.rect_stroke(
-                rect,
-                0.0,
-                egui::Stroke::new(
-                    if boîte.accent { 2.0 } else { 1.0 },
-                    if boîte.accent {
-                        couleur_accent
-                    } else {
-                        couleur_cadre
-                    },
-                ),
-                egui::StrokeKind::Inside,
-            );
-            let couleur = if boîte.renvoi {
-                couleur_faible
-            } else {
-                couleur_texte
-            };
-            let mut y = rect.top() + PAD_Y;
-            // Le stéréotype, entre guillemets français comme UML
-            // l'écrit : « entrée », « main », « renvoi ».
-            if let Some(stéréotype) = &boîte.stéréotype {
-                peintre.text(
-                    egui::pos2(rect.center().x, y),
-                    egui::Align2::CENTER_TOP,
-                    format!("\u{ab}{stéréotype}\u{bb}"),
-                    police.clone(),
-                    couleur_faible,
-                );
-                y += hauteur_ligne;
-            }
-            // Le compartiment de titre, centré comme un nom de classe.
-            peintre.text(
-                egui::pos2(rect.center().x, y),
-                egui::Align2::CENTER_TOP,
-                &boîte.titre,
-                police.clone(),
-                couleur,
-            );
-            y += hauteur_ligne + PAD_Y;
-            // LE FILET QUI SÉPARE LES DEUX COMPARTIMENTS. C'est lui qui
-            // fait une classe plutôt qu'une étiquette encadrée.
-            peintre.line_segment(
-                [egui::pos2(rect.left(), y), egui::pos2(rect.right(), y)],
-                egui::Stroke::new(1.0, couleur_cadre),
-            );
-            y += PAD_Y;
-            for ligne in &boîte.corps {
-                peintre.text(
-                    egui::pos2(rect.left() + PAD_X, y),
-                    egui::Align2::LEFT_TOP,
-                    ligne,
-                    police.clone(),
-                    couleur_faible,
-                );
-                y += hauteur_ligne;
-            }
-            if survol && réponse.clicked() {
-                // Vers le CODE, sans demander : une boîte de ce graphe
-                // est une fonction, et une fonction se lit désassemblée.
-                // Le choix se pose pour une adresse écrite — une chaîne,
-                // une table, un bourrage peuvent être l'un ou l'autre —,
-                // pas pour celle-ci.
-                demande = Some(ReRequest::GoTo {
-                    addr: boîte.addr,
-                    target: crate::GoTarget::Listing,
-                });
-            }
-        }
-
-        // Le curseur dit que les boîtes mènent quelque part.
-        if sur_une_boîte {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        if demande.is_some() {
-            self.demande = demande;
-        }
-
-        if self.functions.len() > self.montrées.len() {
-            ui.add_space(4.0);
-            ui.weak(format!(
-                "… {} {}",
-                self.functions.len() - self.montrées.len(),
-                ctx.t(
-                    "fonctions de plus, moins employées, non tracées",
-                    "more functions, less used, not traced"
-                )
-            ));
-        }
-    }
-
-    /// Le détail de chaque fonction montrée : son nom (qu'on peut
-    /// changer), son code binaire et son pseudo-code.
-    fn dessiner_détails(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        let mut demande: Option<ReRequest> = None;
-        // On copie les rangs : le corps emprunte `self` pour lire le
-        // désassemblage, et le module ne peut donc pas s'écrire dedans.
-        let montrées = self.montrées.clone();
-        for rang in montrées {
-            let f = self.functions[rang].clone();
-            // Les instructions d'abord : la tranche est liée à `ctx`, pas
-            // à `self`, donc l'emprunt de `self` se termine ici et laisse
-            // la place au tampon d'édition juste après.
-            let instrs = self.instructions(ctx, &f);
-            let nom_courant = ctx.display_name(f.start, &f.name());
-            let défaut = f.name();
-            let tampon = self
-                .édition
-                .entry(f.start)
-                .or_insert_with(|| nom_courant.clone());
-            let titre = format!(
-                "{}   {:#010x}   {} {}",
-                nom_courant,
-                f.start,
-                f.size(),
-                ctx.t("octets", "bytes"),
-            );
-            // Rebaptisée à la main : un léger fond la distingue des
-            // fonctions encore anonymes, dans une liste qui peut en
-            // compter des centaines.
-            let mut riche = egui::RichText::new(titre).monospace();
-            if ctx.user_name(f.start).is_some() {
-                riche = riche.background_color(ui.visuals().selection.bg_fill.gamma_multiply(0.25));
-            }
-            egui::CollapsingHeader::new(riche)
-                .id_salt(("call_graph_detail", f.start))
-                .default_open(false)
-                .show(ui, |ui| {
-                    // Renommer : on comprend une fonction, on lui donne un
-                    // nom. « Défaut » rend son `sub_xxxx` — se dédire fait
-                    // partie de nommer.
-                    ui.horizontal(|ui| {
-                        ui.label(ctx.t("Nom :", "Name:"));
-                        let champ = ui.add(
-                            egui::TextEdit::singleline(tampon)
-                                .desired_width(200.0)
-                                .font(egui::TextStyle::Monospace),
-                        );
-                        let validé =
-                            champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                        if framed_button(ui, ctx.t("Renommer", "Rename")).clicked() || validé {
-                            demande = Some(ReRequest::Rename {
-                                addr: f.start,
-                                name: tampon.clone(),
-                            });
-                        }
-                        if framed_button(ui, ctx.t("Défaut", "Default"))
-                            .on_hover_text(
-                                ctx.t("Rendre son nom d'origine", "Restore its original name"),
-                            )
-                            .clicked()
-                        {
-                            *tampon = défaut.clone();
-                            demande = Some(ReRequest::Rename {
-                                addr: f.start,
-                                name: String::new(),
-                            });
-                        }
-                    });
-                    if let Some(cible) = clickable_address(ui, ctx, f.start) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: f.start,
-                            target: cible,
-                        });
-                    }
-                    ui.add_space(4.0);
-                    if instrs.is_empty() {
-                        ui.weak(ctx.t(
-                            "Aucune instruction désassemblée dans cette plage.",
-                            "No disassembled instruction in this range.",
-                        ));
-                        return;
-                    }
-                    rubrique_code(ui, ctx, instrs);
-                });
-        }
-        if demande.is_some() {
-            self.demande = demande;
-        }
     }
 }
 
-/// Un segment en TIRETS, parce qu'egui n'en trace pas tout seul.
-///
-/// Le motif est fixe — six pixels de trait, quatre de vide — et non
-/// proportionnel à la longueur : deux dépendances de longueurs
-/// différentes doivent se ressembler, sinon le tireté se lit comme une
-/// information qu'il ne porte pas.
-fn tirets(peintre: &egui::Painter, de: egui::Pos2, à: egui::Pos2, trait_: egui::Stroke) {
-    const TRAIT: f32 = 6.0;
-    const VIDE: f32 = 4.0;
-    let total = de.distance(à);
-    if total <= f32::EPSILON {
-        return;
-    }
-    let pas = (à - de) / total;
-    let mut parcouru = 0.0;
-    while parcouru < total {
-        let fin = (parcouru + TRAIT).min(total);
-        peintre.line_segment([de + pas * parcouru, de + pas * fin], trait_);
-        parcouru = fin + VIDE;
-    }
-}
-
-/// La pointe d'une DÉPENDANCE UML : deux traits, et rien entre eux.
-///
-/// Elle était pleine — un triangle rempli —, ce qui en UML désigne une
-/// autre relation. Une pointe ouverte, deux segments en V, est celle
-/// d'une dépendance ou d'une association simple, et c'est ce qu'un
-/// appel est. La forme porte donc une information juste, au lieu d'en
-/// porter une fausse.
-fn flèche(peintre: &egui::Painter, bout: egui::Pos2, couleur: egui::Color32) {
-    const T: f32 = 7.0;
-    let trait_ = egui::Stroke::new(1.5, couleur);
-    let arrière = bout - egui::vec2(T, 0.0);
-    peintre.line_segment([bout, arrière + egui::vec2(0.0, T * 0.55)], trait_);
-    peintre.line_segment([bout, arrière - egui::vec2(0.0, T * 0.55)], trait_);
-}
-
-/// La rubrique de code d'une fonction : par instruction, les octets puis
+/// La table de code d'une fonction : par instruction, les octets puis
 /// le pseudo-code.
 ///
-/// Deux colonnes dans une grille : à gauche l'adresse et les octets bruts
-/// — le **code binaire**, ce qui est vraiment dans le fichier —, à droite
-/// ce que l'instruction fait, en clair. C'est la même ligne lue deux
-/// fois : telle que la machine la reçoit, puis telle qu'on la comprend.
-fn rubrique_code(
-    ui: &mut egui::Ui,
-    ctx: &ReContext,
-    instrs: &[namsdec_disasm::DecodedInstruction],
-) {
-    egui::Grid::new(("call_graph_code", instrs[0].address))
-        .num_columns(3)
-        .striped(true)
-        .min_col_width(0.0)
-        .show(ui, |ui| {
-            ui.weak(ctx.t("adresse", "address"));
-            ui.weak(ctx.t("octets", "bytes"));
-            ui.weak(ctx.t("pseudo-code", "pseudo-code"));
-            ui.end_row();
-            for instr in instrs.iter().take(MAX_INSTRUCTIONS) {
-                ui.monospace(format!("{:#010x}", instr.address));
-                ui.monospace(octets_hex(&instr.bytes));
+/// Trois colonnes : à gauche l'adresse et les octets bruts — le **code
+/// binaire**, ce qui est vraiment dans le fichier —, à droite ce que
+/// l'instruction fait, en clair. C'est la même ligne lue deux fois :
+/// telle que la machine la reçoit, puis telle qu'on la comprend.
+fn table_des_instructions(ctx: &ReContext, instrs: &[namsdec_disasm::DecodedInstruction]) -> Bloc {
+    Bloc::Tableau {
+        colonnes: vec![
+            Fragment::dit(ctx.t("adresse", "address")).faible().into(),
+            Fragment::dit(ctx.t("octets", "bytes")).faible().into(),
+            Fragment::dit(ctx.t("pseudo-code", "pseudo-code"))
+                .faible()
+                .into(),
+        ],
+        rangées: instrs
+            .iter()
+            .take(MAX_INSTRUCTIONS)
+            .map(|instr| {
                 // Le pseudo-code quand on sait le rendre, l'instruction
                 // elle-même sinon : mieux vaut le NASM que rien.
                 let pseudo = namsdec_disasm::decode_one(&instr.bytes, instr.address)
                     .map(|d| namsdec_disasm::pseudo::of(&d, ctx.lang))
                     .filter(|p| !p.is_empty())
                     .unwrap_or_else(|| instr.text.clone());
-                ui.monospace(pseudo);
-                ui.end_row();
-            }
-        });
-    if instrs.len() > MAX_INSTRUCTIONS {
-        ui.weak(format!(
-            "… {} {}",
-            instrs.len() - MAX_INSTRUCTIONS,
-            ctx.t("instructions de plus", "more instructions")
-        ));
+                vec![
+                    Fragment::dit(format!("{:#010x}", instr.address))
+                        .code()
+                        .into(),
+                    Fragment::dit(octets_hex(&instr.bytes)).code().into(),
+                    Fragment::dit(pseudo).code().into(),
+                ]
+            })
+            .collect(),
+        rayé: true,
     }
 }
 
@@ -860,5 +732,190 @@ mod tests {
         // 0x2000 et 0x2001 appartiennent à la fonction, 0x2002 (ret) non.
         assert_eq!(instrs.len(), 2, "deux instructions dans [0x2000, 0x2001]");
         assert_eq!(instrs[0].address, 0x2000);
+    }
+    /// UNE FICHE FERMÉE NE PORTE AUCUNE LIGNE DE PSEUDO-CODE.
+    ///
+    /// C'est l'invariant qui retient la mesure : bâtir le détail des
+    /// quarante fonctions montrées à chaque image coûte 2,6 ms en
+    /// release et 8,5 ms en debug — sur un budget de 16,7 ms —, et les
+    /// fiches sont fermées au départ. Le panneau ne compose donc que
+    /// celle qui est ouverte.
+    ///
+    /// Le contrôle compte les TABLEAUX de la vue : il y en a un par
+    /// fiche ouverte, et zéro sinon.
+    #[test]
+    fn a_closed_card_carries_no_pseudo_code() {
+        // Un `call` vers soi-même puis `ret` : une fonction trouvée,
+        // donc une fiche à ouvrir.
+        let bytes: &[u8] = &[0xE8, 0xFB, 0xFF, 0xFF, 0xFF, 0xC3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x1000);
+        let cpu = Cpu::new(Memory::new(0x1000, 0x100));
+        let ctx = contexte(&disasm, &cpu);
+        let mut module = CallGraphModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(!module.montrées.is_empty(), "une fonction au moins");
+
+        let tableaux = |module: &CallGraphModule| {
+            fn compte(blocs: &[Bloc]) -> usize {
+                blocs
+                    .iter()
+                    .map(|bloc| match bloc {
+                        Bloc::Tableau { .. } => 1,
+                        Bloc::Retrait(dedans) => compte(dedans),
+                        Bloc::Section { blocs, .. } | Bloc::Repliable { blocs, .. } => {
+                            compte(blocs)
+                        }
+                        _ => 0,
+                    })
+                    .sum()
+            }
+            compte(&module.vue(&ctx).expect("une vue").blocs)
+        };
+        assert_eq!(tableaux(&module), 0, "rien d'ouvert, rien de composé");
+
+        // Ouverte : un tableau, et un seul.
+        let adresse = module.functions[module.montrées[0]].start;
+        module.agir(&format!("{FICHE}{adresse:#x}"));
+        assert_eq!(module.ouverte, Some(adresse));
+        assert_eq!(tableaux(&module), 1);
+
+        // Le même clic referme : c'est la même touche qui ouvre et qui
+        // ferme.
+        module.agir(&format!("{FICHE}{adresse:#x}"));
+        assert_eq!(module.ouverte, None);
+        assert_eq!(tableaux(&module), 0);
+    }
+
+    /// Le champ « aller à » dit où il mène, et dit quand il ne sait pas
+    /// lire.
+    ///
+    /// Le texte tapé vient de l'interface, collé à l'action : c'est
+    /// tout ce que le module en voit, et il doit en tirer les deux cas.
+    #[test]
+    fn the_go_to_field_reads_an_address_or_says_it_cannot() {
+        let mut module = CallGraphModule::default();
+        module.agir(&format!("{ALLER}:0x401136"));
+        assert!(matches!(
+            module.take_request(),
+            Some(ReRequest::GoTo {
+                addr: 0x401136,
+                target: crate::GoTarget::Listing
+            })
+        ));
+        assert!(!module.aller_à_erreur);
+
+        module.agir(&format!("{ALLER}:pas une adresse"));
+        assert!(module.take_request().is_none(), "rien à demander");
+        assert!(module.aller_à_erreur, "et la raison s'écrit sous le champ");
+
+        // Un champ vide n'est pas une erreur : on n'a rien demandé.
+        module.agir(&format!("{ALLER}:   "));
+        assert!(!module.aller_à_erreur);
+    }
+
+    /// Renommer porte le nom tapé ; « Défaut » porte le nom vide.
+    ///
+    /// Le nom arrive derrière l'adresse, séparé par un deux-points — et
+    /// il garde les SIENS : on ne coupe qu'une fois, sans quoi un nom
+    /// comme `std::vector::push` arriverait tronqué.
+    #[test]
+    fn renaming_carries_the_typed_name_and_default_carries_none() {
+        let mut module = CallGraphModule::default();
+        module.agir(&format!("{RENOMMER}0x401136:vérifie_clé"));
+        match module.take_request() {
+            Some(ReRequest::Rename { addr, name }) => {
+                assert_eq!(addr, 0x401136);
+                assert_eq!(name, "vérifie_clé");
+            }
+            autre => panic!("une demande de renommage, pas {autre:?}"),
+        }
+
+        module.agir(&format!("{RENOMMER}0x401136:std::vector::push"));
+        match module.take_request() {
+            Some(ReRequest::Rename { name, .. }) => assert_eq!(name, "std::vector::push"),
+            autre => panic!("le nom garde ses deux-points, pas {autre:?}"),
+        }
+
+        // « Défaut » : un nom VIDE est la demande de rendre l'original.
+        module.agir(&format!("{DÉFAUT}0x401136"));
+        match module.take_request() {
+            Some(ReRequest::Rename { addr, name }) => {
+                assert_eq!(addr, 0x401136);
+                assert!(name.is_empty());
+            }
+            autre => panic!("un renommage à nom vide, pas {autre:?}"),
+        }
+    }
+
+    /// Le graphe dit des nœuds, des arêtes et des TONS — pas un dessin.
+    ///
+    /// La racine se lit en premier (« fort »), un renvoi s'estompe
+    /// (« faible »), et une arête relie un rang de parent à un rang
+    /// d'enfant. Rien de tout cela ne mentionne un pixel : c'est ce qui
+    /// permet au même graphe d'être peint, exporté ou lu.
+    #[test]
+    fn the_graph_says_nodes_edges_and_tones() {
+        let bytes: &[u8] = &[0xE8, 0xFB, 0xFF, 0xFF, 0xFF, 0xC3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x1000);
+        let cpu = Cpu::new(Memory::new(0x1000, 0x100));
+        let ctx = contexte(&disasm, &cpu);
+        let mut module = CallGraphModule::default();
+        module.on_binary_loaded(&ctx);
+        let (nœuds, arêtes) = module.graphe(&ctx);
+        assert!(nœuds.len() >= 2, "la racine et son renvoi : {nœuds:?}");
+        assert_eq!(nœuds[0].profondeur, 0);
+        assert_eq!(nœuds[0].ton, Ton::Fort, "on entre par là");
+        assert_eq!(
+            nœuds[0].mène_à,
+            Some(0x1000),
+            "une boîte mène à sa fonction"
+        );
+        // Deux lignes de corps : l'adresse et la taille, puis les
+        // appelants et les appels. C'est ce que la boîte mesure.
+        assert_eq!(nœuds[0].corps.len(), 2);
+        let renvoi = nœuds
+            .iter()
+            .find(|n| n.stéréotype.as_deref() == Some("renvoi"))
+            .expect("l'appel récursif devient un renvoi");
+        assert_eq!(renvoi.ton, Ton::Faible, "déjà déplié ailleurs");
+        assert_eq!(arêtes, vec![(0, 1)], "la racine appelle son renvoi");
+    }
+
+    /// Le nom qu'on a donné soi-même est dit comme tel.
+    ///
+    /// Un FAIT dans la vue — « ceci vient de votre main » — et non une
+    /// couleur : c'est l'interface qui en fait un fond léger. Sans lui,
+    /// une fonction rebaptisée se perd dans une liste de quarante.
+    #[test]
+    fn a_hand_given_name_says_it_comes_from_the_hand() {
+        let bytes: &[u8] = &[0x90, 0xC3];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x401000);
+        let cpu = Cpu::new(Memory::new(0x401000, 0x100));
+        let mut noms = std::collections::BTreeMap::new();
+        noms.insert(0x401000u64, "vérifie_clé".to_owned());
+        let cpu2 = Cpu::new(Memory::new(0x401000, 0x100));
+        let sans = contexte(&disasm, &cpu);
+        let avec = ReContext {
+            names: Some(&noms),
+            cpu: &cpu2,
+            ..contexte(&disasm, &cpu2)
+        };
+        let mut module = CallGraphModule::default();
+        module.on_binary_loaded(&sans);
+
+        let à_la_main = |ctx: &ReContext| {
+            module
+                .vue(ctx)
+                .expect("une vue")
+                .blocs
+                .iter()
+                .filter_map(|bloc| match bloc {
+                    Bloc::Texte(ligne) => Some(ligne.fragments.iter().any(|f| f.à_la_main)),
+                    _ => None,
+                })
+                .any(|oui| oui)
+        };
+        assert!(!à_la_main(&sans), "aucun nom donné : rien à distinguer");
+        assert!(à_la_main(&avec), "le nom donné se distingue");
     }
 }
