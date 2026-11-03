@@ -273,14 +273,36 @@ pub struct Champ {
     /// d'avant P7 — 90, 110, 120, 140, 160, 200, 220 pixels — étaient
     /// sept réglages pour une seule question.
     pub caractères: usize,
-    /// Les boutons posés à droite, sur la même rangée.
+    /// Ce qui se pose à droite du champ, sur la même rangée.
     ///
-    /// Celui qui porte la MÊME action que le champ le valide, tout
-    /// comme la touche Entrée ; les autres font ce que leur action dit.
-    /// Pas de règle de rang — « le premier valide » serait une
-    /// convention invisible dans les données.
+    /// Des boutons le plus souvent : celui qui porte la MÊME action que
+    /// le champ le valide, tout comme la touche Entrée ; les autres
+    /// font ce que leur action dit. Pas de règle de rang — « le premier
+    /// valide » serait une convention invisible dans les données.
+    ///
+    /// Mais un fragment SANS action y tient aussi sa place, et c'est le
+    /// panneau des fonctions qui l'a demandé : la rangée qu'on y édite
+    /// porte le champ du nom, la flèche qui se dédit, l'adresse qui
+    /// mène au listing, la taille et le nombre d'appels. Sans quoi une
+    /// ligne perdrait la moitié de ce qu'elle dit dès qu'on clique
+    /// dedans.
     #[serde(skip_serializing_if = "Vec::is_empty", default)]
     pub boutons: Vec<Fragment>,
+    /// Ce champ vient de paraître pour qu'on y écrive : il prend le
+    /// clavier.
+    ///
+    /// Un FAIT du module — « je viens d'ouvrir ceci à votre demande »
+    /// —, et non une manœuvre : c'est le même genre d'énoncé que
+    /// l'`ouvert` d'un repliable, qui ne dit que la position de départ.
+    /// L'interface en tire le focus, et seulement à la première image
+    /// où le champ existe ; le redemander à chaque image reprendrait le
+    /// clavier à qui serait allé ailleurs.
+    ///
+    /// Sans lui, cliquer un nom de fonction ouvrait une case où il
+    /// fallait ensuite cliquer pour taper — deux gestes là où il y en
+    /// avait un.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub clavier: bool,
 }
 
 impl Champ {
@@ -330,6 +352,13 @@ impl Champ {
     #[must_use]
     pub fn bouton(mut self, bouton: Fragment) -> Self {
         self.boutons.push(bouton);
+        self
+    }
+
+    /// Ce champ vient de paraître pour qu'on y écrive.
+    #[must_use]
+    pub fn clavier(mut self) -> Self {
+        self.clavier = true;
         self
     }
 }

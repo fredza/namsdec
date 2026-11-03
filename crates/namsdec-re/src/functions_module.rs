@@ -12,10 +12,24 @@
 //! de quarante endroits est un utilitaire, et que celle qui n'est
 //! appelée qu'une fois est le programme.
 
-use std::collections::BTreeMap;
+use crate::functions::{Function, by_importance, discover_with};
+use crate::vue::{Bloc, Champ, Fragment, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
 
-use crate::functions::{Function, Origin, by_importance, discover_with};
-use crate::{ReContext, ReModule, ReRequest, ReSection, clickable_address, framed};
+/// Ce que le panneau demande, par son nom.
+const ACTION_OUVRIR: &str = "fonctions:nommer:";
+const ACTION_RENOMMER: &str = "fonctions:nom:";
+const ACTION_DÉFAIRE: &str = "fonctions:défaire:";
+
+/// La largeur du champ du nom, EN CARACTÈRES.
+///
+/// Le module calculait des pixels : `(place - 340).clamp(70, 220)`,
+/// avec une branche « étroit » qui retranchait quatre-vingts de plus.
+/// Trois nombres pour une seule question — combien de lettres doit-on
+/// pouvoir lire ? Vingt-six : `__libc_csu_init` en fait quinze,
+/// `vérifie_le_mot_de_passe` vingt-trois, et au-delà l'infobulle rend
+/// le reste. L'interface sait ce que mesurent ses caractères.
+const NOM_EN_CARACTÈRES: usize = 26;
 
 #[derive(Default)]
 pub struct FunctionsModule {
@@ -31,16 +45,6 @@ pub struct FunctionsModule {
     /// pèse, et un nom long y serait coupé sans qu'on puisse le lire.
     /// Au repos, le nom est une étiquette qu'on clique pour la changer.
     en_édition: Option<u64>,
-    /// Celle dont le champ doit prendre le clavier à la prochaine
-    /// image : on vient de l'ouvrir, et taper doit marcher tout de
-    /// suite.
-    à_focaliser: Option<u64>,
-    /// Le nom en cours de frappe, par fonction.
-    ///
-    /// À part du nom retenu : tant qu'on tape, rien n'est posé — sans
-    /// quoi « vérifie_ » deviendrait le nom de la fonction au premier
-    /// caractère, et chaque lettre écrirait dans les notes du binaire.
-    édition: BTreeMap<u64, String>,
 }
 
 /// Combien de fonctions la liste montre avant de s'arrêter.
@@ -48,6 +52,66 @@ pub struct FunctionsModule {
 /// Trois cents lignes ne se lisent pas : on montre les plus employées,
 /// et le compte total dit ce qu'on ne montre pas.
 const MONTRÉES: usize = 40;
+
+impl FunctionsModule {
+    /// Ce que le panneau fait de ce qu'on lui demande.
+    ///
+    /// À PART DU DESSIN, et c'est ce que le portage a dégagé : ouvrir
+    /// la saisie, poser un nom et se dédire sont trois comportements,
+    /// qui s'éprouvent maintenant sans peindre une image.
+    fn agit(&mut self, action: &str, ctx: &ReContext) {
+        if let Some(addr) = action
+            .strip_prefix(ACTION_OUVRIR)
+            .and_then(|a| a.parse::<u64>().ok())
+        {
+            self.en_édition = Some(addr);
+            return;
+        }
+        if let Some(addr) = action
+            .strip_prefix(ACTION_DÉFAIRE)
+            .and_then(|a| a.parse::<u64>().ok())
+        {
+            // Un nom vide rend son `sub_xxxx` : c'est ainsi que
+            // l'application efface une note.
+            self.demande = Some(ReRequest::Rename {
+                addr,
+                name: String::new(),
+            });
+            self.en_édition = None;
+            return;
+        }
+        let Some(reste) = action.strip_prefix(ACTION_RENOMMER) else {
+            return;
+        };
+        // « fonctions:nom:4198400:vérifie_mdp » : l'adresse, puis ce
+        // qui a été tapé. Un nom peut contenir un deux-points, d'où la
+        // coupe à la PREMIÈRE occurrence seulement.
+        let Some((adresse, nom)) = reste.split_once(':') else {
+            return;
+        };
+        let Ok(addr) = adresse.parse::<u64>() else {
+            return;
+        };
+        self.en_édition = None;
+        // Rien à poser si le nom n'a pas bougé : sans cette garde,
+        // ouvrir puis valider sans rien changer écrirait une note qui
+        // répète le nom d'origine, et la fonction passerait pour
+        // rebaptisée.
+        let défaut = self
+            .found
+            .iter()
+            .find(|f| f.start == addr)
+            .map(|f| f.name())
+            .unwrap_or_default();
+        if nom == ctx.display_name(addr, &défaut) {
+            return;
+        }
+        self.demande = Some(ReRequest::Rename {
+            addr,
+            name: nom.to_owned(),
+        });
+    }
+}
 
 impl ReModule for FunctionsModule {
     fn take_request(&mut self) -> Option<ReRequest> {
@@ -96,255 +160,187 @@ impl ReModule for FunctionsModule {
         self.main = crate::functions::main_of(ctx.disasm, self.entry);
         // Un autre binaire, d'autres fonctions : les noms en cours de
         // frappe ne parlent plus de rien.
-        self.édition.clear();
         self.en_édition = None;
-        self.à_focaliser = None;
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if self.found.is_empty() {
-            ui.label(ctx.t(
+            return Some(Vue::neuve().texte(ctx.t(
                 "Rien à découper : aucun code n'est chargé.",
                 "Nothing to carve up: no code is loaded.",
-            ));
-            return;
+            )));
         }
 
-        match self.main {
-            Some(main) => {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(ctx.t("Le programme commence à", "The program starts at"));
-                    ui.monospace(format!("{main:#010x}"));
-                });
-                ui.weak(ctx.t(
-                    "Trouvé par la convention de démarrage : le code d'amorçage passe \
-                     l'adresse de `main` à `__libc_start_main`, dans RDI. C'est une \
-                     convention, pas une loi — un programme peut s'en passer.",
-                    "Found through the startup convention: the bootstrap code hands the \
-                     address of `main` to `__libc_start_main`, in RDI. That is a \
-                     convention, not a law — a program may do without it.",
-                ));
-            }
-            None => {
-                ui.label(ctx.t(
+        let mut blocs = match self.main {
+            Some(main) => vec![
+                Bloc::Texte(
+                    vec![
+                        Fragment::dit(ctx.t("Le programme commence à", "The program starts at")),
+                        Fragment::dit(format!("{main:#010x}")).code(),
+                    ]
+                    .into(),
+                ),
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "Trouvé par la convention de démarrage : le code d'amorçage passe \
+                         l'adresse de `main` à `__libc_start_main`, dans RDI. C'est une \
+                         convention, pas une loi — un programme peut s'en passer.",
+                        "Found through the startup convention: the bootstrap code hands the \
+                         address of `main` to `__libc_start_main`, in RDI. That is a \
+                         convention, not a law — a program may do without it.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+            ],
+            None => vec![Bloc::Texte(
+                ctx.t(
                     "Le `main` n'a pas été retrouvé : ce programme ne suit pas la \
                      convention de démarrage de la bibliothèque C.",
                     "No `main` was found: this program does not follow the C library's \
                      startup convention.",
-                ));
-            }
-        }
-        ui.add_space(4.0);
-        ui.weak(ctx.compte(
-            self.found.len(),
-            (
-                "fonction retrouvée — les cibles d'appel, et rien d'autre : ce qu'on \
-                 n'appelle que par pointeur échappe à ce relevé.",
-                "fonctions retrouvées — les cibles d'appel, et rien d'autre : ce qu'on \
-                 n'appelle que par pointeur échappe à ce relevé.",
-            ),
-            (
-                "function recovered — call targets, and nothing else: what is only \
-                 called through a pointer escapes this survey.",
-                "functions recovered — call targets, and nothing else: what is only \
-                 called through a pointer escapes this survey.",
-            ),
+                )
+                .into(),
+            )],
+        };
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.compte(
+                self.found.len(),
+                (
+                    "fonction retrouvée — les cibles d'appel, et rien d'autre : ce qu'on \
+                     n'appelle que par pointeur échappe à ce relevé.",
+                    "fonctions retrouvées — les cibles d'appel, et rien d'autre : ce qu'on \
+                     n'appelle que par pointeur échappe à ce relevé.",
+                ),
+                (
+                    "function recovered — call targets, and nothing else: what is only \
+                     called through a pointer escapes this survey.",
+                    "functions recovered — call targets, and nothing else: what is only \
+                     called through a pointer escapes this survey.",
+                ),
+            ))
+            .faible()
+            .into(),
         ));
-        ui.add_space(4.0);
 
         // RENOMMER SE FAIT ICI, et le nom donné vaut partout : c'est la
-        // même table que le listing, l'arbre d'appels et les
-        // références croisées — les « notes » du binaire, gardées d'une
-        // séance à l'autre. Comprendre ce que fait `sub_1d491` et ne
-        // pas pouvoir l'appeler `vérifie_mdp` dans la liste même des
-        // fonctions était le défaut : il fallait passer par l'arbre
-        // d'appels pour nommer ce qu'on lisait ici.
-        ui.weak(ctx.t(
-            "Cliquez un nom pour le changer, et validez par Entrée. Il vaut partout — \
-             listing, arbre d'appels, références croisées — et survit à la fermeture ; \
-             la flèche de retour rend son nom d'origine.",
-            "Click a name to change it, and press Enter. It holds everywhere — \
-             listing, call tree, cross-references — and survives closing; the back \
-             arrow restores the original one.",
+        // même table que le listing, l'arbre d'appels et les références
+        // croisées — les « notes » du binaire, gardées d'une séance à
+        // l'autre. Comprendre ce que fait `sub_1d491` et ne pas pouvoir
+        // l'appeler `vérifie_mdp` dans la liste même des fonctions
+        // était le défaut : il fallait passer par l'arbre d'appels pour
+        // nommer ce qu'on lisait ici.
+        blocs.push(Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Cliquez un nom pour le changer, et validez par Entrée. Il vaut partout — \
+                 listing, arbre d'appels, références croisées — et survit à la fermeture ; \
+                 la flèche de retour rend son nom d'origine.",
+                "Click a name to change it, and press Enter. It holds everywhere — \
+                 listing, call tree, cross-references — and survives closing; the back \
+                 arrow restores the original one.",
+            ))
+            .faible()
+            .into(),
         ));
-        ui.add_space(4.0);
 
-        // Relevé pendant le dessin, posé après : la grille emprunte
-        // `self`, et le module ne peut donc pas s'écrire dedans.
-        let mut demande: Option<ReRequest> = None;
-        let rangées: Vec<Function> = by_importance(&self.found)
-            .into_iter()
-            .take(MONTRÉES)
-            .cloned()
-            .collect();
-        // Une rangée par fonction, et non une grille : dans une
-        // grille, egui donne à chaque cellule ce qui reste de la
-        // largeur une fois les autres colonnes posées — le champ du
-        // nom se retrouvait rogné à vingt-quatre pixels dès que la
-        // fenêtre d'analyse était étroite, ce qui est précisément sa
-        // taille par défaut une fois la colonne de navigation prise.
-        // Une rangée, elle, donne à chacun la largeur qu'on lui dit.
-        let place = ui.available_width();
-        let étroit = place < 560.0;
-        // Ce qu'on retranche est la place des autres colonnes, mesurée
-        // sur le pire cas : l'adresse sur dix chiffres, le bouton, et
-        // « 12 appels ». Trop peu, et la rangée court au-delà du bord.
-        let largeur_nom = (place - if étroit { 260.0 } else { 340.0 }).clamp(70.0, 220.0);
-        let hauteur = ui.spacing().interact_size.y;
-        for fonction in &rangées {
+        // UNE RANGÉE PAR FONCTION, ET NON UN TABLEAU, et la raison tient
+        // toujours : dans une grille, egui donne à chaque cellule ce qui
+        // reste de la largeur une fois les autres colonnes posées — le
+        // champ du nom se retrouvait rogné à vingt-quatre pixels dès que
+        // la fenêtre d'analyse était étroite. Une rangée, elle, donne à
+        // chacun la largeur qu'on lui dit — et la vue la dit maintenant
+        // en CARACTÈRES.
+        for fonction in by_importance(&self.found).into_iter().take(MONTRÉES) {
             let défaut = fonction.name();
             let nom = ctx.display_name(fonction.start, &défaut);
             let rebaptisée = ctx.user_name(fonction.start).is_some();
-            let en_édition = self.en_édition == Some(fonction.start);
-            let à_focaliser = self.à_focaliser == Some(fonction.start);
-            let tampon = self
-                .édition
-                .entry(fonction.start)
-                .or_insert_with(|| nom.clone());
-            let mut ouvrir = None;
-            let mut fermer = false;
-            ui.horizontal(|ui| {
-                if en_édition {
-                    let champ = egui::TextEdit::singleline(tampon)
-                        .desired_width(largeur_nom)
-                        .font(egui::TextStyle::Monospace);
-                    let réponse = ui.add_sized([largeur_nom, hauteur], champ);
-                    if à_focaliser {
-                        réponse.request_focus();
-                    }
-                    // Entrée pose le nom ; perdre le champ des yeux le
-                    // pose aussi — on ne perd pas ce qu'on vient de
-                    // taper parce qu'on a cliqué ailleurs. Échap se
-                    // dédit.
-                    if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
-                        *tampon = nom.clone();
-                        fermer = true;
-                    } else if réponse.lost_focus() {
-                        demande = Some(ReRequest::Rename {
-                            addr: fonction.start,
-                            name: tampon.clone(),
-                        });
-                        fermer = true;
-                    }
+            // Se dédire fait partie de nommer : la flèche rend son
+            // `sub_xxxx` à la fonction. Éteinte quand il n'y a rien à
+            // défaire.
+            let défaire = Fragment::dit("\u{21ba}")
+                .bouton(format!("{ACTION_DÉFAIRE}{}", fonction.start))
+                .inactif_si(!rebaptisée)
+                .survol(ctx.t("Rendre son nom d'origine", "Restore its original name"));
+            // L'adresse mène au listing, comme partout ailleurs : lire
+            // « 0x1d491 » sans pouvoir y aller était s'arrêter au milieu
+            // du geste.
+            let adresse = Fragment::dit(format!("{:#x}", fonction.start))
+                .code()
+                .mène_à(fonction.start);
+            let taille =
+                Fragment::dit(format!("{} {}", fonction.size(), ctx.t("octets", "bytes"))).faible();
+            let appels = Fragment::dit(format!(
+                "{} {}",
+                fonction.callers,
+                if fonction.callers > 1 {
+                    ctx.t("appels", "calls")
                 } else {
-                    // Le nom au repos est une étiquette, non un champ :
-                    // quarante champs de saisie dans une liste pèsent,
-                    // et surtout un nom long y serait coupé sans qu'on
-                    // puisse le lire. Tronquée, l'étiquette promet
-                    // l'infobulle — et le clic ouvre la saisie.
-                    let mut riche = egui::RichText::new(&nom).monospace();
-                    if rebaptisée {
-                        riche = riche
-                            .background_color(ui.visuals().selection.bg_fill.gamma_multiply(0.25));
-                    }
-                    if matches!(fonction.origin, Origin::Main | Origin::Entry) {
-                        riche = riche.strong();
-                    }
-                    // Aligné à gauche, et dans toute la largeur de la
-                    // colonne : `add_sized` CENTRE ce qu'on lui donne,
-                    // et les noms se retrouvaient en escalier, chacun
-                    // flottant au milieu de sa case. Une colonne de
-                    // noms se lit par son bord gauche.
-                    let réponse = ui
-                        .allocate_ui_with_layout(
-                            egui::vec2(largeur_nom, hauteur),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                // La largeur est IMPOSÉE : sans elle,
-                                // la case se rétrécit sur le texte, et
-                                // la flèche de retour comme l'adresse
-                                // suivent le nom en escalier au lieu
-                                // de former une colonne.
-                                ui.set_min_width(largeur_nom);
-                                let réponse = ui.add(
-                                    egui::Label::new(riche)
-                                        .truncate()
-                                        .sense(egui::Sense::click()),
-                                );
-                                // Le trait au survol, mais pas la main :
-                                // ce clic-ci ne mène nulle part, il ouvre
-                                // la saisie du nom — d'où le curseur de
-                                // texte, posé plus bas.
-                                crate::souligne_au_survol(ui, &réponse);
-                                réponse
-                            },
-                        )
-                        .inner
-                        .on_hover_cursor(egui::CursorIcon::Text)
-                        .on_hover_text(format!(
-                            "{nom}\n{}",
-                            ctx.t(
-                                "Cliquez pour renommer — le nom vaut partout, et survit à la \
-                                 fermeture",
-                                "Click to rename — the name holds everywhere, and survives \
-                                 closing",
-                            )
-                        ));
-                    if réponse.clicked() {
-                        *tampon = nom.clone();
-                        ouvrir = Some(fonction.start);
-                    }
+                    ctx.t("appel", "call")
                 }
-                // Se dédire fait partie de nommer : le bouton rend son
-                // `sub_xxxx` à la fonction. Éteint quand il n'y a rien
-                // à défaire.
-                if ui
-                    .add_enabled(rebaptisée, framed(ui, "\u{21ba}"))
-                    .on_hover_text(ctx.t("Rendre son nom d'origine", "Restore its original name"))
-                    .clicked()
-                {
-                    *tampon = défaut.clone();
-                    demande = Some(ReRequest::Rename {
-                        addr: fonction.start,
-                        name: String::new(),
-                    });
-                }
-                // L'adresse mène au listing, comme partout ailleurs :
-                // lire « 0x1d491 » sans pouvoir y aller était
-                // s'arrêter au milieu du geste.
-                if let Some(cible) = clickable_address(ui, ctx, fonction.start) {
-                    demande = Some(ReRequest::GoTo {
-                        addr: fonction.start,
-                        target: cible,
-                    });
-                }
-                if !étroit {
-                    ui.weak(format!("{} {}", fonction.size(), ctx.t("octets", "bytes")));
-                }
-                let appels = format!(
-                    "{} {}",
-                    fonction.callers,
-                    if fonction.callers > 1 {
-                        ctx.t("appels", "calls")
-                    } else {
-                        ctx.t("appel", "call")
-                    }
-                );
-                ui.weak(appels);
-            });
-            if let Some(addr) = ouvrir {
-                self.en_édition = Some(addr);
-                self.à_focaliser = Some(addr);
-            } else if à_focaliser {
-                // Le focus a été demandé à l'image précédente : il est
-                // posé, on n'y revient plus — sinon le champ reprendrait
-                // le clavier à chaque image.
-                self.à_focaliser = None;
+            ))
+            .faible();
+
+            if self.en_édition == Some(fonction.start) {
+                blocs.push(Bloc::Champ(
+                    Champ::pour(format!("{ACTION_RENOMMER}{}", fonction.start))
+                        .valeur(&nom)
+                        .code()
+                        .caractères(NOM_EN_CARACTÈRES)
+                        // Il vient de paraître parce qu'on a cliqué le
+                        // nom : taper doit marcher tout de suite.
+                        .clavier()
+                        .bouton(défaire)
+                        .bouton(adresse)
+                        .bouton(taille)
+                        .bouton(appels),
+                ));
+                continue;
             }
-            if fermer {
-                self.en_édition = None;
-                self.à_focaliser = None;
+            // Au repos, le nom est une étiquette qu'on clique : quarante
+            // champs de saisie dans une liste pèsent, et un nom long y
+            // serait coupé sans qu'on puisse le lire.
+            let mut étiquette = Fragment::dit(&nom)
+                .code()
+                .agit(format!("{ACTION_OUVRIR}{}", fonction.start))
+                .survol(format!(
+                    "{nom}\n{}",
+                    ctx.t(
+                        "Cliquez pour renommer — le nom vaut partout, et survit à la \
+                         fermeture",
+                        "Click to rename — the name holds everywhere, and survives closing",
+                    )
+                ));
+            if rebaptisée {
+                étiquette = étiquette.à_la_main();
             }
-        }
-        if demande.is_some() {
-            self.demande = demande;
+            blocs.push(Bloc::Texte(
+                vec![étiquette, défaire, adresse, taille, appels].into(),
+            ));
         }
         if self.found.len() > MONTRÉES {
-            ui.weak(format!(
-                "… {} {}",
-                self.found.len() - MONTRÉES,
-                ctx.t("de plus", "more")
+            blocs.push(Bloc::Texte(
+                Fragment::dit(format!(
+                    "… {} {}",
+                    self.found.len() - MONTRÉES,
+                    ctx.t("de plus", "more")
+                ))
+                .faible()
+                .into(),
             ));
+        }
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
+        }
+        for action in &gestes.actions {
+            self.agit(action, ctx);
         }
     }
 }
@@ -353,6 +349,143 @@ impl ReModule for FunctionsModule {
 mod tests {
     use super::*;
     use namsdec_core::{Cpu, Memory};
+
+    /// Renommer suit le chemin entier, et sans peindre une image.
+    ///
+    /// **C'EST CE QUE LE PORTAGE A DÉGAGÉ.** Ouvrir la saisie, poser
+    /// un nom et se dédire vivaient dans `ui()`, mêlés au tampon de
+    /// frappe, au focus et à trois calculs de pixels : on ne pouvait
+    /// les éprouver qu'en rendant une image et en comptant des formes
+    /// de texte. Ce sont des comportements, et ils se lisent
+    /// maintenant dans la vue.
+    ///
+    /// LES ACTIONS SONT PROPOSÉES PAR LA VUE, jamais inventées ici :
+    /// le contrôle tombe si un nom change d'un seul côté.
+    #[test]
+    fn renommer_se_fait_sans_peindre() {
+        // deux `call` : deux fonctions, et de quoi avoir une liste.
+        let bytes: &[u8] = &[
+            0xE8, 0x06, 0x00, 0x00, 0x00, // call +6
+            0xE8, 0x06, 0x00, 0x00, 0x00, // call +6
+            0xC3, // ret
+            0x90, 0xC3, // nop ; ret   (première cible)
+            0x90, 0x90, 0xC3, // seconde cible
+        ];
+        let disasm = namsdec_disasm::disassemble(bytes, 0x1000);
+        let cpu = Cpu::new(Memory::new(0x1000, 0x100));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &disasm,
+            source: "",
+            binary: &[],
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = FunctionsModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(!module.found.is_empty(), "il y a des fonctions à nommer");
+
+        /// Les champs de la vue, et les fragments qui agissent.
+        fn champs(module: &FunctionsModule, ctx: &ReContext) -> Vec<Champ> {
+            module
+                .vue(ctx)
+                .expect("le panneau dit quelque chose")
+                .blocs
+                .iter()
+                .filter_map(|bloc| match bloc {
+                    Bloc::Champ(champ) => Some(champ.clone()),
+                    _ => None,
+                })
+                .collect()
+        }
+        fn action_du_nom(module: &FunctionsModule, ctx: &ReContext, nom: &str) -> String {
+            module
+                .vue(ctx)
+                .expect("le panneau dit quelque chose")
+                .blocs
+                .iter()
+                .filter_map(|bloc| match bloc {
+                    Bloc::Texte(ligne) => Some(ligne),
+                    _ => None,
+                })
+                .flat_map(|ligne| &ligne.fragments)
+                .find(|f| f.texte == nom)
+                .and_then(|f| f.action.clone())
+                .unwrap_or_else(|| panic!("« {nom} » se clique"))
+        }
+
+        // AU REPOS, AUCUN CHAMP : quarante champs de saisie dans une
+        // liste pèsent, et un nom long y serait coupé.
+        assert!(champs(&module, &ctx).is_empty(), "rien n'est en saisie");
+
+        let première = module.found[0].start;
+        let défaut = module.found[0].name();
+        let ouvrir = action_du_nom(&module, &ctx, &défaut);
+        module.agit(&ouvrir, &ctx);
+
+        // UN SEUL CHAMP, et il prend le clavier : on vient de cliquer
+        // pour écrire, taper doit marcher tout de suite.
+        let ouverts = champs(&module, &ctx);
+        assert_eq!(ouverts.len(), 1, "une seule saisie à la fois");
+        assert!(ouverts[0].clavier, "le champ prend le clavier");
+        assert_eq!(ouverts[0].valeur, défaut, "il part du nom en place");
+        // LA RANGÉE RESTE ENTIÈRE : l'adresse mène toujours au listing
+        // pendant qu'on tape, et la flèche qui se dédit est là.
+        assert!(
+            ouverts[0]
+                .boutons
+                .iter()
+                .any(|f| f.mène_à == Some(première)),
+            "l'adresse reste sur la rangée en saisie"
+        );
+
+        // VALIDER POSE LE NOM.
+        module.agit(&format!("{}:vérifie_mdp", ouverts[0].action), &ctx);
+        assert!(champs(&module, &ctx).is_empty(), "la saisie se referme");
+        match module.take_request() {
+            Some(ReRequest::Rename { addr, name }) => {
+                assert_eq!(addr, première);
+                assert_eq!(name, "vérifie_mdp");
+            }
+            autre => panic!("un renommage était attendu : {autre:?}"),
+        }
+
+        // ET VALIDER SANS RIEN CHANGER NE POSE RIEN. C'est ce qui fait
+        // d'Échap un cas particulier de « valider » : la touche rend au
+        // champ le nom que le module proposait, et la validation qui
+        // suit n'a plus rien à écrire. Sans cette garde, ouvrir puis
+        // renoncer marquerait la fonction comme rebaptisée.
+        module.agit(&ouvrir, &ctx);
+        let ouverts = champs(&module, &ctx);
+        module.agit(&format!("{}:{défaut}", ouverts[0].action), &ctx);
+        assert!(
+            module.take_request().is_none(),
+            "un nom inchangé n'est pas une note"
+        );
+
+        // SE DÉDIRE EFFACE LA NOTE : un nom vide rend son `sub_xxxx`.
+        let défaire = module
+            .vue(&ctx)
+            .expect("le panneau dit quelque chose")
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Texte(ligne) => Some(ligne),
+                _ => None,
+            })
+            .flat_map(|ligne| &ligne.fragments)
+            .find(|f| f.texte == "\u{21ba}")
+            .and_then(|f| f.action.clone())
+            .expect("la flèche se demande");
+        module.agit(&défaire, &ctx);
+        match module.take_request() {
+            Some(ReRequest::Rename { name, .. }) => {
+                assert!(name.is_empty(), "un nom vide rend celui d'origine")
+            }
+            autre => panic!("un effacement était attendu : {autre:?}"),
+        }
+    }
 
     /// Le module nomme le point de départ, et ne prétend rien quand la
     /// convention n'est pas suivie.

@@ -15,10 +15,8 @@
 
 use crate::patch::{self, Detour, DetourRefusé};
 use crate::slack::{self, Slack};
-use crate::{
-    ReContext, ReModule, ReRequest, ReSection, clickable_address, framed_button,
-    framed_small_button,
-};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection, framed_button, framed_small_button};
 
 /// Comment l'utilisateur écrit le code à ajouter.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +61,108 @@ pub struct DetourModule {
     nasm: bool,
 }
 
+/// Poser le détour que le plan décrit.
+const ACTION_POSER: &str = "détour:poser";
+
 impl DetourModule {
+    /// Le plan : ce qui est recouvert, ce qui part, ce qui le remplace.
+    ///
+    /// La part de ce panneau qui est de la COMPRÉHENSION, et la seule
+    /// qui passe la frontière — voir le commentaire de `ui`. Elle rend
+    /// `None` tant qu'on n'a rien calculé : il n'y a alors pas de plan
+    /// à dire.
+    fn vue_du_plan(&self, ctx: &ReContext) -> Option<Vue> {
+        let plan = self.plan.as_ref()?;
+        let detour = match plan {
+            Err(refus) => {
+                return Some(Vue::neuve().texte(
+                    Fragment::dit(refus.message(ctx.lang.starts_with("fr"))).ton(Ton::Attention),
+                ));
+            }
+            Ok(detour) => detour,
+        };
+
+        let mut dedans = vec![
+            // Ce qui part, et ce qui le remplace. La question que tout
+            // le monde se pose devant un correctif binaire est
+            // « qu'est-ce que je perds ? » — on y répond d'abord.
+            Bloc::Texte(
+                format!(
+                    "{} {} {}",
+                    ctx.t("Recouvert :", "Covered:"),
+                    detour.recouvert,
+                    ctx.t("octets", "bytes"),
+                )
+                .into(),
+            ),
+        ];
+        dedans.extend(blocs_d_instructions(
+            ctx,
+            &detour.aller.before,
+            detour.aller.addr,
+            ctx.t("ce qui part", "what goes"),
+        ));
+        dedans.extend(blocs_d_instructions(
+            ctx,
+            &detour.aller.after,
+            detour.aller.addr,
+            ctx.t("ce qui le remplace", "what replaces it"),
+        ));
+        dedans.push(Bloc::Texte(
+            vec![
+                Fragment::dit(ctx.t("Le corps, écrit en", "The body, written at")),
+                Fragment::dit(format!("{:#x}", detour.corps.addr))
+                    .code()
+                    .mène_à(detour.corps.addr),
+            ]
+            .into(),
+        ));
+        dedans.extend(blocs_d_instructions(
+            ctx,
+            &detour.corps.after,
+            detour.corps.addr,
+            ctx.t("le détour", "the detour"),
+        ));
+
+        // Les instructions déplacées ont pu être RÉÉCRITES, et c'est la
+        // chose la plus instructive du panneau : le dire quand c'est
+        // arrivé, parce que sinon personne ne remarque que les octets
+        // ont changé sans que l'instruction change.
+        if detour.déplacé != detour.aller.before[..detour.déplacé.len()] {
+            dedans.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Les instructions déplacées ont été relocalisées : leur \
+                     écart a été recalculé pour qu'elles visent toujours la \
+                     même chose depuis leur nouvelle adresse. L'instruction \
+                     ne change pas ; ses octets, si.",
+                    "The moved instructions were relocated: their offset was \
+                     recomputed so they still target the same thing from \
+                     their new address. The instruction does not change; its \
+                     bytes do.",
+                ))
+                .faible()
+                .into(),
+            ));
+        }
+        dedans.push(Bloc::Texte(
+            Fragment::dit(ctx.t("Poser le détour", "Place the detour"))
+                .bouton(ACTION_POSER)
+                .survol(ctx.t(
+                    "Les deux changements, ensemble — et défaisables ensemble \
+                     par la fenêtre Correctifs",
+                    "Both changes, together — and undoable together from the \
+                     Patches window",
+                ))
+                .into(),
+        ));
+        Some(Vue {
+            blocs: vec![Bloc::Section {
+                titre: ctx.t("Le plan", "The plan").into(),
+                blocs: dedans,
+            }],
+        })
+    }
+
     /// Les octets de l'ajout, assemblés ou décodés selon le mode.
     ///
     /// L'adresse compte : `assemble_one` pose un `[ORG]`, donc du code
@@ -376,101 +475,36 @@ impl ReModule for DetourModule {
             ui.colored_label(ui.visuals().error_fg_color, message);
         }
 
+        // LE PLAN PASSE LA FRONTIÈRE, LE FORMULAIRE RESTE PEINT.
+        //
+        // C'est la même coupe que pour l'éditeur binaire, le vidage et
+        // les chaînes, et ici elle était écrite d'avance : `vue.rs`
+        // dit, à propos des treize champs du projet, que « le
+        // treizième — le code d'un détour — est un éditeur de
+        // plusieurs lignes, et attendra sa propre forme ». Ce panneau
+        // cumule les TROIS formes qui manquent au vocabulaire — une
+        // liste déroulante, deux étiquettes à bascule, un éditeur
+        // multiligne —, et toutes les trois n'ont qu'un usage : le
+        // sien. C'est le signal d'arrêt que `vue.rs` pose en tête.
+        //
+        // Mais ce que ce panneau COMPREND, lui, passe : le plan. Ce
+        // qui est recouvert, ce qui part, ce qui le remplace, le corps
+        // écrit ailleurs, et l'avertissement sur les instructions
+        // relocalisées. C'est exactement ce qu'un rapport veut d'un
+        // détour — et il n'a que faire du formulaire qui a servi à le
+        // calculer.
         let mut demande = None;
-        match &self.plan {
-            None => {}
-            Some(Err(refus)) => {
-                ui.add_space(8.0);
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    refus.message(ctx.lang.starts_with("fr")),
-                );
+        if let Some(vue) = self.vue_du_plan(ctx) {
+            let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+            if gestes.demande.is_some() {
+                demande = gestes.demande;
             }
-            Some(Ok(detour)) => {
-                ui.add_space(8.0);
-                ui.separator();
-                ui.add_space(4.0);
-                ui.strong(ctx.t("Le plan", "The plan"));
-                ui.add_space(4.0);
-
-                // Ce qui part, et ce qui le remplace. La question que
-                // tout le monde se pose devant un correctif binaire est
-                // « qu'est-ce que je perds ? » — on y répond d'abord.
-                ui.label(format!(
-                    "{} {} {}",
-                    ctx.t("Recouvert :", "Covered:"),
-                    detour.recouvert,
-                    ctx.t("octets", "bytes"),
-                ));
-                ui.add_space(2.0);
-                table_d_instructions(
-                    ui,
-                    ctx,
-                    &detour.aller.before,
-                    detour.aller.addr,
-                    ctx.t("ce qui part", "what goes"),
-                );
-                ui.add_space(4.0);
-                table_d_instructions(
-                    ui,
-                    ctx,
-                    &detour.aller.after,
-                    detour.aller.addr,
-                    ctx.t("ce qui le remplace", "what replaces it"),
-                );
-
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    ui.label(ctx.t("Le corps, écrit en", "The body, written at"));
-                    if let Some(cible) = clickable_address(ui, ctx, detour.corps.addr) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: detour.corps.addr,
-                            target: cible,
-                        });
-                    }
+            if gestes.actions.iter().any(|a| a == ACTION_POSER)
+                && let Some(Ok(detour)) = &self.plan
+            {
+                demande = Some(ReRequest::PatchDetour {
+                    detour: detour.clone(),
                 });
-                ui.add_space(2.0);
-                table_d_instructions(
-                    ui,
-                    ctx,
-                    &detour.corps.after,
-                    detour.corps.addr,
-                    ctx.t("le détour", "the detour"),
-                );
-
-                // Les instructions déplacées ont pu être RÉÉCRITES, et
-                // c'est la chose la plus instructive du panneau : le dire
-                // quand c'est arrivé, parce que sinon personne ne
-                // remarque que les octets ont changé sans que
-                // l'instruction change.
-                if detour.déplacé != detour.aller.before[..detour.déplacé.len()] {
-                    ui.add_space(6.0);
-                    ui.weak(ctx.t(
-                        "Les instructions déplacées ont été relocalisées : leur \
-                         écart a été recalculé pour qu'elles visent toujours la \
-                         même chose depuis leur nouvelle adresse. L'instruction \
-                         ne change pas ; ses octets, si.",
-                        "The moved instructions were relocated: their offset was \
-                         recomputed so they still target the same thing from \
-                         their new address. The instruction does not change; its \
-                         bytes do.",
-                    ));
-                }
-
-                ui.add_space(10.0);
-                if framed_button(ui, ctx.t("Poser le détour", "Place the detour"))
-                    .on_hover_text(ctx.t(
-                        "Les deux changements, ensemble — et défaisables ensemble \
-                         par la fenêtre Correctifs",
-                        "Both changes, together — and undoable together from the \
-                         Patches window",
-                    ))
-                    .clicked()
-                {
-                    demande = Some(ReRequest::PatchDetour {
-                        detour: detour.clone(),
-                    });
-                }
             }
         }
         if demande.is_some() {
@@ -499,41 +533,35 @@ fn étiquette_du_trou(trou: &Slack, ctx: &ReContext) -> String {
 /// Montrer les octets seuls ne dit rien à personne ; montrer
 /// l'instruction sans les octets cache ce qui change quand une
 /// relocalisation réécrit un écart. Les deux, donc, côte à côte.
-fn table_d_instructions(ui: &mut egui::Ui, ctx: &ReContext, octets: &[u8], base: u64, titre: &str) {
-    ui.weak(titre);
+fn blocs_d_instructions(_ctx: &ReContext, octets: &[u8], base: u64, titre: &str) -> Vec<Bloc> {
     let lignes = namsdec_disasm::disassemble(octets, base);
     if lignes.is_empty() {
-        ui.monospace(crate::digest::hex(octets));
-        return;
+        return vec![
+            Bloc::Texte(Fragment::dit(titre).faible().into()),
+            Bloc::Texte(Fragment::dit(crate::digest::hex(octets)).code().into()),
+        ];
     }
-    egui::Grid::new(format!("detour_{titre}"))
-        .num_columns(3)
-        .striped(true)
-        .min_col_width(0.0)
-        .show(ui, |ui| {
-            for ligne in &lignes {
-                // L'adresse est de largeur fixe : elle ne se replie pas.
-                ui.monospace(format!("{:#010x}", ligne.address));
-                // Les deux colonnes larges SE REPLIENT au lieu d'être
-                // coupées. Mesuré : dans une colonne de quatre cent
-                // vingt pixels, une instruction comme
-                // `lock cmpxchg16b oword [rax+rbx*8+0x12345678]` perdait
-                // cent vingt pixels par le bord — et c'est le texte qui
-                // porte la leçon du panneau. Tronquer l'aurait caché ;
-                // une barre de défilement horizontale dans une grille
-                // déjà posée dans une colonne défilante aurait donné
-                // deux ascenseurs imbriqués.
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(crate::digest::hex(&ligne.bytes)).monospace(),
-                    )
-                    .wrap(),
-                );
-                ui.add(egui::Label::new(egui::RichText::new(&ligne.text).monospace()).wrap());
-                ui.end_row();
-            }
-        });
-    let _ = ctx;
+    vec![
+        Bloc::Texte(Fragment::dit(titre).faible().into()),
+        Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées: lignes
+                .iter()
+                .map(|ligne| {
+                    vec![
+                        Fragment::dit(format!("{:#010x}", ligne.address))
+                            .code()
+                            .into(),
+                        Fragment::dit(crate::digest::hex(&ligne.bytes))
+                            .code()
+                            .into(),
+                        Fragment::dit(&ligne.text).code().into(),
+                    ]
+                })
+                .collect(),
+            rayé: true,
+        },
+    ]
 }
 
 /// Ce que l'assembleur a répondu, mis en une phrase.
@@ -832,7 +860,16 @@ mod tests {
         for _ in 0..2 {
             coupées.clear();
             let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
-                table_d_instructions(ui, &ctx, octets, 0x401000, "essai");
+                // PAR LE PEINTRE COMMUN, depuis P7 : c'est lui qui
+                // borne désormais la colonne la plus large d'un
+                // tableau, et c'est lui qu'il faut mesurer.
+                crate::vue_peinte::peindre(
+                    ui,
+                    &ctx,
+                    &Vue {
+                        blocs: blocs_d_instructions(&ctx, octets, 0x401000, "essai"),
+                    },
+                );
             });
             for clipped in &sortie.shapes {
                 let egui::epaint::Shape::Text(t) = &clipped.shape else {

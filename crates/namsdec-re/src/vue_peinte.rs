@@ -278,7 +278,7 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             // vaut `None` et rien ne change.
             const AIR_ENTRE_COLONNES: f32 = 14.0;
             let plafonds =
-                plafonds_des_colonnes(ui, colonnes, rangées, colonnes_max, AIR_ENTRE_COLONNES);
+                plafonds_des_colonnes(ui, ctx, colonnes, rangées, colonnes_max, AIR_ENTRE_COLONNES);
             egui::Grid::new(("vue_tableau", id))
                 .num_columns(colonnes_max)
                 .min_col_width(0.0)
@@ -336,6 +336,7 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
 /// le piège même d'egui : une mesure reprise en entrée de la suivante.
 fn plafonds_des_colonnes(
     ui: &egui::Ui,
+    ctx: &ReContext,
     colonnes: &[Ligne],
     rangées: &[Vec<Ligne>],
     combien: usize,
@@ -344,7 +345,7 @@ fn plafonds_des_colonnes(
     let mut naturelles = vec![0.0f32; combien];
     for rangée in std::iter::once(colonnes).chain(rangées.iter().map(Vec::as_slice)) {
         for (rang, cellule) in rangée.iter().enumerate().take(combien) {
-            naturelles[rang] = naturelles[rang].max(largeur_naturelle(ui, cellule));
+            naturelles[rang] = naturelles[rang].max(largeur_naturelle(ui, ctx, cellule));
         }
     }
     let total: f32 = naturelles.iter().sum::<f32>() + espacement * (combien.max(1) - 1) as f32;
@@ -372,13 +373,41 @@ fn plafonds_des_colonnes(
     plafonds
 }
 
+/// Ce qu'un fragment MONTRE, qui n'est pas toujours ce qu'il dit.
+///
+/// **UNE ADRESSE EST RÉÉCRITE PAR CELUI QUI LA PEINT.** Un fragment qui
+/// porte `mène_à` passe par `clickable_address`, lequel ignore le texte
+/// du fragment et écrit l'adresse sur dix chiffres — `0x00401000` là où
+/// `gadgets_module` avait écrit `0x401000` —, précédée du nom que
+/// l'utilisateur lui a donné, s'il y en a un.
+///
+/// Mesurer le texte du fragment revenait donc à compter deux
+/// caractères de moins que ce qui sera peint, et la colonne voisine
+/// recevait quinze pixels de trop. Dans le panneau des fragments ROP à
+/// 420 px, une instruction de quarante-trois caractères courait de neuf
+/// pixels au-delà du bord — rattrapé par
+/// `no_analysis_panel_overlaps_or_cuts_its_own_text`, et seulement à la
+/// SECONDE image : une grille egui ne connaît la largeur de ses
+/// colonnes qu'après les avoir posées une fois.
+fn texte_peint(ctx: &ReContext, fragment: &Fragment) -> String {
+    let Some(adresse) = fragment.mène_à else {
+        return fragment.texte.clone();
+    };
+    match ctx.user_name(adresse) {
+        Some(nom) => format!("{nom}  {adresse:#010x}"),
+        None => format!("{adresse:#010x}"),
+    }
+}
+
 /// La largeur qu'une ligne prendrait si rien ne la contraignait.
-fn largeur_naturelle(ui: &egui::Ui, ligne: &Ligne) -> f32 {
+fn largeur_naturelle(ui: &egui::Ui, ctx: &ReContext, ligne: &Ligne) -> f32 {
     ligne
         .fragments
         .iter()
         .map(|fragment| {
-            let galley = egui::WidgetText::from(riche(ui, fragment)).into_galley(
+            let mut vu = fragment.clone();
+            vu.texte = texte_peint(ctx, fragment);
+            let galley = egui::WidgetText::from(riche(ui, &vu)).into_galley(
                 ui,
                 Some(egui::TextWrapMode::Extend),
                 f32::INFINITY,
@@ -726,7 +755,12 @@ struct Frappe {
 /// action que le champ.
 fn peindre_champ(ui: &mut egui::Ui, ctx: &ReContext, champ: &Champ, gestes: &mut Gestes) {
     let id = ui.id().with(("vue_champ", &champ.action));
-    let mut frappe = ui.data(|d| d.get_temp::<Frappe>(id)).unwrap_or(Frappe {
+    let gardée = ui.data(|d| d.get_temp::<Frappe>(id));
+    // PREMIÈRE IMAGE DE CE CHAMP : rien n'est encore gardé sous son
+    // identifiant. C'est le seul moment où l'on peut lui donner le
+    // clavier sans le reprendre à qui serait allé ailleurs.
+    let vient_de_paraître = gardée.is_none();
+    let mut frappe = gardée.unwrap_or(Frappe {
         proposée: champ.valeur.clone(),
         tapée: champ.valeur.clone(),
     });
@@ -765,10 +799,27 @@ fn peindre_champ(ui: &mut egui::Ui, ctx: &ReContext, champ: &Champ, gestes: &mut
             édition = édition.hint_text(indice.clone());
         }
         let réponse = ui.add(édition);
-        // Entrée valide, comme partout ailleurs dans namsdec : un champ
-        // qui demande d'aller chercher le bouton à la souris fait taper
-        // l'adresse deux fois sur trois.
-        validé = réponse.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        if champ.clavier && vient_de_paraître {
+            réponse.request_focus();
+        }
+        // ÉCHAP SE DÉDIT : le champ reprend ce que le module proposait,
+        // et rend le clavier. Ce qui suit le valide alors sans rien
+        // changer — un module qui reçoit son propre nom en retour n'a
+        // rien à poser, et c'est ce qui fait d'« annuler » un cas
+        // particulier de « valider » plutôt qu'un chemin de plus.
+        if réponse.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+            frappe.tapée = champ.valeur.clone();
+            réponse.surrender_focus();
+        }
+        // PERDRE LE CHAMP DES YEUX VAUT ENTRÉE, et non « rien ».
+        //
+        // Entrée seule valait validation jusqu'ici ; on perdait donc ce
+        // qu'on venait de taper en cliquant ailleurs, et le panneau des
+        // fonctions restait en saisie sans qu'on sache comment en
+        // sortir. Son code d'avant P7 portait la règle écrite :
+        // « perdre le champ des yeux le pose aussi — on ne perd pas ce
+        // qu'on vient de taper parce qu'on a cliqué ailleurs ».
+        validé = réponse.lost_focus();
         for bouton in &champ.boutons {
             peindre_fragment(ui, ctx, bouton, &mut locaux);
         }

@@ -1,4 +1,8 @@
+use crate::vue::{Bloc, Fragment, Ligne, Vue};
 use crate::{ReContext, ReModule, ReSection, framed_small_button};
+
+/// Recopier une rubrique d'indicateurs d'un clic, par sa clé.
+const ACTION_COPIER: &str = "chaînes:copier:";
 
 /// Les chaînes lisibles trouvées dans la mémoire du programme.
 ///
@@ -26,6 +30,8 @@ pub struct StringsModule {
     /// texte mort — un reste de bibliothèque, un nom de section. Celles
     /// qu'une instruction va chercher sont, elles, des pistes.
     pointed_only: bool,
+    /// Le texte à poser dans le presse-papier, quand on l'a demandé.
+    à_copier: Option<String>,
 }
 
 impl StringsModule {
@@ -221,77 +227,82 @@ impl ReModule for StringsModule {
         self.iocs = crate::ioc::from_strings(&tout);
     }
 
+    /// Tout ce que ce panneau montre, dit sans savoir qui le peint.
+    ///
+    /// **ELLE EST COMPLÈTE, ET C'EST CE QUI COMPTE** : un rapport ou
+    /// un export reçoit les indicateurs, les chaînes découpées par le
+    /// code et la liste entière. Ce que `ui` ajoute par-dessus — deux
+    /// zones qui défilent et la rangée de filtre — ne change pas ce
+    /// qui est montré, seulement combien on en voit d'un coup.
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let mut blocs = self.blocs_des_indicateurs(ctx);
+        blocs.extend(self.blocs_des_littérales(ctx));
+        if self.found.is_empty() {
+            blocs.push(Bloc::Texte(
+                ctx.t("Aucune chaîne trouvée.", "No string found.").into(),
+            ));
+            return Some(Vue { blocs });
+        }
+        blocs.push(Bloc::Texte(self.compte(ctx).into()));
+        blocs.extend(self.blocs_des_chaînes(ctx));
+        Some(Vue { blocs })
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         // Les indicateurs tout en haut : parmi deux cents chaînes, ce
-        // sont les cinq qu'on recopiera. Ouvert d'office quand il y en
+        // sont les cinq qu'on recopiera. Ouverts d'office quand il y en
         // a — c'est la réponse qu'on venait chercher.
-        if !self.iocs.is_empty() {
-            indicateurs(ui, ctx, &self.iocs);
+        let indicateurs = self.blocs_des_indicateurs(ctx);
+        if !indicateurs.is_empty() {
+            let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &Vue { blocs: indicateurs });
+            for action in &gestes.actions {
+                self.agit(action);
+            }
             ui.add_space(4.0);
         }
-        // Ce que le code découpe lui-même, ensuite : c'est la vérité du
-        // programme, là où le scan des octets n'est qu'une supposition.
-        if !self.literals.is_empty() {
-            egui::CollapsingHeader::new(format!(
-                "{} {}",
-                self.literals.len(),
-                ctx.t(
-                    "chaînes découpées par le code",
-                    "strings carved out by the code"
-                )
-            ))
-            .id_salt("strings_literals")
-            .default_open(true)
-            .show(ui, |ui| {
-                ui.weak(ctx.t(
-                    "En Rust, en Go, en Zig, une chaîne n'a pas de zéro final : c'est une \
-                     adresse et une longueur. La découpe est donc dans le code, pas dans \
-                     les données — « employée en » dit où aller lire.",
-                    "In Rust, Go or Zig a string has no final zero: it is an address and \
-                     a length. The cut is therefore in the code, not in the data — \
-                     « used at » says where to go and read.",
-                ));
-                // CE QUE LA PLACE OFFRE, ET NON UN CHIFFRE.
-                //
-                // Deux cent vingt pixels en dur : la liste s'arrêtait à
-                // onze lignes et laissait deux cent cinquante pixels de
-                // vide dessous, dans une fenêtre qui en tenait quarante.
-                // On faisait défiler treize chaînes dans un hublot, devant
-                // un écran libre. Vu sur une capture — aucune mesure ne
-                // demandait « la liste occupe-t-elle la place qu'on lui
-                // laisse ? ».
-                //
-                // Le plancher garde l'ancien comportement là où la place
-                // manque : ce module se montre aussi dans des cadres
-                // courts.
-                egui::ScrollArea::vertical()
-                    .id_salt("strings_literals_scroll")
-                    .max_height(ui.available_height().max(220.0))
-                    .show(ui, |ui| {
-                        egui::Grid::new("strings_literals_grid")
-                            .num_columns(3)
-                            .min_col_width(0.0)
-                            .striped(true)
-                            .show(ui, |ui| {
-                                for littérale in &self.literals {
-                                    ui.monospace(format!("{:#010x}", littérale.addr));
-                                    ui.label(format!("{:?}", littérale.text));
-                                    ui.weak(format!(
-                                        "{} {:#010x}",
-                                        ctx.t("employée en", "used at"),
-                                        littérale.from
-                                    ));
-                                    ui.end_row();
-                                }
-                            });
-                    });
-            });
+
+        // CE QUE LA PLACE OFFRE, ET NON UN CHIFFRE.
+        //
+        // Deux cent vingt pixels en dur : la liste s'arrêtait à onze
+        // lignes et laissait deux cent cinquante pixels de vide
+        // dessous, dans une fenêtre qui en tenait quarante. On faisait
+        // défiler treize chaînes dans un hublot, devant un écran libre.
+        // Vu sur une capture. Le plancher garde l'ancien comportement
+        // là où la place manque : ce module se montre aussi dans des
+        // cadres courts.
+        //
+        // LA ZONE QUI DÉFILE RESTE ICI, et c'est une décision de P7 :
+        // une vue dit CE QUI EST MONTRÉ, pas combien on en voit à la
+        // fois. Lui apprendre les hublots en ferait un second moteur de
+        // mise en page — et un rapport, lui, ne défile pas.
+        let littérales = self.blocs_des_littérales(ctx);
+        if !littérales.is_empty() {
+            egui::ScrollArea::vertical()
+                .id_salt("strings_literals_scroll")
+                .max_height(ui.available_height().max(220.0))
+                .show(ui, |ui| {
+                    crate::vue_peinte::peindre(ui, ctx, &Vue { blocs: littérales });
+                });
             ui.add_space(4.0);
         }
+
         if self.found.is_empty() {
-            ui.label(ctx.t("Aucune chaîne trouvée.", "No string found."));
+            crate::vue_peinte::peindre(
+                ui,
+                ctx,
+                &Vue::neuve().texte(ctx.t("Aucune chaîne trouvée.", "No string found.")),
+            );
             return;
         }
+
+        // LA RANGÉE DE FILTRE RESTE PEINTE, et c'est l'autre décision.
+        // La case à cocher est la SEULE de toute la frontière — celle
+        // de l'éditeur binaire est dans le module qui reste peint —, et
+        // `vue.rs` dit en tête pourquoi une forme à usage unique est un
+        // signal d'arrêt. Une case qu'on coche est de l'interaction, et
+        // non de la compréhension : ce qu'un rapport veut de ce
+        // panneau, ce sont les chaînes, pas le réglage qui a servi à
+        // les trier.
         ui.horizontal(|ui| {
             ui.add(
                 egui::TextEdit::singleline(&mut self.query)
@@ -310,14 +321,176 @@ impl ReModule for StringsModule {
                 "A string nobody goes looking for is usually dead text.",
             ));
         });
-        let query = self.query.to_lowercase();
-        let montrées: Vec<&Found> = self
-            .found
+
+        let mut blocs = vec![Bloc::Texte(self.compte(ctx).into())];
+        blocs.extend(self.blocs_des_chaînes(ctx));
+        egui::ScrollArea::vertical()
+            .id_salt("re_strings")
+            .max_height(ui.available_height().max(220.0))
+            // Toute la largeur du panneau : sans cela, la zone se réduit
+            // à la plus longue ligne *déjà* affichée, et les chaînes
+            // suivantes se tronquent bien avant le bord.
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                crate::vue_peinte::peindre(ui, ctx, &Vue { blocs });
+            });
+
+        if let Some(texte) = self.à_copier.take() {
+            ui.ctx().copy_text(texte);
+        }
+    }
+}
+
+impl StringsModule {
+    /// Les indicateurs, par nature, et prêts à être recopiés.
+    ///
+    /// Rangés par nature et non par adresse : un rapport se tient par
+    /// rubriques — « les adresses contactées », « les chemins écrits »
+    /// — et c'est sous cette forme qu'on les recopie. L'adresse de la
+    /// chaîne reste à côté, pour y retourner.
+    fn blocs_des_indicateurs(&self, ctx: &ReContext) -> Vec<Bloc> {
+        use crate::ioc;
+        if self.iocs.is_empty() {
+            return Vec::new();
+        }
+        // L'accord au singulier : « 1 indicateurs » se lit mal, et un
+        // seul indicateur est le cas ordinaire d'un binaire du système.
+        let seul = self.iocs.len() == 1;
+        let mut dedans = vec![Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Une forme reconnue, non une intention : ce sont les seules chaînes qu'on \
+                 puisse aller vérifier ailleurs — dans un journal réseau, sur un autre \
+                 poste. Un chemin ou une adresse peut aussi n'être qu'un exemple compilé \
+                 dans un message d'aide.",
+                "A recognised shape, not an intent: these are the only strings one can go \
+                 and check elsewhere — in a network log, on another machine. A path or an \
+                 address may also be a mere example compiled into a help message.",
+            ))
+            .faible()
+            .into(),
+        )];
+        for nature in ioc::ALL {
+            let miens: Vec<&ioc::Indicator> =
+                self.iocs.iter().filter(|i| i.kind == nature).collect();
+            if miens.is_empty() {
+                continue;
+            }
+            dedans.push(Bloc::Texte(
+                vec![
+                    Fragment::dit(nature.label(ctx.lang)).fort(),
+                    Fragment::dit(format!("({})", miens.len())).faible(),
+                    Fragment::dit(ctx.t("copier", "copy"))
+                        .bouton(format!("{ACTION_COPIER}{}", nature.label("en")))
+                        .survol(ctx.t(
+                            "Toute la rubrique, une par ligne.",
+                            "The whole heading, one per line.",
+                        )),
+                ]
+                .into(),
+            ));
+            dedans.push(Bloc::Retrait(vec![Bloc::Tableau {
+                colonnes: Vec::new(),
+                rangées: miens
+                    .iter()
+                    .map(|indicateur| {
+                        vec![
+                            Fragment::dit(format!("{:08x}", indicateur.addr))
+                                .code()
+                                .into(),
+                            Fragment::dit(&indicateur.value).code().into(),
+                        ]
+                    })
+                    .collect(),
+                rayé: false,
+            }]));
+        }
+        vec![Bloc::Repliable {
+            titre: format!(
+                "{} {}",
+                self.iocs.len(),
+                match (ctx.lang.starts_with("fr"), seul) {
+                    (true, true) => "indicateur à vérifier ailleurs",
+                    (true, false) => "indicateurs à vérifier ailleurs",
+                    (false, true) => "indicator to check elsewhere",
+                    (false, false) => "indicators to check elsewhere",
+                }
+            )
+            .into(),
+            ouvert: true,
+            blocs: dedans,
+        }]
+    }
+
+    /// Ce que le code découpe lui-même : la vérité du programme, là où
+    /// le scan des octets n'est qu'une supposition.
+    fn blocs_des_littérales(&self, ctx: &ReContext) -> Vec<Bloc> {
+        if self.literals.is_empty() {
+            return Vec::new();
+        }
+        vec![Bloc::Repliable {
+            titre: format!(
+                "{} {}",
+                self.literals.len(),
+                ctx.t(
+                    "chaînes découpées par le code",
+                    "strings carved out by the code"
+                )
+            )
+            .into(),
+            ouvert: true,
+            blocs: vec![
+                Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "En Rust, en Go, en Zig, une chaîne n'a pas de zéro final : c'est une \
+                         adresse et une longueur. La découpe est donc dans le code, pas dans \
+                         les données — « employée en » dit où aller lire.",
+                        "In Rust, Go or Zig a string has no final zero: it is an address and \
+                         a length. The cut is therefore in the code, not in the data — \
+                         « used at » says where to go and read.",
+                    ))
+                    .faible()
+                    .into(),
+                ),
+                Bloc::Tableau {
+                    colonnes: Vec::new(),
+                    rangées: self
+                        .literals
+                        .iter()
+                        .map(|littérale| {
+                            vec![
+                                Fragment::dit(format!("{:#010x}", littérale.addr))
+                                    .code()
+                                    .into(),
+                                Fragment::dit(format!("{:?}", littérale.text)).into(),
+                                Fragment::dit(format!(
+                                    "{} {:#010x}",
+                                    ctx.t("employée en", "used at"),
+                                    littérale.from
+                                ))
+                                .faible()
+                                .into(),
+                            ]
+                        })
+                        .collect(),
+                    rayé: true,
+                },
+            ],
+        }]
+    }
+
+    /// Les chaînes que le filtre laisse passer.
+    fn montrées(&self) -> Vec<&Found> {
+        let cherché = self.query.to_lowercase();
+        self.found
             .iter()
-            .filter(|found| query.is_empty() || found.text.to_lowercase().contains(&query))
+            .filter(|found| cherché.is_empty() || found.text.to_lowercase().contains(&cherché))
             .filter(|found| !self.pointed_only || !self.xrefs.to(found.addr).is_empty())
-            .collect();
-        ui.label(if query.is_empty() && !self.pointed_only {
+            .collect()
+    }
+
+    /// Combien on en montre, et sur combien.
+    fn compte(&self, ctx: &ReContext) -> String {
+        if self.query.is_empty() && !self.pointed_only {
             format!(
                 "{} {}",
                 self.found.len(),
@@ -329,160 +502,74 @@ impl ReModule for StringsModule {
         } else {
             format!(
                 "{} / {} {}",
-                montrées.len(),
+                self.montrées().len(),
                 self.found.len(),
                 ctx.t("chaînes", "strings")
             )
-        });
-        // CE QUE LA PLACE OFFRE, ET NON UN CHIFFRE.
-        //
-        // Deux cent vingt pixels en dur : la liste s'arrêtait à
-        // onze lignes et laissait deux cent cinquante pixels de
-        // vide dessous, dans une fenêtre qui en tenait quarante.
-        // On faisait défiler treize chaînes dans un hublot, devant
-        // un écran libre. Vu sur une capture — aucune mesure ne
-        // demandait « la liste occupe-t-elle la place qu'on lui
-        // laisse ? ».
-        //
-        // Le plancher garde l'ancien comportement là où la place
-        // manque : ce module se montre aussi dans des cadres
-        // courts.
-        egui::ScrollArea::vertical()
-            .id_salt("re_strings")
-            .max_height(ui.available_height().max(220.0))
-            // Toute la largeur du panneau : sans cela, la zone se réduit
-            // à la plus longue ligne *déjà* affichée, et les chaînes
-            // suivantes se tronquent bien avant le bord.
-            .auto_shrink([false, false])
-            .show(ui, |ui| {
-                for found in &montrées {
-                    // Qui la désigne ? Une chaîne à laquelle personne ne
-                    // fait référence est souvent du texte mort — un
+        }
+    }
+
+    /// La liste elle-même : l'adresse, qui la désigne, et le texte.
+    fn blocs_des_chaînes(&self, ctx: &ReContext) -> Vec<Bloc> {
+        vec![Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées: self
+                .montrées()
+                .iter()
+                .map(|found| {
+                    // Qui la désigne ? Une chaîne à laquelle personne
+                    // ne fait référence est souvent du texte mort — un
                     // reste de bibliothèque, un nom de section.
                     let vers = self.xrefs.to(found.addr);
-                    ui.horizontal(|ui| {
-                        ui.monospace(format!("{:08x}", found.addr));
-                        if let Some(première) = vers.first() {
-                            ui.weak(format!("<- {:#x}", première.from)).on_hover_text(
-                                if vers.len() > 1 {
-                                    format!("{} {}", vers.len(), ctx.t("références", "references"))
-                                } else {
-                                    ctx.t("désignée ici", "pointed at here").to_owned()
-                                },
-                            );
-                        }
-                        // Tronquée à la largeur qui *reste*, et entière
-                        // dans l'infobulle : une chaîne peut faire trois
-                        // cents caractères, et le panneau prendrait sa
-                        // largeur. Dimensionnée explicitement, sinon
-                        // `truncate` coupe à la largeur idéale du texte
-                        // et laisse le reste de la ligne vide.
-                        //
-                        // `allocate_ui_with_layout` et non `add_sized` :
-                        // ce dernier centre son contenu dans la case
-                        // qu'il alloue, si bien que les chaînes
-                        // flottaient au milieu d'un panneau large, à des
-                        // abscisses différentes selon leur longueur. On
-                        // lit une liste de gauche à droite, avec un bord
-                        // commun.
-                        let reste = ui.available_width().max(24.0);
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(reste, ui.spacing().interact_size.y),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.add(
-                                    egui::Label::new(egui::RichText::new(&found.text).monospace())
-                                        .truncate(),
-                                )
-                                .on_hover_text(&found.text);
-                            },
-                        );
-                    });
-                }
-            });
+                    let désignée: Ligne = match vers.first() {
+                        Some(première) => Fragment::dit(format!("<- {:#x}", première.from))
+                            .faible()
+                            .survol(if vers.len() > 1 {
+                                format!("{} {}", vers.len(), ctx.t("références", "references"))
+                            } else {
+                                ctx.t("désignée ici", "pointed at here").to_owned()
+                            })
+                            .into(),
+                        None => Ligne::default(),
+                    };
+                    vec![
+                        Fragment::dit(format!("{:08x}", found.addr)).code().into(),
+                        désignée,
+                        // TRONQUÉE À LA LARGEUR QUI RESTE, et le module
+                        // n'a plus à le dire : une chaîne peut faire
+                        // trois cents caractères. Le peintre borne la
+                        // colonne la plus large d'un tableau et rend le
+                        // reste au survol.
+                        Fragment::dit(&found.text).code().into(),
+                    ]
+                })
+                .collect(),
+            rayé: false,
+        }]
     }
-}
 
-/// Le bloc des indicateurs : par nature, et prêt à être recopié.
-///
-/// Rangés par nature et non par adresse : un rapport se tient par
-/// rubriques — « les adresses contactées », « les chemins écrits » — et
-/// c'est sous cette forme qu'on les recopie. L'adresse de la chaîne reste
-/// à côté, pour y retourner.
-fn indicateurs(ui: &mut egui::Ui, ctx: &ReContext, trouvés: &[crate::ioc::Indicator]) {
-    use crate::ioc;
-
-    // L'accord au singulier : « 1 indicateurs » se lit mal, et un seul
-    // indicateur est le cas ordinaire d'un binaire du système.
-    let seul = trouvés.len() == 1;
-    egui::CollapsingHeader::new(format!(
-        "{} {}",
-        trouvés.len(),
-        match (ctx.lang.starts_with("fr"), seul) {
-            (true, true) => "indicateur à vérifier ailleurs",
-            (true, false) => "indicateurs à vérifier ailleurs",
-            (false, true) => "indicator to check elsewhere",
-            (false, false) => "indicators to check elsewhere",
-        }
-    ))
-    .id_salt("strings_iocs")
-    .default_open(true)
-    .show(ui, |ui| {
-        ui.weak(ctx.t(
-            "Une forme reconnue, non une intention : ce sont les seules chaînes qu'on puisse aller vérifier ailleurs — dans un journal réseau, sur un autre poste. Un chemin ou une adresse peut aussi n'être qu'un exemple compilé dans un message d'aide.",
-            "A recognised shape, not an intent: these are the only strings one can go and check elsewhere — in a network log, on another machine. A path or an address may also be a mere example compiled into a help message.",
-        ));
-        ui.add_space(4.0);
-        for nature in ioc::ALL {
-            let miens: Vec<&ioc::Indicator> =
-                trouvés.iter().filter(|i| i.kind == nature).collect();
-            if miens.is_empty() {
-                continue;
-            }
-            ui.horizontal(|ui| {
-                ui.strong(nature.label(ctx.lang));
-                ui.weak(format!("({})", miens.len()));
-                // Recopier la rubrique entière d'un clic : c'est ce
-                // qu'on fait d'une liste d'indicateurs, un par ligne,
-                // dans le rapport.
-                if framed_small_button(ui, ctx.t("copier", "copy"))
-                    .on_hover_text(ctx.t(
-                        "Toute la rubrique, une par ligne.",
-                        "The whole heading, one per line.",
-                    ))
-                    .clicked()
-                {
-                    let texte = miens
-                        .iter()
-                        .map(|i| i.value.as_str())
-                        .collect::<Vec<_>>()
-                        .join("\n");
-                    ui.ctx().copy_text(texte);
-                }
-            });
-            ui.indent(nature.label("en"), |ui| {
-                for indicateur in &miens {
-                    ui.horizontal(|ui| {
-                        ui.monospace(format!("{:08x}", indicateur.addr));
-                        let reste = ui.available_width().max(24.0);
-                        ui.allocate_ui_with_layout(
-                            egui::vec2(reste, ui.spacing().interact_size.y),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(&indicateur.value).monospace(),
-                                    )
-                                    .truncate(),
-                                )
-                                .on_hover_text(&indicateur.value);
-                            },
-                        );
-                    });
-                }
-            });
-        }
-    });
+    /// Ce que le panneau fait de ce qu'on lui demande.
+    ///
+    /// Une seule chose pour l'instant : recopier une rubrique
+    /// d'indicateurs. Posé dans `à_copier`, pris par `ui` — copier
+    /// demande le contexte egui, que le comportement n'a pas, et c'est
+    /// ce qui permet de l'éprouver sans peindre.
+    fn agit(&mut self, action: &str) {
+        let Some(clé) = action.strip_prefix(ACTION_COPIER) else {
+            return;
+        };
+        let Some(nature) = crate::ioc::ALL.into_iter().find(|n| n.label("en") == clé) else {
+            return;
+        };
+        self.à_copier = Some(
+            self.iocs
+                .iter()
+                .filter(|i| i.kind == nature)
+                .map(|i| i.value.as_str())
+                .collect::<Vec<_>>()
+                .join("\n"),
+        );
+    }
 }
 
 #[cfg(test)]
