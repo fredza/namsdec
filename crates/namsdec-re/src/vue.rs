@@ -401,6 +401,19 @@ pub struct Fragment {
     /// doit lui retirer.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub étiquette: Option<String>,
+    /// Ce fragment s'écrit en **chasse fixe** : une adresse, un octet,
+    /// un mnémonique, une empreinte, un nom de symbole.
+    ///
+    /// UN CHAMP À PART, ET NON UN TON, parce que ce sont deux axes et
+    /// non un seul : une signature de fonction est en chasse fixe ET
+    /// atténuée, un nom de fonction en chasse fixe ET fort. Tant que
+    /// « code » était un ton, `.code().faible()` ne disait que
+    /// « faible » — le second appel écrasait le premier, en silence.
+    /// Trois endroits l'écrivaient, dont deux dans le panneau de
+    /// décompilation : une signature C s'y peignait en chasse
+    /// proportionnelle, ce qu'aucune relecture n'avait attrapé.
+    #[serde(skip_serializing_if = "std::ops::Not::not", default)]
+    pub chasse_fixe: bool,
     /// Ce fragment porte quelque chose que l'utilisateur a fait **à la
     /// main** — un nom qu'il a donné, un octet qu'il a changé.
     ///
@@ -438,9 +451,13 @@ impl Fragment {
 
     /// Ce qui s'écrit en chasse fixe : une adresse, un octet, un
     /// mnémonique, une empreinte.
+    ///
+    /// Se cumule avec un ton, et c'est tout l'intérêt :
+    /// `.code().faible()` dit bien les deux.
     #[must_use]
-    pub fn code(self) -> Self {
-        self.ton(Ton::Code)
+    pub fn code(mut self) -> Self {
+        self.chasse_fixe = true;
+        self
     }
 
     /// Ce qui s'efface : une explication, un commentaire, un « rien à
@@ -524,8 +541,6 @@ pub enum Ton {
     Faible,
     /// Ce qui doit être lu en premier.
     Fort,
-    /// Ce qui s'écrit en chasse fixe.
-    Code,
     /// Un verdict favorable.
     Bon,
     /// Un verdict qui appelle à regarder.
@@ -607,6 +622,7 @@ mod tests {
         assert!(!json.contains("bouton"), "{json}");
         assert!(!json.contains("étiquette"), "{json}");
         assert!(!json.contains("à_la_main"), "{json}");
+        assert!(!json.contains("chasse_fixe"), "{json}");
     }
 
     /// Un champ et un graphe font l'aller-retour comme le reste.

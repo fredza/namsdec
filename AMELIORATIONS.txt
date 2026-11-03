@@ -9278,6 +9278,30 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      111 CAPTURES SUR 113 IDENTIQUES AU PIXEL. Les deux autres : le
      graphe d'appels, et la poignée d'ascenseur de la vue d'ensemble.
 
-     RESTE L'ÉDITEUR BINAIRE — 1 966 lignes, quinze interactions, le
-     plus gros du projet. Il demandera une notion de sélection que le
-     vocabulaire n'a pas encore. À prendre en plusieurs fois.
+     L'INSPECTEUR DE L'ÉDITEUR BINAIRE PASSE, ET LUI SEUL (décidé le
+     3 novembre 2026). `vue_de_l_inspecteur` dit ce que l'octet choisi
+     vaut dans chaque format ; la grille, son curseur et ses vingt-six
+     touches restent peints sur place.
+       — Une scène de banc manquait : l'inspecteur n'existe qu'avec un
+         octet choisi, et aucune scène n'en choisissait. Ses seize
+         lignes n'étaient mesurées par rien. La nouvelle scène le met
+         sous les vingt-cinq invariants du banc.
+       — La boucle que le code redoutait — la fenêtre d'analyse gonflée
+         à 2878 px par une grille imbriquée — NE SE REPRODUIT PLUS : la
+         borne posée depuis sur le contenu de la fenêtre l'a fermée.
+         Remis en grille et mesuré sur vingt images.
+       — Mais la parade d'alors n'alignait plus rien : le nom rembourré
+         à onze caractères ne survit pas à la description en fragments
+         (les blancs de fin disparaissent au rendu), et les valeurs
+         partaient de 51, 56, 59, 68 pixels. D'où le tableau.
+
+     UN DÉFAUT DE VOCABULAIRE, ET C'EST LE PLUS UTILE DE LA SÉANCE.
+     `code` était un TON, au même rang que « faible » et « fort » :
+     `.code().faible()` ne disait donc que « faible », le second appel
+     écrasant le premier en silence. Trois endroits l'écrivaient, dont
+     deux dans la décompilation — une signature C et un nom de fonction
+     peints en chasse proportionnelle, que personne n'avait vu. La
+     chasse est désormais un axe à part.
+
+     RESTE LA GRILLE DE L'ÉDITEUR BINAIRE, et la proposition est de ne
+     pas la faire passer : c'est un instrument, pas une compréhension.

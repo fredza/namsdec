@@ -539,11 +539,18 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
     } else {
         texte
     };
+    // LA CHASSE D'ABORD, LE TON ENSUITE : ce sont deux axes, et un
+    // fragment peut demander les deux — une signature de fonction est
+    // en chasse fixe et atténuée.
+    let texte = if fragment.chasse_fixe {
+        texte.monospace()
+    } else {
+        texte
+    };
     match fragment.ton {
         Ton::Normal => texte,
         Ton::Faible => texte.color(visuals.weak_text_color()),
         Ton::Fort => texte.color(visuals.strong_text_color()),
-        Ton::Code => texte.monospace(),
         // Deux des trois verdicts suivent le thème, parce qu'egui porte
         // leurs couleurs et que `namsdec-theme` les y installe —
         // `visuals.warn_fg_color` et `visuals.error_fg_color` sont déjà

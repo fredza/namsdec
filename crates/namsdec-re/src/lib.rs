@@ -67,6 +67,11 @@ pub use entropy_module::EntropyModule;
 pub use functions_module::FunctionsModule;
 pub use gadgets_module::GadgetsModule;
 pub use hex_editor_module::HexEditorModule;
+// LA SEULE PART DE L'ÉDITEUR BINAIRE QUI PASSE LA FRONTIÈRE : ce que
+// l'octet choisi vaut, lu dans chaque format. Le reste du panneau est
+// un instrument — une grille, un curseur, vingt-six touches — et reste
+// peint sur place ; voir le relevé dans `TRAVAUX.md`.
+pub use hex_editor_module::vue_de_l_inspecteur;
 pub use imports_module::ImportsModule;
 pub use map_module::MapModule;
 pub use patterns_module::PatternsModule;

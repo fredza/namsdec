@@ -1,4 +1,9 @@
+use crate::vue::{Bloc, Fragment, Vue};
 use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed_button};
+
+/// L'action qui change l'ordre de lecture de l'inspecteur : « le » ou
+/// « be » suit.
+const BOUTISME: &str = "hex:boutisme:";
 
 /// Un éditeur binaire : le fichier chargé en grille hexadécimale, un octet
 /// qu'on choisit, une valeur qu'on pose à la place.
@@ -1444,6 +1449,99 @@ fn inspecter(octets: &[u8], be: bool) -> Vec<(&'static str, String)> {
     out
 }
 
+/// CE QUE VAUT L'OCTET CHOISI, lu dans chaque format — dit sans savoir
+/// comment on le peint.
+///
+/// **La seule part de ce panneau qui passe la frontière de P7**, et
+/// c'est une décision prise sur un relevé (voir `TRAVAUX.md`). Le reste
+/// — la grille, son curseur, ses vingt-six touches — est un
+/// INSTRUMENT : on s'en sert, il ne se raconte pas. L'inspecteur, lui,
+/// est une compréhension pure : « ces huit octets valent 1 en entier
+/// 64 bits, 4,94 e-324 en flottant, et `SOH` en caractère » est une
+/// phrase qu'un rapport veut écrire, qu'un contrôle veut lire, et
+/// qu'une autre interface voudra peindre autrement.
+///
+/// `octets` est la suite du fichier À PARTIR de l'octet choisi, comme
+/// pour [`inspecter`] : c'est le même point de vue, et le dire deux
+/// fois serait deux occasions de diverger.
+pub fn vue_de_l_inspecteur(ctx: &ReContext, octets: &[u8], be: bool) -> Vue {
+    let lectures = inspecter(octets, be);
+    if lectures.is_empty() {
+        return Vue::neuve();
+    }
+    // L'ORDRE DE LECTURE, et le choix de l'autre.
+    //
+    // Celui qui est en vigueur s'écrit en clair, l'autre est un lien :
+    // le vocabulaire des vues n'a pas d'état « choisi », et plutôt que
+    // d'en inventer un pour un seul usage — c'est ce que le relevé de
+    // l'éditeur binaire a reproché à ses propres bascules —, on dit la
+    // chose comme elle se lit. Un mot franc, un lien à côté ; presser
+    // ce qui est déjà choisi n'a jamais rien fait de toute façon.
+    let (ici, ailleurs, action) = if be {
+        (
+            ctx.t("gros-boutien", "big-endian"),
+            ctx.t("petit-boutien", "little-endian"),
+            "le",
+        )
+    } else {
+        (
+            ctx.t("petit-boutien", "little-endian"),
+            ctx.t("gros-boutien", "big-endian"),
+            "be",
+        )
+    };
+    let mut vue = Vue::neuve().texte(vec![
+        Fragment::dit(ctx.t("Lu à partir d'ici :", "Read from here:")).faible(),
+        Fragment::dit(ici).fort(),
+        Fragment::dit(ailleurs)
+            .agit(format!("{BOUTISME}{action}"))
+            .survol(ctx.t(
+                "Lire les mêmes octets dans l'autre ordre",
+                "Read the same bytes the other way round",
+            )),
+    ]);
+    // LES LECTURES EN TABLEAU, et c'est une mesure qui l'a décidé
+    // contre ce que le code d'avant redoutait.
+    //
+    // Ce panneau portait écrit qu'il ne fallait « AUCUNE disposition
+    // imbriquée » ici : l'inspecteur était une grille, la fenêtre
+    // d'analyse se dimensionnait sur son contenu, et un enfant qui
+    // réclame toute la place offerte dans un parent qui se dimensionne
+    // sur ses enfants est la boucle la plus connue d'egui — 1100 px,
+    // puis 2878, puis deux de plus à chaque image. Le nom était donc
+    // rembourré à onze caractères pour aligner les valeurs sans
+    // colonne.
+    //
+    // Deux mesures ont tranché. (1) La boucle NE SE REPRODUIT PLUS :
+    // scène du banc avec un octet choisi, vingt-cinq invariants dont
+    // celui qui suit une fenêtre sur vingt images, tout reste vert
+    // avec une grille — la fenêtre d'analyse borne son contenu depuis,
+    // et c'est cette borne qui a fermé la boucle. (2) Le rembourrage,
+    // lui, N'ALIGNE PLUS une fois les lectures décrites en fragments :
+    // les blancs de fin ne survivent pas au rendu, et les valeurs
+    // partaient de 51, 56, 59, 68 pixels selon la longueur du nom.
+    // Une colonne qui ne colonne rien ne vaut pas qu'on la garde.
+    vue = vue.bloc(Bloc::Tableau {
+        colonnes: vec![],
+        rangées: lectures
+            .into_iter()
+            .map(|(nom, valeur)| {
+                vec![
+                    Fragment::dit(nom).code().faible().into(),
+                    // La valeur se copie d'un clic : on l'a sous les
+                    // yeux pour la porter ailleurs — dans une
+                    // calculatrice, dans un message, dans un autre
+                    // outil.
+                    Fragment::dit(valeur).code().copiable().into(),
+                ]
+            })
+            .collect(),
+        // Seize lignes courtes : le rayage les hacherait sans aider.
+        rayé: false,
+    });
+    vue
+}
+
 /// Applique un chiffre hexadécimal à la frappe en place.
 ///
 /// Rend le nouvel état d'attente et, quand l'octet est complet, la valeur
@@ -1688,73 +1786,23 @@ impl HexEditorModule {
                 ));
             }
 
-            // L'inspecteur : les octets à partir d'ici, lus dans chaque
-            // format. Petit-boutien, celui du x86.
+            // L'INSPECTEUR, et il est le seul morceau de ce panneau
+            // qui soit DÉCRIT plutôt que peint sur place : sa vue dit
+            // ce que l'octet vaut, le peintre commun s'occupe du
+            // reste. Voir `vue_de_l_inspecteur`, et `TRAVAUX.md` pour
+            // la raison de s'arrêter là.
             let reste = &octets[off..];
-            let lectures = inspecter(reste, self.inspecteur_be);
-            if !lectures.is_empty() {
+            let vue = vue_de_l_inspecteur(ctx, reste, self.inspecteur_be);
+            if !vue.est_vide() {
                 ui.add_space(6.0);
-                // La bascule d'ordre des octets : petit-boutien (x86) par
-                // défaut, gros-boutien pour les formats réseau et les
-                // fichiers qui l'emploient.
-                ui.horizontal(|ui| {
-                    ui.weak(ctx.t("Lu à partir d'ici :", "Read from here:"));
-                    ui.selectable_value(
-                        &mut self.inspecteur_be,
-                        false,
-                        ctx.t("petit-boutien", "little-endian"),
-                    );
-                    ui.selectable_value(
-                        &mut self.inspecteur_be,
-                        true,
-                        ctx.t("gros-boutien", "big-endian"),
-                    );
-                });
-                // Une ligne = un seul libellé, et surtout AUCUNE
-                // disposition imbriquée. L'inspecteur était un
-                // `egui::Grid` ; une rangée d'`ui.horizontal` par lecture
-                // aurait fait pareil. Dans la fenêtre d'analyse, qui
-                // s'ajuste à son contenu, toute rangée imbriquée réserve
-                // la largeur disponible, la fenêtre grandit pour la
-                // contenir, ce qui agrandit la disponible… et l'on
-                // repart. Au moindre octet choisi la fenêtre gonflait —
-                // 1100 px, puis 2878, puis deux de plus à chaque image —
-                // jusqu'à déborder de l'écran : centrée, sa moitié gauche
-                // passait hors champ et le contenu se coupait à gauche.
-                // Mesuré, bissecté jusqu'à la rangée. Un libellé unique,
-                // c'est une seule galère de texte : elle ne lit aucune
-                // largeur, et rien ne peut plus se reboucler. Le nom est
-                // en chasse fixe, rembourré à onze caractères, pour que
-                // les valeurs s'alignent d'elles-mêmes ; atténué, pour
-                // que la valeur ressorte. Un clic copie la valeur.
+                // DEUX PIXELS ENTRE LES LECTURES, et c'est l'interface
+                // qui le dit : seize lignes au rythme ordinaire
+                // allongent la colonne d'un tiers pour rien.
                 ui.spacing_mut().item_spacing.y = 2.0;
-                let police = egui::TextStyle::Monospace.resolve(ui.style());
-                for (nom, valeur) in lectures {
-                    let mut job = egui::text::LayoutJob::default();
-                    job.wrap.max_width = f32::INFINITY;
-                    job.append(
-                        &format!("{nom:<11} "),
-                        0.0,
-                        egui::TextFormat {
-                            font_id: police.clone(),
-                            color: visuals.weak_text_color(),
-                            ..Default::default()
-                        },
-                    );
-                    job.append(
-                        &valeur,
-                        0.0,
-                        egui::TextFormat {
-                            font_id: police.clone(),
-                            color: visuals.text_color(),
-                            ..Default::default()
-                        },
-                    );
-                    if crate::clickable_label(ui, egui::Label::new(job))
-                        .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                        .clicked()
-                    {
-                        ui.ctx().copy_text(valeur);
+                let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+                for action in &gestes.actions {
+                    if let Some(quoi) = action.strip_prefix(BOUTISME) {
+                        self.inspecteur_be = quoi == "be";
                     }
                 }
             }

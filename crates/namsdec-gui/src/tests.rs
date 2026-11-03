@@ -1242,6 +1242,32 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // L'ÉDITEUR BINAIRE AVEC UN OCTET CHOISI, et c'est le seul état où
+    // son INSPECTEUR existe : « ce que cet octet vaut lu en int8, en
+    // float64, en caractère ». Sans octet choisi, le panneau dit
+    // « Cliquez un octet » et seize lignes de lecture n'étaient
+    // mesurées par rien — ni le banc, ni les captures.
+    //
+    // La scène passe par `show_bytes_at`, c'est-à-dire par le chemin
+    // réel : c'est ce qui arrive quand on clique une adresse dans un
+    // autre panneau et qu'on demande à la voir dans les octets.
+    if let Some(octets) = binaire_fabriqué() {
+        scènes.push((
+            "analyse / éditeur binaire, un octet choisi".to_owned(),
+            Some("analysis_window"),
+            Box::new(move |app| {
+                app.load_elf(&octets, NOM_FABRIQUÉ);
+                app.show_analysis = true;
+                app.analysis_module = "hex_editor".to_owned();
+                app.toggle_maximized(NamsdecApp::ANALYSIS_WINDOW);
+                // L'entrée du programme : une position qui existe à
+                // coup sûr, et celle qu'on va voir en premier.
+                if let Some(elf) = namsdec_re::elf_scan::scan(&octets) {
+                    app.show_bytes_at(elf.entry);
+                }
+            }),
+        ));
+    }
     // Un appel système refusé : la barre de statut en rouge, le message
     // le plus long que namsdec sache y mettre, et la fenêtre qui redit
     // ce que le programme avait écrit avant de s'arrêter.

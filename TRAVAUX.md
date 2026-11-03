@@ -746,8 +746,45 @@ elle se paie seule, et elle est le prérequis de toute alternative.
         nom/valeur sans toucher à egui, et c'est la part qui mérite de
         passer — seule, et sans emporter la grille avec elle.
 
-        À décider avant d'écrire la moindre ligne : le relevé est là,
-        la décision ne l'est pas.
+        **Décidé le 3 novembre 2026 : l'inspecteur passe, seul.**
+        `vue_de_l_inspecteur` dit ce que l'octet choisi vaut dans chaque
+        format ; `ui()` le peint par le peintre commun ; la grille, son
+        curseur et ses vingt-six touches restent peints sur place.
+
+        Trois choses mesurées en route, et deux ont corrigé ce que
+        j'allais écrire :
+
+        1. **Une scène de banc manquait.** L'inspecteur n'existe que si
+           un octet est choisi, et aucune scène n'en choisissait : ses
+           seize lignes n'étaient mesurées par rien — ni le banc, ni les
+           captures. La scène « analyse / éditeur binaire, un octet
+           choisi » passe par `show_bytes_at`, le chemin réel, et met
+           l'inspecteur sous les **vingt-cinq invariants** du banc.
+        2. **La boucle que le code redoutait ne se reproduit plus.** Ce
+           panneau portait écrit qu'aucune disposition imbriquée ne
+           devait y entrer — l'inspecteur était une grille, la fenêtre
+           d'analyse se dimensionnait sur son contenu, et la fenêtre
+           gonflait jusqu'à 2878 pixels. Remis en grille et mesuré :
+           tout reste vert, y compris l'invariant qui suit une fenêtre
+           sur vingt images. La borne posée depuis sur le contenu de la
+           fenêtre a fermé la boucle.
+        3. **Et le rembourrage, lui, n'alignait plus rien.** La parade
+           d'alors — le nom rembourré à onze caractères, pour aligner
+           sans colonne — ne survit pas à la description en fragments :
+           les blancs de fin disparaissent au rendu, et les valeurs
+           partaient de 51, 56, 59 puis 68 pixels selon la longueur du
+           nom. Mesuré, pas relu. D'où le tableau, qui aligne par
+           construction.
+
+        **Un défaut de vocabulaire trouvé en chemin, et c'est le plus
+        utile :** `code` était un **ton**, au même rang que « faible »
+        et « fort ». `.code().faible()` ne disait donc que « faible » —
+        le second appel écrasait le premier, en silence. Trois endroits
+        l'écrivaient, dont deux dans le panneau de décompilation : une
+        signature C et un nom de fonction s'y peignaient en chasse
+        **proportionnelle**. La chasse est maintenant un axe à part
+        (`Fragment::chasse_fixe`), et un fragment peut demander les
+        deux.
 
       **Le protocole, qui a servi dix fois et qu'il suffit de
       reprendre :** lire le `fn ui` entier ; remplacer **la méthode

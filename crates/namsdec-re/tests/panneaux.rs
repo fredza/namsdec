@@ -1881,3 +1881,215 @@ fn un_tableau_qui_tient_ne_s_elide_pas() {
         "l'empreinte, elle, s'élide : {étroits:?}"
     );
 }
+
+/// LES VALEURS DE L'INSPECTEUR S'ALIGNENT LES UNES SOUS LES AUTRES.
+///
+/// C'est à quoi sert le nom rembourré à onze caractères en chasse
+/// fixe : une colonne sans colonne, c'est-à-dire sans grille et sans
+/// rangée imbriquée. On lit seize lectures en descendant du regard, et
+/// une valeur décalée de trois pixels suffit à casser ce mouvement.
+///
+/// Le contrôle mesure l'abscisse de chaque valeur peinte. Il attrape ce
+/// qu'une lecture du code ne voit pas : un rembourrage par espaces
+/// n'aligne que si les espaces sont CONSERVÉS — un moteur de rendu qui
+/// taille les blancs de fin rendrait la ligne juste et l'alignement
+/// faux.
+#[test]
+fn les_valeurs_de_l_inspecteur_s_alignent() {
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    // Huit octets : toutes les lectures, du `int8` au `float64`.
+    let vue =
+        namsdec_re::vue_de_l_inspecteur(&ctx, &[0x48, 0x65, 0x6c, 0x6c, 0x6f, 0, 0, 0], false);
+    let noms: Vec<String> = vue
+        .blocs
+        .iter()
+        .filter_map(|bloc| match bloc {
+            namsdec_re::vue::Bloc::Tableau { rangées, .. } => Some(
+                rangées
+                    .iter()
+                    .filter_map(|r| r.first().map(namsdec_re::vue::Ligne::texte_nu))
+                    .collect::<Vec<_>>(),
+            ),
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    assert!(
+        noms.len() > 10,
+        "huit octets donnent toutes les lectures : {noms:?}"
+    );
+
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(600.0, 900.0),
+        )),
+        ..Default::default()
+    };
+    // La première ligne — « Lu à partir d'ici : petit-boutien
+    // gros-boutien » — n'est pas une lecture : on la retire par son
+    // contenu, relevé dans la vue elle-même plutôt qu'écrit à la main.
+    let entête: Vec<String> = vue
+        .blocs
+        .iter()
+        .filter_map(|bloc| match bloc {
+            namsdec_re::vue::Bloc::Texte(ligne) => {
+                Some(ligne.fragments.iter().map(|f| f.texte.clone()))
+            }
+            _ => None,
+        })
+        .flatten()
+        .collect();
+    let mut valeurs: Vec<(String, f32)> = Vec::new();
+    for _ in 0..2 {
+        valeurs.clear();
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+            namsdec_re::vue_peinte::peindre_tout(ui, &ctx, &vue);
+        });
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text().to_owned();
+                // Les NOMS portent leur rembourrage ; tout le reste de
+                // la ligne est une valeur.
+                if entête.contains(&texte) {
+                    continue;
+                }
+                if texte.starts_with("int")
+                    || texte.starts_with("uint")
+                    || texte.starts_with("float")
+                    || texte.starts_with("binaire")
+                    || texte.starts_with("caractère")
+                {
+                    continue;
+                }
+                // SANS L'ESPACE DE TÊTE : dans une rangée qui se
+                // replie, egui pose la galée au DÉBUT de la rangée et
+                // décale son premier mot à l'intérieur. Mesurée depuis
+                // `t.pos`, chaque valeur paraît à l'abscisse zéro —
+                // mesuré ici, et c'est le piège que le relevé des
+                // panneaux documente depuis longtemps.
+                let Some(ligne) = t.galley.rows.first() else {
+                    continue;
+                };
+                valeurs.push((
+                    texte,
+                    ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2())
+                        .left(),
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let colonne: Vec<&(String, f32)> = valeurs.iter().collect();
+    assert!(
+        colonne.len() > 10,
+        "le relevé n'a pas trouvé la colonne des valeurs : {valeurs:?}"
+    );
+    let x0 = colonne[0].1;
+    for (texte, x) in &colonne {
+        assert!(
+            (x - x0).abs() < 0.5,
+            "« {texte} » est à {x} au lieu de {x0} — la colonne des valeurs se disloque \
+             ({colonne:?})"
+        );
+    }
+}
+
+/// LA CHASSE ET LE TON SONT DEUX AXES, ET UN FRAGMENT PEUT DEMANDER LES
+/// DEUX.
+///
+/// Tant que « code » était un ton parmi les autres,
+/// `.code().faible()` ne disait que « faible » : le second appel
+/// écrasait le premier, sans rien dire. Trois endroits l'écrivaient,
+/// dont deux dans le panneau de décompilation — une signature C et un
+/// nom de fonction s'y peignaient en chasse proportionnelle, ce
+/// qu'aucune relecture n'avait vu.
+///
+/// Le contrôle mesure la police ET la couleur de ce qui est peint.
+#[test]
+fn un_fragment_peut_etre_en_chasse_fixe_et_attenue() {
+    use namsdec_re::vue::{Fragment, Vue};
+    let binaire = binaire();
+    let disasm = namsdec_disasm::disassemble(&binaire[0x100..0x200], BASE + 0x100);
+    let cpu = Cpu::new(Memory::new(BASE, 0x1000));
+    let ctx = ReContext {
+        cpu: &cpu,
+        disasm: &disasm,
+        source: "",
+        binary: &binaire,
+        lang: "fr",
+        names: None,
+        patches: &[],
+    };
+    let vue = Vue::neuve()
+        .texte(Fragment::dit("int main(void)").code().faible())
+        .texte(Fragment::dit("sub_401136").code().fort())
+        .texte(Fragment::dit("une phrase").faible());
+    let egui_ctx = egui::Context::default();
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(600.0, 400.0),
+        )),
+        ..Default::default()
+    };
+    let mut peints: Vec<(String, egui::FontFamily, egui::Color32)> = Vec::new();
+    for _ in 0..2 {
+        peints.clear();
+        let mut sortie = egui_ctx.run_ui(entrée.clone(), |ui| {
+            namsdec_re::vue_peinte::peindre_tout(ui, &ctx, &vue);
+        });
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && let Some(section) = t.galley.job.sections.first()
+            {
+                peints.push((
+                    t.galley.text().to_owned(),
+                    section.format.font_id.family.clone(),
+                    t.galley.job.sections[0].format.color,
+                ));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let de = |quoi: &str| {
+        peints
+            .iter()
+            .find(|(t, _, _)| t == quoi)
+            .unwrap_or_else(|| panic!("« {quoi} » n'a pas été peint : {peints:?}"))
+            .clone()
+    };
+    let (_, chasse_sig, couleur_sig) = de("int main(void)");
+    let (_, chasse_nom, _) = de("sub_401136");
+    let (_, chasse_phrase, couleur_phrase) = de("une phrase");
+    assert_eq!(
+        chasse_sig,
+        egui::FontFamily::Monospace,
+        "une signature atténuée reste en chasse fixe"
+    );
+    assert_eq!(chasse_nom, egui::FontFamily::Monospace, "un nom fort aussi");
+    assert_eq!(
+        chasse_phrase,
+        egui::FontFamily::Proportional,
+        "et une phrase ordinaire ne le devient pas"
+    );
+    // Et le ton survit à la chasse : atténué des deux côtés.
+    assert_eq!(
+        couleur_sig, couleur_phrase,
+        "« faible » dit la même couleur, en chasse fixe ou non"
+    );
+}
