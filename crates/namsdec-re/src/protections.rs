@@ -6,6 +6,7 @@
 //! n'apprend rien à qui découvre.
 
 use crate::elf_scan::{self, Kind, Relro, Scan};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
 use crate::{ReContext, ReModule, ReSection};
 
 #[derive(Default)]
@@ -20,36 +21,6 @@ impl ProtectionsModule {
     /// L'analyse, pour qui veut la lire sans passer par l'interface.
     pub fn scan(&self) -> Option<&Scan> {
         self.scan.as_ref()
-    }
-}
-
-/// Une ligne de verdict : vert quand la protection est là, rouge quand
-/// elle manque, et une phrase qui dit pourquoi ça compte.
-///
-/// La phrase est écrite sous la ligne quand la protection *manque* — un
-/// point faible se lit sans avoir à le chercher — et reste en infobulle
-/// quand elle est en place : la liste tient alors d'un coup d'œil, ce
-/// qu'on lui demande d'abord.
-fn verdict(ui: &mut egui::Ui, good: bool, label: &str, state: &str, why: &str) {
-    let color = if good {
-        egui::Color32::from_rgb(0x4e, 0xc9, 0xb0)
-    } else {
-        egui::Color32::from_rgb(0xf4, 0x87, 0x71)
-    };
-    let line = ui
-        .horizontal(|ui| {
-            let (rect, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-            ui.painter().circle_filled(rect.center(), 4.0, color);
-            ui.label(label);
-            ui.colored_label(color, state);
-        })
-        .response;
-    if good {
-        line.on_hover_text(why);
-    } else {
-        ui.indent(label, |ui| {
-            ui.weak(why);
-        });
     }
 }
 
@@ -80,51 +51,75 @@ impl ReModule for ProtectionsModule {
         self.unreadable = self.scan.is_none();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         let Some(scan) = &self.scan else {
-            ui.weak(if self.unreadable {
-                ctx.t(
-                    "Ce fichier n'est pas un ELF64 : rien à analyser ici.",
-                    "This file is not an ELF64: nothing to analyse here.",
-                )
-            } else {
-                ctx.t("Aucun binaire chargé.", "No binary loaded.")
-            });
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(if self.unreadable {
+                        ctx.t(
+                            "Ce fichier n'est pas un ELF64 : rien à analyser ici.",
+                            "This file is not an ELF64: nothing to analyse here.",
+                        )
+                    } else {
+                        ctx.t("Aucun binaire chargé.", "No binary loaded.")
+                    })
+                    .faible(),
+                ),
+            );
         };
 
         // L'identité du fichier, d'abord : le reste ne se lit qu'en
         // sachant de quoi on parle.
-        ui.horizontal_wrapped(|ui| {
-            ui.strong(match scan.kind {
-                Kind::Executable => ctx.t("Exécutable", "Executable"),
-                Kind::Shared => ctx.t("Exécutable relogeable", "Relocatable executable"),
-                Kind::Relocatable => ctx.t("Objet à lier", "Relocatable object"),
-                Kind::Core => ctx.t("Image mémoire (core)", "Core dump"),
-                Kind::Other(_) => ctx.t("Type inconnu", "Unknown type"),
-            });
-            ui.weak("·");
-            ui.label(scan.machine);
-            ui.weak("·");
-            ui.label(format!("{} {:#x}", ctx.t("entrée", "entry"), scan.entry));
-            ui.weak("·");
-            ui.label(if scan.dynamic() {
-                ctx.t("lié dynamiquement", "dynamically linked")
-            } else {
-                ctx.t("lié statiquement", "statically linked")
-            });
-        });
-        ui.add_space(6.0);
+        let point = || Fragment::dit("·").faible();
+        let mut blocs = vec![Bloc::Texte(
+            vec![
+                Fragment::dit(match scan.kind {
+                    Kind::Executable => ctx.t("Exécutable", "Executable"),
+                    Kind::Shared => ctx.t("Exécutable relogeable", "Relocatable executable"),
+                    Kind::Relocatable => ctx.t("Objet à lier", "Relocatable object"),
+                    Kind::Core => ctx.t("Image mémoire (core)", "Core dump"),
+                    Kind::Other(_) => ctx.t("Type inconnu", "Unknown type"),
+                })
+                .fort(),
+                point(),
+                Fragment::dit(scan.machine),
+                point(),
+                Fragment::dit(format!("{} {:#x}", ctx.t("entrée", "entry"), scan.entry)),
+                point(),
+                Fragment::dit(if scan.dynamic() {
+                    ctx.t("lié dynamiquement", "dynamically linked")
+                } else {
+                    ctx.t("lié statiquement", "statically linked")
+                }),
+            ]
+            .into(),
+        )];
 
-        verdict(
-            ui,
-            scan.pie(),
+        // LES VERDICTS, DITS ET NON PEINTS.
+        //
+        // Ce module peignait une pastille ronde au `painter`, choisie
+        // ici, avec ses deux couleurs écrites en dur ; « En bref »
+        // peignait les mêmes faits avec un `√` et un `×`, et la fiche
+        // du panneau latéral les mêmes glyphes dans un troisième vert.
+        // Le module dit maintenant le nom, l'état, le verdict et le
+        // pourquoi — la marque, la teinte, et la place où se lit le
+        // pourquoi sont décidées une fois, dans le peintre.
+        let dit = |nom: &str, état: &str, verdict: Ton, pourquoi: &str| Bloc::Verdict {
+            nom: nom.to_owned().into(),
+            état: état.to_owned().into(),
+            verdict,
+            pourquoi: Some(pourquoi.to_owned()),
+        };
+        let oui_non = |bon: bool| if bon { Ton::Bon } else { Ton::Mauvais };
+
+        blocs.push(dit(
             ctx.t("PIE", "PIE"),
             if scan.pie() {
                 ctx.t("oui", "yes")
             } else {
                 ctx.t("non", "no")
             },
+            oui_non(scan.pie()),
             if scan.pie() {
                 ctx.t(
                     "Le programme est posé à une adresse différente à chaque \
@@ -141,17 +136,23 @@ impl ReModule for ProtectionsModule {
                      ones it will have, every run.",
                 )
             },
-        );
+        ));
 
-        let nx = scan.nx.unwrap_or(false);
-        verdict(
-            ui,
-            nx,
+        // TROIS ÉTATS ET NON DEUX. « Non déclaré » n'est pas « pile
+        // exécutable » : le fichier ne dit rien, et c'est le noyau qui
+        // tranche. Le peindre en rouge au même rang qu'une pile
+        // franchement exécutable affirmait ce que personne ne sait.
+        blocs.push(dit(
             "NX",
             match scan.nx {
                 Some(true) => ctx.t("pile non exécutable", "non-executable stack"),
                 Some(false) => ctx.t("pile exécutable", "executable stack"),
                 None => ctx.t("non déclaré", "not declared"),
+            },
+            match scan.nx {
+                Some(true) => Ton::Bon,
+                Some(false) => Ton::Mauvais,
+                None => Ton::Attention,
             },
             match scan.nx {
                 Some(true) => ctx.t(
@@ -174,16 +175,21 @@ impl ReModule for ProtectionsModule {
                      alone, and it has not always made it non-executable.",
                 ),
             },
-        );
+        ));
 
-        verdict(
-            ui,
-            scan.relro == Relro::Full,
+        // Et de même ici : un RELRO partiel protège bel et bien une
+        // partie des données, et se peignait pourtant comme absent.
+        blocs.push(dit(
             "RELRO",
             match scan.relro {
                 Relro::Full => ctx.t("complet", "full"),
                 Relro::Partial => ctx.t("partiel", "partial"),
                 Relro::None => ctx.t("absent", "none"),
+            },
+            match scan.relro {
+                Relro::Full => Ton::Bon,
+                Relro::Partial => Ton::Attention,
+                Relro::None => Ton::Mauvais,
             },
             match scan.relro {
                 Relro::Full => ctx.t(
@@ -205,17 +211,16 @@ impl ReModule for ProtectionsModule {
                     "Nothing is made read-only after loading.",
                 ),
             },
-        );
+        ));
 
-        verdict(
-            ui,
-            scan.canary,
+        blocs.push(dit(
             ctx.t("Canari de pile", "Stack canary"),
             if scan.canary {
                 ctx.t("présent", "present")
             } else {
                 ctx.t("absent", "absent")
             },
+            oui_non(scan.canary),
             if scan.canary {
                 ctx.t(
                     "Une valeur secrète est posée avant l'adresse de retour et \
@@ -233,17 +238,16 @@ impl ReModule for ProtectionsModule {
                      replaces it unnoticed.",
                 )
             },
-        );
+        ));
 
-        verdict(
-            ui,
-            scan.cet.ibt,
+        blocs.push(dit(
             "IBT",
             if scan.cet.ibt {
                 ctx.t("demandé", "requested")
             } else {
                 ctx.t("non demandé", "not requested")
             },
+            oui_non(scan.cet.ibt),
             if scan.cet.ibt {
                 ctx.t(
                     "Un saut indirect ne peut atterrir que sur un `endbr64` : \
@@ -261,13 +265,13 @@ impl ReModule for ProtectionsModule {
                      including mid-instruction.",
                 )
             },
-        );
+        ));
+
         if scan.cet.shadow_stack {
-            verdict(
-                ui,
-                true,
+            blocs.push(dit(
                 ctx.t("Pile fantôme", "Shadow stack"),
                 ctx.t("demandée", "requested"),
+                Ton::Bon,
                 ctx.t(
                     "Le processeur garde sa propre copie des adresses de retour \
                      et compare : écraser celle de la pile ne suffit plus.",
@@ -275,57 +279,53 @@ impl ReModule for ProtectionsModule {
                      compares: overwriting the one on the stack is no longer \
                      enough.",
                 ),
-            );
+            ));
         }
 
         if !scan.fortified.is_empty() {
-            verdict(
-                ui,
-                true,
+            blocs.push(dit(
                 "FORTIFY",
                 &format!(
                     "{} {}",
                     scan.fortified.len(),
                     ctx.t("fonctions", "functions")
                 ),
+                Ton::Bon,
                 ctx.t(
                     "Certaines fonctions de copie ont été remplacées par des \
                      versions qui connaissent la taille de la destination.",
                     "Some copy functions were replaced by versions that know the \
                      size of their destination.",
                 ),
-            );
+            ));
         }
 
         let rwx = scan.writable_executable();
         if !rwx.is_empty() {
-            verdict(
-                ui,
-                false,
+            blocs.push(dit(
                 ctx.t("Segment W+X", "W+X segment"),
                 &rwx.iter()
                     .map(|s| format!("{:#x}", s.vaddr))
                     .collect::<Vec<_>>()
                     .join(", "),
+                Ton::Mauvais,
                 ctx.t(
                     "Une zone est à la fois inscriptible et exécutable : on peut \
                      y écrire du code et sauter dedans, sans rien contourner.",
                     "A region is both writable and executable: one can write code \
                      there and jump into it, with nothing to bypass.",
                 ),
-            );
+            ));
         }
 
-        let symbols = if scan.stripped {
-            ctx.t("dépouillé", "stripped").to_owned()
-        } else {
-            scan.symbol_count.to_string()
-        };
-        verdict(
-            ui,
-            !scan.stripped,
+        blocs.push(dit(
             ctx.t("Symboles", "Symbols"),
-            &symbols,
+            &if scan.stripped {
+                ctx.t("dépouillé", "stripped").to_owned()
+            } else {
+                scan.symbol_count.to_string()
+            },
+            oui_non(!scan.stripped),
             if scan.stripped {
                 ctx.t(
                     "Les noms ont été retirés : les fonctions n'ont plus que \
@@ -340,131 +340,184 @@ impl ReModule for ProtectionsModule {
                      address.",
                 )
             },
-        );
+        ));
 
         // Ce que le chargeur ira chercher ailleurs : autant de code qui
         // s'exécutera dans le processus sans être dans le fichier.
         if !scan.needed.is_empty() {
-            ui.add_space(6.0);
-            ui.strong(ctx.t("Bibliothèques réclamées", "Required libraries"));
-            for lib in &scan.needed {
-                ui.monospace(lib);
-            }
+            blocs.push(Bloc::Section {
+                titre: ctx
+                    .t("Bibliothèques réclamées", "Required libraries")
+                    .into(),
+                blocs: scan
+                    .needed
+                    .iter()
+                    .map(|lib| Bloc::Texte(Fragment::dit(lib).code().into()))
+                    .collect(),
+            });
         }
-        for (label, value) in [
+
+        // UN CHEMIN DE RECHERCHE EST UN VERDICT, et il l'était déjà
+        // sans le dire : le module écrivait la valeur puis, dessous, en
+        // gris, pourquoi elle inquiète. C'est exactement la forme d'un
+        // verdict — un nom, un état, une raison —, et le dire ainsi lui
+        // donne la marque et la teinte des autres.
+        for (nom, valeur) in [
             (ctx.t("RUNPATH", "RUNPATH"), &scan.runpath),
             (ctx.t("RPATH", "RPATH"), &scan.rpath),
         ] {
-            if let Some(value) = value {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(label);
-                    ui.monospace(value);
+            if let Some(valeur) = valeur {
+                blocs.push(Bloc::Verdict {
+                    nom: nom.into(),
+                    état: Fragment::dit(valeur).code().into(),
+                    verdict: Ton::Attention,
+                    pourquoi: Some(
+                        ctx.t(
+                            "Un chemin de recherche inscrit dans le binaire : qui peut \
+                             écrire dedans peut y placer sa propre bibliothèque.",
+                            "A search path baked into the binary: whoever can write there \
+                             can drop their own library in it.",
+                        )
+                        .to_owned(),
+                    ),
                 });
-                ui.weak(ctx.t(
-                    "Un chemin de recherche inscrit dans le binaire : qui peut \
-                     écrire dedans peut y placer sa propre bibliothèque.",
-                    "A search path baked into the binary: whoever can write there \
-                     can drop their own library in it.",
-                ));
             }
         }
 
         if let Some(build_id) = &scan.build_id {
-            ui.add_space(6.0);
-            ui.horizontal_wrapped(|ui| {
-                ui.label(ctx.t("Empreinte de build", "Build ID"));
-                ui.monospace(build_id);
-            })
-            .response
-            .on_hover_text(ctx.t(
+            let survol = ctx.t(
                 "Deux fichiers qui la partagent sont le même programme, \
                  compilé une seule fois.",
                 "Two files sharing it are the same program, built once.",
+            );
+            blocs.push(Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("Empreinte de build", "Build ID")).survol(survol),
+                    Fragment::dit(build_id).code().survol(survol),
+                ]
+                .into(),
             ));
         }
 
         // Les fonctions nommées : par où commencer la lecture.
         if !scan.functions.is_empty() {
-            ui.add_space(6.0);
-            egui::CollapsingHeader::new(format!(
-                "{} ({})",
-                ctx.t("Fonctions", "Functions"),
-                scan.functions.len()
-            ))
-            .id_salt("protections_functions")
-            .show(ui, |ui| {
-                egui::Grid::new("protections_functions_grid")
-                    .num_columns(3)
-                    .striped(true)
-                    .min_col_width(0.0)
-                    .show(ui, |ui| {
-                        for function in &scan.functions {
-                            ui.monospace(format!("{:#x}", function.addr));
-                            ui.monospace(&function.name);
-                            ui.weak(if function.size > 0 {
-                                format!("{} {}", function.size, ctx.t("o", "B"))
-                            } else {
-                                String::new()
-                            });
-                            ui.end_row();
-                        }
-                    });
+            blocs.push(Bloc::Repliable {
+                titre: format!(
+                    "{} ({})",
+                    ctx.t("Fonctions", "Functions"),
+                    scan.functions.len()
+                )
+                .into(),
+                ouvert: false,
+                blocs: vec![Bloc::Tableau {
+                    colonnes: Vec::new(),
+                    rangées: scan
+                        .functions
+                        .iter()
+                        .map(|function| {
+                            vec![
+                                Fragment::dit(format!("{:#x}", function.addr)).code().into(),
+                                Fragment::dit(&function.name).code().into(),
+                                Fragment::dit(if function.size > 0 {
+                                    format!("{} {}", function.size, ctx.t("o", "B"))
+                                } else {
+                                    String::new()
+                                })
+                                .faible()
+                                .into(),
+                            ]
+                        })
+                        .collect(),
+                    rayé: true,
+                }],
             });
         }
 
-        // Les sections : le découpage fin, celui que l'éditeur de liens a
-        // choisi — plus précis que les segments, qui les regroupent par
-        // droits.
+        // Les sections : le découpage fin, celui que l'éditeur de liens
+        // a choisi — plus précis que les segments, qui les regroupent
+        // par droits.
         if !scan.sections.is_empty() {
-            ui.add_space(6.0);
-            egui::CollapsingHeader::new(format!(
-                "{} ({})",
-                ctx.t("Sections", "Sections"),
-                scan.sections.len()
-            ))
-            .id_salt("protections_sections")
-            .show(ui, |ui| {
-                egui::Grid::new("protections_sections_grid")
-                    .num_columns(4)
-                    .striped(true)
-                    .min_col_width(0.0)
-                    .show(ui, |ui| {
-                        for section in &scan.sections {
-                            ui.monospace(&section.name);
-                            ui.monospace(format!(
-                                "{}{}",
-                                if section.write { 'w' } else { '-' },
-                                if section.execute { 'x' } else { '-' }
-                            ));
-                            ui.monospace(if section.addr > 0 {
-                                format!("{:#x}", section.addr)
-                            } else {
-                                String::new()
-                            });
-                            ui.monospace(format!("{} {}", section.size, ctx.t("o", "B")));
-                            ui.end_row();
-                        }
-                    });
+            blocs.push(Bloc::Repliable {
+                titre: format!(
+                    "{} ({})",
+                    ctx.t("Sections", "Sections"),
+                    scan.sections.len()
+                )
+                .into(),
+                ouvert: false,
+                blocs: vec![Bloc::Tableau {
+                    colonnes: Vec::new(),
+                    rangées: scan
+                        .sections
+                        .iter()
+                        .map(|section| {
+                            vec![
+                                Fragment::dit(&section.name).code().into(),
+                                Fragment::dit(format!(
+                                    "{}{}",
+                                    if section.write { 'w' } else { '-' },
+                                    if section.execute { 'x' } else { '-' }
+                                ))
+                                .code()
+                                .into(),
+                                Fragment::dit(if section.addr > 0 {
+                                    format!("{:#x}", section.addr)
+                                } else {
+                                    String::new()
+                                })
+                                .code()
+                                .into(),
+                                Fragment::dit(format!("{} {}", section.size, ctx.t("o", "B")))
+                                    .code()
+                                    .into(),
+                            ]
+                        })
+                        .collect(),
+                    rayé: true,
+                }],
             });
         }
 
-        // Et la carte de ce qui sera projeté, droits compris : c'est elle
-        // qui explique pourquoi telle adresse est lisible et telle autre
-        // pas.
-        ui.add_space(6.0);
-        ui.strong(ctx.t("Segments", "Segments"));
-        egui::Grid::new("protections_segments")
-            .num_columns(4)
-            .striped(true)
-            .min_col_width(0.0)
-            .show(ui, |ui| {
-                for segment in &scan.segments {
-                    ui.monospace(segment.kind);
-                    ui.monospace(segment.rights());
-                    ui.monospace(format!("{:#x}", segment.vaddr));
-                    ui.monospace(format!("{} {}", segment.memsz, ctx.t("o", "B")));
-                    ui.end_row();
-                }
-            });
+        // Et la carte de ce qui sera projeté, droits compris : c'est
+        // elle qui explique pourquoi telle adresse est lisible et telle
+        // autre pas.
+        blocs.push(Bloc::Section {
+            titre: ctx.t("Segments", "Segments").into(),
+            blocs: vec![Bloc::Tableau {
+                colonnes: Vec::new(),
+                rangées: scan
+                    .segments
+                    .iter()
+                    .map(|segment| {
+                        // Un segment inscriptible ET exécutable est ce
+                        // qu'on cherche du regard ; il a sa ligne de
+                        // verdict plus haut, et ici sa teinte.
+                        let droits = segment.rights();
+                        let inquiétant = droits.contains('w') && droits.contains('x');
+                        vec![
+                            Fragment::dit(segment.kind).code().into(),
+                            if inquiétant {
+                                Fragment::dit(droits).code().ton(Ton::Mauvais)
+                            } else {
+                                Fragment::dit(droits).code()
+                            }
+                            .into(),
+                            Fragment::dit(format!("{:#x}", segment.vaddr)).code().into(),
+                            Fragment::dit(format!("{} {}", segment.memsz, ctx.t("o", "B")))
+                                .code()
+                                .into(),
+                        ]
+                    })
+                    .collect(),
+                rayé: true,
+            }],
+        });
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
+        }
     }
 }

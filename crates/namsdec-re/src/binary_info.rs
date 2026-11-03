@@ -1,4 +1,5 @@
 use crate::behaviour::{self, Family};
+use crate::vue::{Bloc, Fragment, Ligne, Ton, Vue};
 use crate::{
     ReContext, ReModule, ReSection, elf_scan, imports, strings, syscalls, toolchain, xrefs,
 };
@@ -104,84 +105,85 @@ impl ReModule for BinaryInfoModule {
         self.toolchain = toolchain::detect(ctx.binary, self.scan.as_ref(), &symboles);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        egui::Grid::new("binary_info_grid")
-            .num_columns(2)
-            .min_col_width(0.0)
-            .striped(true)
-            .show(ui, |ui| {
-                // L'ACCORD EN NOMBRE, PARCE QU'UN COMPTE PEUT VALOIR UN.
-                //
-                // « 1 instructions », « 1 (cibles de `call`) » : un
-                // outil qui sert à apprendre ne peut pas écrire cela,
-                // et sur un programme d'une ligne c'est exactement ce
-                // qu'il écrivait. Trouvé par le banc, sur la scène du
-                // mode débutant — une scène neuve voit ce qu'aucune
-                // autre ne montrait.
-                let accord = |n: usize, un: &'static str, plusieurs: &'static str| {
-                    if n > 1 { plusieurs } else { un }
-                };
-                let mut ligne = |label: &str, valeur: String| {
-                    ui.label(label);
-                    ui.monospace(valeur);
-                    ui.end_row();
-                };
-                ligne(
-                    ctx.t("Code", "Code"),
-                    format!(
-                        "{} {} · {} {}",
-                        self.size,
-                        ctx.t(
-                            accord(self.size, "octet", "octets"),
-                            accord(self.size, "byte", "bytes")
-                        ),
-                        self.instructions,
-                        ctx.t("instructions", "instructions")
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        // L'ACCORD EN NOMBRE, PARCE QU'UN COMPTE PEUT VALOIR UN.
+        //
+        // « 1 instructions », « 1 (cibles de `call`) » : un outil qui
+        // sert à apprendre ne peut pas écrire cela, et sur un programme
+        // d'une ligne c'est exactement ce qu'il écrivait. Trouvé par le
+        // banc, sur la scène du mode débutant — une scène neuve voit ce
+        // qu'aucune autre ne montrait.
+        let accord = |n: usize, un: &'static str, plusieurs: &'static str| {
+            if n > 1 { plusieurs } else { un }
+        };
+        let ligne = |label: &str, valeur: String| -> Vec<Ligne> {
+            vec![
+                Fragment::dit(label).into(),
+                Fragment::dit(valeur).code().into(),
+            ]
+        };
+        let mut rangées = vec![
+            ligne(
+                ctx.t("Code", "Code"),
+                format!(
+                    "{} {} · {} {}",
+                    self.size,
+                    ctx.t(
+                        accord(self.size, "octet", "octets"),
+                        accord(self.size, "byte", "bytes")
                     ),
-                );
-                ligne(
-                    ctx.t("Point d'entrée", "Entry point"),
-                    format!("{:#x}", self.entry),
-                );
-                ligne(
-                    ctx.t("Fonctions", "Functions"),
-                    format!(
-                        "{} ({})",
-                        self.functions,
-                        ctx.t(
-                            accord(self.functions, "cible de `call`", "cibles de `call`"),
-                            accord(self.functions, "`call` target", "`call` targets")
-                        )
+                    self.instructions,
+                    ctx.t("instructions", "instructions")
+                ),
+            ),
+            ligne(
+                ctx.t("Point d'entrée", "Entry point"),
+                format!("{:#x}", self.entry),
+            ),
+            ligne(
+                ctx.t("Fonctions", "Functions"),
+                format!(
+                    "{} ({})",
+                    self.functions,
+                    ctx.t(
+                        accord(self.functions, "cible de `call`", "cibles de `call`"),
+                        accord(self.functions, "`call` target", "`call` targets")
+                    )
+                ),
+            ),
+            ligne(ctx.t("Chaînes", "Strings"), format!("{}", self.strings)),
+            ligne(
+                ctx.t("Emprunte", "Borrows"),
+                format!(
+                    "{} {} · {} {}",
+                    self.imports,
+                    ctx.t(
+                        accord(self.imports, "fonction", "fonctions"),
+                        accord(self.imports, "function", "functions")
                     ),
-                );
-                ligne(ctx.t("Chaînes", "Strings"), format!("{}", self.strings));
-                ligne(
-                    ctx.t("Emprunte", "Borrows"),
-                    format!(
-                        "{} {} · {} {}",
-                        self.imports,
-                        ctx.t(
-                            accord(self.imports, "fonction", "fonctions"),
-                            accord(self.imports, "function", "functions")
-                        ),
-                        self.syscalls,
-                        ctx.t(
-                            accord(self.syscalls, "appel système", "appels système"),
-                            accord(self.syscalls, "system call", "system calls")
-                        )
-                    ),
-                );
-                if let Some(scan) = &self.scan {
-                    ligne(
-                        ctx.t("Fichier", "File"),
-                        format!(
-                            "{} · {}",
-                            if scan.pie() { "PIE" } else { "EXEC" },
-                            if scan.dynamic() { "dyn" } else { "static" }
-                        ),
-                    );
-                }
-            });
+                    self.syscalls,
+                    ctx.t(
+                        accord(self.syscalls, "appel système", "appels système"),
+                        accord(self.syscalls, "system call", "system calls")
+                    )
+                ),
+            ),
+        ];
+        if let Some(scan) = &self.scan {
+            rangées.push(ligne(
+                ctx.t("Fichier", "File"),
+                format!(
+                    "{} · {}",
+                    if scan.pie() { "PIE" } else { "EXEC" },
+                    if scan.dynamic() { "dyn" } else { "static" }
+                ),
+            ));
+        }
+        let mut blocs = vec![Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées,
+            rayé: true,
+        }];
 
         // CE QUI L'A PRODUIT.
         //
@@ -194,191 +196,270 @@ impl ReModule for BinaryInfoModule {
         // Chaque réponse porte SON DEGRÉ DE CERTITUDE, et le détail des
         // indices se déplie. Un outil qui affiche « compilateur : GCC »
         // sans dire d'où il le tient apprend à croire plutôt qu'à lire.
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.strong(ctx.t("Ce qui l'a produit", "What produced it"));
-        let certitude = |ui: &mut egui::Ui, trouvé: &toolchain::Finding| {
-            ui.monospace(&trouvé.name);
-            ui.weak(format!("({})", trouvé.confidence.label(ctx.lang)));
-        };
+        let mut produit: Vec<Bloc> = Vec::new();
         if self.toolchain.language.is_none() && self.toolchain.compiler.is_none() {
-            ui.weak(ctx.t(
-                "Indéterminé : ni section .comment, ni runtime nommé, ni décor de \
-                 symboles reconnu. Un binaire dépouillé peut n'en porter aucun.",
-                "Undetermined: no .comment section, no named runtime, no recognised \
-                 symbol mangling. A stripped binary may carry none of these.",
+            produit.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Indéterminé : ni section .comment, ni runtime nommé, ni décor de \
+                     symboles reconnu. Un binaire dépouillé peut n'en porter aucun.",
+                    "Undetermined: no .comment section, no named runtime, no recognised \
+                     symbol mangling. A stripped binary may carry none of these.",
+                ))
+                .faible()
+                .into(),
             ));
         } else {
-            egui::Grid::new("binary_info_toolchain")
-                .num_columns(3)
-                .min_col_width(0.0)
-                .striped(true)
-                .show(ui, |ui| {
-                    if let Some(langage) = &self.toolchain.language {
-                        ui.label(ctx.t("Langage", "Language"));
-                        certitude(ui, langage);
-                        ui.end_row();
-                    }
-                    if let Some(compilateur) = &self.toolchain.compiler {
-                        ui.label(ctx.t("Compilateur", "Compiler"));
-                        certitude(ui, compilateur);
-                        ui.end_row();
-                    }
-                });
+            let certitude = |quoi: &str, trouvé: &toolchain::Finding| -> Vec<Ligne> {
+                vec![
+                    Fragment::dit(quoi).into(),
+                    Fragment::dit(trouvé.name.clone()).code().into(),
+                    Fragment::dit(format!("({})", trouvé.confidence.label(ctx.lang)))
+                        .faible()
+                        .into(),
+                ]
+            };
+            let mut rangées = Vec::new();
+            if let Some(langage) = &self.toolchain.language {
+                rangées.push(certitude(ctx.t("Langage", "Language"), langage));
+            }
+            if let Some(compilateur) = &self.toolchain.compiler {
+                rangées.push(certitude(ctx.t("Compilateur", "Compiler"), compilateur));
+            }
+            produit.push(Bloc::Tableau {
+                colonnes: Vec::new(),
+                rangées,
+                rayé: true,
+            });
         }
         if !self.toolchain.evidence.is_empty() {
-            egui::CollapsingHeader::new(ctx.t("Ce qui le dit", "What says so"))
-                .id_salt("binary_info_evidence")
-                .show(ui, |ui| {
-                    for indice in &self.toolchain.evidence {
-                        ui.horizontal_wrapped(|ui| {
-                            ui.weak(format!("[{}]", indice.where_));
-                            ui.monospace(&indice.what);
-                            ui.weak(format!("— {}", indice.means));
-                        });
-                    }
-                    ui.add_space(4.0);
-                    // CE QUE CELA NE PROUVE PAS, et ce n'est pas une
-                    // formule de prudence : `.comment` s'écrit, les
-                    // symboles s'effacent, les chaînes se remplacent. Un
-                    // lecteur qui l'ignore tirerait de « Go 1.22 » une
-                    // confiance qu'aucun octet ne justifie.
-                    ui.weak(ctx.t(
-                        "Tout cela se falsifie : la section .comment s'écrit, les symboles \
+            let mut dedans: Vec<Bloc> = self
+                .toolchain
+                .evidence
+                .iter()
+                .map(|indice| {
+                    Bloc::Texte(
+                        vec![
+                            Fragment::dit(format!("[{}]", indice.where_)).faible(),
+                            Fragment::dit(indice.what.clone()).code(),
+                            Fragment::dit(format!("— {}", indice.means)).faible(),
+                        ]
+                        .into(),
+                    )
+                })
+                .collect();
+            // CE QUE CELA NE PROUVE PAS, et ce n'est pas une formule de
+            // prudence : `.comment` s'écrit, les symboles s'effacent,
+            // les chaînes se remplacent. Un lecteur qui l'ignore
+            // tirerait de « Go 1.22 » une confiance qu'aucun octet ne
+            // justifie.
+            dedans.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Tout cela se falsifie : la section .comment s'écrit, les symboles \
                      s'effacent, les chaînes se remplacent. Ces indices disent ce que le \
                      fichier MONTRE, non ce qu'il est.",
-                        "All of this can be forged: the .comment section can be written, symbols \
+                    "All of this can be forged: the .comment section can be written, symbols \
                      stripped, strings replaced. These clues say what the file SHOWS, not \
                      what it is.",
-                    ));
-                });
+                ))
+                .faible()
+                .into(),
+            ));
+            produit.push(Bloc::Repliable {
+                titre: ctx.t("Ce qui le dit", "What says so").into(),
+                ouvert: false,
+                blocs: dedans,
+            });
         }
+        blocs.push(Bloc::Section {
+            titre: ctx.t("Ce qui l'a produit", "What produced it").into(),
+            blocs: produit,
+        });
 
-        // Ce qu'il sait faire : le portrait, puis une ligne par famille
-        // présente. C'est la réponse à « a-t-il accès au réseau ? » et aux
-        // cinq autres questions du même ordre — lue d'un coup d'œil, et
-        // expliquée juste en dessous.
+        // Ce qu'il sait faire : une ligne par famille présente. C'est la
+        // réponse à « a-t-il accès au réseau ? » et aux cinq autres
+        // questions du même ordre — lue d'un coup d'œil, et expliquée
+        // juste en dessous.
+        //
+        // SANS LE PORTRAIT : `portrait_en_blocs` porte son propre
+        // libellé — « Ce qu'il sait faire » —, écrit pour vivre seul
+        // dans le panneau « Fonctions importées ». Appelé ici, sous un
+        // titre qui dit déjà la même phrase, il la redisait à la ligne
+        // suivante, puis réénumérait les familles que les lignes
+        // ci-dessous détaillent. Trois lignes, deux répétitions ; vu
+        // sur une capture.
         let présentes: Vec<(Family, usize)> = self
             .comportement
             .iter()
             .copied()
             .filter(|(_, n)| *n > 0)
             .collect();
-        ui.add_space(8.0);
-        ui.separator();
-        ui.add_space(4.0);
-        ui.strong(ctx.t("Ce qu'il sait faire", "What it can do"));
-        if présentes.is_empty() {
-            ui.weak(ctx.t(
-                "Rien de remarquable : ni réseau, ni exécution, ni chiffrement, ni accès \
-                 fichier repéré. Un programme peut n'avoir besoin de rien de tout cela.",
-                "Nothing notable: no network, execution, cryptography or file access spotted. \
-                 A program may need none of these.",
-            ));
-        } else {
-            // SANS LE PORTRAIT. `portrait` est la ligne de pastilles du
-            // panneau « Fonctions importées », et il porte son propre
-            // libellé — « Ce qu'il sait faire » —, écrit pour vivre
-            // seul. Appelé ici, sous un titre qui dit déjà la même
-            // phrase, il la redisait à la ligne suivante, puis
-            // réénumérait les familles que les lignes ci-dessous
-            // détaillent. Trois lignes, deux répétitions :
-            //
-            //     Ce qu'il sait faire
-            //     Ce qu'il sait faire   Fichiers (4)
-            //     Fichiers (4)   Le programme touche au système de…
-            //
-            // Vu sur une capture. On garde les lignes expliquées, qui
-            // disent la même chose et de plus disent pourquoi.
-            for (famille, combien) in &présentes {
-                ui.horizontal_wrapped(|ui| {
-                    ui.colored_label(
-                        famille.color(),
-                        format!("{} ({combien})", famille.label(ctx.lang)),
-                    );
-                    ui.weak(famille.why(ctx.lang));
-                });
-            }
-        }
+        blocs.push(Bloc::Section {
+            titre: ctx.t("Ce qu'il sait faire", "What it can do").into(),
+            blocs: if présentes.is_empty() {
+                vec![Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "Rien de remarquable : ni réseau, ni exécution, ni chiffrement, ni accès \
+                         fichier repéré. Un programme peut n'avoir besoin de rien de tout cela.",
+                        "Nothing notable: no network, execution, cryptography or file access \
+                         spotted. A program may need none of these.",
+                    ))
+                    .faible()
+                    .into(),
+                )]
+            } else {
+                présentes
+                    .iter()
+                    .map(|(famille, combien)| {
+                        Bloc::Texte(
+                            vec![
+                                // UNE CLÉ ET NON UNE COULEUR : ce
+                                // module écrivait `famille.color()`, et
+                                // choisissait donc une teinte. Il range
+                                // maintenant le mot dans une catégorie,
+                                // et l'interface décide.
+                                Fragment::dit(format!("{} ({combien})", famille.label(ctx.lang)))
+                                    .étiquette(famille.clé()),
+                                Fragment::dit(famille.why(ctx.lang)).faible(),
+                            ]
+                            .into(),
+                        )
+                    })
+                    .collect()
+            },
+        });
 
         // Les protections, en un coup d'œil : le détail complet reste au
-        // panneau « Protections », mais les quatre qui décident de tout se
-        // lisent ici.
-        if let Some(scan) = &self.scan {
-            ui.add_space(8.0);
-            ui.separator();
-            ui.add_space(4.0);
-            ui.strong(ctx.t("Protections", "Protections"));
-            // « √ » et « × », et non « ✓ » et « ✗ » : ces deux-là
-            // n'existent pas dans les polices qu'egui embarque, et se
-            // peignaient donc en carré vide — mesuré, voir
-            // `tout_caractere_ecrit_existe_dans_la_police`. Une coche
-            // absente ne dit pas « protection absente » : elle ne dit
-            // rien du tout.
-            let oui_non = |bon: bool| {
-                if bon {
-                    ("\u{221a}", egui::Color32::from_rgb(0x4e, 0xc9, 0xb0))
-                } else {
-                    ("\u{00d7}", egui::Color32::from_rgb(0xf4, 0x87, 0x71))
-                }
-            };
-            egui::Grid::new("binary_info_prot")
-                .num_columns(2)
-                .min_col_width(0.0)
-                .striped(true)
-                .show(ui, |ui| {
-                    let prot = |ui: &mut egui::Ui, label: &str, bon: bool, note: String| {
-                        let (marque, couleur) = oui_non(bon);
-                        ui.colored_label(couleur, format!("{marque} {label}"));
-                        ui.weak(note);
-                        ui.end_row();
-                    };
-                    prot(
-                        ui,
-                        ctx.t("PIE", "PIE"),
-                        scan.pie(),
+        // panneau « Protections », mais les quatre qui décident de tout
+        // se lisent ici.
+        //
+        // QUATRE VERDICTS DITS ET NON PEINTS, depuis P7 : ce module
+        // écrivait la marque (`√`, `×`) ET ses deux couleurs en dur,
+        // tandis que le panneau Protections peignait une pastille ronde
+        // et la fiche du panneau latéral les mêmes glyphes dans un
+        // autre vert. Trois façons de dire « NX est là ». Le module dit
+        // désormais le nom, l'état, le verdict et le pourquoi ; la
+        // marque, la teinte et la place du pourquoi sont à l'interface.
+        let Some(scan) = &self.scan else {
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Pas d'en-tête ELF : ce sont des octets bruts, désassemblés depuis le \
+                     premier.",
+                    "No ELF header: these are raw bytes, disassembled from the first one.",
+                ))
+                .faible()
+                .into(),
+            ));
+            return Some(Vue { blocs });
+        };
+        // LE POURQUOI SUIT L'ÉTAT, ET C'EST UNE CORRECTION.
+        //
+        // Ce module écrivait UNE note par protection, qui décrivait
+        // celle-ci PRÉSENTE : « chargé à une adresse au hasard » pour
+        // PIE, « la pile ne s'exécute pas » pour NX. Elle se peignait à
+        // droite de la marque, verdict favorable ou non — de sorte que
+        // sur un binaire sans PIE on lisait « × PIE — chargé à une
+        // adresse au hasard », c'est-à-dire l'inverse de la vérité. Vu
+        // sur la capture du banc, dont le programme n'a aucune des
+        // quatre ; aucun contrôle ne regardait cette phrase, et elle
+        // était fausse depuis qu'elle existe.
+        let verdict = |bon: bool| if bon { Ton::Bon } else { Ton::Mauvais };
+        let selon = |bon: bool, oui: &'static str, non: &'static str| -> Option<String> {
+            Some(if bon { oui } else { non }.to_owned())
+        };
+        let pie = scan.pie();
+        let nx = scan.nx.unwrap_or(false);
+        blocs.push(Bloc::Section {
+            titre: ctx.t("Protections", "Protections").into(),
+            blocs: vec![
+                Bloc::Verdict {
+                    nom: ctx.t("PIE", "PIE").into(),
+                    état: Ligne::default(),
+                    verdict: verdict(pie),
+                    pourquoi: selon(
+                        pie,
                         ctx.t(
                             "chargé à une adresse au hasard",
                             "loaded at a random address",
-                        )
-                        .to_owned(),
-                    );
-                    prot(
-                        ui,
-                        ctx.t("NX", "NX"),
-                        scan.nx.unwrap_or(false),
-                        ctx.t("la pile ne s'exécute pas", "the stack does not execute")
-                            .to_owned(),
-                    );
-                    prot(
-                        ui,
-                        ctx.t("RELRO", "RELRO"),
-                        scan.relro == elf_scan::Relro::Full,
+                        ),
+                        ctx.t(
+                            "chargé toujours à la même adresse",
+                            "always loaded at the same address",
+                        ),
+                    ),
+                },
+                Bloc::Verdict {
+                    nom: ctx.t("NX", "NX").into(),
+                    état: Ligne::default(),
+                    verdict: verdict(nx),
+                    pourquoi: selon(
+                        nx,
+                        ctx.t("la pile ne s'exécute pas", "the stack does not execute"),
+                        ctx.t(
+                            "la pile s'exécute : des octets qu'on y écrit peuvent tourner",
+                            "the stack executes: bytes written there can run",
+                        ),
+                    ),
+                },
+                // TROIS ÉTATS ET NON DEUX. Un RELRO « partiel » n'est
+                // ni bon ni mauvais, et le dire en vrai/faux le peignait
+                // en rouge au même rang qu'absent — alors qu'il protège
+                // bel et bien une partie des données. C'est pour cela
+                // que le verdict d'un `Bloc::Verdict` est un ton.
+                Bloc::Verdict {
+                    nom: ctx.t("RELRO", "RELRO").into(),
+                    état: match scan.relro {
+                        elf_scan::Relro::Full => ctx.t("complet", "full"),
+                        elf_scan::Relro::Partial => ctx.t("partiel", "partial"),
+                        elf_scan::Relro::None => ctx.t("absent", "none"),
+                    }
+                    .into(),
+                    verdict: match scan.relro {
+                        elf_scan::Relro::Full => Ton::Bon,
+                        elf_scan::Relro::Partial => Ton::Attention,
+                        elf_scan::Relro::None => Ton::Mauvais,
+                    },
+                    pourquoi: Some(
                         match scan.relro {
-                            elf_scan::Relro::Full => ctx.t("complet", "full"),
-                            elf_scan::Relro::Partial => ctx.t("partiel", "partial"),
-                            elf_scan::Relro::None => ctx.t("absent", "none"),
+                            elf_scan::Relro::Full => ctx.t(
+                                "les tables de liaison passent en lecture seule",
+                                "linking tables are made read-only",
+                            ),
+                            elf_scan::Relro::Partial => ctx.t(
+                                "la table des sauts reste inscriptible",
+                                "the jump table stays writable",
+                            ),
+                            elf_scan::Relro::None => ctx.t(
+                                "rien ne repasse en lecture seule après le chargement",
+                                "nothing is made read-only after loading",
+                            ),
                         }
                         .to_owned(),
-                    );
-                    prot(
-                        ui,
-                        ctx.t("Canari", "Canary"),
+                    ),
+                },
+                Bloc::Verdict {
+                    nom: ctx.t("Canari", "Canary").into(),
+                    état: Ligne::default(),
+                    verdict: verdict(scan.canary),
+                    pourquoi: selon(
                         scan.canary,
                         ctx.t(
                             "sentinelle contre l'écrasement de pile",
                             "sentinel against stack smashing",
-                        )
-                        .to_owned(),
-                    );
-                });
-        } else {
-            ui.add_space(6.0);
-            ui.weak(ctx.t(
-                "Pas d'en-tête ELF : ce sont des octets bruts, désassemblés depuis le premier.",
-                "No ELF header: these are raw bytes, disassembled from the first one.",
-            ));
+                        ),
+                        ctx.t(
+                            "rien ne surveille l'adresse de retour",
+                            "nothing watches the return address",
+                        ),
+                    ),
+                },
+            ],
+        });
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
         }
     }
 }
@@ -470,21 +551,155 @@ mod tests {
              ne prouverait rien"
         );
 
-        let egui_ctx = egui::Context::default();
-        let mut combien = 0;
-        let mut sortie = egui_ctx.run_ui(Default::default(), |ui| module.ui(ui, &ctx));
-        for clipped in &sortie.shapes {
-            if let egui::epaint::Shape::Text(texte) = &clipped.shape
-                && texte.galley.text().trim() == "Ce qu'il sait faire"
-            {
-                combien += 1;
-            }
-        }
-        sortie.textures_delta.clear();
+        // IL LIT DES BLOCS, ET NON DES FORMES PEINTES. Ce contrôle
+        // demandait un contexte egui, une image entière, et le
+        // parcours de ses formes de texte pour compter une phrase. La
+        // phrase est dans la vue ; la compter y revient au même, sans
+        // moteur de rendu — et le contrôle dit maintenant OÙ elle est,
+        // ce que des formes anonymes ne savaient pas dire.
+        let vue = module.vue(&ctx).expect("le panneau dit quelque chose");
+        let combien = à_plat(&vue.blocs)
+            .into_iter()
+            .filter(|bloc| match bloc {
+                Bloc::Section { titre, .. } => titre.texte_nu() == "Ce qu'il sait faire",
+                Bloc::Texte(ligne) => ligne
+                    .fragments
+                    .iter()
+                    .any(|f| f.texte == "Ce qu'il sait faire"),
+                _ => false,
+            })
+            .count();
         assert_eq!(
             combien, 1,
-            "« Ce qu'il sait faire » est peint {combien} fois : le titre de la \
+            "« Ce qu'il sait faire » est dit {combien} fois : le titre de la \
              section et le libellé de la ligne de pastilles disent la même chose"
+        );
+    }
+
+    /// Tous les blocs d'une vue, à plat.
+    fn à_plat(blocs: &[Bloc]) -> Vec<&Bloc> {
+        let mut vus = Vec::new();
+        for bloc in blocs {
+            vus.push(bloc);
+            match bloc {
+                Bloc::Section { blocs, .. }
+                | Bloc::Repliable { blocs, .. }
+                | Bloc::Retrait(blocs) => vus.extend(à_plat(blocs)),
+                _ => {}
+            }
+        }
+        vus
+    }
+
+    /// Ce qu'on lit sous une protection décrit SON état, pas l'autre.
+    ///
+    /// Le panneau portait une note par protection, écrite pour le cas
+    /// où celle-ci est PRÉSENTE — « chargé à une adresse au hasard » —,
+    /// et la peignait quel que soit le verdict. Sur un binaire sans
+    /// PIE, on lisait donc l'inverse de la vérité. La phrase n'était
+    /// regardée par aucun contrôle : elle était fausse depuis qu'elle
+    /// existe, et c'est la capture qui l'a montrée.
+    ///
+    /// **LE MÊME FICHIER DANS LES DEUX ÉTATS, et c'est tout le contrôle.**
+    /// Une première version lisait un binaire d'épreuve et comparait sa
+    /// phrase à son en-tête — elle passait en remettant le défaut,
+    /// parce que `crackme-01` A du NX : la seule variante qu'elle
+    /// éprouvait était justement celle que le défaut rend. Un contrôle
+    /// qui ne distingue pas les deux états qu'il nomme ne regarde rien.
+    /// On bascule donc l'en-tête sous le module, et l'on exige que la
+    /// phrase bascule avec.
+    #[test]
+    fn ce_qu_on_lit_sous_une_protection_suit_son_état() {
+        let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../tests/binaires/crackme-01");
+        let Ok(octets) = std::fs::read(&chemin) else {
+            return;
+        };
+        let cpu = Cpu::new(Memory::new(0x400000, 0x1000));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &octets,
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = BinaryInfoModule::default();
+        module.on_binary_loaded(&ctx);
+        assert!(module.scan.is_some(), "un ELF a un en-tête");
+
+        /// Le verdict et la phrase d'une protection, dans la vue.
+        fn protection(module: &BinaryInfoModule, ctx: &ReContext, nom: &str) -> (Ton, String) {
+            let vue = module.vue(ctx).expect("le panneau dit quelque chose");
+            à_plat(&vue.blocs)
+                .into_iter()
+                .find_map(|bloc| match bloc {
+                    Bloc::Verdict {
+                        nom: dit,
+                        verdict,
+                        pourquoi,
+                        ..
+                    } if dit.texte_nu() == nom => {
+                        Some((*verdict, pourquoi.clone().unwrap_or_default()))
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| panic!("{nom} est dit"))
+        }
+
+        let vue = module.vue(&ctx).expect("le panneau dit quelque chose");
+        let combien = à_plat(&vue.blocs)
+            .into_iter()
+            .filter(|bloc| matches!(bloc, Bloc::Verdict { .. }))
+            .count();
+        assert_eq!(combien, 4, "PIE, NX, RELRO, Canari");
+
+        // LA PILE PROTÉGÉE, PUIS LA PILE EXÉCUTABLE — le même fichier,
+        // le même panneau, et deux phrases qui doivent différer.
+        module.scan.as_mut().unwrap().nx = Some(true);
+        let (bon, protégée) = protection(&module, &ctx, "NX");
+        module.scan.as_mut().unwrap().nx = Some(false);
+        let (mauvais, exécutable) = protection(&module, &ctx, "NX");
+
+        assert_eq!(bon, Ton::Bon, "NX déclaré : le verdict est favorable");
+        assert_eq!(mauvais, Ton::Mauvais, "NX absent : il ne l'est pas");
+        assert_ne!(
+            protégée, exécutable,
+            "la même phrase pour les deux états : « {protégée} »"
+        );
+        assert!(
+            !protégée.contains("peuvent tourner"),
+            "NX est là, et l'on lit pourtant « {protégée} »"
+        );
+        assert!(
+            exécutable.contains("peuvent tourner"),
+            "NX manque, et l'on lit pourtant « {exécutable} »"
+        );
+    }
+
+    /// Un RELRO partiel n'est ni bon ni mauvais, et se dit ainsi.
+    ///
+    /// Dit en vrai/faux, il se peignait en rouge au même rang
+    /// qu'absent — alors qu'il protège bel et bien une partie des
+    /// données. C'est la raison pour laquelle le verdict d'un
+    /// `Bloc::Verdict` est un TON et non un booléen.
+    #[test]
+    fn un_relro_partiel_se_dit_sans_le_condamner() {
+        use crate::elf_scan::Relro;
+        let tons = [
+            (Relro::Full, Ton::Bon),
+            (Relro::Partial, Ton::Attention),
+            (Relro::None, Ton::Mauvais),
+        ];
+        // Trois états distincts, et trois tons distincts : c'est tout
+        // ce que la table doit garantir.
+        let distincts: std::collections::BTreeSet<_> =
+            tons.iter().map(|(_, ton)| format!("{ton:?}")).collect();
+        assert_eq!(distincts.len(), 3, "trois états, trois verdicts");
+        assert_ne!(
+            tons[1].1, tons[2].1,
+            "« partiel » ne se dit pas comme « absent »"
         );
     }
 

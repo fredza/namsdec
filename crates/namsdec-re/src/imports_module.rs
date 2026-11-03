@@ -52,14 +52,21 @@ impl ImportsModule {
     }
 }
 
-/// Le même portrait, dit plutôt que peint.
+/// Le portrait du binaire : ce qu'il sait faire, d'un coup d'œil.
 ///
-/// Chaque famille porte sa CLÉ et non sa couleur : le module range
-/// « réseau » dans une catégorie, l'interface décide de la teinte.
-/// C'est la règle de P7, et c'est ce qui permettra à
-/// `Family::color()` de quitter `behaviour.rs` — qui n'a rien à faire
-/// d'egui — quand `syscalls.rs`, dernier appelant de la version
-/// peinte, sera porté à son tour.
+/// Dit et non peint. Chaque famille porte sa CLÉ et non sa couleur :
+/// le module range « réseau » dans une catégorie, l'interface décide
+/// de la teinte. C'est la règle de P7, et elle a tenu sa promesse —
+/// `syscalls.rs` était le dernier à peindre `famille.color()`, il est
+/// porté, la version peinte de cette fonction a disparu et
+/// `behaviour.rs` ne connaît plus egui.
+///
+/// **Une seule fonction pour deux panneaux**, et c'est ce qui compte
+/// ici : la liste des appels système et celle des fonctions empruntées
+/// répondent « quoi », le portrait répond « pour quoi faire », et un
+/// `socket` est un `socket` qu'il vienne du noyau ou de la table de
+/// liaison. Tant qu'il y avait deux fonctions, les deux panneaux
+/// pouvaient diverger sans que rien ne le dise.
 pub(crate) fn portrait_en_blocs(ctx: &ReContext, comptes: &[(Family, usize)]) -> Vec<Bloc> {
     if comptes.is_empty() {
         return Vec::new();
@@ -76,30 +83,6 @@ pub(crate) fn portrait_en_blocs(ctx: &ReContext, comptes: &[(Family, usize)]) ->
         );
     }
     vec![Bloc::Texte(fragments.into())]
-}
-
-/// La ligne de familles : ce que le binaire sait faire, d'un coup d'œil.
-///
-/// Dessinée avant la liste, parce que c'est la question qu'on pose
-/// d'abord. Chaque case porte le nombre de fonctions qui l'ont nommée —
-/// une famille tenue par un seul appel ne dit pas la même chose qu'une
-/// famille tenue par quinze.
-///
-/// Celle-ci PEINT ; `portrait_en_blocs` dit la même chose sans savoir
-/// comment on la peint. Les deux existent le temps que `syscalls.rs`,
-/// dernier appelant de celle-ci, passe la frontière à son tour.
-pub(crate) fn portrait(ui: &mut egui::Ui, ctx: &ReContext, comptes: &[(Family, usize)]) {
-    if comptes.is_empty() {
-        return;
-    }
-    ui.horizontal_wrapped(|ui| {
-        ui.label(ctx.t("Ce qu'il sait faire", "What it can do"));
-        for (famille, combien) in comptes {
-            let texte = format!("{} ({combien})", famille.label(ctx.lang));
-            ui.label(egui::RichText::new(texte).color(famille.color()).strong())
-                .on_hover_text(famille.why(ctx.lang));
-        }
-    });
 }
 
 impl ImportsModule {
@@ -703,6 +686,10 @@ mod tests {
                 match bloc {
                     Bloc::Texte(ligne) | Bloc::Attente(ligne) => vus.extend(&ligne.fragments),
                     Bloc::Retrait(dedans_là) => dedans(dedans_là, vus),
+                    Bloc::Verdict { nom, état, .. } => {
+                        vus.extend(&nom.fragments);
+                        vus.extend(&état.fragments);
+                    }
                     Bloc::Section { blocs, .. } | Bloc::Repliable { blocs, .. } => {
                         dedans(blocs, vus)
                     }

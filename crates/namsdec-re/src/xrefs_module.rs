@@ -362,6 +362,12 @@ mod tests {
                         vus.extend(ligne.fragments.iter().map(|f| f.texte.clone()))
                     }
                     Bloc::Retrait(dedans_là) => dedans(dedans_là, vus),
+                    Bloc::Verdict { nom, état, .. } => vus.extend(
+                        nom.fragments
+                            .iter()
+                            .chain(&état.fragments)
+                            .map(|f| f.texte.clone()),
+                    ),
                     Bloc::Section { blocs, .. } | Bloc::Repliable { blocs, .. } => {
                         dedans(blocs, vus)
                     }

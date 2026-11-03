@@ -93,6 +93,7 @@ fn premier_texte(blocs: &[Bloc]) -> String {
                 rangées.first().and_then(|r| r.first()).map(Ligne::texte_nu)
             }
             Bloc::Retrait(dedans) => Some(premier_texte(dedans)),
+            Bloc::Verdict { nom, .. } => Some(nom.texte_nu()),
             Bloc::Champ(champ) => Some(champ.action.clone()),
             Bloc::Code(texte) => Some(texte.clone()),
             Bloc::Dessin(_) => None,
@@ -121,6 +122,19 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             );
         }
         Bloc::Section { titre, blocs } => {
+            ui.add_space(ESPACE_ENTRE_BLOCS);
+            // UN TRAIT AU-DESSUS DU TITRE, et c'est l'interface qui en
+            // décide pour tout le monde. Trois des cinq sections
+            // titrées écrites à la main dans le crate en traçaient un
+            // (« Ce qui l'a produit », « Ce qu'il sait faire »,
+            // « Protections », dans « En bref »), deux non
+            // (« Bibliothèques réclamées », « Segments », dans
+            // Protections) : la même forme se peignait de deux façons
+            // selon le module qui l'écrivait. Mesuré sur la capture :
+            // sans le trait, trois sections d'affilée se lisent comme
+            // une seule liste à intertitres, et l'on cherche où
+            // commence la suivante.
+            ui.separator();
             ui.add_space(ESPACE_ENTRE_BLOCS);
             // Le titre d'une section est fort, quoi que le module en
             // dise : c'est la place qui le rend fort, pas le ton.
@@ -173,6 +187,12 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
                 });
             }
         }
+        Bloc::Verdict {
+            nom,
+            état,
+            verdict,
+            pourquoi,
+        } => peindre_verdict(ui, ctx, nom, état, *verdict, pourquoi.as_deref(), gestes),
         Bloc::Retrait(blocs) => {
             // L'identifiant vient du contenu : deux retraits voisins
             // doivent pouvoir vivre côte à côte.
@@ -453,6 +473,16 @@ fn peindre_fragment_borné(
         }
         return;
     }
+    if let Some(url) = &fragment.renvoi {
+        // UN RENVOI MÈNE HORS DE NAMSDEC, et c'est pourquoi il se peint
+        // autrement qu'une adresse : celle-ci se clique pour aller voir
+        // le listing, celui-là ouvre un navigateur. L'adresse de la
+        // page se lit au survol faute d'autre indication — un lien dont
+        // on ne sait pas où il mène ne se clique pas de bon cœur.
+        let réponse = ui.hyperlink_to(fragment.texte.clone(), url);
+        réponse.on_hover_text(fragment.survol.clone().unwrap_or_else(|| url.clone()));
+        return;
+    }
     if let Some(adresse) = fragment.mène_à {
         // Par l'aide du projet : elle porte le nom que l'utilisateur a
         // donné à l'adresse, et le menu « aller voir » qui va avec. Un
@@ -528,7 +558,7 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
     if let Some(clé) = &fragment.étiquette
         && let Some(famille) = crate::behaviour::Family::de_clé(clé)
     {
-        return texte.color(famille.color());
+        return texte.color(couleur_de_famille(famille));
     }
     // CE QUI VIENT DE LA MAIN DE L'UTILISATEUR PORTE UN FOND LÉGER, et
     // garde par-dessus le ton que le module a dit : un nom donné à la
@@ -568,8 +598,101 @@ fn riche(ui: &egui::Ui, fragment: &Fragment) -> egui::RichText {
     }
 }
 
+/// Une chose vérifiée, son état, et ce que cela change.
+///
+/// **TROIS DÉCISIONS DE PRÉSENTATION VIVENT ICI**, et chacune était
+/// prise trois fois ailleurs avant P7 :
+///
+/// 1. **la marque.** `√` et `×`, et non `✓` et `✗` : ces deux-là
+///    n'existent pas dans les polices qu'egui embarque et se peignaient
+///    donc en carré vide — mesuré, voir
+///    `tout_caractere_ecrit_existe_dans_la_police`. Une coche absente
+///    ne dit pas « protection absente », elle ne dit rien du tout. Le
+///    glyphe plutôt que la pastille ronde du panneau Protections, parce
+///    qu'il porte l'information SANS la couleur : qui distingue mal le
+///    rouge du vert lit encore la croix.
+/// 2. **sa couleur**, qui vient du ton et donc du thème.
+/// 3. **où se lit le pourquoi** : sous la ligne quand le verdict n'est
+///    pas favorable, en infobulle quand il l'est. C'était la règle
+///    écrite dans `protections`, et c'est la bonne — un point faible se
+///    lit sans avoir à le chercher, et la liste tient malgré tout d'un
+///    coup d'œil. « En bref » montrait au contraire ses quatre notes en
+///    permanence, y compris pour ce qui va bien : quatre lignes de
+///    commentaire dans un panneau qui s'appelle « En bref ».
+fn peindre_verdict(
+    ui: &mut egui::Ui,
+    ctx: &ReContext,
+    nom: &Ligne,
+    état: &Ligne,
+    verdict: Ton,
+    pourquoi: Option<&str>,
+    gestes: &mut Gestes,
+) {
+    let marque = match verdict {
+        Ton::Mauvais => "\u{00d7}",
+        // Rien à marquer pour ce qui n'est ni bon ni mauvais : un
+        // RELRO partiel n'a pas de glyphe qui le dise, et en inventer
+        // un ferait lire un verdict là où il n'y en a pas.
+        Ton::Attention => "\u{2022}",
+        _ => "\u{221a}",
+    };
+    let favorable = verdict == Ton::Bon;
+    let ligne = ui
+        .horizontal_wrapped(|ui| {
+            peindre_fragment(
+                ui,
+                ctx,
+                &Fragment::dit(format!("{marque} {}", nom.texte_nu())).ton(verdict),
+                gestes,
+            );
+            for fragment in &état.fragments {
+                peindre_fragment(ui, ctx, &fragment.clone().ton(verdict), gestes);
+            }
+        })
+        .response;
+    match (pourquoi, favorable) {
+        (Some(texte), true) => {
+            ligne.on_hover_text(texte);
+        }
+        (Some(texte), false) => {
+            // En retrait sous la ligne : ces mots développent la
+            // précédente, et c'est le même rattachement que
+            // `Bloc::Retrait` dit dans les données.
+            ui.indent(("vue_verdict", nom.texte_nu()), |ui| {
+                ui.weak(texte);
+            });
+        }
+        (None, _) => {}
+    }
+}
+
 /// Le vert des verdicts favorables. Voir `riche` pour le pourquoi.
 const VERT: egui::Color32 = egui::Color32::from_rgb(0x4e, 0xc9, 0xb0);
+
+/// De quelle teinte se peint une famille de comportement.
+///
+/// **Cette table vivait dans `behaviour.rs`**, qui relève les familles
+/// à partir des noms de fonctions et des numéros d'appels système — et
+/// qui n'a rien à faire d'egui. Elle y est restée le temps que le
+/// dernier module peignant `famille.color()` passe la frontière ; c'est
+/// fait, et `behaviour.rs` ne connaît plus l'interface. Un module dit
+/// une CLÉ — « réseau », « crypto » —, et c'est ici, du côté qui sait
+/// peindre, qu'elle devient une couleur.
+///
+/// Les six teintes sont celles de VS Code Dark+ : le bleu des types
+/// pour le réseau, le mauve des mots-clés de contrôle pour le
+/// chiffrement, le rouge des erreurs pour l'anti-débogage.
+pub fn couleur_de_famille(famille: crate::behaviour::Family) -> egui::Color32 {
+    use crate::behaviour::Family;
+    match famille {
+        Family::AntiDebug => egui::Color32::from_rgb(0xf4, 0x87, 0x71),
+        Family::Execution => egui::Color32::from_rgb(0xce, 0x91, 0x78),
+        Family::Network => egui::Color32::from_rgb(0x56, 0x9c, 0xd6),
+        Family::Memory => egui::Color32::from_rgb(0xd7, 0xba, 0x7d),
+        Family::Crypto => egui::Color32::from_rgb(0xc5, 0x86, 0xc0),
+        Family::Files => egui::Color32::from_rgb(0x4e, 0xc9, 0xb0),
+    }
+}
 
 /// Ce que l'interface retient d'un champ entre deux images.
 ///
@@ -1287,4 +1410,47 @@ fn échelle(ui: &mut egui::Ui, ctx: &ReContext) {
             ui.weak("·");
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::behaviour::{ALL, Family};
+
+    /// Chaque famille de comportement garde sa teinte propre.
+    ///
+    /// **Ce contrôle vivait dans `behaviour.rs`**, et il en est parti
+    /// avec la table : ce fichier-là relève des familles dans des noms
+    /// de fonctions, et ne connaît plus egui. Deux familles de la même
+    /// couleur rendraient le portrait d'un binaire illisible — c'est
+    /// par la teinte qu'on relie une ligne de la liste à sa case du
+    /// portrait, et non par sa place.
+    #[test]
+    fn une_famille_garde_sa_teinte_propre() {
+        let couleurs: Vec<_> = ALL
+            .into_iter()
+            .map(|famille| couleur_de_famille(famille).to_array())
+            .collect();
+        let uniques: std::collections::BTreeSet<_> = couleurs.iter().collect();
+        assert_eq!(uniques.len(), ALL.len(), "une couleur par famille");
+    }
+
+    /// La clé fait le tour complet : un module la dit, l'interface
+    /// remonte à la famille et en tire la teinte.
+    ///
+    /// C'est le chemin entier de la frontière pour une étiquette, et il
+    /// se casse en silence si une clé change d'un côté seulement — le
+    /// mot se peindrait alors sans couleur, ce qu'aucune mesure de
+    /// pixels n'irait chercher.
+    #[test]
+    fn la_clé_d_une_famille_mène_à_sa_teinte() {
+        let fragment = crate::vue::Fragment::dit("réseau").étiquette(Family::Network.clé());
+        let clé = fragment.étiquette.as_deref().expect("la clé est dite");
+        let retrouvée = Family::de_clé(clé).expect("la clé se relit");
+        assert_eq!(retrouvée, Family::Network);
+        assert_eq!(
+            couleur_de_famille(retrouvée),
+            couleur_de_famille(Family::Network)
+        );
+    }
 }

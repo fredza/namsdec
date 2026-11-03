@@ -1775,6 +1775,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "réseau</i>, par la table de liaison ou par un numéro d'appel système. Enfin les "
          "<b>protections</b> qui décident de tout — PIE, NX, RELRO, canari —, cochées ou "
          "barrées. Tout est mesuré, jamais déclaré. "
+         "Chaque protection porte une <b>marque</b> en tête de ligne — une coche quand "
+         "elle est là, une croix quand elle manque, un point pour un entre-deux comme un "
+         "RELRO partiel ou une pile non déclarée : le glyphe porte l'information "
+         "<b>sans la couleur</b>, et qui distingue mal le rouge du vert lit encore la "
+         "croix. "
+         "Ce que l'état change concrètement se lit <b>sous la ligne quand il y a un "
+         "problème</b>, et <b>au survol quand tout va bien</b> — un point faible se lit "
+         "sans avoir à le chercher, et la liste tient malgré tout d'un coup d'\u0153il. "
          "Et, depuis le 20 octobre, <b>ce qui l'a produit</b> : le langage et le "
          "compilateur, <b>chacun avec son degré de certitude</b>. C'est la première "
          "question qu'on pose devant un fichier inconnu et la plus rentable — un binaire Go "
@@ -1823,7 +1831,12 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "panneau blanc ressemble à un panneau cassé.",
          "<b>Protections du binaire</b> — PIE, NX, RELRO, canari de pile, FORTIFY, IBT et pile "
          "fantôme, segments W+X, symboles, bibliothèques, RPATH — avec, pour chacune, ce "
-         "que son état change concrètement.",
+         "que son état change concrètement. Même marque et même règle de lecture qu'« En "
+         "bref » : le pourquoi sous la ligne quand ça cloche, au survol sinon. "
+         "<b>Trois états et non deux</b>, là où le fichier en porte trois&nbsp;: un RELRO "
+         "<i>partiel</i> protège une partie des données et une pile <i>non déclarée</i> "
+         "laisse le noyau décider — ni l'un ni l'autre ne se dit comme une protection "
+         "absente, et ni l'un ni l'autre ne se peint en rouge.",
          "<b>Fonctions importées</b> — chaque entrée de la table de liaison retrouve son "
          "nom, avec le <b>nombre d'appels</b> qui y mènent et une phrase d'explication pour les "
          "plus courantes. En tête, le <b>portrait</b> : six familles de comportement — "

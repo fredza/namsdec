@@ -3424,8 +3424,11 @@ impl NamsdecApp {
             ui.colored_label(theme.dim, s.re_bref_can_do);
             ui.horizontal_wrapped(|ui| {
                 for (famille, combien) in &bref.comportement {
+                    // La table des teintes vit du côté qui peint, depuis
+                    // P7 : `behaviour.rs` relève les familles dans des
+                    // noms de fonctions et ne connaît plus egui.
                     ui.colored_label(
-                        famille.color(),
+                        namsdec_re::vue_peinte::couleur_de_famille(*famille),
                         format!("{} ({combien})", famille.label(self.lang.code())),
                     )
                     .on_hover_text(famille.why(self.lang.code()));

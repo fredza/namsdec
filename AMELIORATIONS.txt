@@ -9426,3 +9426,142 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      d'outils (6 sur 7), onglets du centre (5 sur 9) et du panneau (4
      sur 6), menus et palette parlent le même niveau, et un seul
      endroit le dit.
+
+9.61 [FAIT] LA FRONTIÈRE ÉTAIT À 11 SUR 22, ET NON À 11 SUR 12
+     (3 novembre 2026 — P7, suite)
+
+     LE PREMIER TRAVAIL A ÉTÉ DE RECOMPTER, et il a corrigé le dossier.
+     `TRAVAUX.md` annonçait « 11 modules sur 12, ne reste que l'éditeur
+     binaire ». Le 12 ne comptait que les modules NOMMÉS aux étapes 2
+     et 3. Le crate en porte vingt-deux qui implémentent `ReModule` :
+     onze avaient une vue, onze n'avaient que `ui()`. La frontière
+     était à moitié, pas à la dernière marche.
+
+     Relevé des onze restants, avec ce que chacun emploie :
+       binary_info (3 tableaux, 1 repliable) ......... le vocabulaire suffit
+       protections (3 tableaux, 2 repliables, painter) le vocabulaire suffit
+       syscalls    (1 tableau, 1 adresse) ............ le vocabulaire suffit
+       functions, gadgets, dump, tool ............... champs et actions, suffit
+       signals     (1 painter) ...................... à mesurer
+       strings     (1 CASE À COCHER) ................ manque au vocabulaire
+       detour      (1 LISTE DÉROULANTE, 3 bascules) .. manque au vocabulaire
+       hex_editor  (26 touches, une grille) ......... décidé : reste peint
+
+     Les trois premiers sont portés. Ils ne demandaient rien de neuf
+     sauf ce qui suit, ce sont ceux qu'un rapport veut d'abord
+     (en-tête, protections, appels système), et `syscalls` était le
+     DERNIER appelant de `Family::color()`.
+
+     CE QUE LE PORTAGE A LIBÉRÉ : `behaviour.rs` ne connaît plus egui.
+     Ce fichier relève des familles de comportement dans des noms de
+     fonctions et des numéros d'appels système — il n'avait aucune
+     raison de porter une table de couleurs. Elle vit maintenant dans
+     `vue_peinte::couleur_de_famille`, du côté qui peint. La promesse
+     datait du portage d'`imports` ; elle est tenue, et la fonction
+     `imports_module::portrait` (la version peinte, gardée en double le
+     temps que `syscalls` passe) a disparu avec. Un seul portrait pour
+     les deux panneaux : tant qu'il y en avait deux, ils pouvaient
+     diverger sans que rien ne le dise.
+
+     DEUX FORMES AJOUTÉES, CHACUNE COMPTÉE AVANT D'ÊTRE ÉCRITE.
+
+       — `Bloc::Verdict`. SEIZE lignes de verdict dans le projet, et
+         TROIS marques différentes pour la même donnée : une pastille
+         ronde peinte au `painter` dans Protections, un `√`/`×` dans
+         « En bref », les mêmes glyphes dans un AUTRE VERT dans la
+         fiche du panneau latéral — deux écrivant la teinte en dur, le
+         troisième lisant celle du thème. Trois modules avaient chacun
+         choisi comment se peint un verdict. Le module dit maintenant
+         le nom, l'état, le verdict et le pourquoi ; la marque, la
+         teinte et la place où se lit le pourquoi sont décidées une
+         fois, dans le peintre.
+         LE VERDICT EST UN TON ET NON UN BOOLÉEN, et c'est ce qui a
+         corrigé deux affirmations fausses : un RELRO « partiel »
+         protège une partie des données et une pile « non déclarée »
+         laisse le noyau trancher — tous deux se peignaient en ROUGE,
+         au même rang qu'absent.
+         LE GLYPHE PLUTÔT QUE LA PASTILLE, parce qu'il porte
+         l'information SANS la couleur : qui distingue mal le rouge du
+         vert lit encore la croix.
+
+       — `Fragment::renvoi`. Une adresse de page, et une seule dans
+         tout le crate (`man 2 write`, sous la fiche d'un appel
+         système). Un usage unique est ailleurs un signal d'arrêt — la
+         case à cocher de l'éditeur binaire en est un —, et la
+         différence tient en une phrase : une adresse de page
+         n'apprend rien au vocabulaire sur la FAÇON de peindre. Elle se
+         range à côté de `mène_à` : l'une mène dans le fichier, l'autre
+         hors de namsdec, et les deux sont du texte qu'un rapport veut
+         garder — « nous n'avons pas recopié `man 2 write`, voici où il
+         est ».
+
+     UNE RUBRIQUE DU RELEVÉ DE L'ÉTAPE 0 ÉTAIT FAUSSE, et elle avait
+     produit une forme. « `section(` | 18 | des sections titrées — déjà
+     une abstraction du projet » comptait en réalité les dix-sept
+     `fn section(&self) -> ReSection`, la méthode qui dit à quel GROUPE
+     de panneaux un module appartient, plus une assertion de contrôle.
+     Il n'existe aucune abstraction de section titrée dans le projet, et
+     `Bloc::Section`, né de cette ligne, n'était employé par AUCUN
+     module. La forme, elle, était réelle : cinq sections titrées
+     écrites à la main, dont trois dans « En bref ». Elle a donc son
+     premier usage ici — et le TRAIT qui la précède est passé du module
+     au peintre, parce que trois des cinq en traçaient un et deux non.
+
+     TROIS DÉFAUTS TROUVÉS EN CHEMIN, ET LE PREMIER EST LE PLUS GRAVE.
+
+     1. « EN BREF » DISAIT L'INVERSE DE LA VÉRITÉ. Le panneau portait
+        UNE note par protection, écrite pour le cas où celle-ci est
+        PRÉSENTE — « chargé à une adresse au hasard » pour PIE, « la
+        pile ne s'exécute pas » pour NX —, et la peignait quel que soit
+        le verdict. Sur un binaire sans PIE on lisait donc « × PIE —
+        chargé à une adresse au hasard ». Vu sur la capture, dont le
+        programme d'épreuve n'a aucune des quatre ; aucun contrôle ne
+        regardait cette phrase, et elle était fausse depuis qu'elle
+        existe. Les notes suivent maintenant l'état.
+
+     2. UN CONTRÔLE QUI NE DISTINGUAIT PAS LES DEUX ÉTATS QU'IL NOMME.
+        Le premier contrôle écrit pour retenir le défaut ci-dessus
+        lisait `crackme-01` et comparait sa phrase à son en-tête. Il
+        PASSAIT en remettant le défaut : ce binaire A du NX, donc la
+        seule variante qu'il éprouvait était justement celle que le
+        défaut rend. Refait en basculant l'en-tête SOUS le module et en
+        exigeant que la phrase bascule avec, il tombe. C'est la même
+        leçon que l'arrêt du groupe de processus, au mot près.
+
+     3. UNE ASSERTION FAUSSE PAR CONSTRUCTION. Un contrôle neuf
+        vérifiait `f.texte == "write" && f.texte.contains("non
+        simulé")` : jamais vrai, donc jamais rouge. Remplacée par un
+        compte — deux appels, un seul non simulé.
+
+     ET UN CONTRÔLE A MAIGRI : « Ce qu'il sait faire » ne s'écrit
+     qu'une fois se vérifiait en lançant un contexte egui, en rendant
+     une image et en parcourant ses formes de texte. La phrase est dans
+     la vue ; il la compte maintenant dans des blocs, sans moteur de
+     rendu — et il dit OÙ elle est, ce que des formes anonymes ne
+     savaient pas dire.
+
+     LA SCÈNE DU BANC NE MONTRE QU'UNE TRANCHE DES APPELS SYSTÈME, et
+     la capture l'a dit : le programme d'épreuve passe `write` et
+     `exit`, qui n'appartiennent à aucune famille et que namsdec simule
+     tous les deux. Ni le portrait, ni « non simulé », ni la fiche n'y
+     sont jamais peints. Deux contrôles les lisent donc sur quatorze
+     octets bâtis à la main — `mov eax, 41 ; syscall` est un `socket`,
+     donc du réseau, donc un portrait, et namsdec ne le simule pas.
+
+     MESURÉ : six captures sur 122 ont changé, toutes montrant l'un des
+     trois panneaux. `syscalls` : 0,066 % des pixels, et c'est le
+     rythme unique — quatre pixels de plus entre deux lignes, contenu
+     identique au pixel. Les cinq autres portent « En bref » ou
+     « Protections », dont la mise en page change pour les raisons
+     ci-dessus. 1 100 contrôles verts, clippy muet, fmt propre.
+
+     RESTE UN ROUGE, ANTÉRIEUR ET SANS RAPPORT :
+     `what_this_machine_runs_can_be_explained` lit les binaires de
+     cette machine et exige une fiche pour chaque mnémonique. Douze
+     manquent — `vpcmpltub` (92 fois), `xtest` (38), `vpcmpneqb` (37),
+     `fldenv`, `fnstenv`, `stmxcsr`, `fxsave`, `fxrstor`, `rstorssp`,
+     `fcmove`. Les binaires système ont bougé depuis la dernière
+     séance ; le message du contrôle dit lui-même que ce sont des
+     fiches à écrire, non un défaut de l'application. Même cause pour
+     `reportlab`, disparu de ce Python 3.15 : le PDF du manuel a été
+     régénéré depuis un environnement isolé.

@@ -130,6 +130,38 @@ pub enum Bloc {
     /// précédente. Sans lui, une liste de détails se lit comme une
     /// suite de faits indépendants.
     Retrait(Vec<Bloc>),
+    /// Une chose qu'on vérifie, ce qu'elle vaut, et ce que ça change.
+    ///
+    /// **Comptée avant d'être écrite, comme le reste : seize lignes de
+    /// ce genre, et TROIS marques différentes pour la même donnée.**
+    /// « NX est-il là ? » s'écrivait d'une pastille ronde peinte au
+    /// `painter` dans le panneau Protections, d'un `√` ou d'un `×` dans
+    /// « En bref », et des mêmes glyphes mais d'un autre vert dans la
+    /// fiche du panneau latéral — l'un lisant la teinte du thème, les
+    /// deux autres l'écrivant en dur. Trois modules avaient chacun
+    /// choisi comment se peint un verdict, ce qui est exactement ce que
+    /// la frontière doit leur retirer.
+    ///
+    /// Ce que le module dit, et c'est tout : le NOM de ce qu'on
+    /// vérifie, son ÉTAT en mots — « complet », « partiel »,
+    /// « dépouillé », `0x401000` —, le VERDICT, et POURQUOI cela
+    /// compte. La marque, sa couleur, et la place où se lit le pourquoi
+    /// sont de la présentation.
+    ///
+    /// Le verdict est un [`Ton`] et non un booléen : un RELRO
+    /// « partiel » n'est ni bon ni mauvais, et le dire en vrai/faux
+    /// obligeait `protections` à trancher — il peignait donc « partiel »
+    /// en rouge, au même rang qu'absent.
+    Verdict {
+        nom: Ligne,
+        état: Ligne,
+        verdict: Ton,
+        /// Ce que cet état change concrètement. Une case rouge sans
+        /// explication n'apprend rien à qui découvre — et c'est la
+        /// moitié de ce que ce projet a à offrir.
+        #[serde(skip_serializing_if = "Option::is_none", default)]
+        pourquoi: Option<String>,
+    },
 }
 
 /// Ce qu'un module donne à dessiner, en valeurs.
@@ -365,6 +397,19 @@ pub struct Fragment {
     /// un lien vers le listing ; un rapport n'en fait rien de spécial.
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub mène_à: Option<u64>,
+    /// La page qui fait AUTORITÉ sur ce que ce fragment nomme.
+    ///
+    /// Une seule dans tout le crate — `man 2 write` sous la fiche d'un
+    /// appel système —, et c'est délibérément une DONNÉE et non une
+    /// forme. Un relevé à un seul usage est ailleurs un signal d'arrêt
+    /// (voir l'éditeur binaire, sa case à cocher et ses vingt-six
+    /// touches) ; la différence est qu'une adresse de page n'apprend
+    /// rien au vocabulaire sur la façon de peindre. Elle se range à
+    /// côté de `mène_à` : l'une mène dans le fichier, l'autre hors de
+    /// namsdec, et les deux sont du texte qu'un rapport veut garder —
+    /// « nous n'avons pas recopié `man 2 write`, voici où il est ».
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub renvoi: Option<String>,
     /// Se copie d'un clic. Une empreinte sert à être collée quelque
     /// part, pas à être recopiée à la main.
     #[serde(skip_serializing_if = "std::ops::Not::not", default)]
@@ -475,6 +520,13 @@ impl Fragment {
     #[must_use]
     pub fn mène_à(mut self, adresse: u64) -> Self {
         self.mène_à = Some(adresse);
+        self
+    }
+
+    /// La page qui fait autorité sur ce que ce fragment nomme.
+    #[must_use]
+    pub fn renvoi(mut self, url: impl Into<String>) -> Self {
+        self.renvoi = Some(url.into());
         self
     }
 

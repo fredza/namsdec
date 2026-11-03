@@ -140,9 +140,11 @@ impl Family {
     ///
     /// Une CLÉ et non une couleur : un module dit « réseau »,
     /// l'interface décide de quelle teinte elle peint ce mot-là. C'est
-    /// la règle de P7, et c'est ce qui permettra à `color()` de quitter
-    /// ce fichier — qui n'a rien à faire d'egui — le jour où le dernier
-    /// module sera porté.
+    /// la règle de P7, et c'est elle qui a permis à `color()` de
+    /// quitter ce fichier — qui relève des familles dans des noms de
+    /// fonctions et des numéros d'appels, et n'a rien à faire d'egui.
+    /// La table des teintes vit désormais dans `vue_peinte`, du côté
+    /// qui sait peindre : `vue_peinte::couleur_de_famille`.
     pub fn clé(self) -> &'static str {
         match self {
             Family::AntiDebug => "anti-debug",
@@ -157,17 +159,6 @@ impl Family {
     /// La famille que désigne une clé, s'il y en a une.
     pub fn de_clé(clé: &str) -> Option<Self> {
         ALL.into_iter().find(|famille| famille.clé() == clé)
-    }
-
-    pub fn color(self) -> egui::Color32 {
-        match self {
-            Family::AntiDebug => egui::Color32::from_rgb(0xf4, 0x87, 0x71),
-            Family::Execution => egui::Color32::from_rgb(0xce, 0x91, 0x78),
-            Family::Network => egui::Color32::from_rgb(0x56, 0x9c, 0xd6),
-            Family::Memory => egui::Color32::from_rgb(0xd7, 0xba, 0x7d),
-            Family::Crypto => egui::Color32::from_rgb(0xc5, 0x86, 0xc0),
-            Family::Files => egui::Color32::from_rgb(0x4e, 0xc9, 0xb0),
-        }
     }
 }
 
@@ -477,21 +468,28 @@ mod tests {
         assert!(families_of(["printf"]).is_empty());
     }
 
-    /// Chaque famille a un nom et une explication dans les deux langues,
-    /// et une couleur qui n'est à personne d'autre.
+    /// Chaque famille a un nom, une explication dans les deux langues,
+    /// et une clé qui n'est à personne d'autre.
+    ///
+    /// LA COULEUR N'EST PLUS ÉPROUVÉE ICI, et c'est le but : ce fichier
+    /// ne connaît plus egui. Qu'une famille garde sa teinte propre se
+    /// vérifie dans `vue_peinte`, qui tient la table — et la CLÉ, qui
+    /// est ce que ce fichier dit vraiment, est éprouvée ici.
     #[test]
-    fn each_family_has_a_name_a_reason_and_its_own_colour() {
-        let mut couleurs = Vec::new();
+    fn each_family_has_a_name_a_reason_and_its_own_key() {
+        let mut clés = Vec::new();
         for famille in ALL {
             for lang in ["fr", "en"] {
                 assert!(!famille.label(lang).is_empty(), "{famille:?} {lang}");
                 assert!(famille.why(lang).len() > 40, "{famille:?} {lang}");
             }
             assert_ne!(famille.label("fr"), famille.label("en"), "{famille:?}");
-            couleurs.push(famille.color());
+            // Une clé se retrouve : c'est par elle que l'interface
+            // remonte à la famille pour en tirer une teinte.
+            assert_eq!(Family::de_clé(famille.clé()), Some(famille));
+            clés.push(famille.clé());
         }
-        let uniques: std::collections::BTreeSet<_> =
-            couleurs.iter().map(|c| c.to_array()).collect();
-        assert_eq!(uniques.len(), ALL.len(), "une couleur par famille");
+        let uniques: std::collections::BTreeSet<_> = clés.iter().collect();
+        assert_eq!(uniques.len(), ALL.len(), "une clé par famille");
     }
 }

@@ -50,7 +50,7 @@ points avant d'ajouter de nouveaux modules sans rapport avec eux.
 | **P4** apprentissage / analyse | `[ ]` | Le seul lot qui demande un avis plutôt qu'une mesure : trois organisations à éprouver, pas une refonte validée. **Tauri a été envisagé puis écarté le 29 octobre** — voir P7. |
 | **P5** sous-états de `NamsdecApp` | `[ ]` | — |
 | **P6** commentaires historiques | `[ ]` | — |
-| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 presque close : **11 modules sur 12**. Ne reste que l'éditeur binaire. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
+| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 en cours : **14 modules sur 22**. Le « 11 sur 12 » annoncé jusqu'au 3 novembre ne comptait que les modules NOMMÉS aux étapes 2 et 3 — le crate en porte vingt-deux. Restent `functions`, `gadgets`, `dump`, `tool`, `signals` (le vocabulaire suffit), `strings` et `detour` (il y manque la case à cocher et la liste déroulante), et l'éditeur binaire, **décidé : il reste peint**. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
 
 Ce que les trois premiers lots ont en commun, et qui vaut pour les
 suivants : **chacun partait d'un risque déduit du code, et chacun s'est
@@ -380,7 +380,7 @@ elle se paie seule, et elle est le prérequis de toute alternative.
       |---|---|---|
       | `weak` + `label` + `monospace` + `strong` + `colored_label` | 230 | du **texte**, avec cinq emphases |
       | `egui::Grid` | 11 modules sur 20 | des **tableaux** |
-      | `section(` | 18 | des **sections titrées** — déjà une abstraction du projet |
+      | `section(` | 18 | ~~des **sections titrées** — déjà une abstraction du projet~~ **FAUX, corrigé le 3 novembre 2026** : ce sont les dix-sept `fn section(&self) -> ReSection`, la méthode qui dit à quel GROUPE de panneaux un module appartient, plus une assertion de contrôle. Il n'existe aucune abstraction de section titrée dans le projet. `Bloc::Section`, né de cette ligne, n'a été employé par aucun module jusqu'à `binary_info`. La forme était réelle — cinq sections titrées écrites à la main — mais le chiffre ne la mesurait pas. |
       | `framed_button(` | 18 | des **actions** |
       | `clickable_address(` | 14 | des **adresses** qui mènent au listing |
       | `separator` / `barre` / `spinner` / `selectable_value` | 19 | séparateur, jauge, attente, choix |
@@ -786,7 +786,60 @@ elle se paie seule, et elle est le prérequis de toute alternative.
         (`Fragment::chasse_fixe`), et un fragment peut demander les
         deux.
 
-      **Le protocole, qui a servi dix fois et qu'il suffit de
+      **Et le compte était faux : 11 sur 12, non — 14 sur 22**
+      (3 novembre 2026). Le « 12 » ne comptait que les modules nommés
+      aux étapes 2 et 3. Vingt-deux implémentent `ReModule` ; onze
+      avaient une vue. Trois de plus sont passés — **`syscalls`,
+      `binary_info`, `protections`** —, choisis parce qu'ils ne
+      demandaient rien de neuf au vocabulaire sauf les deux formes
+      ci-dessous, parce qu'un rapport les veut d'abord (en-tête ELF,
+      protections, appels système), et parce que `syscalls` était le
+      **dernier appelant de `Family::color()`**.
+
+      * **`behaviour.rs` ne connaît plus egui.** Il relève des familles
+        de comportement dans des noms de fonctions et des numéros
+        d'appels : il n'avait aucune raison de porter une table de
+        couleurs. Elle vit dans `vue_peinte::couleur_de_famille`. La
+        version peinte d'`imports_module::portrait`, gardée en double
+        le temps que `syscalls` passe, a disparu — un seul portrait
+        pour les deux panneaux, qui ne peuvent donc plus diverger.
+      * **`Bloc::Verdict`**, compté avant d'être écrit : **seize lignes
+        de verdict, trois marques différentes** pour la même donnée —
+        une pastille ronde au `painter` dans Protections, un `√`/`×`
+        dans « En bref », les mêmes glyphes dans un **autre vert** dans
+        la fiche du panneau latéral. Le module dit le nom, l'état, le
+        verdict et le pourquoi ; la marque, la teinte et la place du
+        pourquoi sont décidées une fois. Le verdict est un **`Ton` et
+        non un booléen**, et c'est ce qui corrige deux affirmations
+        fausses : un RELRO « partiel » et une pile « non déclarée » se
+        peignaient en rouge, au même rang qu'absent.
+      * **`Fragment::renvoi`** — une adresse de page, et une seule dans
+        tout le crate. Un usage unique est ailleurs un signal d'arrêt ;
+        la différence est qu'une adresse de page n'apprend rien au
+        vocabulaire sur la façon de peindre, et qu'un rapport la veut.
+
+      **Trois défauts trouvés en chemin, et le premier est le plus
+      grave.** (1) **« En bref » disait l'inverse de la vérité** : le
+      panneau portait une note par protection, écrite pour le cas où
+      celle-ci est PRÉSENTE, et la peignait quel que soit le verdict —
+      « × PIE — chargé à une adresse au hasard ». Vu sur la capture ;
+      aucun contrôle ne regardait cette phrase. (2) **Le contrôle écrit
+      pour la retenir passait en remettant le défaut** : il lisait
+      `crackme-01`, qui A du NX, donc la seule variante qu'il éprouvait
+      était celle que le défaut rend. Refait en basculant l'en-tête
+      sous le module. (3) Une assertion **fausse par construction**
+      (`f.texte == "write" && f.texte.contains("non simulé")`), donc
+      jamais rouge.
+
+      **Et la scène du banc ne montre qu'une tranche des appels
+      système** — `write` et `exit`, sans famille et tous deux simulés.
+      Ni le portrait, ni « non simulé », ni la fiche n'y sont peints.
+      Deux contrôles les lisent sur quatorze octets bâtis à la main.
+      **Mesuré :** six captures sur 122 ont changé ; `syscalls` à
+      0,066 %, soit le rythme unique et rien d'autre. 1 100 contrôles
+      verts.
+
+      **Le protocole, qui a servi treize fois et qu'il suffit de
       reprendre :** lire le `fn ui` entier ; remplacer **la méthode
       seule**, jusqu'à sa propre accolade — pas jusqu'au marqueur
       suivant, c'est ainsi que `build_rule` a disparu de `yara` ;
