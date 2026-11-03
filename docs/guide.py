@@ -1758,8 +1758,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "système », « Fonctions importées », « Éditeur binaire ». Ce sont celles qui se "
          "lisent sans rien savoir d'avance, et elles suffisent à faire le tour d'un "
          "programme. <b>Rien n'est désinstallé</b> : les autres travaillent toujours — le "
-         "compte rendu qu'on copie reste entier —, et la case des Préférences les rend "
-         "toutes d'un clic. Une rubrique où l'on vous envoie depuis un autre panneau "
+         "compte rendu qu'on copie reste entier —, et une case les rend toutes d'un clic : "
+         "<b>Affichage › Mode débutant</b>, en tête du menu, à côté des bascules de la "
+         "barre d'outils et du panneau. (Elle est aussi dans Préférences › Modules, où "
+         "l'on règle plutôt qu'on ne bascule.) Une rubrique où l'on vous envoie depuis un autre panneau "
          "reste visible, même au-dessus du niveau : on ne vous retire pas ce que vous "
          "avez demandé."),
         ("p", "Ce qu'on y trouve :"),
@@ -2875,7 +2877,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "La première case y décide de ce que l'application montre d'elle-même : le "
          "<b>mode débutant</b> réduit le panneau d'analyse aux neuf rubriques qui se "
-         "lisent sans rien savoir d'avance. Il est coché sur une installation neuve, et "
+         "lisent sans rien savoir d'avance. La même bascule est dans <b>Affichage › Mode "
+         "débutant</b>, en tête du menu — c'est là qu'on la cherche quand on veut passer "
+         "d'un niveau à l'autre, les Préférences étant l'endroit où l'on règle. "
+         "Il est coché sur une installation neuve, et "
          "<b>décoché</b> pour une configuration qui existait avant lui — on hérite d'un "
          "défaut, on ne se fait pas retirer ce dont on se servait."),
         ("p",

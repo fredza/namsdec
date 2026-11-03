@@ -4453,6 +4453,22 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       débutant — par le même `action_label_pour`, donc dans la barre
       comme dans la palette.
 
+      **ET UN DÉFAUT SIGNALÉ À L'ÉCRAN, QU'AUCUNE MESURE N'AURAIT
+      POSÉ** (3 novembre 2026) : *« je ne sais pas basculer entre les
+      modes débutant et avancé. »* Le réglage n'avait de chemin que par
+      Fichier › Préférences › Modules — trois gestes, et au seul
+      endroit où quelqu'un qui débute n'ira pas chercher. Un réglage
+      qui décide de TOUT ce que l'application montre ne peut pas être
+      le plus enfoui de tous.
+
+      Il est maintenant **en tête du menu Affichage**, qui ne contient
+      que des bascules décidant de ce qu'on voit — la barre d'outils,
+      le panneau, la barre d'état, la console — et celle-ci les
+      gouverne toutes. La case des Préférences reste : on y RÈGLE, on
+      ne bascule pas ; les deux touchent le même champ, donc elles ne
+      peuvent pas diverger. Retenu par un contrôle qui ouvre vraiment
+      le menu et le lit, aux deux niveaux.
+
       **Le lot est clos** : la colonne d'analyse (9 rubriques sur 25),
       « Tout », la barre d'outils (6 commandes sur 7), les onglets du
       centre (5 sur 9) et du panneau (4 sur 6), les menus et la

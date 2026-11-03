@@ -9410,6 +9410,18 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      pas vont par paire — « Pas à pas » et « Pas en arrière » —, par le
      même `action_label_pour`.
 
+     ET UN DÉFAUT SIGNALÉ À L'ÉCRAN, QU'AUCUNE MESURE N'AURAIT POSÉ :
+     « je ne sais pas basculer entre les modes débutant et avancé. » Le
+     réglage n'avait de chemin que par Fichier > Préférences > Modules,
+     c'est-à-dire au seul endroit où quelqu'un qui débute n'ira pas
+     chercher. Un réglage qui décide de TOUT ce que l'application
+     montre ne peut pas être le plus enfoui de tous.
+
+     Il est en tête du menu AFFICHAGE, avec les bascules qui décident
+     de ce qu'on voit, et il les gouverne toutes. La case des
+     Préférences reste : on y règle, on ne bascule pas — et les deux
+     touchent le même champ.
+
      LE LOT EST CLOS : colonne d'analyse (9 sur 25), « Tout », barre
      d'outils (6 sur 7), onglets du centre (5 sur 9) et du panneau (4
      sur 6), menus et palette parlent le même niveau, et un seul

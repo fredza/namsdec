@@ -1111,6 +1111,9 @@ pub struct Strings {
     pub modules_features_title: &'static str,
     /// La case du mode débutant, et ce qu'elle fait.
     pub beginner_checkbox: &'static str,
+    /// La même bascule, dans le menu Affichage : trois mots, parce
+    /// qu'une entrée de menu se parcourt du regard.
+    pub beginner_toggle: &'static str,
     pub beginner_hint: &'static str,
     pub modules_features_hint: &'static str,
     pub modules_legend: &'static str,
@@ -2050,6 +2053,7 @@ déclenchera jamais.",
     modules_components_title: "Composants",
     modules_features_title: "Fonctions optionnelles",
     beginner_checkbox: "Mode débutant : ne montrer que l'essentiel",
+    beginner_toggle: "Mode débutant",
     beginner_hint: "namsdec sert à apprendre l'assembleur et la rétro-ingénierie. Coché, le \
                     panneau d'analyse ne montre que les neuf rubriques qui se lisent sans rien \
                     savoir d'avance — où est le code, ce qu'il dit, ce qu'il emprunte, les \
@@ -2961,6 +2965,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     modules_components_title: "Components",
     modules_features_title: "Optional features",
     beginner_checkbox: "Beginner mode: show only the essentials",
+    beginner_toggle: "Beginner mode",
     beginner_hint: "namsdec is for learning assembly and reverse engineering. When checked, \
                     the analysis panel shows only the nine sections that read without prior \
                     knowledge — where the code is, what it says, what it borrows, the bytes. \

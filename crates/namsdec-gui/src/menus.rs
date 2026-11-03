@@ -797,6 +797,25 @@ impl NamsdecApp {
                 };
                 let frappe_panneau = frappe(self, Action::ToggleSidebar);
                 let frappe_console = frappe(self, Action::ToggleConsole);
+                // LE MODE DÉBUTANT EN TÊTE, et c'est un défaut signalé
+                // à l'écran qui l'a mis là : « je ne sais pas basculer
+                // entre les modes ». Il n'avait de chemin que par
+                // Fichier › Préférences › Modules — trois gestes, et
+                // au seul endroit où quelqu'un qui débute n'ira pas
+                // chercher.
+                //
+                // Sa place est ici : ce menu ne contient que des
+                // bascules qui décident de ce qu'on VOIT — la barre
+                // d'outils, le panneau, la barre d'état, la console —,
+                // et celle-ci les gouverne toutes. En tête, parce
+                // qu'elle décide de ce que les autres montrent.
+                //
+                // La case des Préférences reste : on y RÈGLE, on ne
+                // bascule pas. Les deux touchent le même champ, donc
+                // elles ne peuvent pas diverger.
+                ui.checkbox(&mut self.debutant, s.beginner_toggle)
+                    .on_hover_text(s.beginner_hint);
+                ui.separator();
                 ui.checkbox(&mut self.show_toolbar, s.view_toolbar);
                 ui.add(egui::Checkbox::new(
                     &mut self.show_sidebar,

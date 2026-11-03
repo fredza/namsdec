@@ -2097,3 +2097,61 @@ fn les_menus_se_graduent_sans_se_contredire() {
     assert!(palette(true).contains(&s.action_step_over.to_string()));
     assert!(palette(false).contains(&s.action_step_into.to_string()));
 }
+
+/// LA BASCULE ENTRE LES NIVEAUX SE TROUVE SANS LA CHERCHER.
+///
+/// Signalé à l'écran le 3 novembre 2026, et c'est le genre de défaut
+/// qu'aucune mesure ne pose d'elle-même : « je ne sais pas basculer
+/// entre les modes débutant et avancé ». Le réglage n'avait de chemin
+/// que par Fichier › Préférences › Modules — trois gestes, et au seul
+/// endroit où quelqu'un qui débute n'ira pas chercher.
+///
+/// Il est maintenant dans le menu **Affichage**, qui ne contient que
+/// des bascules décidant de ce qu'on VOIT, et en tête parce qu'il
+/// gouverne les autres. Le contrôle ouvre vraiment le menu et le lit.
+#[test]
+fn la_bascule_des_niveaux_est_dans_le_menu_affichage() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let s = strings(Lang::Fr);
+    let lu = |debutant: bool| -> Vec<String> {
+        let mut app = NamsdecApp {
+            debutant,
+            ..Default::default()
+        };
+        let mut harness = Harness::builder()
+            .with_size(egui::Vec2::new(1400.0, 900.0))
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        harness.run();
+        harness.get_by_label(s.menu_view).click();
+        harness.run();
+        harness
+            .output()
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::epaint::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect()
+    };
+
+    for debutant in [false, true] {
+        let textes = lu(debutant);
+        // Le menu s'est bien ouvert : sans cette vérification, le
+        // contrôle passerait au vert en ne regardant rien.
+        assert!(
+            textes.iter().any(|t| t == s.view_toolbar),
+            "le menu Affichage doit être ouvert : {textes:?}"
+        );
+        assert!(
+            textes.iter().any(|t| t == s.beginner_toggle),
+            "la bascule des niveaux s'y lit, qu'on soit débutant ou non ({debutant}) : \
+             {textes:?}"
+        );
+    }
+}
