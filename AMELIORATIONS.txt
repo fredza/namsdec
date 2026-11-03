@@ -9357,6 +9357,22 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      manuel employait depuis toujours, pendant que le bouton en disait
      un autre.
 
-     RESTE À GRADUER : les onglets du centre (Chronologie, Registres
-     étendus et Correctifs sont de bons candidats), ceux du panneau
-     latéral, et les menus.
+     LES DEUX RANGÉES D'ONGLETS SUIVENT. `VueCentrale::niveau()` et
+     `SidebarTab::niveau()`. Au centre, quatre sur neuf : ce qu'on a
+     écrit, ce que la machine en a reçu, la forme que le programme
+     prend, ce que le fichier dit de lui-même. Dans le panneau, quatre
+     sur six : registres, pile, mémoire, octets — ce dernier étant le
+     plus pédagogique de tous, qui met la source et le code machine
+     côte à côte.
+
+     LA RÈGLE « CE QU'ON REGARDE RESTE LISTÉ » est devenue celle du
+     lot, et elle est éprouvée : on envoie un débutant sur les
+     correctifs, son onglet paraît, et la rangée n'en ramène aucun
+     autre. Sans elle, une vue s'affiche sans entrée dans sa rangée.
+
+     UN CHOIX ASSUMÉ : le lien « Registres étendus (SSE, AVX, x87)… »
+     reste sous l'onglet Processeur, même en débutant. C'est la porte
+     vers le cran d'après ; effacer toute mention de ce qui existe
+     serait cacher l'outil, non l'alléger.
+
+     RESTE À GRADUER : les menus et la palette de commandes.

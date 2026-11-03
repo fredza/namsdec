@@ -60,6 +60,27 @@ impl SidebarTab {
         }
     }
 
+    /// À partir de quel niveau cet onglet paraît.
+    ///
+    /// Le débutant garde les quatre endroits où l'on voit la machine
+    /// faire : les **registres** (ce qu'on regarde entre deux pas), la
+    /// **pile** (que `push`, `pop` et `call` remuent à chaque ligne),
+    /// la **mémoire** (où `mov [rsi], al` écrit), et les **octets**
+    /// produits par chaque ligne — celui-là est le plus pédagogique de
+    /// tous, puisqu'il met la source et le code machine côte à côte.
+    ///
+    /// Le **tas** suppose qu'on alloue, ce qu'un programme en
+    /// assembleur fait rarement avant d'avoir appris `brk` ou `mmap` ;
+    /// l'onglet **RE** est déjà un module qu'on allume soi-même.
+    pub(crate) fn niveau(self) -> namsdec_re::Niveau {
+        match self {
+            SidebarTab::Cpu | SidebarTab::Stack | SidebarTab::Memory | SidebarTab::Bytes => {
+                namsdec_re::Niveau::Débutant
+            }
+            SidebarTab::Heap | SidebarTab::Re => namsdec_re::Niveau::Avancé,
+        }
+    }
+
     /// L'onglet que cet identifiant désigne, s'il en désigne un.
     pub(crate) fn from_id(id: &str) -> Option<Self> {
         SidebarTab::ALL.into_iter().find(|tab| tab.id() == id)
@@ -713,6 +734,40 @@ impl VueCentrale {
             VueCentrale::Breakpoints => s.breakpoints_title,
             VueCentrale::Vectors => s.vectors_title,
             VueCentrale::Patches => s.patch_title,
+        }
+    }
+
+    /// À partir de quel niveau cette vue a un onglet.
+    ///
+    /// Le critère est celui du reste de l'interface graduée :
+    /// *qu'est-ce qui se comprend sans rien savoir d'avance ?*
+    ///
+    /// Restent au débutant les quatre façons de regarder le programme
+    /// qu'on vient d'écrire : ce qu'on a **écrit**, ce que la machine
+    /// en a **reçu**, la **forme** qu'il prend — un listing se lit de
+    /// haut en bas, un programme non — et ce que le fichier **dit de
+    /// lui-même**.
+    ///
+    /// Les cinq autres demandent de savoir quelque chose d'abord :
+    /// qu'un outil extérieur rende du pseudo-C, qu'une exécution
+    /// laisse une trace qu'on relit, qu'un arrêt puisse porter une
+    /// CONDITION (« (rax & 0xff) == 'A' »), que le processeur ait des
+    /// registres vectoriels, et qu'on puisse réécrire les octets d'un
+    /// binaire. De celles-là, **« Points d'arrêt » est la plus
+    /// discutable** : poser un arrêt s'apprend tôt, et le clic dans la
+    /// gouttière marche à tous les niveaux — c'est la LISTE, avec ses
+    /// conditions, qui demande d'en savoir plus.
+    pub(crate) fn niveau(self) -> namsdec_re::Niveau {
+        match self {
+            VueCentrale::Source
+            | VueCentrale::Disassembly
+            | VueCentrale::Flow
+            | VueCentrale::Analysis => namsdec_re::Niveau::Débutant,
+            VueCentrale::Decompiler
+            | VueCentrale::Timeline
+            | VueCentrale::Breakpoints
+            | VueCentrale::Vectors
+            | VueCentrale::Patches => namsdec_re::Niveau::Avancé,
         }
     }
 

@@ -301,9 +301,19 @@ impl NamsdecApp {
                 // La forme est celle de la rangée des vues, et c'est le
                 // même corps qui la peint (`rangée_d_onglets`) : ce sont
                 // la même chose — des façons de regarder un même objet.
+                // MÊME RÈGLE QUE LA RANGÉE DES VUES : le niveau
+                // allège, et ce qu'on regarde reste listé — un onglet
+                // actif sans entrée est un endroit dont on ne sait plus
+                // sortir.
+                let niveau = if self.debutant {
+                    namsdec_re::Niveau::Débutant
+                } else {
+                    namsdec_re::Niveau::Avancé
+                };
                 let onglets: Vec<SidebarTab> = SidebarTab::ALL
                     .into_iter()
                     .filter(|tab| *tab != SidebarTab::Re || self.show_re_tab)
+                    .filter(|tab| tab.niveau() <= niveau || *tab == self.active_tab)
                     .collect();
                 let étiquettes: Vec<(&str, Option<&str>)> = onglets
                     .iter()

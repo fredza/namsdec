@@ -4366,13 +4366,39 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       Retenu par un contrôle qui relève les deux barres et compare, et
       par une scène de banc — l'écran principal en mode débutant.
 
-      **Ce qui reste à graduer** : les onglets du centre (Source,
-      Désassemblage, Déroulement, Analyse, Chronologie, Points d'arrêt,
-      Registres étendus, Correctifs — les trois derniers sont de bons
-      candidats), ceux du panneau latéral (Processeur, Pile, Mémoire,
-      Tas, Octets), et les menus. Le mécanisme est là ; la question est
-      à chaque fois la même : *qu'est-ce qui se comprend sans rien
-      savoir d'avance ?*
+      **LES DEUX RANGÉES D'ONGLETS SUIVENT.** `VueCentrale::niveau()`
+      et `SidebarTab::niveau()`, même forme que les deux précédents.
+
+      Au centre, **quatre sur neuf** : ce qu'on a écrit, ce que la
+      machine en a reçu, la forme que le programme prend, et ce que le
+      fichier dit de lui-même. Partent la décompilation (un module
+      qu'on allume déjà), la chronologie, les points d'arrêt, les
+      registres vectoriels et les correctifs. **« Points d'arrêt » est
+      la plus discutable** — poser un arrêt s'apprend tôt —, mais le
+      clic dans la gouttière marche à tous les niveaux : c'est la
+      LISTE, avec ses conditions `(rax & 0xff) == 'A'`, qui demande
+      d'en savoir plus.
+
+      Dans le panneau, **quatre sur six** : registres, pile, mémoire,
+      octets — les quatre endroits où l'on voit la machine faire, et le
+      dernier est le plus pédagogique de tous, qui met la source et le
+      code machine côte à côte. Le tas suppose qu'on alloue.
+
+      **La règle « ce qu'on regarde reste listé » est devenue la règle
+      du lot**, et elle est éprouvée : on envoie un débutant sur les
+      correctifs — ce que fait « Outils › Patcher le binaire » —, son
+      onglet paraît, et la rangée n'en ramène aucun autre. Sans elle,
+      une vue s'afficherait sans entrée dans sa rangée : on ne saurait
+      plus ni où l'on est, ni comment en sortir.
+
+      **Un choix assumé, en revanche :** le lien « Registres étendus
+      (SSE, AVX, x87)… » reste au bas de l'onglet Processeur, même en
+      mode débutant. C'est la porte vers le cran d'après, et la vue
+      qu'elle ouvre récupère son onglet en s'ouvrant. Effacer toute
+      mention de ce qui existe serait cacher l'outil, non l'alléger.
+
+      **Ce qui reste à graduer** : les menus (Fichier, Édition, Outils,
+      Affichage, Aide) et la palette de commandes.
 
 ---
 

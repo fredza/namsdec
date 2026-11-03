@@ -1875,3 +1875,99 @@ fn la_barre_d_outils_se_gradue() {
         );
     }
 }
+
+/// LES DEUX RANGÉES D'ONGLETS SE GRADUENT, ET CE QU'ON REGARDE RESTE
+/// LISTÉ.
+///
+/// Neuf onglets au centre, six dans le panneau : c'est beaucoup devant
+/// quelqu'un qui écrit sa première ligne. Au niveau débutant il en
+/// reste quatre de chaque — les quatre façons de regarder le programme
+/// qu'on vient d'écrire, et les quatre endroits où l'on voit la machine
+/// faire.
+///
+/// La seconde moitié du contrôle est la plus importante, et elle vient
+/// d'un défaut : une vue au-dessus du niveau où l'on est ENVOYÉ — par
+/// le menu Outils, par la palette, par un lien d'un panneau d'analyse —
+/// doit garder son onglet. Sans quoi elle s'affiche sans entrée dans la
+/// rangée : on ne sait plus ni où l'on est, ni comment en sortir.
+#[test]
+fn les_rangees_d_onglets_se_graduent() {
+    let onglets = |debutant: bool| -> (Vec<VueCentrale>, Vec<SidebarTab>) {
+        let app = NamsdecApp {
+            debutant,
+            ..Default::default()
+        };
+        (
+            VueCentrale::ALL
+                .into_iter()
+                .filter(|v| app.vue_dans_la_rangée(*v) && app.vue_au_niveau(*v))
+                .collect(),
+            SidebarTab::ALL
+                .into_iter()
+                .filter(|t| *t != SidebarTab::Re || app.show_re_tab)
+                .filter(|t| {
+                    t.niveau()
+                        <= if debutant {
+                            namsdec_re::Niveau::Débutant
+                        } else {
+                            namsdec_re::Niveau::Avancé
+                        }
+                        || *t == app.active_tab
+                })
+                .collect(),
+        )
+    };
+
+    let (vues_av, panneau_av) = onglets(false);
+    let (vues_déb, panneau_déb) = onglets(true);
+
+    // L'avancée garde tout ce qu'elle avait (la décompilation mise à
+    // part : c'est un module qu'on allume, et il est éteint par défaut).
+    assert!(
+        vues_av.len() >= 8,
+        "la rangée avancée reste celle d'aujourd'hui : {vues_av:?}"
+    );
+    assert_eq!(vues_déb.len(), 4, "{vues_déb:?}");
+    for attendu in [
+        VueCentrale::Source,
+        VueCentrale::Disassembly,
+        VueCentrale::Flow,
+        VueCentrale::Analysis,
+    ] {
+        assert!(vues_déb.contains(&attendu), "{vues_déb:?}");
+    }
+    assert_eq!(panneau_déb.len(), 4, "{panneau_déb:?}");
+    for attendu in [
+        SidebarTab::Cpu,
+        SidebarTab::Stack,
+        SidebarTab::Memory,
+        SidebarTab::Bytes,
+    ] {
+        assert!(panneau_déb.contains(&attendu), "{panneau_déb:?}");
+    }
+    assert!(panneau_av.contains(&SidebarTab::Heap));
+    assert!(!panneau_déb.contains(&SidebarTab::Heap));
+
+    // ET CE QU'ON REGARDE RESTE LISTÉ : on envoie un débutant sur les
+    // correctifs — ce que fait « Outils › Patcher le binaire » — et son
+    // onglet doit être là.
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    assert!(
+        !app.vue_au_niveau(VueCentrale::Patches),
+        "les correctifs ne sont pas dans la rangée d'un débutant"
+    );
+    app.montrer_vue(VueCentrale::Patches);
+    assert!(
+        app.vue_au_niveau(VueCentrale::Patches),
+        "mais la vue où l'on est envoyé garde son onglet"
+    );
+    // Et le reste de la rangée n'a pas grossi pour autant.
+    let avec: Vec<VueCentrale> = VueCentrale::ALL
+        .into_iter()
+        .filter(|v| app.vue_dans_la_rangée(*v) && app.vue_au_niveau(*v))
+        .collect();
+    assert_eq!(avec.len(), 5, "{avec:?}");
+}

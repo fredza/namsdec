@@ -534,6 +534,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["Registres étendus", "SSE, AVX, AVX-512 et la pile du 8087"],
             ["Correctifs", "ce qu'on a changé dans les octets"],
         ]),
+        ("note",
+         "<b>En mode débutant, quatre onglets sur neuf</b> : « Source » (ce qu'on écrit), "
+         "« Désassemblage » (ce que la machine en a reçu), « Déroulement » (la forme que "
+         "le programme prend — un listing se lit de haut en bas, un programme non) et "
+         "« Analyse ». Les cinq autres demandent de savoir quelque chose d'abord : qu'un "
+         "outil extérieur rende du pseudo-C, qu'une exécution laisse une trace qu'on "
+         "relit, qu'un arrêt puisse porter une <i>condition</i>, que le processeur ait des "
+         "registres vectoriels, qu'on puisse réécrire les octets d'un binaire. "
+         "<b>La vue où l'on vous envoie garde son onglet</b>, quel que soit le niveau — "
+         "par le menu Outils, par la palette, ou par un lien d'un panneau d'analyse : on "
+         "ne vous retire pas ce que vous avez demandé. Le panneau latéral se gradue de "
+         "même : <b>Processeur</b>, <b>Pile</b>, <b>Mémoire</b> et <b>Octets</b> — les "
+         "quatre endroits où l'on voit la machine faire —, le <b>Tas</b> attendant qu'on "
+         "ait appris à allouer."),
         ("p",
          "L'onglet porte un <b>nom court</b> — « Analyse », « Déroulement » — et dit son "
          "titre entier au survol : « Analyse du binaire », « Déroulement du programme ». "

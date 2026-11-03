@@ -79,6 +79,30 @@ impl NamsdecApp {
         self.vue_disponible(vue) && !self.vue_détachée(vue)
     }
 
+    /// Cette vue a-t-elle un onglet AU NIVEAU EN VIGUEUR ?
+    ///
+    /// À part de [`Self::vue_disponible`], et la distinction compte :
+    /// « disponible » dit ce que cette installation PORTE — la
+    /// décompilation n'existe pas sans son module —, le niveau ne dit
+    /// que ce que la rangée MONTRE. Une vue au-dessus du niveau existe
+    /// toujours : le menu Outils y mène, la palette l'ouvre, un lien
+    /// d'un panneau la demande, et `montrer_vue` la pose comme vue
+    /// active — ce qui suffit à lui rendre son onglet, par la règle
+    /// ci-dessous.
+    ///
+    /// CE QU'ON REGARDE RESTE LISTÉ, toujours. C'est la même leçon que
+    /// pour la colonne d'analyse : une vue à l'écran sans onglet est
+    /// une vue dont on ne peut plus sortir, et dont on ne sait même
+    /// plus le nom.
+    pub(crate) fn vue_au_niveau(&self, vue: VueCentrale) -> bool {
+        let niveau = if self.debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        };
+        vue.niveau() <= niveau || self.vue_centrale == vue
+    }
+
     /// Sort la vue de la rangée, dans sa fenêtre.
     ///
     /// Celle qu'on détache ne peut plus être la vue active : la zone
@@ -151,7 +175,7 @@ impl NamsdecApp {
         // infobulle quand l'onglet a dû raccourcir son nom.
         let présentes: Vec<VueCentrale> = VueCentrale::ALL
             .into_iter()
-            .filter(|vue| self.vue_dans_la_rangée(*vue))
+            .filter(|vue| self.vue_dans_la_rangée(*vue) && self.vue_au_niveau(*vue))
             .collect();
         let étiquettes: Vec<(&str, Option<&str>)> = présentes
             .iter()
