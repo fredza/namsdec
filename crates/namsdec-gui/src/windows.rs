@@ -1263,11 +1263,7 @@ impl NamsdecApp {
         // cachés restent enregistrés — ils travaillent toujours pour le
         // compte rendu « Tout », et la case des préférences les rend
         // sans rien recharger.
-        let niveau = if self.debutant {
-            namsdec_re::Niveau::Débutant
-        } else {
-            namsdec_re::Niveau::Avancé
-        };
+        let niveau = self.niveau();
         // LA RUBRIQUE OUVERTE RESTE DANS LA LISTE, même au-dessus du
         // niveau. Un lien d'un autre panneau peut y mener — « aller
         // voir cette adresse dans les octets » —, et c'est une

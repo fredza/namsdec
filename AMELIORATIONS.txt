@@ -9375,4 +9375,25 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      vers le cran d'après ; effacer toute mention de ce qui existe
      serait cacher l'outil, non l'alléger.
 
-     RESTE À GRADUER : les menus et la palette de commandes.
+     LES MENUS FERMENT LE LOT. Chaque entrée qui ouvre une vue suit le
+     niveau de SA vue — la cohérence est donc automatique —, et le menu
+     Outils s'allège en plus de `Step Over`, des trois « jusqu'au
+     prochain appel / retour / appel système » et du motif cyclique,
+     qui est un outil d'exploitation.
+
+     UNE DISTINCTION QU'IL A FALLU NOMMER : un onglet dit OÙ L'ON EST,
+     une entrée de menu est une PORTE. D'où deux règles et non une —
+     la vue active garde son onglet, mais ne s'ajoute pas au menu. Une
+     porte qui ne paraît qu'une fois qu'on est passé ne sert à rien.
+
+     ET LA PALETTE GARDE TOUT : c'est une recherche, pas une vitrine.
+
+     LE DÉFAUT QUE LA MESURE A TROUVÉ, et c'est le plus instructif : la
+     barre disait « Pas à pas » pendant que le menu disait encore
+     « Step Into » — deux noms pour un geste, dans la même image, une
+     heure après la traduction de la barre seule. Tout ce qui nomme une
+     commande passe maintenant par `action_label_pour`.
+
+     LE LOT EST CLOS : colonne d'analyse, « Tout », barre d'outils, les
+     deux rangées d'onglets, menus et palette parlent le même niveau,
+     et un seul endroit le dit.

@@ -172,6 +172,30 @@ pub(crate) fn dialog_bar_hinted(
     réponse
 }
 
+/// Le libellé d'une commande AU NIVEAU EN VIGUEUR.
+///
+/// Un seul nom change, et c'est le pas. « Step Into » est le mot de gdb
+/// et de pwndbg — le bon pour qui s'en sert déjà, puisque les raccourcis
+/// de namsdec sont les leurs — mais en mode débutant le pas est SEUL
+/// (« Step Over » et « Step Back » ne paraissent pas) : il n'a donc rien
+/// à distinguer, et s'appelle par ce qu'il fait.
+///
+/// TOUT CE QUI NOMME UNE COMMANDE PASSE PAR ICI — la barre d'outils, le
+/// menu Outils, la palette. Sans quoi la barre dirait « Pas à pas » et
+/// le menu « Step Into » pour le même geste : c'est exactement ce
+/// qu'une mesure a trouvé le 3 novembre 2026, une heure après que la
+/// barre seule eut été traduite.
+pub(crate) fn action_label_pour(
+    s: &Strings,
+    action: Action,
+    niveau: namsdec_re::Niveau,
+) -> &'static str {
+    match (action, niveau) {
+        (Action::StepInto, namsdec_re::Niveau::Débutant) => s.action_step_simple,
+        _ => action_label(s, action),
+    }
+}
+
 /// Libellé d'une action, pour le tableau de raccourcis de Préférences.
 pub(crate) fn action_label(s: &Strings, action: Action) -> &'static str {
     match action {

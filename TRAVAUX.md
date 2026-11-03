@@ -4397,8 +4397,41 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       qu'elle ouvre récupère son onglet en s'ouvrant. Effacer toute
       mention de ce qui existe serait cacher l'outil, non l'alléger.
 
-      **Ce qui reste à graduer** : les menus (Fichier, Édition, Outils,
-      Affichage, Aide) et la palette de commandes.
+      **LES MENUS FERMENT LE LOT.** Le menu Outils ne propose plus ce
+      que la rangée ne montre pas — chaque entrée qui ouvre une vue
+      suit le niveau de SA vue, ce qui rend la cohérence automatique —
+      et s'allège en plus de `Step Over`, des trois « jusqu'au prochain
+      appel / retour / appel système » (les `nextcall`, `nextret` et
+      `nextsyscall` de pwndbg) et du **motif cyclique**, qui est un
+      outil d'exploitation : on s'en sert pour retrouver de combien
+      d'octets on a dépassé dans un débordement de tampon, question qui
+      ne se pose pas avant d'avoir appris ce qu'est une pile. Le menu
+      Affichage ne liste que les onglets de panneau qui existent au
+      niveau.
+
+      **Une distinction qui a demandé à être nommée :** un onglet dit
+      *où l'on est*, une entrée de menu est une *porte*. D'où deux
+      règles et non une — `vue_au_niveau` garde la vue active dans la
+      rangée, `montre_vue` ne l'ajoute pas au menu. Une porte qui ne
+      paraît qu'une fois qu'on est passé ne sert à rien.
+
+      **Et la palette garde tout.** C'est une recherche, pas une
+      vitrine : y cacher une commande la rendrait introuvable à qui la
+      connaît, alors qu'une barre allégée ne fait que ne pas la
+      proposer.
+
+      **Le défaut que la mesure a trouvé, et il est le plus instructif
+      du lot :** la barre d'outils disait « Pas à pas » pendant que le
+      menu Outils disait encore « Step Into » — deux noms pour un même
+      geste, dans la même image, une heure après la traduction de la
+      barre seule. Tout ce qui nomme une commande passe désormais par
+      `action_label_pour`, la palette comprise. Retenu par un contrôle
+      qui ouvre vraiment le menu et compare les deux niveaux.
+
+      **Le lot est clos** : la colonne d'analyse, « Tout », la barre
+      d'outils, les deux rangées d'onglets, les menus et la palette
+      parlent le même niveau, et un seul endroit le dit
+      (`NamsdecApp::niveau`).
 
 ---
 

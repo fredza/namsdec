@@ -305,11 +305,7 @@ impl NamsdecApp {
                 // allège, et ce qu'on regarde reste listé — un onglet
                 // actif sans entrée est un endroit dont on ne sait plus
                 // sortir.
-                let niveau = if self.debutant {
-                    namsdec_re::Niveau::Débutant
-                } else {
-                    namsdec_re::Niveau::Avancé
-                };
+                let niveau = self.niveau();
                 let onglets: Vec<SidebarTab> = SidebarTab::ALL
                     .into_iter()
                     .filter(|tab| *tab != SidebarTab::Re || self.show_re_tab)
@@ -3480,11 +3476,7 @@ impl NamsdecApp {
         // fragments ROP sans les avoir demandés. Le COMPTE RENDU, lui
         // — « Copier le rapport », « Enregistrer… » —, reste entier :
         // c'est un export, et un export tronqué serait un piège.
-        let niveau = if self.debutant {
-            namsdec_re::Niveau::Débutant
-        } else {
-            namsdec_re::Niveau::Avancé
-        };
+        let niveau = self.niveau();
         for module in self.re_registry.iter_mut() {
             if seul.is_none() && module.niveau() > niveau {
                 continue;

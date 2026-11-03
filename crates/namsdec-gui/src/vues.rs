@@ -79,6 +79,21 @@ impl NamsdecApp {
         self.vue_disponible(vue) && !self.vue_détachée(vue)
     }
 
+    /// Le niveau d'interface en vigueur.
+    ///
+    /// Un seul endroit le dit, et tout le reste le lui demande : la
+    /// colonne d'analyse, la barre d'outils, les deux rangées
+    /// d'onglets, les menus. Une copie de plus serait une occasion de
+    /// diverger — et ce réglage décide de ce que l'application montre
+    /// d'elle-même à quelqu'un qui l'ouvre pour apprendre.
+    pub(crate) fn niveau(&self) -> namsdec_re::Niveau {
+        if self.debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        }
+    }
+
     /// Cette vue a-t-elle un onglet AU NIVEAU EN VIGUEUR ?
     ///
     /// À part de [`Self::vue_disponible`], et la distinction compte :
@@ -95,12 +110,7 @@ impl NamsdecApp {
     /// une vue dont on ne peut plus sortir, et dont on ne sait même
     /// plus le nom.
     pub(crate) fn vue_au_niveau(&self, vue: VueCentrale) -> bool {
-        let niveau = if self.debutant {
-            namsdec_re::Niveau::Débutant
-        } else {
-            namsdec_re::Niveau::Avancé
-        };
-        vue.niveau() <= niveau || self.vue_centrale == vue
+        vue.niveau() <= self.niveau() || self.vue_centrale == vue
     }
 
     /// Sort la vue de la rangée, dans sa fenêtre.

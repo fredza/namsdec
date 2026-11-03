@@ -147,7 +147,16 @@ impl Action {
     /// les premières.
     pub fn niveau(self) -> namsdec_re::Niveau {
         match self {
-            Action::StepOver | Action::StepBack => namsdec_re::Niveau::Avancé,
+            // Les trois « jusqu'au prochain… » sont les `nextcall`,
+            // `nextret` et `nextsyscall` de pwndbg : elles supposent
+            // qu'on sache déjà ce qu'est un appel, un retour, un appel
+            // système. On les apprend en les voyant passer au pas à
+            // pas, pas en les sautant.
+            Action::StepOver
+            | Action::StepBack
+            | Action::RunToCall
+            | Action::RunToReturn
+            | Action::RunToSyscall => namsdec_re::Niveau::Avancé,
             _ => namsdec_re::Niveau::Débutant,
         }
     }

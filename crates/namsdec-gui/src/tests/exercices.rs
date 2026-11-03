@@ -112,7 +112,7 @@ fn loading_an_exercise_fills_the_editor_without_claiming_a_file() {
 fn the_palette_offers_the_exercises_only_when_the_module_is_loaded() {
     let s = strings(Lang::Fr);
     let labels = |exercises| -> Vec<String> {
-        palette_commands(s, false, exercises)
+        palette_commands(s, false, exercises, namsdec_re::Niveau::Avancé)
             .into_iter()
             .map(|(label, _)| label)
             .collect()

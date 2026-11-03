@@ -19,7 +19,7 @@ use super::*;
 fn the_palette_offers_the_re_view_only_when_it_is_visible() {
     let s = strings(Lang::Fr);
     let labels = |show_re_tab| -> Vec<String> {
-        palette_commands(s, show_re_tab, false)
+        palette_commands(s, show_re_tab, false, namsdec_re::Niveau::Avancé)
             .into_iter()
             .map(|(label, _)| label)
             .collect()
@@ -76,7 +76,10 @@ fn the_command_palette_shows_everything_it_can_without_scrolling() {
             // place.
             egui::vec2(
                 1280.0,
-                palette_commands(strings(Lang::Fr), true, true).len() as f32 * 40.0 + 200.0,
+                palette_commands(strings(Lang::Fr), true, true, namsdec_re::Niveau::Avancé).len()
+                    as f32
+                    * 40.0
+                    + 200.0,
             ),
         )),
         ..Default::default()
@@ -183,7 +186,7 @@ fn the_command_palette_shrinks_to_what_it_shows() {
 #[test]
 fn the_palette_offers_every_action_there_is() {
     let s = strings(Lang::Fr);
-    let commandes = palette_commands(s, true, true);
+    let commandes = palette_commands(s, true, true, namsdec_re::Niveau::Avancé);
     for action in Action::ALL {
         assert!(
             commandes
@@ -537,7 +540,7 @@ fn the_palette_offers_every_single_action() {
     let s = strings(Lang::Fr);
     // Tout allumé : les modules facultatifs ajoutent des entrées, et
     // c'est l'inventaire complet qu'on veut contrôler.
-    let commandes = palette_commands(s, true, true);
+    let commandes = palette_commands(s, true, true, namsdec_re::Niveau::Avancé);
     let proposées: std::collections::BTreeSet<String> = commandes
         .iter()
         .filter_map(|(_, c)| match c {
@@ -1970,4 +1973,115 @@ fn les_rangees_d_onglets_se_graduent() {
         .filter(|v| app.vue_dans_la_rangée(*v) && app.vue_au_niveau(*v))
         .collect();
     assert_eq!(avec.len(), 5, "{avec:?}");
+}
+
+/// LES MENUS SE GRADUENT COMME LE RESTE, ET SANS SE CONTREDIRE.
+///
+/// Un menu qui propose ce que la rangée d'onglets ne montre pas envoie
+/// le débutant dans un endroit qu'il ne saura plus retrouver ; un menu
+/// qui cache ce que la barre d'outils offre lui fait croire qu'il a
+/// rêvé. Les deux sont des contradictions, et c'est elles que ce
+/// contrôle attrape — en ouvrant vraiment le menu et en relevant ce
+/// qu'il PEINT.
+#[test]
+fn les_menus_se_graduent_sans_se_contredire() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let s = strings(Lang::Fr);
+    let entrées = |debutant: bool| -> Vec<String> {
+        let mut app = NamsdecApp {
+            debutant,
+            ..Default::default()
+        };
+        let mut harness = Harness::builder()
+            .with_size(egui::Vec2::new(1400.0, 900.0))
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        harness.run();
+        harness.get_by_label(s.menu_tools).click();
+        harness.run();
+        harness
+            .output()
+            .shapes
+            .iter()
+            .filter_map(|c| match &c.shape {
+                egui::epaint::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect()
+    };
+
+    let avancé = entrées(false);
+    let débutant = entrées(true);
+    let dit = |où: &[String], quoi: &str| où.iter().any(|t| t == quoi);
+
+    // Ce contrôle ne vaut que si le menu s'est VRAIMENT ouvert : sans
+    // cela il comparerait deux listes sans l'entrée cherchée et
+    // passerait au vert en ne regardant rien.
+    assert!(
+        dit(&avancé, s.cyclic_open),
+        "le menu Outils doit être ouvert et relevé : {avancé:?}"
+    );
+    for avancée in [
+        s.cyclic_open,
+        s.vectors_open,
+        s.timeline_open,
+        s.breakpoints_open,
+        s.action_run_to_call,
+        s.action_step_over,
+    ] {
+        assert!(
+            !dit(&débutant, avancée),
+            "« {avancée} » demande de savoir ce qu'on cherche : {débutant:?}"
+        );
+    }
+    // Les entrées qui portent leur raccourci — « Déroulement du
+    // programme… (Espace v g) » — se reconnaissent par leur début.
+    let commence = |où: &[String], quoi: &str| où.iter().any(|t| t.starts_with(quoi));
+    for restée in [
+        s.analysis_open,
+        s.flow_open,
+        s.calculator_open,
+        s.action_assemble,
+    ] {
+        assert!(
+            commence(&débutant, restée),
+            "« {restée} » se comprend sans rien savoir : {débutant:?}"
+        );
+    }
+
+    // ET LE PAS PORTE LE MÊME NOM PARTOUT. La barre d'outils disait
+    // « Pas à pas » pendant que le menu disait encore « Step Into » :
+    // deux noms pour un geste, dans la même image.
+    assert!(
+        dit(&débutant, s.action_step_simple),
+        "le menu nomme le pas comme la barre : {débutant:?}"
+    );
+    assert!(
+        !dit(&débutant, s.action_step_into),
+        "et ne garde pas l'ancien nom à côté : {débutant:?}"
+    );
+    assert!(
+        dit(&avancé, s.action_step_into),
+        "l'avancé garde le mot de gdb : {avancé:?}"
+    );
+    // La palette, elle, garde TOUT — c'est une recherche — mais nomme
+    // le pas comme le reste de l'interface.
+    let palette = |debutant: bool| -> Vec<String> {
+        let niveau = if debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        };
+        palette_commands(s, false, false, niveau)
+            .into_iter()
+            .map(|(libellé, _)| libellé)
+            .collect()
+    };
+    assert!(palette(true).contains(&s.action_step_simple.to_string()));
+    assert!(palette(true).contains(&s.action_step_over.to_string()));
+    assert!(palette(false).contains(&s.action_step_into.to_string()));
 }

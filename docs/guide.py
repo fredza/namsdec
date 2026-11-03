@@ -555,6 +555,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "sa place avant de se lire. <b>Décompilation</b> n'a d'onglet que si son module "
          "est allumé (Préférences › Modules) : un onglet qui ne mène à rien est pire "
          "qu'un onglet absent."),
+        ("note",
+         "<b>Les menus suivent le niveau, et la palette garde tout.</b> Le menu Outils ne "
+         "propose pas ce que la rangée ne montre pas — un menu qui mène où l'on ne saura "
+         "plus revenir est pire qu'un menu plus court —, et le menu Affichage ne liste "
+         "que les onglets du panneau qui existent à ce niveau. En mode débutant s'en vont "
+         "aussi <b>Step Over</b>, les trois « jusqu'au prochain appel / retour / appel "
+         "système » (les <font face='Courier'>nextcall</font>, "
+         "<font face='Courier'>nextret</font> et <font face='Courier'>nextsyscall</font> "
+         "de pwndbg) et le <b>motif cyclique</b>, qui est un outil d'exploitation. La "
+         "<b>palette de commandes</b>, elle, garde tout : c'est une recherche, pas une "
+         "vitrine — y cacher une commande la rendrait introuvable à qui la connaît. Elle "
+         "emploie seulement le mot que l'interface emploie, « Pas à pas » ou « Step "
+         "Into » selon le niveau, pour qu'une recherche trouve ce qu'on voit."),
         ("p",
          "Le <b>menu Outils</b>, la <b>palette de commandes</b> et les raccourcis "
          "mènent aux mêmes vues : ils choisissent l'onglet. Le bouton de l'onglet RE du "

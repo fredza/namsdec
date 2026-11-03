@@ -21,7 +21,7 @@ impl NamsdecApp {
             return;
         }
         let s = strings(self.lang);
-        let mut commands = palette_commands(s, self.show_re_tab, self.exercises);
+        let mut commands = palette_commands(s, self.show_re_tab, self.exercises, self.niveau());
         // Les étiquettes du programme, à la suite : sur deux cents
         // lignes, « où est donc `affiche_nombre` ? » se répond en tapant
         // son nom, comme on ouvre un fichier par son nom dans un éditeur.
@@ -532,17 +532,18 @@ impl NamsdecApp {
                 };
                 ui.add_enabled_ui(can_exec, |ui| {
                     if ui
-                        .button(s.action_step_into)
+                        .button(action_label_pour(s, Action::StepInto, self.niveau()))
                         .on_disabled_hover_text(pourquoi_pas)
                         .clicked()
                     {
                         self.dispatch(Action::StepInto);
                         ui.close();
                     }
-                    if ui
-                        .button(s.action_step_over)
-                        .on_disabled_hover_text(pourquoi_pas)
-                        .clicked()
+                    if self.montre(Action::StepOver)
+                        && ui
+                            .button(s.action_step_over)
+                            .on_disabled_hover_text(pourquoi_pas)
+                            .clicked()
                     {
                         self.dispatch(Action::StepOver);
                         ui.close();
@@ -579,26 +580,36 @@ impl NamsdecApp {
                             ui.close();
                         }
                     });
-                    ui.separator();
                     // Explorer un programme qu'on ne connaît pas : ce
                     // qu'il appelle, quand il en sort, ce qu'il demande
                     // au noyau. Un pas à pas de dix mille pas ne répond
                     // pas à ces questions-là.
+                    //
+                    // LES TROIS ENSEMBLE OU AUCUNE : ce sont les
+                    // `nextcall`, `nextret` et `nextsyscall` de
+                    // pwndbg, et elles supposent qu'on sache déjà ce
+                    // qu'est un appel, un retour, un appel système.
+                    // Leur séparateur part avec elles — un trait qui
+                    // ne sépare plus rien est du bruit.
+                    if self.montre(Action::RunToCall) {
+                        ui.separator();
+                    }
                     for (action, label) in [
                         (Action::RunToCall, s.action_run_to_call),
                         (Action::RunToReturn, s.action_run_to_return),
                         (Action::RunToSyscall, s.action_run_to_syscall),
                     ] {
-                        if ui
-                            .button(shortcut_hint(
-                                &self.keybindings,
-                                self.lang,
-                                &ui.ctx().clone(),
-                                label,
-                                action,
-                            ))
-                            .on_disabled_hover_text(pourquoi_pas)
-                            .clicked()
+                        if self.montre(action)
+                            && ui
+                                .button(shortcut_hint(
+                                    &self.keybindings,
+                                    self.lang,
+                                    &ui.ctx().clone(),
+                                    label,
+                                    action,
+                                ))
+                                .on_disabled_hover_text(pourquoi_pas)
+                                .clicked()
                         {
                             self.dispatch(action);
                             ui.close();
@@ -622,7 +633,7 @@ impl NamsdecApp {
                 // vue est détachée : sa fenêtre est déjà sous les yeux,
                 // et la rattacher d'autorité défairait le côte à côte
                 // qu'on venait d'installer.
-                if ui.button(s.analysis_open).clicked() {
+                if self.montre_vue(VueCentrale::Analysis) && ui.button(s.analysis_open).clicked() {
                     self.montrer_vue(VueCentrale::Analysis);
                     ui.close();
                 }
@@ -656,10 +667,11 @@ impl NamsdecApp {
                             ui.close();
                         }
                     }
-                    if ui
-                        .button(s.patch_open)
-                        .on_hover_text(s.patch_hint)
-                        .clicked()
+                    if self.montre_vue(VueCentrale::Patches)
+                        && ui
+                            .button(s.patch_open)
+                            .on_hover_text(s.patch_hint)
+                            .clicked()
                     {
                         self.montrer_vue(VueCentrale::Patches);
                         ui.close();
@@ -667,15 +679,16 @@ impl NamsdecApp {
                 });
                 // Le déroulement du programme : là où l'on comprend sa
                 // forme, et non sa suite d'instructions.
-                if ui
-                    .button(shortcut_hint(
-                        &self.keybindings,
-                        self.lang,
-                        &ui.ctx().clone(),
-                        s.flow_open,
-                        Action::ShowFlow,
-                    ))
-                    .clicked()
+                if self.montre_vue(VueCentrale::Flow)
+                    && ui
+                        .button(shortcut_hint(
+                            &self.keybindings,
+                            self.lang,
+                            &ui.ctx().clone(),
+                            s.flow_open,
+                            Action::ShowFlow,
+                        ))
+                        .clicked()
                 {
                     self.montrer_vue(VueCentrale::Flow);
                     ui.close();
@@ -683,11 +696,14 @@ impl NamsdecApp {
                 // La décompilation : une entrée seulement si le module
                 // est allumé. Un menu qui propose ce qui ne se fera pas
                 // ment poliment.
-                if self.show_decompiler_module && ui.button(s.decompiler_open).clicked() {
+                if self.show_decompiler_module
+                    && self.montre_vue(VueCentrale::Decompiler)
+                    && ui.button(s.decompiler_open).clicked()
+                {
                     self.montrer_vue(VueCentrale::Decompiler);
                     ui.close();
                 }
-                if ui.button(s.vectors_open).clicked() {
+                if self.montre_vue(VueCentrale::Vectors) && ui.button(s.vectors_open).clicked() {
                     self.montrer_vue(VueCentrale::Vectors);
                     ui.close();
                 }
@@ -705,22 +721,32 @@ impl NamsdecApp {
                     self.dispatch(Action::ToggleCalculator);
                     ui.close();
                 }
-                if ui.button(s.breakpoints_open).clicked() {
+                if self.montre_vue(VueCentrale::Breakpoints)
+                    && ui.button(s.breakpoints_open).clicked()
+                {
                     self.montrer_vue(VueCentrale::Breakpoints);
                     ui.close();
                 }
-                if ui.button(s.timeline_open).clicked() {
+                if self.montre_vue(VueCentrale::Timeline) && ui.button(s.timeline_open).clicked() {
                     self.montrer_vue(VueCentrale::Timeline);
                     ui.close();
                 }
-                if ui.button(s.disassembly_open).clicked() {
+                if self.montre_vue(VueCentrale::Disassembly)
+                    && ui.button(s.disassembly_open).clicked()
+                {
                     self.montrer_vue(VueCentrale::Disassembly);
                     ui.close();
                 }
-                if ui
-                    .button(s.cyclic_open)
-                    .on_hover_text(s.cyclic_hint)
-                    .clicked()
+                // LE MOTIF CYCLIQUE est un outil d'exploitation : on
+                // s'en sert pour retrouver, dans un débordement de
+                // tampon, de combien d'octets on a dépassé. La question
+                // ne se pose pas avant d'avoir appris ce qu'est une
+                // pile.
+                if !self.debutant
+                    && ui
+                        .button(s.cyclic_open)
+                        .on_hover_text(s.cyclic_hint)
+                        .clicked()
                 {
                     self.show_cyclic = true;
                     ui.close();
@@ -871,6 +897,13 @@ impl NamsdecApp {
                 ui.separator();
                 for tab in SidebarTab::ALL {
                     if !self.show_re_tab && tab == SidebarTab::Re {
+                        continue;
+                    }
+                    // Le menu suit la rangée du panneau : proposer ici
+                    // un onglet qui n'y paraît pas enverrait le
+                    // débutant dans un endroit qu'il ne saurait plus
+                    // retrouver.
+                    if tab.niveau() > self.niveau() {
                         continue;
                     }
                     if ui.button(tab.label(s)).clicked() {
@@ -1040,11 +1073,7 @@ impl NamsdecApp {
                 // murs. En mode débutant, le pas est seul — les deux
                 // autres ne paraissent pas —, et il s'appelle donc par
                 // ce qu'il fait.
-                let nom_du_pas = if self.debutant {
-                    s.action_step_simple
-                } else {
-                    s.action_step_into
-                };
+                let nom_du_pas = action_label_pour(s, Action::StepInto, self.niveau());
                 if icon_button(ui, icon_step_into, nom_du_pas)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
@@ -1150,12 +1179,17 @@ impl NamsdecApp {
     /// ne doit pas devenir une liste d'exceptions. Voir
     /// [`Action::niveau`] pour le critère.
     fn montre(&self, action: Action) -> bool {
-        let niveau = if self.debutant {
-            namsdec_re::Niveau::Débutant
-        } else {
-            namsdec_re::Niveau::Avancé
-        };
-        action.niveau() <= niveau
+        action.niveau() <= self.niveau()
+    }
+
+    /// Cette vue a-t-elle une ENTRÉE DE MENU au niveau en vigueur ?
+    ///
+    /// Sans l'exception de [`Self::vue_au_niveau`] — « ce qu'on regarde
+    /// reste listé » —, et c'est voulu : un onglet dit où l'on est, une
+    /// entrée de menu est une PORTE. Une porte qui ne paraît qu'une
+    /// fois qu'on est passé ne sert à rien.
+    fn montre_vue(&self, vue: VueCentrale) -> bool {
+        vue.niveau() <= self.niveau()
     }
 
     /// La calculatrice, au bout de la barre d'outils.
@@ -1191,6 +1225,7 @@ pub(crate) fn palette_commands(
     s: &Strings,
     show_re_tab: bool,
     exercises: bool,
+    niveau: namsdec_re::Niveau,
 ) -> Vec<(String, PaletteCommand)> {
     let mut commands = vec![
         (
@@ -1198,8 +1233,14 @@ pub(crate) fn palette_commands(
             PaletteCommand::Do(Action::Assemble),
         ),
         (s.action_run.to_string(), PaletteCommand::Do(Action::Run)),
+        // LA PALETTE GARDE TOUT, et ne nomme pas autrement que le
+        // reste. C'est une recherche, pas une vitrine : y cacher une
+        // commande la rendrait introuvable à qui la connaît, alors
+        // qu'une barre allégée ne fait que ne pas la proposer. Mais
+        // elle doit employer le mot que l'interface emploie, sans quoi
+        // un débutant qui cherche « pas » ne trouverait rien.
         (
-            s.action_step_into.to_string(),
+            action_label_pour(s, Action::StepInto, niveau).to_string(),
             PaletteCommand::Do(Action::StepInto),
         ),
         (
