@@ -50,7 +50,7 @@ points avant d'ajouter de nouveaux modules sans rapport avec eux.
 | **P4** apprentissage / analyse | `[ ]` | Le seul lot qui demande un avis plutôt qu'une mesure : trois organisations à éprouver, pas une refonte validée. **Tauri a été envisagé puis écarté le 29 octobre** — voir P7. |
 | **P5** sous-états de `NamsdecApp` | `[ ]` | — |
 | **P6** commentaires historiques | `[ ]` | — |
-| **P7** traitement / présentation | `[~]` | Étapes 0 et 1 faites, étape 2 close, étape 3 en cours : **14 modules sur 22**. Le « 11 sur 12 » annoncé jusqu'au 3 novembre ne comptait que les modules NOMMÉS aux étapes 2 et 3 — le crate en porte vingt-deux. Restent `functions`, `gadgets`, `dump`, `tool`, `signals` (le vocabulaire suffit), `strings` et `detour` (il y manque la case à cocher et la liste déroulante), et l'éditeur binaire, **décidé : il reste peint**. La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
+| **P7** traitement / présentation | `[x]` | **Clos le 3 novembre 2026.** Les quatre étapes sont faites : **19 vues entières sur 22**, et trois panneaux partagés — l'éditeur binaire, le vidage et le détour gardent leur instrument peint et disent ce qu'ils comprennent. Un rapport complet, un export JSON et une analyse sans interface en sortent (`rapport.rs`). La frontière existe (`vue.rs`, sans egui), et ce qu'un panneau montre **se lit sans le peindre**. |
 
 Ce que les trois premiers lots ont en commun, et qui vaut pour les
 suivants : **chacun partait d'un risque déduit du code, et chacun s'est
@@ -863,10 +863,56 @@ elle se paie seule, et elle est le prérequis de toute alternative.
       décompilé — et non un dessin. Le dessin reste dans l'interface,
       qui est son métier.
 
-- [ ] **Étape 4 — ce que la frontière permet**, et qui la justifie :
-      un rapport complet (et non plus partiel), un export JSON, une
-      analyse sans interface. C'est l'étape qui prouve que la
-      séparation servait à quelque chose.
+- [x] **Étape 4 — ce que la frontière permet** (3 novembre 2026), et
+      qui la justifie. Tout est dans `rapport.rs`, et tout sort des
+      mêmes vues que l'écran.
+
+      * **Un rapport complet.** `report::markdown` est une prose écrite
+        à la main, et elle reste en tête — mais elle ne couvrait que
+        **six rubriques sur vingt-deux** : ni l'entropie, ni les
+        chaînes, ni les appels système, ni les fragments ROP, ni le
+        graphe d'appels n'en sortaient. Le rapport porte désormais, à la
+        suite, **ce que chaque panneau montre**. Une seule source, donc
+        un rapport qui ne peut plus prendre du retard sur l'écran.
+      * **Un export JSON**, par la même porte : c'est **l'extension du
+        fichier qu'on nomme** qui décide, plutôt qu'un bouton de plus
+        dans une barre qui en porte déjà trois. L'aller-retour est
+        éprouvé, et ce qui n'est pas dit ne pèse rien.
+      * **Une analyse sans interface** : `rapport::analyse(octets,
+        lang)` rend tout ce que namsdec comprend d'un fichier **sans
+        rendre une seule image** — ni contexte egui, ni surface, ni
+        thème, ni pixel. C'est le contrôle
+        `un_binaire_s_analyse_sans_peindre`.
+
+      **Deux décisions prises en chemin.**
+      (1) **L'ordre des panneaux a déménagé** de `NamsdecApp::default`
+      vers `ReModuleRegistry::standard` : c'est une propriété de
+      l'ANALYSE — de quoi on parle, puis ce qui en ressort, puis le
+      code, puis les octets —, et un rapport qui l'aurait recopié aurait
+      fini par diverger. Cent quarante-huit lignes de moins dans
+      `main.rs`, raisonnement de chaque rang compris.
+      (2) **`dans_un_rapport`**, un fait de plus sur un module : les
+      cinq panneaux d'outils extérieurs disent « radare2 n'est pas
+      installé ici », ce qui est utile à l'écran et n'apprend rien à qui
+      lira le rapport ailleurs. Dès qu'un outil a répondu, sa sortie y
+      entre comme le reste.
+
+      **Et un défaut vu en LISANT le rapport, non en relisant le
+      code :** `Ligne::texte_nu` colle les fragments bout à bout, ce qui
+      est juste — une ligne de vue n'est pas une phrase, c'est une suite
+      de morceaux que la mise en page sépare. À l'écran, egui pose son
+      espacement ; dans un fichier, personne ne le fait, et l'on lisait
+      « Pas de canari de pile—aucun témoin posé ». Le rapport recolle
+      donc avec un blanc, après avoir rogné chaque morceau — certains
+      portent encore un espace de tête, du temps où le module posait
+      lui-même son rythme.
+
+      **Ce que cela ne fait pas, et il faut le dire :** `namsdec-re`
+      dépend toujours d'egui, parce que le trait `ReModule` porte encore
+      `fn ui(&mut self, ui: &mut egui::Ui, …)`. S'en défaire demanderait
+      de déménager les vingt-deux `ui()` dans `namsdec-gui` — c'est un
+      autre lot. Ici, « sans interface » veut dire : aucune image n'est
+      rendue, et le résultat ne dépend d'aucun pixel.
 
 ### Référence de départ et clôture des lots
 

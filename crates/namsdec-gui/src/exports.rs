@@ -151,12 +151,73 @@ impl NamsdecApp {
             .and_then(|path| path.file_name())
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| strings(self.lang).analysis_title.to_owned());
-        Some(namsdec_re::report::markdown(
+        // LA PROSE SOIGNÉE D'ABORD, LES VINGT-DEUX PANNEAUX ENSUITE.
+        //
+        // `report::markdown` est écrit à la main : il raconte le
+        // fichier, ses protections et ce qu'il emprunte, en phrases.
+        // Mais il ne couvrait que six rubriques sur vingt-deux — ni
+        // l'entropie, ni les chaînes, ni les appels système, ni les
+        // fragments, ni le graphe d'appels. C'était un rapport
+        // PARTIEL, et c'est ce que P7 s'était donné pour tâche de
+        // finir. Ce qui suit vient des vues : une source unique, donc
+        // un rapport qui ne peut plus prendre du retard sur ce que les
+        // panneaux montrent.
+        let mut rapport = namsdec_re::report::markdown(
             &scan,
             &state.output.file,
             &state.disasm,
             self.lang.code(),
             &name,
-        ))
+        );
+        rapport.push_str("\n\n");
+        rapport.push_str(&namsdec_re::rapport::markdown(
+            &self.panneaux_du_rapport(),
+            &match self.lang {
+                Lang::Fr => format!("Ce que chaque panneau montre — {name}"),
+                Lang::En => format!("What each panel shows — {name}"),
+            },
+        ));
+        Some(rapport)
+    }
+
+    /// Les panneaux tels qu'ils sont À CET INSTANT, pour un rapport.
+    ///
+    /// Les modules de l'application, et non une analyse refaite à
+    /// neuf : ils portent ce que l'utilisateur a fait — la tranche
+    /// qu'il a choisie dans le vidage, le plan de détour qu'il a
+    /// calculé, la sortie qu'un outil extérieur a rendue. Un rapport
+    /// qui repartirait des octets perdrait tout cela, et ne dirait pas
+    /// la même chose que l'écran.
+    pub(crate) fn panneaux_du_rapport(&self) -> Vec<namsdec_re::rapport::Panneau> {
+        let (Some(emulator), Some(state)) = (&self.emulator, &self.assemble_state) else {
+            return Vec::new();
+        };
+        let ctx = ReContext {
+            cpu: emulator.cpu(),
+            disasm: &state.disasm,
+            source: &self.source,
+            binary: &state.output.file,
+            lang: self.lang.code(),
+            names: Some(&self.notes.names),
+            patches: &self.patches,
+        };
+        self.re_registry
+            .iter()
+            .filter(|module| module.dans_un_rapport(&ctx))
+            .filter_map(|module| {
+                let vue = module.vue(&ctx)?;
+                (!vue.est_vide()).then(|| namsdec_re::rapport::Panneau {
+                    id: module.id().to_owned(),
+                    titre: module.title(ctx.lang).to_owned(),
+                    vue,
+                })
+            })
+            .collect()
+    }
+
+    /// La même analyse, pour un autre programme.
+    pub(crate) fn analysis_json(&self) -> Option<String> {
+        self.assemble_state.as_ref()?;
+        Some(namsdec_re::rapport::json(&self.panneaux_du_rapport()))
     }
 }

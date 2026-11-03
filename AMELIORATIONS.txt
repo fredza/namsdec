@@ -9565,3 +9565,113 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      fiches à écrire, non un défaut de l'application. Même cause pour
      `reportlab`, disparu de ce Python 3.15 : le PDF du manuel a été
      régénéré depuis un environnement isolé.
+
+9.62 [FAIT] P7 EST CLOS : CE QUE LA FRONTIÈRE PERMET
+     (3 novembre 2026 — étapes 3 et 4)
+
+     LES SEPT MODULES QUI RESTAIENT. `signals`, les outils extérieurs,
+     les fragments ROP, le vidage, les chaînes, les fonctions, le
+     détour. Compte final : DIX-NEUF vues entières sur vingt-deux, et
+     trois panneaux PARTAGÉS.
+
+     LE PARTAGE, TROIS FOIS LA MÊME COUPE. L'éditeur binaire garde sa
+     grille et ses vingt-six touches ; le vidage garde la sienne, et
+     une mesure s'ajoute à l'argument — elle est VIRTUALISÉE sur vingt
+     mille lignes, et une vue se rebâtit à chaque image : la décrire
+     entière, ce serait composer 320 000 fragments soixante fois par
+     seconde pour en peindre quarante. Le détour garde son formulaire,
+     qui cumule les trois formes manquantes — liste déroulante, deux
+     bascules, éditeur multiligne —, toutes à usage unique.
+     Mais ce que ces trois-là COMPRENNENT passe : l'inspecteur, les
+     mesures de la tranche (empreinte, CRC, entropie, texte), et LE
+     PLAN d'un détour. Même règle pour la case à cocher des chaînes,
+     seule de toute la frontière : la rangée de filtre reste peinte, la
+     liste entière passe.
+
+     CE QUE LE PORTAGE A DÉGAGÉ, ET QUI VALAIT PLUS QUE LE PORTAGE.
+     Trois panneaux FILTRAIENT et TOURNAIENT LEURS PAGES pendant qu'ils
+     dessinaient — `self.visibles`, `self.page`, `self.filtre_appliqué`
+     écrits au milieu du rendu. Une vue n'emprunte `self` qu'en
+     lecture : chercher et paginer sont devenus des comportements à
+     part, et s'éprouvent sans peindre.
+
+     RENOMMER UNE FONCTION a demandé trois choses au champ, et les deux
+     dernières sortent d'une seule correction : prendre le clavier
+     quand il vient de paraître, Échap qui se dédit, et VALIDER EN
+     CLIQUANT AILLEURS. Entrée seule valait validation jusque-là, de
+     sorte qu'on perdait ce qu'on venait de taper — alors que le code
+     d'avant P7 portait la règle écrite, noir sur blanc. Échap devient
+     alors un cas particulier de « valider » : la touche rend au champ
+     le nom que le module proposait, et la validation qui suit n'a plus
+     rien à écrire.
+
+     UN DÉFAUT DE LA FRONTIÈRE ELLE-MÊME, rattrapé par un invariant qui
+     existait déjà : un fragment qui porte `mène_à` voit son texte
+     REMPLACÉ par celui qui le peint — `0x401000` devient `0x00401000`,
+     et le nom donné à la main passe devant. La mesure des colonnes
+     comptait donc deux caractères de moins que ce qui serait peint. À
+     420 px, une instruction de quarante-trois caractères courait au
+     delà du bord — et SEULEMENT À LA SECONDE IMAGE, une grille egui ne
+     connaissant la largeur de ses colonnes qu'après les avoir posées
+     une fois.
+
+     ET LE BANC MENTAIT, ce qui est pire que tout le reste.
+     `flash_fraction` lit une HORLOGE MURALE : la scène avance de huit
+     pas, puis l'on rend six images à la vitesse de la machine, de
+     sorte que RCX se peignait en orange plein ou en gris selon la
+     charge. Mesuré en rendant deux fois de suite sans toucher au
+     code : une capture sur 122 changeait d'elle-même. Elle ne prouvait
+     rien de ce qu'on lui demandait, et faisait douter des 121 autres.
+     L'éclat est éteint pour les captures ; les 122 sont désormais
+     reproductibles.
+
+     ÉTAPE 4 — ET C'EST ELLE QUI JUSTIFIE TOUT LE LOT.
+
+     1. UN RAPPORT COMPLET. La prose écrite à la main couvrait SIX
+        rubriques sur vingt-deux : ni l'entropie, ni les chaînes, ni
+        les appels système, ni les fragments, ni le graphe d'appels
+        n'en sortaient. Elle reste en tête — elle raconte, là où les
+        panneaux énumèrent —, et la suite porte CE QUE CHAQUE PANNEAU
+        MONTRE, tiré des mêmes vues que l'écran. Une seule source, donc
+        un rapport qui ne peut plus prendre du retard.
+        Ce qui se DESSINE s'y DIT plutôt que de se singer en art
+        ASCII : « Profil d'entropie : 261 tranches de 1024 octets sur
+        267 000 ; moyenne 5,94, maximum 7,99 ».
+
+     2. UN EXPORT JSON, par la même porte : c'est l'EXTENSION du
+        fichier qu'on nomme qui décide, plutôt qu'un bouton de plus
+        dans une barre qui en porte déjà trois. L'aller-retour est
+        éprouvé, et ce qui n'est pas dit ne pèse rien — un fragment
+        ordinaire ne porte aucun des drapeaux qu'il n'a pas.
+
+     3. UNE ANALYSE SANS INTERFACE. `rapport::analyse(octets, lang)`
+        rend tout ce que namsdec comprend d'un fichier SANS RENDRE UNE
+        SEULE IMAGE : ni contexte egui, ni surface, ni thème, ni pixel.
+        C'était le but du lot, énoncé le 29 octobre.
+
+     DEUX DÉCISIONS PRISES EN CHEMIN.
+       — L'ORDRE DES PANNEAUX A DÉMÉNAGÉ de `NamsdecApp::default` vers
+         `ReModuleRegistry::standard`. C'est une propriété de l'ANALYSE
+         — de quoi on parle, puis ce qui en ressort, puis le code, puis
+         les octets —, et un rapport qui l'aurait recopié aurait fini
+         par diverger. 148 lignes de moins dans `main.rs`, raisonnement
+         de chaque rang compris.
+       — `dans_un_rapport`, un fait de plus sur un module : les cinq
+         panneaux d'outils extérieurs disent « radare2 n'est pas
+         installé ici », ce qui sert à l'écran et n'apprend rien à qui
+         lira le rapport ailleurs. Dès qu'un outil a répondu, sa sortie
+         y entre comme le reste.
+
+     ET UN DÉFAUT VU EN LISANT LE RAPPORT, non en relisant le code :
+     `Ligne::texte_nu` colle les fragments bout à bout, ce qui est
+     juste — une ligne de vue n'est pas une phrase, c'est une suite de
+     morceaux que la mise en page sépare. À l'écran, egui pose son
+     espacement ; dans un fichier, personne ne le fait, et l'on lisait
+     « Pas de canari de pile—aucun témoin posé ».
+
+     CE QUE CELA NE FAIT PAS, et il faut le dire : `namsdec-re` dépend
+     toujours d'egui, parce que le trait `ReModule` porte encore
+     `fn ui(&mut self, ui: &mut egui::Ui, …)`. S'en défaire demanderait
+     de déménager les vingt-deux `ui()` dans `namsdec-gui`. Ici, « sans
+     interface » veut dire : aucune image n'est rendue, et le résultat
+     ne dépend d'aucun pixel.

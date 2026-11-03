@@ -758,6 +758,80 @@ fn the_analysis_report_can_be_written_to_a_file() {
     assert!(texte.contains("malloc"), "avec ce qu'elles font");
 }
 
+/// Le rapport n'est plus partiel, et il s'écrit aussi en JSON.
+///
+/// **C'EST L'ÉTAPE QUI JUSTIFIE P7.** Le rapport écrit à la main
+/// couvrait six rubriques sur vingt-deux : ni l'entropie, ni les
+/// chaînes, ni les appels système, ni les fragments ROP, ni le graphe
+/// d'appels n'en sortaient — ce que namsdec en comprenait n'existait
+/// que PEINT. Il porte maintenant ce que chaque panneau montre, tiré
+/// des mêmes vues que l'écran : une source unique, donc un rapport qui
+/// ne peut plus prendre du retard sur ce qu'on voit.
+///
+/// Et le même fond en JSON, pour un autre programme. L'extension
+/// choisie décide — un format qu'on demande en nommant son fichier,
+/// plutôt qu'un bouton de plus dans une barre qui en porte déjà trois.
+#[test]
+fn le_rapport_porte_ce_que_les_panneaux_montrent() {
+    let Ok(bytes) = std::fs::read("/bin/ls") else {
+        eprintln!("/bin/ls introuvable : test ignoré");
+        return;
+    };
+    let mut app = NamsdecApp::default();
+    app.load_binary(bytes, "programme");
+
+    let md = app.analysis_report().expect("un binaire est chargé");
+    // La prose soignée reste en tête : elle raconte, là où les
+    // panneaux énumèrent.
+    assert!(md.starts_with("# Analyse du binaire"));
+    // Et ce qu'elle ne disait pas y est maintenant. Trois rubriques
+    // choisies parce qu'AUCUNE n'était dans le rapport d'avant.
+    for panneau in ["## Entropie", "## Chaînes lisibles", "## Appels système"] {
+        assert!(md.contains(panneau), "le rapport porte « {panneau} »");
+    }
+    // Le profil d'entropie se DIT, faute de se dessiner : un rapport
+    // ne peint pas, et il ne fait pas semblant.
+    assert!(
+        md.contains("Profil d'entropie"),
+        "ce qui se dessinait se dit : {}",
+        &md[..md.len().min(200)]
+    );
+
+    // LES PANNEAUX QUI PARLENT DE LA MACHINE SONT ÉCARTÉS : aucun
+    // outil extérieur n'a tourné, et « radare2 n'est pas installé
+    // ici » n'apprend rien à qui lira le rapport ailleurs.
+    assert!(
+        !md.contains("Décompilation par radare2"),
+        "un outil qui n'a rien rendu n'a pas de rubrique"
+    );
+
+    // LE MÊME FOND, EN JSON, et c'est l'extension qui décide.
+    let dir = tempfile::tempdir().unwrap();
+    let json = dir.path().join("analyse.json");
+    app.export_report(&json);
+    assert!(matches!(app.status, Status::Note(_)), "{:?}", app.status);
+    let texte = std::fs::read_to_string(&json).unwrap();
+    let relu: serde_json::Value = serde_json::from_str(&texte).expect("du JSON valable");
+    let panneaux = relu.as_array().expect("une liste de panneaux");
+    assert!(panneaux.len() >= 8, "{} panneaux", panneaux.len());
+    assert!(
+        panneaux
+            .iter()
+            .any(|p| p["id"] == "entropy" && !p["vue"]["blocs"].as_array().unwrap().is_empty()),
+        "l'entropie y est, avec ses blocs"
+    );
+
+    // Et le Markdown reste le défaut : c'est l'extension qui change
+    // tout, et rien d'autre.
+    let md_path = dir.path().join("analyse.md");
+    app.export_report(&md_path);
+    assert!(
+        std::fs::read_to_string(&md_path)
+            .unwrap()
+            .starts_with("# Analyse du binaire")
+    );
+}
+
 /// Le motif cyclique répond à « de combien ça déborde » : on l'engendre,
 /// on le donne au programme, et la valeur retrouvée dans un registre dit
 /// le décalage.

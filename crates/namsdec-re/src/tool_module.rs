@@ -269,6 +269,15 @@ impl ReModule for ToolModule {
         }
     }
 
+    /// Tant que l'outil n'a pas répondu, ce panneau parle de la
+    /// MACHINE — « radare2 n'est pas installé ici », « voici la
+    /// commande qu'on lancerait ». Utile à l'écran, sans intérêt pour
+    /// qui lira le rapport ailleurs. Sa sortie, elle, est de l'analyse
+    /// comme une autre.
+    fn dans_un_rapport(&self, _ctx: &ReContext) -> bool {
+        !self.lignes.is_empty()
+    }
+
     fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         let fr = ctx.lang.starts_with("fr");
         let mut blocs = vec![

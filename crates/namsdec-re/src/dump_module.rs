@@ -386,6 +386,17 @@ impl ReModule for DumpModule {
         self.demande.take()
     }
 
+    /// Ce que la tranche vaut — et rien de la grille.
+    ///
+    /// ATTENTION, CE PANNEAU EST PARTAGÉ : `ui` ne peint pas cette vue
+    /// et s'arrête là, il la peint PUIS dessine la grille d'octets, qui
+    /// ne se dit pas. Un rapport, lui, ne reçoit que ce qui se dit —
+    /// et c'est bien ce qu'il veut : l'empreinte d'une tranche, son
+    /// entropie, le texte qu'on y lit.
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        (!ctx.binary.is_empty()).then(|| self.vue_de_la_tranche(ctx, ctx.binary))
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         let octets = ctx.binary;
         if octets.is_empty() {

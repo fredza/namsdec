@@ -80,12 +80,7 @@ use namsdec_core::{RFlags, Reg64};
 use namsdec_disasm::DecodedInstruction;
 use namsdec_emu::{Backend, Emulator, RunStop, StepOverResult, StepResult};
 use namsdec_explorer::{ExplorerAction, FileExplorer};
-use namsdec_re::{
-    BinaryInfoModule, CallGraphModule, DetourModule, DigestModule, DumpModule, DzfDecompilerModule,
-    EntropyModule, FunctionsModule, GadgetsModule, HexEditorModule, ImportsModule, MapModule,
-    PatternsModule, ProtectionsModule, ReContext, ReModuleRegistry, SignalsModule, SlackModule,
-    StringsModule, SyscallsModule, UpxModule, XrefsModule, YaraModule,
-};
+use namsdec_re::{ReContext, ReModuleRegistry};
 use namsdec_theme::Theme;
 
 use enums::*;
@@ -1948,155 +1943,13 @@ _start:
 
 impl Default for NamsdecApp {
     fn default() -> Self {
-        let mut re_registry = ReModuleRegistry::new();
-        // Le résumé d'abord : de quoi on parle. Puis les protections —
-        // avant de lire ce que fait un binaire, on regarde comment il
-        // est armé, car c'est ce qui décide de tout ce qu'on tentera
-        // ensuite.
-        re_registry.register(Box::new(BinaryInfoModule::default()));
-        // Puis les signaux : ce que tous les autres ont trouvé, rassemblé.
-        // Il n'analyse rien de neuf — il dit par où commencer, et renvoie
-        // chaque fois au panneau qui explique. C'est le tableau de bord
-        // qu'on lit en premier, et il est donc en second : d'abord de
-        // quoi on parle, ensuite ce qui en ressort.
-        re_registry.register(Box::new(SignalsModule::default()));
-        // Puis l'identité du fichier : de quel octet parle-t-on ? C'est
-        // la première ligne d'un compte rendu, et ce qui permet à deux
-        // personnes de savoir qu'elles lisent le même fichier.
-        re_registry.register(Box::new(DigestModule::default()));
-        // Puis « où est quoi » : un binaire n'est pas un bloc. Savoir à
-        // quel endroit on regarde change ce qu'on y cherche — une
-        // entropie haute dans `.text` est normale, la même dans
-        // `.rodata` annonce des données chiffrées.
-        re_registry.register(Box::new(MapModule::default()));
-        re_registry.register(Box::new(ProtectionsModule::default()));
-        // L'entropie juste après : elle répond avant tout le reste à
-        // « est-ce qu'il y a quelque chose à lire ici ? ». Sur un binaire
-        // empaqueté, les modules suivants analyseraient un déchiffreur de
-        // trois cents octets en croyant analyser le programme — autant le
-        // savoir tout de suite.
-        re_registry.register(Box::new(EntropyModule::default()));
-        // Puis UPX, tout de suite après : c'est l'entropie qui pose la
-        // question — « y a-t-il seulement le vrai programme ici ? » —,
-        // et sur le plus répandu des empaqueteurs la réponse est à un
-        // clic. Avant les modules de code, parce qu'un binaire
-        // empaqueté les ferait analyser un déballeur de trois cents
-        // octets en croyant analyser le programme : il n'y a rien à
-        // décoder tant qu'on n'a pas déballé.
-        re_registry.register(Box::new(UpxModule::default()));
-        // Puis « par où commencer » : dans un binaire dépouillé, la
-        // question précède toutes les autres. Le module retrouve le
-        // `main` et découpe le code en fonctions.
-        re_registry.register(Box::new(FunctionsModule::default()));
-        // Juste après : comment ces fonctions s'appellent. Le module
-        // « Fonctions » les dénombre ; celui-ci montre leur structure —
-        // l'arbre des appels depuis le point d'entrée, à la façon d'un
-        // diagramme UML —, laisse aller à une adresse, et déplie le code
-        // binaire et le pseudo-code de chacune. C'est la carte qu'on lit
-        // avant de descendre dans une fonction.
-        re_registry.register(Box::new(CallGraphModule::default()));
-        // Ce que le code *fait* de remarquable : les figures, rangées de
-        // la plus rare à la plus commune. C'est ce classement qui fait
-        // sortir une comparaison déguisée d'un binaire de soixante mille
-        // instructions.
-        re_registry.register(Box::new(PatternsModule::default()));
-        // Et par où entrer dedans : qui appelle quoi, qui saute où. Les
-        // références croisées ferment la famille du code — elles se
-        // lisent une fois qu'on sait ce que le binaire contient.
-        re_registry.register(Box::new(XrefsModule::default()));
-        // La décompilation DZF : les fonctions en pseudo-C, quand le
-        // moteur maison les a rendues. Après le graphe d'appels, dont elle
-        // prolonge la lecture — du squelette des appels au corps en clair.
-        re_registry.register(Box::new(DzfDecompilerModule::default()));
-        // Puis les outils des autres, un panneau chacun. La fenêtre
-        // « Décompilation » les propose déjà dans une liste déroulante,
-        // mais une liste déroulante oblige à relancer pour comparer, et
-        // perd la sortie précédente : ici, chacun garde la sienne, et
-        // l'on passe de Ghidra à RetDec comme on change de page.
-        //
-        // Dans l'ordre de ce qu'ils rendent : du plus haut — du C qu'on
-        // lit presque comme un source — au plus bas, les instructions
-        // brutes. Aucun ne se lance tout seul ; chacun dit, avant,
-        // la commande qu'il exécuterait.
-        for (id, fr, en, court) in [
-            (
-                "rizin-ghidra",
-                "Décompilation par Ghidra",
-                "Decompilation by Ghidra",
-                "Ghidra",
-            ),
-            (
-                "retdec",
-                "Décompilation par RetDec",
-                "Decompilation by RetDec",
-                "RetDec",
-            ),
-            (
-                "radare2",
-                "Décompilation par radare2",
-                "Decompilation by radare2",
-                "radare2",
-            ),
-            (
-                "objdump",
-                "Désassemblage par objdump",
-                "Disassembly by objdump",
-                "objdump",
-            ),
-            (
-                "ndisasm",
-                "Désassemblage par ndisasm",
-                "Disassembly by ndisasm",
-                "ndisasm",
-            ),
-        ] {
-            // « Décompilation » pour les trois premiers, « Désassemblage »
-            // pour les deux derniers, et ce n'est pas une coquetterie :
-            // objdump et ndisasm rendent des instructions, non du C.
-            // Les ranger sous le même mot ferait attendre d'eux ce
-            // qu'ils ne savent pas faire.
-            if let Some(module) = namsdec_re::ToolModule::connu(id, fr, en, court) {
-                re_registry.register(Box::new(module));
-            }
-        }
-        // Ce qu'il DIT : ses chaînes, et la règle qu'on en tire. Deux
-        // rubriques qui vont ensemble — la seconde se nourrit de la
-        // première.
-        re_registry.register(Box::new(StringsModule::default()));
-        // Le geste qui suit l'analyse : une règle YARA pour retrouver les
-        // frères de cet échantillon. Juste après les chaînes, car c'est
-        // d'elles qu'elle tire ses motifs.
-        re_registry.register(Box::new(YaraModule::default()));
-        // Puis ce qu'il DEMANDE au dehors. Les appels système d'abord —
-        // ce qu'il demande au noyau, sans intermédiaire.
-        re_registry.register(Box::new(SyscallsModule::default()));
-        // Puis les fonctions d'autrui qu'il appelle : la même question
-        // posée un cran plus haut — que demande-t-il à ce qui n'est pas
-        // lui ?
-        re_registry.register(Box::new(ImportsModule::default()));
-        // Restent les OCTETS eux-mêmes. Les fragments d'abord : ils
-        // n'ont de sens qu'après avoir lu les protections, dont ils
-        // expliquent la raison d'être.
-        re_registry.register(Box::new(GadgetsModule::default()));
-        // La place libre juste après : là où les fragments disent « il y a
-        // déjà du code réutilisable », celle-ci dit « il y a aussi de la
-        // place inutilisée ». Deux façons de voir qu'un binaire n'est pas
-        // le bloc figé qu'on croit.
-        re_registry.register(Box::new(SlackModule::default()));
-        // Le vidage en dernier : c'est là qu'on descend quand les
-        // modules d'au-dessus ont désigné un endroit, et qu'on veut
-        // savoir ce que ces octets-là sont vraiment.
-        re_registry.register(Box::new(DumpModule::default()));
-        // Et l'éditeur binaire : on a compris quel octet décide, on le
-        // change pour voir. Réversible (Correctifs), et rien n'atteint le
-        // disque sans un enregistrement explicite.
-        re_registry.register(Box::new(HexEditorModule::default()));
-        // Le détour en dernier, et c'est sa place : il suppose tout ce
-        // qui précède. Il faut avoir vu la place libre pour savoir où
-        // atterrir, le listing pour choisir l'endroit, et les correctifs
-        // pour comprendre qu'on peut se dédire. C'est aussi le seul
-        // panneau qui AJOUTE du code au lieu d'en retirer.
-        re_registry.register(Box::new(DetourModule::default()));
+        // L'ORDRE DES PANNEAUX VIT DANS `namsdec-re`, depuis P7 :
+        // c'est une propriété de l'ANALYSE — de quoi on parle, puis
+        // ce qui en ressort, puis le code, puis les octets — et non
+        // de l'interface qui la montre. Un rapport la suit, et le
+        // raisonnement de chaque rang se lit auprès de lui, dans
+        // `ReModuleRegistry::standard`.
+        let re_registry = ReModuleRegistry::standard();
 
         Self {
             source: DEFAULT_SOURCE.to_string(),

@@ -1291,7 +1291,7 @@ fn the_changelog_covers_the_version_being_built() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 31] = [
+    const LES_MÊMES: [&str; 32] = [
         // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
         "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.
@@ -1318,6 +1318,8 @@ fn both_languages_say_the_same_things() {
         "disassembly_nasm",
         "disassembly_pseudo",
         "filter_markdown",
+        // « JSON » est un sigle : il ne se traduit nulle part.
+        "filter_json",
         "preferences_tab_modules",
         "preferences_tab_plugins",
         "tab_diagnostics",

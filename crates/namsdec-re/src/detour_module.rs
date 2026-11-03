@@ -311,6 +311,16 @@ impl ReModule for DetourModule {
         self.nasm = namsdec_asm::find_nasm().is_some();
     }
 
+    /// Le plan, quand il y en a un — et rien du formulaire.
+    ///
+    /// ATTENTION, CE PANNEAU EST PARTAGÉ : `ui` peint d'abord le
+    /// formulaire, qui ne se dit pas, puis cette vue. `None` tant
+    /// qu'on n'a rien calculé : il n'y a alors pas de plan, et un
+    /// rapport n'a pas à porter une rubrique vide.
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        self.vue_du_plan(ctx)
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         ui.weak(ctx.t(
             "Ajouter du code à un exécutable sans le décaler. Un octet de plus \

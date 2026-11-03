@@ -2423,6 +2423,25 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "vérifier de son côté. C'est la même fonction qui produit les signaux du rapport "
          "et ceux du panneau — deux synthèses qui diraient des choses différentes "
          "seraient pires qu'une."),
+        ("p",
+         "<b>Et il n'est plus partiel.</b> Cette prose-là couvrait six rubriques sur "
+         "vingt-deux&nbsp;: ni l'entropie, ni les chaînes, ni les appels système, ni les "
+         "fragments ROP, ni le graphe d'appels n'en sortaient — ce que namsdec en "
+         "comprend n'existait que <i>peint à l'écran</i>. Depuis que chaque panneau sait "
+         "<b>dire</b> ce qu'il montre, le rapport porte à la suite <b>ce que chaque "
+         "panneau montre</b>, tiré des mêmes descriptions que l'écran&nbsp;: une seule "
+         "source, donc un rapport qui ne peut plus prendre du retard sur ce qu'on voit. "
+         "Ce qui se dessine — un profil d'entropie, un graphe d'appels — s'y <i>dit</i> "
+         "plutôt que de se dessiner en art ASCII&nbsp;: « 261 tranches de 1024 octets, "
+         "moyenne 5,94 ». Les panneaux qui parlent de la MACHINE plutôt que du fichier — "
+         "« radare2 n'est pas installé ici » — en sont écartés&nbsp;; dès qu'un outil a "
+         "répondu, sa sortie y entre comme le reste."),
+        ("p",
+         "<b>En Markdown ou en JSON</b>, et c'est l'extension du fichier qu'on nomme qui "
+         "décide. Le Markdown se colle dans un ticket ou un support de cours&nbsp;; le "
+         "JSON se donne à un autre programme — c'est la même analyse, structurée. Ce qui "
+         "n'est pas dit n'y pèse rien&nbsp;: un fragment ordinaire ne porte aucun des "
+         "drapeaux qu'il n'a pas."),
 
         ("h1", "Quatre séances, et ce qu'elles apprennent"),
         ("p",

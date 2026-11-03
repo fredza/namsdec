@@ -93,6 +93,13 @@ impl NamsdecApp {
             ),
             FileDialogKind::ExportReport => dialog
                 .add_filter(s.filter_markdown, &["md"])
+                // ET LE JSON, qui est l'autre moitié de ce que la
+                // frontière permet : le Markdown se lit, le JSON se
+                // traite. Les deux sortent des mêmes vues, et c'est
+                // l'extension choisie qui décide — un format qu'on
+                // demande en nommant son fichier, plutôt qu'un bouton
+                // de plus dans une barre qui en porte déjà trois.
+                .add_filter(s.filter_json, &["json"])
                 // Le nom du fichier analysé, pour ne pas se retrouver
                 // avec trois rapports qui portent le même nom.
                 .set_file_name(format!(
@@ -332,10 +339,24 @@ impl NamsdecApp {
         }
     }
 
-    /// Écrit le rapport d'analyse dans un fichier Markdown.
+    /// Écrit le rapport d'analyse, en Markdown ou en JSON.
+    ///
+    /// L'EXTENSION DÉCIDE. Les deux sortent des mêmes vues : le
+    /// Markdown se colle dans un compte rendu, le JSON se donne à un
+    /// autre programme. C'est ce que la frontière de P7 a rendu
+    /// possible — avant elle, ce que namsdec comprenait n'existait que
+    /// peint à l'écran.
     pub(crate) fn export_report(&mut self, path: &Path) {
         let s = strings(self.lang);
-        let Some(report) = self.analysis_report() else {
+        let json = path
+            .extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case("json"));
+        let rapport = if json {
+            self.analysis_json()
+        } else {
+            self.analysis_report()
+        };
+        let Some(report) = rapport else {
             self.status = Status::Error(s.analysis_none.to_owned());
             return;
         };
