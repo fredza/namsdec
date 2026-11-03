@@ -742,30 +742,37 @@ impl VueCentrale {
     /// Le critère est celui du reste de l'interface graduée :
     /// *qu'est-ce qui se comprend sans rien savoir d'avance ?*
     ///
-    /// Restent au débutant les quatre façons de regarder le programme
-    /// qu'on vient d'écrire : ce qu'on a **écrit**, ce que la machine
-    /// en a **reçu**, la **forme** qu'il prend — un listing se lit de
-    /// haut en bas, un programme non — et ce que le fichier **dit de
-    /// lui-même**.
+    /// Restent au débutant cinq façons de regarder le programme qu'on
+    /// vient d'écrire : ce qu'on a **écrit**, ce que la machine en a
+    /// **reçu**, la **forme** qu'il prend — un listing se lit de haut
+    /// en bas, un programme non —, ce que le fichier **dit de
+    /// lui-même**, et **où l'on a demandé à s'arrêter**.
     ///
-    /// Les cinq autres demandent de savoir quelque chose d'abord :
-    /// qu'un outil extérieur rende du pseudo-C, qu'une exécution
-    /// laisse une trace qu'on relit, qu'un arrêt puisse porter une
-    /// CONDITION (« (rax & 0xff) == 'A' »), que le processeur ait des
-    /// registres vectoriels, et qu'on puisse réécrire les octets d'un
-    /// binaire. De celles-là, **« Points d'arrêt » est la plus
-    /// discutable** : poser un arrêt s'apprend tôt, et le clic dans la
-    /// gouttière marche à tous les niveaux — c'est la LISTE, avec ses
-    /// conditions, qui demande d'en savoir plus.
+    /// Les quatre autres demandent de savoir quelque chose d'abord :
+    /// qu'un outil extérieur rende du pseudo-C, qu'une exécution laisse
+    /// une trace qu'on relit, que le processeur ait des registres
+    /// vectoriels, et qu'on puisse réécrire les octets d'un binaire.
+    ///
+    /// **« Points d'arrêt » reste, et c'est une décision prise contre
+    /// mon premier découpage** (3 novembre 2026). Je l'avais écarté
+    /// parce que la liste porte des CONDITIONS — « (rax & 0xff) ==
+    /// 'A' » — qui, elles, demandent d'en savoir plus. Mais poser un
+    /// arrêt s'apprend le deuxième jour, le clic dans la gouttière le
+    /// fait à tous les niveaux, et cette vue est le seul endroit où
+    /// l'on voit CE QU'ON A POSÉ. Sans elle, un arrêt oublié trois
+    /// fichiers plus loin devient un programme qui s'arrête sans
+    /// raison — la pire chose qui puisse arriver à qui apprend. Le
+    /// champ de condition, lui, attend qu'on s'en serve ; il n'oblige
+    /// à rien.
     pub(crate) fn niveau(self) -> namsdec_re::Niveau {
         match self {
             VueCentrale::Source
             | VueCentrale::Disassembly
             | VueCentrale::Flow
-            | VueCentrale::Analysis => namsdec_re::Niveau::Débutant,
+            | VueCentrale::Analysis
+            | VueCentrale::Breakpoints => namsdec_re::Niveau::Débutant,
             VueCentrale::Decompiler
             | VueCentrale::Timeline
-            | VueCentrale::Breakpoints
             | VueCentrale::Vectors
             | VueCentrale::Patches => namsdec_re::Niveau::Avancé,
         }

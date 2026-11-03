@@ -140,11 +140,16 @@ impl Action {
     ///
     /// Le critère est celui du reste de l'interface graduée : *qu'est-ce
     /// qui se comprend sans rien savoir d'avance ?* « Pas par-dessus »
-    /// demande de savoir ce qu'est un appel — par-dessus QUOI ? —, et
-    /// « revenir d'un pas » demande de savoir qu'une machine peut
-    /// garder son passé, ce qui n'est vrai d'aucun débogueur ordinaire.
-    /// Les deux s'apprennent vite ; ce sont les deuxièmes choses, pas
-    /// les premières.
+    /// demande de savoir ce qu'est un appel — par-dessus QUOI ?
+    ///
+    /// **« Step Back » reste, et c'est une décision prise contre mon
+    /// premier découpage** (3 novembre 2026). Je l'avais écarté parce
+    /// qu'il suppose qu'une machine garde son passé, ce qui n'est vrai
+    /// d'aucun débogueur ordinaire. Mais c'est justement ce qui en fait
+    /// une des plus belles choses que namsdec sache offrir à qui
+    /// apprend : on avance d'un pas, on n'a pas vu ce qui a changé, on
+    /// revient. Cela s'explique en une phrase et s'essaie sans risque —
+    /// c'est tout le contraire d'un prérequis.
     pub fn niveau(self) -> namsdec_re::Niveau {
         match self {
             // Les trois « jusqu'au prochain… » sont les `nextcall`,
@@ -152,11 +157,9 @@ impl Action {
             // qu'on sache déjà ce qu'est un appel, un retour, un appel
             // système. On les apprend en les voyant passer au pas à
             // pas, pas en les sautant.
-            Action::StepOver
-            | Action::StepBack
-            | Action::RunToCall
-            | Action::RunToReturn
-            | Action::RunToSyscall => namsdec_re::Niveau::Avancé,
+            Action::StepOver | Action::RunToCall | Action::RunToReturn | Action::RunToSyscall => {
+                namsdec_re::Niveau::Avancé
+            }
             _ => namsdec_re::Niveau::Débutant,
         }
     }

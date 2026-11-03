@@ -174,11 +174,17 @@ pub(crate) fn dialog_bar_hinted(
 
 /// Le libellé d'une commande AU NIVEAU EN VIGUEUR.
 ///
-/// Un seul nom change, et c'est le pas. « Step Into » est le mot de gdb
-/// et de pwndbg — le bon pour qui s'en sert déjà, puisque les raccourcis
-/// de namsdec sont les leurs — mais en mode débutant le pas est SEUL
-/// (« Step Over » et « Step Back » ne paraissent pas) : il n'a donc rien
-/// à distinguer, et s'appelle par ce qu'il fait.
+/// DEUX NOMS changent, et ce sont les deux pas. « Step Into » et « Step
+/// Back » sont les mots de gdb et de pwndbg — les bons pour qui s'en
+/// sert déjà, puisque les raccourcis de namsdec sont les leurs. Mais en
+/// mode débutant « Step Over » ne paraît pas : le pas avant n'a donc
+/// rien à distinguer, et les deux s'appellent par ce qu'ils font — « Pas
+/// à pas » et « Pas en arrière », qui vont par paire.
+///
+/// Le pas arrière a failli rester en anglais, et c'eût été le seul mot
+/// anglais d'une barre française : il est revenu au niveau débutant
+/// après coup (3 novembre 2026), et la traduction a suivi d'une
+/// minute.
 ///
 /// TOUT CE QUI NOMME UNE COMMANDE PASSE PAR ICI — la barre d'outils, le
 /// menu Outils, la palette. Sans quoi la barre dirait « Pas à pas » et
@@ -192,6 +198,7 @@ pub(crate) fn action_label_pour(
 ) -> &'static str {
     match (action, niveau) {
         (Action::StepInto, namsdec_re::Niveau::Débutant) => s.action_step_simple,
+        (Action::StepBack, namsdec_re::Niveau::Débutant) => s.action_step_back_simple,
         _ => action_label(s, action),
     }
 }

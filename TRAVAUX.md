@@ -4428,9 +4428,35 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       `action_label_pour`, la palette comprise. Retenu par un contrôle
       qui ouvre vraiment le menu et compare les deux niveaux.
 
-      **Le lot est clos** : la colonne d'analyse, « Tout », la barre
-      d'outils, les deux rangées d'onglets, les menus et la palette
-      parlent le même niveau, et un seul endroit le dit
+      **DEUX RETOURS, DEMANDÉS APRÈS COUP** (3 novembre 2026) — les
+      deux que j'avais signalés comme les plus discutables de ce que
+      j'écartais, et la décision est allée contre mon découpage :
+
+      * **« Step Back » revient au débutant.** Je l'avais écarté parce
+        qu'il suppose qu'une machine garde son passé, ce qui n'est vrai
+        d'aucun débogueur ordinaire. Mais c'est exactement ce qui en
+        fait une des plus belles choses que namsdec sache offrir à qui
+        apprend : on avance d'un pas, on n'a pas vu ce qui a changé, on
+        revient. Cela s'explique en une phrase et s'essaie sans risque.
+      * **« Points d'arrêt » revient.** Je l'avais écarté pour ses
+        CONDITIONS (« (rax & 0xff) == 'A' »). Mais poser un arrêt
+        s'apprend le deuxième jour, et cette vue est **le seul endroit
+        où l'on voit ce qu'on a posé** : sans elle, un arrêt oublié
+        trois fichiers plus loin devient un programme qui s'arrête sans
+        raison — la pire chose qui puisse arriver à qui apprend. Le
+        champ de condition attend qu'on s'en serve ; il n'oblige à rien.
+
+      **Et une conséquence qu'il a fallu traiter dans la minute :**
+      « Step Back » devenait le seul mot anglais d'une barre qui dit
+      « Pas à pas ». Les deux pas vont par paire, et s'appellent
+      désormais **« Pas à pas »** et **« Pas en arrière »** au niveau
+      débutant — par le même `action_label_pour`, donc dans la barre
+      comme dans la palette.
+
+      **Le lot est clos** : la colonne d'analyse (9 rubriques sur 25),
+      « Tout », la barre d'outils (6 commandes sur 7), les onglets du
+      centre (5 sur 9) et du panneau (4 sur 6), les menus et la
+      palette parlent le même niveau, et un seul endroit le dit
       (`NamsdecApp::niveau`).
 
 ---

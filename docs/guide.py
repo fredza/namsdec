@@ -321,15 +321,17 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ]),
         ("note",
          "<b>La barre d'outils se gradue, elle aussi.</b> En <b>mode débutant</b>, elle "
-         "porte cinq commandes — <b>Assembler</b>, <b>Exécuter</b>, <b>Pas à pas</b>, "
-         "<b>Stop</b>, <b>Réinitialiser</b> — et le pas s'appelle par ce qu'il fait. En "
-         "mode avancé, elle en porte sept et reprend les mots de gdb et de pwndbg, qui "
-         "sont ceux des raccourcis : <b>Step Into</b>, <b>Step Over</b> (passer par-dessus "
-         "un appel sans y entrer) et <b>Step Back</b> (défaire le dernier pas — ce qu'un "
-         "émulateur offre et qu'un débogueur ordinaire rend laborieux). Les deux "
-         "dernières demandent de savoir quelque chose d'avance : par-dessus <i>quoi</i>, "
-         "et qu'une machine puisse garder son passé. <b>Rien n'est désinstallé</b> : leurs "
-         "raccourcis marchent toujours, et la palette de commandes les propose encore."),
+         "porte six commandes — <b>Assembler</b>, <b>Exécuter</b>, <b>Pas à pas</b>, "
+         "<b>Pas en arrière</b>, <b>Stop</b>, <b>Réinitialiser</b> — et les deux pas "
+         "s'appellent par ce qu'ils font, puisqu'ils vont par paire. En mode avancé ils "
+         "reprennent les mots de gdb et de pwndbg, qui sont ceux des raccourcis : "
+         "<b>Step Into</b> et <b>Step Back</b>. Défaire le dernier pas reste dès le "
+         "premier jour : c'est ce qu'un "
+         "émulateur offre et qu'un débogueur ordinaire rend laborieux, cela s'explique en "
+         "une phrase et s'essaie sans risque. Seul <b>Step Over</b> attend le mode avancé, "
+         "parce qu'il demande de savoir par-dessus <i>quoi</i> l'on passe. <b>Rien n'est "
+         "désinstallé</b> : son raccourci marche toujours, et la palette de commandes le "
+         "propose encore."),
         ("p",
          "Le programme s'arrête sur <font face='Courier'>hlt</font> ou sur l'appel système "
          "<font face='Courier'>exit</font>. Un programme que rien n'arrête est signalé dès "
@@ -535,13 +537,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["Correctifs", "ce qu'on a changé dans les octets"],
         ]),
         ("note",
-         "<b>En mode débutant, quatre onglets sur neuf</b> : « Source » (ce qu'on écrit), "
+         "<b>En mode débutant, cinq onglets sur neuf</b> : « Source » (ce qu'on écrit), "
          "« Désassemblage » (ce que la machine en a reçu), « Déroulement » (la forme que "
-         "le programme prend — un listing se lit de haut en bas, un programme non) et "
-         "« Analyse ». Les cinq autres demandent de savoir quelque chose d'abord : qu'un "
-         "outil extérieur rende du pseudo-C, qu'une exécution laisse une trace qu'on "
-         "relit, qu'un arrêt puisse porter une <i>condition</i>, que le processeur ait des "
-         "registres vectoriels, qu'on puisse réécrire les octets d'un binaire. "
+         "le programme prend — un listing se lit de haut en bas, un programme non), "
+         "« Analyse », et « Points d'arrêt » — le seul endroit où l'on voit ce qu'on a "
+         "posé, et un arrêt oublié trois fichiers plus loin est un programme qui s'arrête "
+         "sans raison. Les quatre autres demandent de savoir quelque chose d'abord : "
+         "qu'un outil extérieur rende du pseudo-C, qu'une exécution laisse une trace "
+         "qu'on relit, que le processeur ait des registres vectoriels, qu'on puisse "
+         "réécrire les octets d'un binaire. "
          "<b>La vue où l'on vous envoie garde son onglet</b>, quel que soit le niveau — "
          "par le menu Outils, par la palette, ou par un lien d'un panneau d'analyse : on "
          "ne vous retire pas ce que vous avez demandé. Le panneau latéral se gradue de "
@@ -560,7 +564,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "propose pas ce que la rangée ne montre pas — un menu qui mène où l'on ne saura "
          "plus revenir est pire qu'un menu plus court —, et le menu Affichage ne liste "
          "que les onglets du panneau qui existent à ce niveau. En mode débutant s'en vont "
-         "aussi <b>Step Over</b>, les trois « jusqu'au prochain appel / retour / appel "
+         "<b>Step Over</b>, les trois « jusqu'au prochain appel / retour / appel "
          "système » (les <font face='Courier'>nextcall</font>, "
          "<font face='Courier'>nextret</font> et <font face='Courier'>nextsyscall</font> "
          "de pwndbg) et le <b>motif cyclique</b>, qui est un outil d'exploitation. La "

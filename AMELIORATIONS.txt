@@ -9394,6 +9394,23 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      heure après la traduction de la barre seule. Tout ce qui nomme une
      commande passe maintenant par `action_label_pour`.
 
-     LE LOT EST CLOS : colonne d'analyse, « Tout », barre d'outils, les
-     deux rangées d'onglets, menus et palette parlent le même niveau,
-     et un seul endroit le dit.
+     DEUX RETOURS, DEMANDÉS APRÈS COUP, et la décision est allée contre
+     mon découpage — c'étaient les deux que j'avais signalés comme les
+     plus discutables.
+       — STEP BACK revient : écarté parce qu'il suppose qu'une machine
+         garde son passé, il est justement ce que namsdec offre de plus
+         beau à qui apprend. On avance d'un pas, on n'a pas vu ce qui a
+         changé, on revient.
+       — POINTS D'ARRÊT revient : écarté pour ses conditions, il est le
+         seul endroit où l'on voit CE QU'ON A POSÉ. Sans lui, un arrêt
+         oublié devient un programme qui s'arrête sans raison.
+
+     ET UNE CONSÉQUENCE TRAITÉE DANS LA MINUTE : « Step Back » devenait
+     le seul mot anglais d'une barre qui dit « Pas à pas ». Les deux
+     pas vont par paire — « Pas à pas » et « Pas en arrière » —, par le
+     même `action_label_pour`.
+
+     LE LOT EST CLOS : colonne d'analyse (9 sur 25), « Tout », barre
+     d'outils (6 sur 7), onglets du centre (5 sur 9) et du panneau (4
+     sur 6), menus et palette parlent le même niveau, et un seul
+     endroit le dit.

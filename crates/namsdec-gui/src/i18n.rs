@@ -66,6 +66,9 @@ pub struct Strings {
     /// Le même pas, nommé par ce qu'il FAIT — en mode débutant, où il
     /// est seul et n'a rien à distinguer de « Step Over ».
     pub action_step_simple: &'static str,
+    /// Et le pas arrière, de même : il reste au débutant, et ne peut
+    /// pas être le seul mot anglais d'une barre qui dit « Pas à pas ».
+    pub action_step_back_simple: &'static str,
     pub action_step_back: &'static str,
     pub action_step_over: &'static str,
     pub action_run: &'static str,
@@ -1265,6 +1268,7 @@ const FR: Strings = Strings {
     action_assemble: "Assembler",
     action_step_into: "Step Into",
     action_step_simple: "Pas à pas",
+    action_step_back_simple: "Pas en arrière",
     action_step_back: "Step Back",
     action_step_over: "Step Over",
     action_run: "Exécuter",
@@ -2176,6 +2180,7 @@ const EN: Strings = Strings {
     action_assemble: "Assemble",
     action_step_into: "Step Into",
     action_step_simple: "One step",
+    action_step_back_simple: "One step back",
     action_step_back: "Step Back",
     action_step_over: "Step Over",
     action_run: "Run",

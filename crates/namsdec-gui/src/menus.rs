@@ -1103,13 +1103,14 @@ impl NamsdecApp {
                 }
             });
             ui.add_enabled_ui(can_undo, |ui| {
+                let nom_du_retour = action_label_pour(s, Action::StepBack, self.niveau());
                 if self.montre(Action::StepBack)
-                    && icon_button(ui, icon_step_back, s.action_step_back)
+                    && icon_button(ui, icon_step_back, nom_du_retour)
                         .on_hover_text(shortcut_hint(
                             &self.keybindings,
                             self.lang,
                             &ctx,
-                            s.action_step_back,
+                            nom_du_retour,
                             Action::StepBack,
                         ))
                         .on_disabled_hover_text(s.why_nothing_to_undo)
@@ -1242,6 +1243,10 @@ pub(crate) fn palette_commands(
         (
             action_label_pour(s, Action::StepInto, niveau).to_string(),
             PaletteCommand::Do(Action::StepInto),
+        ),
+        (
+            action_label_pour(s, Action::StepBack, niveau).to_string(),
+            PaletteCommand::Do(Action::StepBack),
         ),
         (
             s.action_step_over.to_string(),

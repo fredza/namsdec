@@ -1853,7 +1853,9 @@ fn la_barre_d_outils_se_gradue() {
         );
     }
 
-    // La débutante garde ce qui se comprend sans rien savoir d'avance.
+    // La débutante garde ce qui se comprend sans rien savoir d'avance —
+    // « Step Back » compris, décidé le 3 novembre : revenir d'un pas
+    // s'explique en une phrase et s'essaie sans risque.
     for attendu in [
         s.action_assemble,
         s.action_run,
@@ -1865,16 +1867,22 @@ fn la_barre_d_outils_se_gradue() {
             "« {attendu} » se comprend sans rien savoir : {débutante:?}"
         );
     }
-    // Et le pas s'y appelle par ce qu'il fait.
-    assert!(
-        dit(&débutante, s.action_step_simple),
-        "le pas s'appelle « {} » en mode débutant : {débutante:?}",
-        s.action_step_simple
-    );
+    // ET LES DEUX PAS S'Y APPELLENT PAR CE QU'ILS FONT. « Step Back »
+    // reste au débutant (décidé le 3 novembre : revenir d'un pas
+    // s'explique en une phrase et s'essaie sans risque) — il ne peut
+    // donc pas rester le seul mot anglais d'une barre qui dit « Pas à
+    // pas ».
+    for nommé in [s.action_step_simple, s.action_step_back_simple] {
+        assert!(
+            dit(&débutante, nommé),
+            "« {nommé} » doit nommer son pas en mode débutant : {débutante:?}"
+        );
+    }
     for parti in [s.action_step_into, s.action_step_over, s.action_step_back] {
         assert!(
             !dit(&débutante, parti),
-            "« {parti} » est de l'anglais de débogueur : {débutante:?}"
+            "« {parti} » est de l'anglais de débogueur, ou demande de savoir \
+             par-dessus quoi — pas dans la barre du débutant : {débutante:?}"
         );
     }
 }
@@ -1930,12 +1938,16 @@ fn les_rangees_d_onglets_se_graduent() {
         vues_av.len() >= 8,
         "la rangée avancée reste celle d'aujourd'hui : {vues_av:?}"
     );
-    assert_eq!(vues_déb.len(), 4, "{vues_déb:?}");
+    assert_eq!(vues_déb.len(), 5, "{vues_déb:?}");
     for attendu in [
         VueCentrale::Source,
         VueCentrale::Disassembly,
         VueCentrale::Flow,
         VueCentrale::Analysis,
+        // Décidé le 3 novembre : c'est le seul endroit où l'on voit ce
+        // qu'on a posé, et un arrêt oublié est un programme qui
+        // s'arrête sans raison.
+        VueCentrale::Breakpoints,
     ] {
         assert!(vues_déb.contains(&attendu), "{vues_déb:?}");
     }
@@ -1972,7 +1984,7 @@ fn les_rangees_d_onglets_se_graduent() {
         .into_iter()
         .filter(|v| app.vue_dans_la_rangée(*v) && app.vue_au_niveau(*v))
         .collect();
-    assert_eq!(avec.len(), 5, "{avec:?}");
+    assert_eq!(avec.len(), 6, "{avec:?}");
 }
 
 /// LES MENUS SE GRADUENT COMME LE RESTE, ET SANS SE CONTREDIRE.
@@ -2029,7 +2041,6 @@ fn les_menus_se_graduent_sans_se_contredire() {
         s.cyclic_open,
         s.vectors_open,
         s.timeline_open,
-        s.breakpoints_open,
         s.action_run_to_call,
         s.action_step_over,
     ] {
@@ -2046,6 +2057,7 @@ fn les_menus_se_graduent_sans_se_contredire() {
         s.flow_open,
         s.calculator_open,
         s.action_assemble,
+        s.breakpoints_open,
     ] {
         assert!(
             commence(&débutant, restée),
