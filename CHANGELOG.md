@@ -4,6 +4,66 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.2.9-beta.3 — 3 novembre 2026
+
+**Une interface qui se gradue : débutant, ou avancée**
+- namsdec sert à apprendre l'assembleur et la rétro-ingénierie, et
+  vingt-cinq rubriques d'analyse devant quelqu'un qui ouvre son premier
+  binaire lui demandent de savoir ce qu'il cherche avant d'avoir appris
+  à chercher. Une case des **Préférences › Modules** décide : en **mode
+  débutant**, l'interface ne montre que ce qui se comprend sans rien
+  savoir d'avance.
+- **Ce que cela change à l'écran** : six commandes dans la barre au lieu
+  de sept, cinq onglets au centre au lieu de neuf, quatre dans le
+  panneau au lieu de six, neuf rubriques d'analyse au lieu de
+  vingt-cinq. Les menus suivent ; la palette de commandes, elle, garde
+  tout — c'est une recherche, pas une vitrine.
+- **Les deux pas s'appellent par ce qu'ils font** : « Pas à pas » et
+  « Pas en arrière » plutôt que « Step Into » et « Step Back ». En mode
+  avancé, les mots de gdb et de pwndbg reviennent — ce sont ceux des
+  raccourcis.
+- **Rien n'est désinstallé.** Les raccourcis marchent toujours, les
+  panneaux cachés continuent de travailler, et **la vue où l'on vous
+  envoie garde son onglet** quel que soit le niveau : on ne vous retire
+  pas ce que vous avez demandé.
+- **Une installation neuve s'ouvre en mode débutant** ; une
+  configuration qui existait avant garde l'interface entière. On hérite
+  d'un défaut, on ne se fait pas retirer ce dont on se servait.
+
+**Ce que namsdec comprend d'un binaire sort encore un peu plus de
+l'écran**
+- Trois panneaux de plus décrivent ce qu'ils montrent au lieu de le
+  dessiner : l'**entropie**, le **graphe d'appels**, et l'**inspecteur**
+  de l'éditeur binaire. Onze des douze panneaux visés sont passés.
+- La grille d'octets, elle, **restera peinte sur place**, et c'est une
+  décision : une grille avec un curseur et vingt-six touches est un
+  instrument, pas une compréhension.
+
+**Ce que les mesures ont trouvé en chemin**
+- **Une fonction de 18 446 744 073 697 542 199 octets** dans le graphe
+  d'appels. Un `call` vers une adresse quelconque — ce que produit la
+  moindre figure d'anti-désassemblage — fabriquait une « fonction »
+  là-bas, et celle d'avant allait jusqu'à elle.
+- Le **profil d'entropie** se graduait cinquante-six octets au-delà de
+  la fin du fichier : la dernière tranche est plus courte que les
+  autres, et la taille en était déduite.
+- Les **noms de fonctions importées** étaient redevenus des boutons
+  encadrés ; ce sont de nouveau des liens. Une **signature C** et un
+  **nom de fonction** du panneau de décompilation se peignaient en
+  chasse proportionnelle.
+- **Une cellule de tableau qui ne tient pas s'arrête maintenant sur
+  « … »**, et le survol rend ce qui manque — elle courait hors du
+  panneau. C'est la colonne la plus large qui cède, jamais les
+  étroites.
+- « Fonctions : **1 (cibles de `call`)** » — l'accord en nombre manquait
+  sur les quatre comptes de « En bref », qu'un programme d'une ligne met
+  tous à un.
+
+**Le détail d'une fonction ne se compose plus pour rien**
+- Dans le graphe d'appels, une seule fiche s'ouvre à la fois. Les
+  quarante coûtaient 2,6 ms par image — sur un budget de 16,7 — pour du
+  texte que personne ne regarde, puisqu'elles sont fermées au départ.
+
 ## 0.2.9-beta.2 — 28 octobre 2026
 
 **Ce que namsdec comprend d'un binaire ne vit plus seulement à l'écran**
