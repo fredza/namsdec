@@ -132,6 +132,26 @@ pub enum Action {
 }
 
 impl Action {
+    /// À partir de quel niveau cette commande paraît dans la **barre
+    /// d'outils**.
+    ///
+    /// Le raccourci, lui, marche toujours, et la palette la propose
+    /// encore : on n'a rien désinstallé — c'est la barre qui se tait.
+    ///
+    /// Le critère est celui du reste de l'interface graduée : *qu'est-ce
+    /// qui se comprend sans rien savoir d'avance ?* « Pas par-dessus »
+    /// demande de savoir ce qu'est un appel — par-dessus QUOI ? —, et
+    /// « revenir d'un pas » demande de savoir qu'une machine peut
+    /// garder son passé, ce qui n'est vrai d'aucun débogueur ordinaire.
+    /// Les deux s'apprennent vite ; ce sont les deuxièmes choses, pas
+    /// les premières.
+    pub fn niveau(self) -> namsdec_re::Niveau {
+        match self {
+            Action::StepOver | Action::StepBack => namsdec_re::Niveau::Avancé,
+            _ => namsdec_re::Niveau::Débutant,
+        }
+    }
+
     pub const ALL: [Action; 35] = [
         Action::ToggleExplorer,
         Action::Assemble,

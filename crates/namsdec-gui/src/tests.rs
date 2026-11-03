@@ -1242,6 +1242,26 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // LE MODE DÉBUTANT, VU DE L'ÉCRAN PRINCIPAL : c'est la barre
+    // d'outils qu'on vient y regarder — cinq commandes au lieu de
+    // sept, et le pas nommé par ce qu'il fait plutôt qu'en anglais de
+    // débogueur. Programme assemblé et quelques pas faits, sans quoi
+    // toutes les commandes seraient grises.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        scènes.push((
+            "application / mode débutant (en marche)".to_owned(),
+            None,
+            Box::new(|app| {
+                app.source = PROGRAMME_DU_BANC.to_owned();
+                app.do_assemble();
+                for _ in 0..8 {
+                    app.do_step();
+                }
+                app.debutant = true;
+                app.show_sidebar = true;
+            }),
+        ));
+    }
     // LE MODE DÉBUTANT, qui est ce qu'une installation neuve montre.
     //
     // Sans scène, l'interface que verra quelqu'un qui ouvre namsdec

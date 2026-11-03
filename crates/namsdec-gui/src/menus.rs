@@ -1029,12 +1029,28 @@ impl NamsdecApp {
                 {
                     self.dispatch(Action::Run);
                 }
-                if icon_button(ui, icon_step_into, s.action_step_into)
+                // LE NOM DU PAS CHANGE AVEC LE NIVEAU, et c'est tout
+                // ce qui le distingue.
+                //
+                // « Step Into » est le mot de gdb et de pwndbg, et
+                // c'est le bon pour qui s'en sert déjà : les raccourcis
+                // de namsdec sont les leurs. Mais dans une interface
+                // française qui sert à APPRENDRE, trois boutons nommés
+                // « Step Into », « Step Over », « Step Back » sont trois
+                // murs. En mode débutant, le pas est seul — les deux
+                // autres ne paraissent pas —, et il s'appelle donc par
+                // ce qu'il fait.
+                let nom_du_pas = if self.debutant {
+                    s.action_step_simple
+                } else {
+                    s.action_step_into
+                };
+                if icon_button(ui, icon_step_into, nom_du_pas)
                     .on_hover_text(shortcut_hint(
                         &self.keybindings,
                         self.lang,
                         &ctx,
-                        s.action_step_into,
+                        nom_du_pas,
                         Action::StepInto,
                     ))
                     .on_disabled_hover_text(pourquoi_pas)
@@ -1042,31 +1058,33 @@ impl NamsdecApp {
                 {
                     self.dispatch(Action::StepInto);
                 }
-                if icon_button(ui, icon_step_over, s.action_step_over)
-                    .on_hover_text(shortcut_hint(
-                        &self.keybindings,
-                        self.lang,
-                        &ctx,
-                        s.action_step_over,
-                        Action::StepOver,
-                    ))
-                    .on_disabled_hover_text(pourquoi_pas)
-                    .clicked()
+                if self.montre(Action::StepOver)
+                    && icon_button(ui, icon_step_over, s.action_step_over)
+                        .on_hover_text(shortcut_hint(
+                            &self.keybindings,
+                            self.lang,
+                            &ctx,
+                            s.action_step_over,
+                            Action::StepOver,
+                        ))
+                        .on_disabled_hover_text(pourquoi_pas)
+                        .clicked()
                 {
                     self.dispatch(Action::StepOver);
                 }
             });
             ui.add_enabled_ui(can_undo, |ui| {
-                if icon_button(ui, icon_step_back, s.action_step_back)
-                    .on_hover_text(shortcut_hint(
-                        &self.keybindings,
-                        self.lang,
-                        &ctx,
-                        s.action_step_back,
-                        Action::StepBack,
-                    ))
-                    .on_disabled_hover_text(s.why_nothing_to_undo)
-                    .clicked()
+                if self.montre(Action::StepBack)
+                    && icon_button(ui, icon_step_back, s.action_step_back)
+                        .on_hover_text(shortcut_hint(
+                            &self.keybindings,
+                            self.lang,
+                            &ctx,
+                            s.action_step_back,
+                            Action::StepBack,
+                        ))
+                        .on_disabled_hover_text(s.why_nothing_to_undo)
+                        .clicked()
                 {
                     self.dispatch(Action::StepBack);
                 }
@@ -1124,6 +1142,20 @@ impl NamsdecApp {
             // icône tient dans la barre à toutes les largeurs.
             self.bouton_calculatrice(ui);
         });
+    }
+
+    /// Cette commande paraît-elle dans la barre, au niveau en vigueur ?
+    ///
+    /// Une seule question, posée au même endroit pour toutes : la barre
+    /// ne doit pas devenir une liste d'exceptions. Voir
+    /// [`Action::niveau`] pour le critère.
+    fn montre(&self, action: Action) -> bool {
+        let niveau = if self.debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        };
+        action.niveau() <= niveau
     }
 
     /// La calculatrice, au bout de la barre d'outils.

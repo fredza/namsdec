@@ -319,6 +319,17 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Exécuter</b> (Espace puis p puis r) : jusqu'au bout, ou jusqu'au premier point "
          "d'arrêt.",
         ]),
+        ("note",
+         "<b>La barre d'outils se gradue, elle aussi.</b> En <b>mode débutant</b>, elle "
+         "porte cinq commandes — <b>Assembler</b>, <b>Exécuter</b>, <b>Pas à pas</b>, "
+         "<b>Stop</b>, <b>Réinitialiser</b> — et le pas s'appelle par ce qu'il fait. En "
+         "mode avancé, elle en porte sept et reprend les mots de gdb et de pwndbg, qui "
+         "sont ceux des raccourcis : <b>Step Into</b>, <b>Step Over</b> (passer par-dessus "
+         "un appel sans y entrer) et <b>Step Back</b> (défaire le dernier pas — ce qu'un "
+         "émulateur offre et qu'un débogueur ordinaire rend laborieux). Les deux "
+         "dernières demandent de savoir quelque chose d'avance : par-dessus <i>quoi</i>, "
+         "et qu'une machine puisse garder son passé. <b>Rien n'est désinstallé</b> : leurs "
+         "raccourcis marchent toujours, et la palette de commandes les propose encore."),
         ("p",
          "Le programme s'arrête sur <font face='Courier'>hlt</font> ou sur l'appel système "
          "<font face='Courier'>exit</font>. Un programme que rien n'arrête est signalé dès "

@@ -9341,6 +9341,22 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      dès la première image : « Fonctions 1 (cibles de `call`) ». Un
      outil qui sert à apprendre ne peut pas écrire cela.
 
-     RESTE À GRADUER : la barre d'outils, les onglets du panneau
-     latéral, les menus. Le mécanisme est là ; la question est chaque
-     fois la même — qu'est-ce qui se comprend sans rien savoir ?
+     LA BARRE D'OUTILS SUIT, le même jour. `Action::niveau()`, sur le
+     modèle de `ReModule::niveau()` : sept commandes deviennent cinq —
+     Assembler, Exécuter, Pas à pas, Stop, Réinitialiser. Ce qui part
+     demande de savoir quelque chose d'avance : par-dessus QUOI pour
+     « Step Over », et qu'une machine garde son passé pour « Step
+     Back ». Le second est le plus discutable des deux — défaire un pas
+     est une des plus belles choses que namsdec sache faire.
+
+     ET LE PAS CHANGE DE NOM. « Step Into », « Step Over », « Step
+     Back » sont les mots de gdb et de pwndbg — les bons pour qui s'en
+     sert déjà, puisque les raccourcis de namsdec sont les leurs. Dans
+     une interface française qui sert à apprendre, ce sont trois murs.
+     Seul, le pas s'appelle « Pas à pas » : exactement le mot que le
+     manuel employait depuis toujours, pendant que le bouton en disait
+     un autre.
+
+     RESTE À GRADUER : les onglets du centre (Chronologie, Registres
+     étendus et Correctifs sont de bons candidats), ceux du panneau
+     latéral, et les menus.

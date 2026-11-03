@@ -1799,3 +1799,79 @@ fn la_legende_de_chaleur_accorde_son_unite() {
         assert!(!s.heat_legend_hint.trim().is_empty());
     }
 }
+
+/// LA BARRE D'OUTILS SE GRADUE, ELLE AUSSI.
+///
+/// Sept commandes devant quelqu'un qui écrit sa première ligne
+/// d'assembleur, dont trois nommées en anglais de débogueur — « Step
+/// Into », « Step Over », « Step Back » — dans une interface française
+/// qui sert à apprendre. En mode débutant il en reste cinq, et le pas
+/// s'appelle par ce qu'il fait.
+///
+/// Ce qui part n'est pas désinstallé : le raccourci marche toujours, et
+/// la palette propose encore les deux commandes. C'est la BARRE qui se
+/// tait.
+#[test]
+fn la_barre_d_outils_se_gradue() {
+    let relevé = |debutant: bool| -> Vec<String> {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            debutant,
+            source: "bits 64\nglobal _start\n_start:\n    nop\n    hlt\n".to_owned(),
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        // Assemblé : sans binaire, les commandes d'exécution sont
+        // grisées — elles sont peintes tout de même, mais on veut
+        // l'écran vrai.
+        app.do_assemble();
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+        textes.into_iter().map(|(t, _)| t).collect()
+    };
+
+    let avancée = relevé(false);
+    let débutante = relevé(true);
+    let dit = |où: &[String], quoi: &str| où.iter().any(|t| t == quoi);
+    let s = strings(Lang::Fr);
+
+    // L'avancée est celle d'aujourd'hui, mot pour mot.
+    for attendu in [
+        s.action_assemble,
+        s.action_run,
+        s.action_step_into,
+        s.action_step_over,
+        s.action_step_back,
+        s.action_stop,
+        s.action_reset,
+    ] {
+        assert!(
+            dit(&avancée, attendu),
+            "« {attendu} » doit rester dans la barre avancée"
+        );
+    }
+
+    // La débutante garde ce qui se comprend sans rien savoir d'avance.
+    for attendu in [
+        s.action_assemble,
+        s.action_run,
+        s.action_stop,
+        s.action_reset,
+    ] {
+        assert!(
+            dit(&débutante, attendu),
+            "« {attendu} » se comprend sans rien savoir : {débutante:?}"
+        );
+    }
+    // Et le pas s'y appelle par ce qu'il fait.
+    assert!(
+        dit(&débutante, s.action_step_simple),
+        "le pas s'appelle « {} » en mode débutant : {débutante:?}",
+        s.action_step_simple
+    );
+    for parti in [s.action_step_into, s.action_step_over, s.action_step_back] {
+        assert!(
+            !dit(&débutante, parti),
+            "« {parti} » est de l'anglais de débogueur : {débutante:?}"
+        );
+    }
+}

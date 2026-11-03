@@ -4340,10 +4340,39 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       garde ce qui se lit sans rien savoir ; la rubrique ouverte reste
       listée ; le réglage traverse l'enregistrement et la migration.
 
-      **Ce qui reste à graduer**, et qui n'est pas fait : la barre
-      d'outils, les onglets du panneau latéral, les menus. Le mécanisme
-      est là — `niveau()` et un réglage —, la question est à chaque fois
-      la même : *qu'est-ce qui se comprend sans rien savoir d'avance ?*
+      **LA BARRE D'OUTILS SUIT** (même jour, découpage des neuf
+      rubriques approuvé). `Action::niveau()`, sur le modèle de
+      `ReModule::niveau()`. Sept commandes deviennent **cinq** :
+      Assembler, Exécuter, Pas à pas, Stop, Réinitialiser.
+
+      Ce qui part demande de savoir quelque chose d'avance — *par-dessus
+      quoi ?* pour « Step Over », et qu'une machine puisse garder son
+      passé pour « Step Back ». De ces deux-là, **le second est le plus
+      discutable** : défaire un pas est une des plus belles choses que
+      namsdec sache faire, et cela s'explique en une phrase. S'il doit
+      revenir, c'est une ligne dans `Action::niveau`.
+
+      **Et le pas change de nom.** Les boutons s'appelaient « Step
+      Into », « Step Over », « Step Back » — l'anglais de gdb et de
+      pwndbg, qui est le bon pour qui s'en sert déjà, puisque les
+      raccourcis de namsdec sont les leurs. Dans une interface française
+      qui sert à apprendre, ce sont trois murs. En mode débutant le pas
+      est seul : il n'a rien à distinguer, et s'appelle **« Pas à pas »**
+      — exactement le mot que le manuel employait depuis toujours pour
+      le décrire, pendant que le bouton disait autre chose.
+
+      Rien n'est désinstallé : les raccourcis marchent, la palette
+      propose encore les deux commandes. **C'est la barre qui se tait.**
+      Retenu par un contrôle qui relève les deux barres et compare, et
+      par une scène de banc — l'écran principal en mode débutant.
+
+      **Ce qui reste à graduer** : les onglets du centre (Source,
+      Désassemblage, Déroulement, Analyse, Chronologie, Points d'arrêt,
+      Registres étendus, Correctifs — les trois derniers sont de bons
+      candidats), ceux du panneau latéral (Processeur, Pile, Mémoire,
+      Tas, Octets), et les menus. Le mécanisme est là ; la question est
+      à chaque fois la même : *qu'est-ce qui se comprend sans rien
+      savoir d'avance ?*
 
 ---
 
