@@ -25,8 +25,22 @@
 
 use namsdec_disasm::known::{Availability, Known};
 
-use crate::dzf_decompiler_module::pseudocode_cliquable;
-use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection, framed, framed_small_button};
+use crate::vue::{Bloc, Champ, Fragment, Ton, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReResult, ReSection};
+
+/// Ce que le panneau demande, par son nom.
+///
+/// Des noms et non les demandes elles-mêmes : la vue reste du texte,
+/// et c'est le module qui sait ce qu'« agir » veut dire chez lui.
+const ACTION_LANCER: &str = "outil:lancer";
+const ACTION_FILTRE: &str = "outil:filtre";
+/// « outil:vider » et NON « outil:filtre:vider » : un champ validé
+/// rend son action suivie de la valeur tapée, séparée par un
+/// deux-points. Le second nom aurait donc été indiscernable du mot
+/// « vider » cherché dans la sortie.
+const ACTION_VIDER: &str = "outil:vider";
+const ACTION_PAGE_AVANT: &str = "outil:page:avant";
+const ACTION_PAGE_APRÈS: &str = "outil:page:après";
 
 /// Combien de lignes une page de sortie porte.
 ///
@@ -119,6 +133,68 @@ impl ToolModule {
         &self.lignes
     }
 
+    /// La tranche de lignes qu'on regarde, et combien il y a de pages.
+    ///
+    /// EN LECTURE SEULE, et c'est ce qui a demandé le plus de soin en
+    /// portant ce panneau : `ui()` écrivait `self.visibles`,
+    /// `self.filtre_appliqué` et `self.page` PENDANT qu'il dessinait.
+    /// Une vue n'emprunte `self` qu'en lecture ; filtrer et borner la
+    /// page se font donc là où l'on agit, et non là où l'on décrit.
+    fn fenêtre(&self) -> (usize, usize, usize) {
+        let pages = self.visibles.len().div_ceil(PAR_PAGE).max(1);
+        let page = self.page.min(pages - 1);
+        let début = page * PAR_PAGE;
+        let fin = (début + PAR_PAGE).min(self.visibles.len());
+        (début, fin, pages)
+    }
+
+    /// Ce que le panneau fait de ce qu'on lui demande.
+    ///
+    /// À part de `ui()` pour être éprouvé sans peindre : filtrer et
+    /// tourner une page sont des comportements, pas des dessins.
+    fn agit(&mut self, action: &str) {
+        if action == ACTION_LANCER {
+            self.en_cours = true;
+            self.erreur = None;
+            self.demande = Some(ReRequest::RunTool {
+                tool: self.known.plugin.id.clone(),
+            });
+            return;
+        }
+        if action == ACTION_VIDER {
+            self.filtrer(String::new());
+            return;
+        }
+        if let Some(cherché) = action.strip_prefix(&format!("{ACTION_FILTRE}:")) {
+            self.filtrer(cherché.to_owned());
+            return;
+        }
+        let (_, _, pages) = self.fenêtre();
+        match action {
+            ACTION_PAGE_AVANT => self.page = self.page.saturating_sub(1),
+            ACTION_PAGE_APRÈS => self.page = (self.page + 1).min(pages - 1),
+            _ => {}
+        }
+    }
+
+    /// Ne garder que les lignes qui portent ce mot, et revenir en tête.
+    fn filtrer(&mut self, cherché: String) {
+        let bas = cherché.to_lowercase();
+        self.visibles = if bas.is_empty() {
+            (0..self.lignes.len()).collect()
+        } else {
+            self.lignes
+                .iter()
+                .enumerate()
+                .filter(|(_, ligne)| ligne.to_lowercase().contains(&bas))
+                .map(|(rang, _)| rang)
+                .collect()
+        };
+        self.filtre = cherché;
+        self.filtre_appliqué = self.filtre.clone();
+        self.page = 0;
+    }
+
     fn poser(&mut self, texte: &str) {
         self.lignes = texte.lines().map(str::to_owned).collect();
         self.erreur = None;
@@ -193,234 +269,226 @@ impl ReModule for ToolModule {
         }
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         let fr = ctx.lang.starts_with("fr");
-        ui.weak(if fr {
-            self.known.about_fr
-        } else {
-            self.known.about_en
-        });
-        ui.add_space(4.0);
-
-        // CE QU'ON S'APPRÊTE À LANCER, en toutes lettres. Un panneau
-        // qui exécute un programme sur la machine de quelqu'un doit
-        // pouvoir se lire avant d'être cliqué.
-        ui.horizontal_wrapped(|ui| {
-            ui.weak(ctx.t("La commande :", "The command:"));
-            ui.add(
-                egui::Label::new(
-                    egui::RichText::new(format!(
+        let mut blocs = vec![
+            Bloc::Texte(
+                Fragment::dit(if fr {
+                    self.known.about_fr
+                } else {
+                    self.known.about_en
+                })
+                .faible()
+                .into(),
+            ),
+            // CE QU'ON S'APPRÊTE À LANCER, en toutes lettres. Un
+            // panneau qui exécute un programme sur la machine de
+            // quelqu'un doit pouvoir se lire avant d'être cliqué — et
+            // la commande se COPIE, parce qu'on la colle dans un
+            // terminal pour la voir faire.
+            Bloc::Texte(
+                vec![
+                    Fragment::dit(ctx.t("La commande :", "The command:")).faible(),
+                    Fragment::dit(format!(
                         "{} {}",
                         self.known.plugin.command,
                         self.known.plugin.args.join(" ")
                     ))
-                    .monospace(),
-                )
-                .selectable(true),
-            );
-        });
-        ui.weak(ctx.t(
-            "`{file}` reçoit le binaire ouvert, par un fichier temporaire. Aucun \
-             interpréteur de commandes n'est en jeu.",
-            "`{file}` gets the open binary, through a temporary file. No shell is \
-             involved.",
-        ));
-        ui.add_space(6.0);
+                    .code()
+                    .copiable(),
+                ]
+                .into(),
+            ),
+            Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "`{file}` reçoit le binaire ouvert, par un fichier temporaire. Aucun \
+                     interpréteur de commandes n'est en jeu.",
+                    "`{file}` gets the open binary, through a temporary file. No shell is \
+                     involved.",
+                ))
+                .faible()
+                .into(),
+            ),
+        ];
 
         match self.disponible {
             Availability::Ready => {}
             Availability::Incomplete => {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    ctx.t(
+                blocs.push(Bloc::Texte(
+                    Fragment::dit(ctx.t(
                         "L'outil est là, mais il lui manque une pièce :",
                         "The tool is here, but a piece is missing:",
-                    ),
-                );
+                    ))
+                    .ton(Ton::Attention)
+                    .into(),
+                ));
                 if let Some(manque) = if fr {
                     self.known.needs_fr
                 } else {
                     self.known.needs_en
                 } {
-                    ui.indent("manque", |ui| ui.weak(manque));
+                    blocs.push(Bloc::Retrait(vec![Bloc::Texte(
+                        Fragment::dit(manque).faible().into(),
+                    )]));
                 }
             }
             Availability::Missing => {
-                ui.colored_label(
-                    ui.visuals().warn_fg_color,
-                    ctx.t(
+                blocs.push(Bloc::Texte(
+                    Fragment::dit(ctx.t(
                         "Cet outil n'est pas sur cette machine.",
                         "This tool is not on this machine.",
-                    ),
-                );
+                    ))
+                    .ton(Ton::Attention)
+                    .into(),
+                ));
                 if let Some(install) = &self.known.plugin.install {
-                    ui.horizontal_wrapped(|ui| {
-                        ui.weak(ctx.t("Pour l'obtenir :", "To get it:"));
-                        ui.add(
-                            egui::Label::new(egui::RichText::new(install).monospace())
-                                .selectable(true),
-                        );
-                    });
+                    blocs.push(Bloc::Texte(
+                        vec![
+                            Fragment::dit(ctx.t("Pour l'obtenir :", "To get it:")).faible(),
+                            Fragment::dit(install).code().copiable(),
+                        ]
+                        .into(),
+                    ));
                 }
-                ui.weak(ctx.t(
-                    "namsdec ne l'installe pas à votre place : exécuter du code au nom de \
-                     quelqu'un n'est pas une commodité, c'est une décision. Outils › \
-                     Désassembleurs en dit plus.",
-                    "namsdec does not install it for you: running code on someone's behalf \
-                     is not a convenience, it is a decision. Tools › Disassemblers says \
-                     more.",
+                blocs.push(Bloc::Texte(
+                    Fragment::dit(ctx.t(
+                        "namsdec ne l'installe pas à votre place : exécuter du code au nom de \
+                         quelqu'un n'est pas une commodité, c'est une décision. Outils › \
+                         Désassembleurs en dit plus.",
+                        "namsdec does not install it for you: running code on someone's behalf \
+                         is not a convenience, it is a decision. Tools › Disassemblers says \
+                         more.",
+                    ))
+                    .faible()
+                    .into(),
                 ));
             }
         }
 
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            let lançable = self.disponible != Availability::Missing && !self.en_cours;
-            if ui
-                .add_enabled(
-                    lançable,
-                    framed(
-                        ui,
-                        if self.lignes.is_empty() {
-                            ctx.t("Lancer", "Run")
-                        } else {
-                            ctx.t("Relancer", "Run again")
-                        },
-                    ),
-                )
-                .on_hover_text(ctx.t(
-                    "Lancer cet outil sur le binaire ouvert, et lire sa sortie ici.",
-                    "Run this tool on the open binary, and read its output here.",
-                ))
-                .clicked()
-            {
-                self.en_cours = true;
-                self.erreur = None;
-                self.demande = Some(ReRequest::RunTool {
-                    tool: self.known.plugin.id.clone(),
-                });
-            }
-            if self.en_cours {
-                ui.spinner();
-                ui.weak(ctx.t(
-                    "L'outil travaille — un décompilateur peut réfléchir une minute.",
-                    "The tool is working — a decompiler may think for a minute.",
-                ));
-            }
-            if !self.lignes.is_empty() {
-                ui.weak(format!(
+        let lançable = self.disponible != Availability::Missing && !self.en_cours;
+        let mut commande = vec![
+            Fragment::dit(if self.lignes.is_empty() {
+                ctx.t("Lancer", "Run")
+            } else {
+                ctx.t("Relancer", "Run again")
+            })
+            .bouton(ACTION_LANCER)
+            .inactif_si(!lançable)
+            .survol(ctx.t(
+                "Lancer cet outil sur le binaire ouvert, et lire sa sortie ici.",
+                "Run this tool on the open binary, and read its output here.",
+            )),
+        ];
+        if !self.lignes.is_empty() {
+            commande.push(
+                Fragment::dit(format!(
                     "{} {}",
                     self.lignes.len(),
                     ctx.t("lignes", "lines")
-                ));
-            }
-        });
+                ))
+                .faible(),
+            );
+        }
+        blocs.push(Bloc::Texte(commande.into()));
+        if self.en_cours {
+            blocs.push(Bloc::Attente(
+                Fragment::dit(ctx.t(
+                    "L'outil travaille — un décompilateur peut réfléchir une minute.",
+                    "The tool is working — a decompiler may think for a minute.",
+                ))
+                .faible()
+                .into(),
+            ));
+        }
 
         if let Some(message) = &self.erreur {
-            ui.add_space(4.0);
-            ui.colored_label(ui.visuals().error_fg_color, message);
+            blocs.push(Bloc::Texte(Fragment::dit(message).ton(Ton::Mauvais).into()));
         }
         if self.lignes.is_empty() {
-            return;
+            return Some(Vue { blocs });
         }
 
-        // Chercher dans la sortie : un désassemblage d'objdump fait
-        // cinquante mille lignes, et ce qu'on y cherche tient en un mot.
-        ui.add_space(6.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.weak(ctx.t("Chercher :", "Find:"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.filtre)
-                    .desired_width(200.0)
-                    .hint_text(ctx.t("un nom, une adresse…", "a name, an address…")),
+        // CHERCHER DANS LA SORTIE : un désassemblage d'`objdump` fait
+        // cinquante mille lignes, et ce qu'on y cherche tient en un
+        // mot.
+        //
+        // LE FILTRE S'APPLIQUE À LA VALIDATION, et non à chaque
+        // frappe : c'est ce que `Bloc::Champ` permet — le tampon de
+        // frappe vit chez celui qui peint, et le module n'apprend ce
+        // qui est écrit qu'au moment où l'on valide. Sur cinquante
+        // mille lignes, refiltrer à chaque lettre était de toute façon
+        // du travail jeté à la touche suivante.
+        let mut champ = Champ::pour(ACTION_FILTRE)
+            .étiquette(Fragment::dit(ctx.t("Chercher :", "Find:")).faible())
+            .valeur(&self.filtre)
+            .indice(ctx.t("un nom, une adresse…", "a name, an address…"))
+            .caractères(28);
+        if !self.filtre.is_empty() {
+            champ = champ.bouton(
+                Fragment::dit("x")
+                    .bouton(ACTION_VIDER)
+                    .survol(ctx.t("Vider la recherche", "Clear the search")),
             );
-            if !self.filtre.is_empty() && framed_small_button(ui, "x").clicked() {
-                self.filtre.clear();
-            }
-        });
-        if self.filtre != self.filtre_appliqué {
-            let cherché = self.filtre.to_lowercase();
-            self.visibles = if cherché.is_empty() {
-                (0..self.lignes.len()).collect()
-            } else {
-                self.lignes
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, ligne)| ligne.to_lowercase().contains(&cherché))
-                    .map(|(rang, _)| rang)
-                    .collect()
-            };
-            self.filtre_appliqué = self.filtre.clone();
-            self.page = 0;
         }
+        blocs.push(Bloc::Champ(champ));
 
-        let pages = self.visibles.len().div_ceil(PAR_PAGE).max(1);
-        self.page = self.page.min(pages - 1);
-        let début = self.page * PAR_PAGE;
-        let fin = (début + PAR_PAGE).min(self.visibles.len());
-        ui.horizontal_wrapped(|ui| {
-            if self.visibles.is_empty() {
-                ui.label(ctx.t("Aucune ligne ne correspond", "No line matches"));
-            } else {
-                ui.label(format!(
-                    "{}–{} {} {}",
-                    début + 1,
-                    fin,
-                    ctx.t("sur", "of"),
-                    self.visibles.len()
-                ));
-            }
-            if pages > 1 {
-                let première = self.page == 0;
-                let dernière = self.page + 1 >= pages;
-                if ui
-                    .add_enabled(!première, framed(ui, "\u{2039}"))
-                    .on_hover_text(ctx.t("Page précédente", "Previous page"))
-                    .clicked()
-                {
-                    self.page -= 1;
-                }
-                ui.label(format!(
-                    "{} {} / {}",
-                    ctx.t("page", "page"),
-                    self.page + 1,
-                    pages
-                ));
-                if ui
-                    .add_enabled(!dernière, framed(ui, "\u{203a}"))
-                    .on_hover_text(ctx.t("Page suivante", "Next page"))
-                    .clicked()
-                {
-                    self.page += 1;
-                }
-            }
-        });
-        ui.add_space(4.0);
-
-        // La sortie, peinte en une galère par ligne, les adresses en
-        // couleur de lien : `0x401030`, `sub_401030`, `401030h` mènent
-        // au listing, comme dans le panneau DZF. C'est ce qui fait la
-        // différence entre lire la sortie d'un outil et s'en servir.
-        let mut aller = None;
-        // Bornée à la largeur du panneau : une ligne d'`objdump` fait
-        // parfois deux cents caractères, et peinte sans borne elle
-        // court hors du panneau — où rien ne la rattrape, puisque la
-        // fenêtre d'analyse ne défile pas en largeur.
-        let largeur = ui.available_width().max(80.0);
-        for rang in &self.visibles[début..fin] {
-            if let Some(addr) = pseudocode_cliquable(ui, &self.lignes[*rang], largeur) {
-                aller = Some(addr);
-            }
+        let (début, fin, pages) = self.fenêtre();
+        let mut barre = vec![if self.visibles.is_empty() {
+            Fragment::dit(ctx.t("Aucune ligne ne correspond", "No line matches"))
+        } else {
+            Fragment::dit(format!(
+                "{}–{} {} {}",
+                début + 1,
+                fin,
+                ctx.t("sur", "of"),
+                self.visibles.len()
+            ))
+        }];
+        if pages > 1 {
+            barre.push(
+                Fragment::dit("\u{2039}")
+                    .bouton(ACTION_PAGE_AVANT)
+                    .inactif_si(self.page == 0)
+                    .survol(ctx.t("Page précédente", "Previous page")),
+            );
+            barre.push(Fragment::dit(format!(
+                "{} {} / {}",
+                ctx.t("page", "page"),
+                self.page + 1,
+                pages
+            )));
+            barre.push(
+                Fragment::dit("\u{203a}")
+                    .bouton(ACTION_PAGE_APRÈS)
+                    .inactif_si(self.page + 1 >= pages)
+                    .survol(ctx.t("Page suivante", "Next page")),
+            );
         }
-        if let Some(addr) = aller {
-            // Vers le CODE, sans demander : une adresse lue dans la
-            // sortie d'un désassembleur désigne une instruction, et le
-            // choix ne se pose que pour une adresse dont on ignore ce
-            // qu'elle porte.
-            self.demande = Some(ReRequest::GoTo {
-                addr,
-                target: crate::GoTarget::Listing,
-            });
+        blocs.push(Bloc::Texte(barre.into()));
+
+        // La sortie : du CODE, et c'est tout ce que le module en dit.
+        // Les adresses qu'on y clique, la coloration et la largeur à
+        // ne pas dépasser sont de la présentation — le peintre les
+        // décide, pour ce panneau comme pour celui de la
+        // décompilation.
+        blocs.extend(
+            self.visibles[début..fin]
+                .iter()
+                .map(|rang| Bloc::Code(self.lignes[*rang].clone())),
+        );
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
+        }
+        for action in &gestes.actions {
+            self.agit(action);
         }
     }
 }
@@ -513,6 +581,119 @@ mod tests {
         let peint = peindre(&mut module, &ctx);
         assert!(peint.contains("n'est pas sur cette machine"), "{peint}");
         assert!(peint.contains("github.com/avast/retdec"), "{peint}");
+    }
+
+    /// Chercher et tourner les pages se font sans peindre.
+    ///
+    /// Le panneau écrivait `self.visibles`, `self.filtre_appliqué` et
+    /// `self.page` PENDANT qu'il dessinait, de sorte que ces trois
+    /// comportements ne s'éprouvaient qu'en rendant une image. Ils
+    /// sont maintenant dans `agit`, et la vue n'emprunte `self` qu'en
+    /// lecture.
+    ///
+    /// L'ACTION EST PROPOSÉE PAR LA VUE, et non inventée ici : c'est
+    /// ce qui fait tomber le contrôle si le nom change d'un côté
+    /// seulement.
+    #[test]
+    fn chercher_et_tourner_les_pages_se_font_sans_peindre() {
+        let cpu = Cpu::new(Memory::new(0x400000, 0x100));
+        let ctx = contexte(&cpu);
+        let mut module = ToolModule::connu(
+            "objdump",
+            "Désassemblage par objdump",
+            "Disassembly by objdump",
+            "objdump",
+        )
+        .expect("objdump est un outil connu");
+        module.deliver(&ReResult::ToolState {
+            tool: "objdump".to_owned(),
+            availability: Availability::Ready,
+        });
+        // Sept cents lignes : de quoi avoir trois pages de trois
+        // cents, et de quoi que le filtre serve.
+        let sortie: String = (0..700)
+            .map(|n| {
+                if n % 7 == 0 {
+                    format!("  {n:>4}: 48 89 e5    mov rbp, rsp  ; aiguille\n")
+                } else {
+                    format!("  {n:>4}: 90          nop\n")
+                }
+            })
+            .collect();
+        module.deliver(&ReResult::ToolOutput {
+            tool: "objdump".to_owned(),
+            text: Ok(sortie),
+        });
+        assert_eq!(module.lines().len(), 700);
+
+        /// Combien de lignes de code la vue montre, et ce qu'elle dit
+        /// de la page.
+        fn regarde(module: &ToolModule, ctx: &ReContext) -> (usize, Vec<String>) {
+            let vue = module.vue(ctx).expect("le panneau dit quelque chose");
+            let code = vue
+                .blocs
+                .iter()
+                .filter(|bloc| matches!(bloc, Bloc::Code(_)))
+                .count();
+            let textes = vue
+                .blocs
+                .iter()
+                .filter_map(|bloc| match bloc {
+                    Bloc::Texte(ligne) => Some(ligne.texte_nu()),
+                    _ => None,
+                })
+                .collect();
+            (code, textes)
+        }
+
+        let (code, textes) = regarde(&module, &ctx);
+        assert_eq!(code, PAR_PAGE, "une page pleine");
+        assert!(
+            textes
+                .iter()
+                .any(|t| t.contains("1–300") && t.contains("700")),
+            "la barre dit où l'on est : {textes:?}"
+        );
+
+        // TOURNER UNE PAGE, par l'action que la vue propose.
+        let vue = module.vue(&ctx).expect("le panneau dit quelque chose");
+        let suivante = vue
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Texte(ligne) => Some(ligne),
+                _ => None,
+            })
+            .flat_map(|ligne| &ligne.fragments)
+            .find(|f| f.texte == "\u{203a}")
+            .and_then(|f| f.action.clone())
+            .expect("la page suivante se demande");
+        module.agit(&suivante);
+        let (_, textes) = regarde(&module, &ctx);
+        assert!(
+            textes.iter().any(|t| t.contains("301–600")),
+            "on a tourné : {textes:?}"
+        );
+
+        // CHERCHER. Cent lignes sur sept cents portent l'aiguille, et
+        // la page revient en tête — rester à la page deux d'un
+        // résultat qui n'en a qu'une montrerait un panneau vide.
+        module.agit(&format!("{ACTION_FILTRE}:aiguille"));
+        let (code, textes) = regarde(&module, &ctx);
+        assert_eq!(code, 100, "une ligne sur sept");
+        assert!(
+            textes.iter().any(|t| t.contains("1–100")),
+            "le filtre ramène en tête : {textes:?}"
+        );
+
+        // ET « VIDER » N'EST PAS UNE RECHERCHE. Le bouton porte son
+        // propre nom ; taper le mot cherche le mot.
+        module.agit(&format!("{ACTION_FILTRE}:vider"));
+        let (code, _) = regarde(&module, &ctx);
+        assert_eq!(code, 0, "aucune ligne ne porte « vider »");
+        module.agit(ACTION_VIDER);
+        let (code, _) = regarde(&module, &ctx);
+        assert_eq!(code, PAR_PAGE, "le bouton rend toute la sortie");
     }
 
     /// Ce que l'outil rend arrive par le canal des résultats, et le

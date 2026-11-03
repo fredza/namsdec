@@ -24,6 +24,7 @@
 
 use crate::behaviour::{self, Family};
 use crate::entropy::{self, seuils};
+use crate::vue::{Bloc, Fragment, Ton, Vue};
 use crate::{ReContext, ReModule, ReSection};
 
 /// Combien un signal mérite qu'on s'y arrête d'abord.
@@ -510,78 +511,125 @@ impl ReModule for SignalsModule {
         self.signals = gather(ctx.binary, ctx.disasm, ctx.lang);
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
         if !self.loaded {
-            ui.weak(ctx.t(
-                "Rien à relever : aucun fichier chargé.",
-                "Nothing to report: no file loaded.",
-            ));
-            return;
+            return Some(
+                Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Rien à relever : aucun fichier chargé.",
+                        "Nothing to report: no file loaded.",
+                    ))
+                    .faible(),
+                ),
+            );
         }
         if self.signals.is_empty() {
-            ui.label(ctx.t(
-                "Rien de remarquable : pas de segment inscriptible et exécutable, pas \
-                 d'entropie qui monte, rien d'emprunté qui sorte de l'ordinaire.",
-                "Nothing remarkable: no writable and executable segment, no rising \
-                 entropy, nothing borrowed that stands out.",
-            ));
-            ui.weak(ctx.t(
-                "Ce qui ne veut pas dire inoffensif — seulement que ce binaire ne porte \
-                 aucune des marques que namsdec sait reconnaître.",
-                "Which does not mean harmless — only that this binary carries none of the \
-                 marks namsdec knows how to recognise.",
-            ));
-            return;
+            return Some(
+                Vue::neuve()
+                    .texte(ctx.t(
+                        "Rien de remarquable : pas de segment inscriptible et exécutable, pas \
+                         d'entropie qui monte, rien d'emprunté qui sorte de l'ordinaire.",
+                        "Nothing remarkable: no writable and executable segment, no rising \
+                         entropy, nothing borrowed that stands out.",
+                    ))
+                    .texte(
+                        Fragment::dit(ctx.t(
+                            "Ce qui ne veut pas dire inoffensif — seulement que ce binaire ne \
+                             porte aucune des marques que namsdec sait reconnaître.",
+                            "Which does not mean harmless — only that this binary carries none \
+                             of the marks namsdec knows how to recognise.",
+                        ))
+                        .faible(),
+                    ),
+            );
         }
 
-        ui.weak(ctx.t(
-            "Ce que les autres panneaux ont trouvé, rassemblé. Aucune de ces lignes n'est \
-             une preuve, et rien n'est additionné en score : chacune dit un fait, ce que \
-             ce fait change, et où aller le vérifier.",
-            "What the other panels found, gathered together. None of these lines is \
-             proof, and nothing is added up into a score: each says a fact, what that \
-             fact changes, and where to go and check it.",
-        ));
-        ui.add_space(6.0);
+        let mut blocs = vec![Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Ce que les autres panneaux ont trouvé, rassemblé. Aucune de ces lignes n'est \
+                 une preuve, et rien n'est additionné en score : chacune dit un fait, ce que \
+                 ce fait change, et où aller le vérifier.",
+                "What the other panels found, gathered together. None of these lines is \
+                 proof, and nothing is added up into a score: each says a fact, what that \
+                 fact changes, and where to go and check it.",
+            ))
+            .faible()
+            .into(),
+        )];
 
-        let mut poids_précédent: Option<Weight> = None;
-        for signal in &self.signals {
-            // Un intertitre quand on passe du rare au banal : sans lui,
-            // la liste se lit comme si tout pesait pareil.
-            if poids_précédent != Some(signal.weight) {
-                if poids_précédent.is_some() {
-                    ui.add_space(8.0);
-                }
-                ui.strong(match signal.weight {
+        // UNE SECTION PAR POIDS, et non un intertitre écrit à la main.
+        // Le module disait `ui.strong(...)` puis `add_space(8.0)` entre
+        // les groupes : deux décisions de pixels pour dire « ceci
+        // introduit ce qui suit ». La section le dit, et l'interface
+        // choisit comment elle se marque.
+        for poids in [Weight::Remarkable, Weight::Worth] {
+            let dedans: Vec<Bloc> = self
+                .signals
+                .iter()
+                .filter(|signal| signal.weight == poids)
+                .flat_map(|signal| {
+                    // LA PASTILLE RONDE EST PARTIE AVEC LE `painter`.
+                    // Elle ne disait rien que la couleur du titre ne
+                    // dise déjà, et le poids est maintenant écrit en
+                    // toutes lettres au-dessus — « Remarquable », « À
+                    // savoir » —, ce qu'un point de quatre pixels ne
+                    // saurait faire.
+                    //
+                    // Et le poids devient un TON : le module écrivait
+                    // deux `Color32::from_rgb` choisis sur place, dont
+                    // un jaune que le thème ne connaît pas.
+                    let ton = match poids {
+                        Weight::Remarkable => Ton::Mauvais,
+                        Weight::Worth => Ton::Attention,
+                    };
+                    vec![
+                        Bloc::Texte(
+                            vec![
+                                Fragment::dit(signal.title(ctx.lang)).ton(ton),
+                                // Un tiret entre le titre et le fait.
+                                // Sans lui, les deux se lisaient d'un
+                                // trait — « Binaire dépouillé aucun nom
+                                // de fonction dans le fichier » — et
+                                // l'on cherchait le verbe d'une phrase
+                                // qui n'en a pas.
+                                Fragment::dit("—").faible(),
+                                Fragment::dit(&signal.detail).code(),
+                            ]
+                            .into(),
+                        ),
+                        Bloc::Retrait(vec![
+                            Bloc::Texte(Fragment::dit(signal.why(ctx.lang)).faible().into()),
+                            Bloc::Texte(
+                                Fragment::dit(format!(
+                                    "{} {}",
+                                    ctx.t("à lire dans", "read it in"),
+                                    signal.panel(ctx.lang)
+                                ))
+                                .faible()
+                                .into(),
+                            ),
+                        ]),
+                    ]
+                })
+                .collect();
+            if dedans.is_empty() {
+                continue;
+            }
+            blocs.push(Bloc::Section {
+                titre: match poids {
                     Weight::Remarkable => ctx.t("Remarquable", "Remarkable"),
                     Weight::Worth => ctx.t("À savoir", "Worth knowing"),
-                });
-                poids_précédent = Some(signal.weight);
-            }
-            let couleur = match signal.weight {
-                Weight::Remarkable => egui::Color32::from_rgb(0xf4, 0x87, 0x71),
-                Weight::Worth => egui::Color32::from_rgb(0xd7, 0xba, 0x7d),
-            };
-            ui.horizontal_wrapped(|ui| {
-                let (rect, _) =
-                    ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
-                ui.painter().circle_filled(rect.center(), 4.0, couleur);
-                ui.strong(signal.title(ctx.lang));
-                // Un tiret entre le titre et le fait. Sans lui, les deux
-                // se lisaient d'un trait — « Binaire dépouillé aucun nom
-                // de fonction dans le fichier » — et l'on cherchait le
-                // verbe d'une phrase qui n'en a pas.
-                ui.weak("—");
-                ui.monospace(&signal.detail);
+                }
+                .into(),
+                blocs: dedans,
             });
-            ui.indent(signal.title("en"), |ui| {
-                ui.weak(signal.why(ctx.lang));
-                ui.weak(format!(
-                    "{} {}",
-                    ctx.t("à lire dans", "read it in"),
-                    signal.panel(ctx.lang)
-                ));
-            });
+        }
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        if let Some(vue) = self.vue(ctx) {
+            crate::vue_peinte::peindre(ui, ctx, &vue);
         }
     }
 }

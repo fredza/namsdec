@@ -7,9 +7,20 @@
 //! et pourquoi RELRO, le canari et IBT existent.
 
 use crate::gadgets::{self, Gadget};
-use crate::{
-    ReContext, ReModule, ReRequest, ReSection, clickable_address, framed, framed_small_button,
-};
+use crate::vue::{Bloc, Champ, Fragment, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection};
+
+/// Ce que le panneau demande, par son nom.
+const ACTION_CHERCHER: &str = "fragments:chercher";
+/// « fragments:vider » et non « fragments:chercher:vider » : un champ
+/// validé rend son action suivie de la valeur tapée, et le second nom
+/// aurait été indiscernable du mot « vider » cherché parmi les
+/// fragments.
+const ACTION_VIDER: &str = "fragments:vider";
+const ACTION_PREMIÈRE: &str = "fragments:page:première";
+const ACTION_AVANT: &str = "fragments:page:avant";
+const ACTION_APRÈS: &str = "fragments:page:après";
+const ACTION_DERNIÈRE: &str = "fragments:page:dernière";
 
 /// Combien on en montre par page.
 ///
@@ -40,12 +51,58 @@ pub struct GadgetsModule {
     query: String,
     /// La page qu'on regarde, à partir de zéro.
     page: usize,
-    /// La recherche à laquelle cette page correspond.
+}
+
+impl GadgetsModule {
+    /// Les fragments que la recherche laisse passer.
     ///
-    /// Quand elle change, on revient en première page : rester page
-    /// sept d'une liste qui n'en compte plus qu'une, c'est se retrouver
-    /// devant rien sans comprendre pourquoi.
-    query_appliquée: String,
+    /// EN LECTURE SEULE : `ui()` filtrait et bornait la page pendant
+    /// qu'il dessinait, ce qu'une vue ne peut pas faire — elle
+    /// n'emprunte `self` que pour lire.
+    fn montrés(&self) -> Vec<&Gadget> {
+        let cherché = self.query.to_lowercase();
+        self.found
+            .iter()
+            .filter(|gadget| cherché.is_empty() || gadget.text().to_lowercase().contains(&cherché))
+            .collect()
+    }
+
+    /// La tranche qu'on regarde, et combien il y a de pages.
+    fn fenêtre(&self) -> (usize, usize, usize) {
+        let combien = self.montrés().len();
+        let pages = combien.div_ceil(PAR_PAGE).max(1);
+        let page = self.page.min(pages - 1);
+        let début = page * PAR_PAGE;
+        (début, (début + PAR_PAGE).min(combien), pages)
+    }
+
+    /// Ce que le panneau fait de ce qu'on lui demande.
+    fn agit(&mut self, action: &str) {
+        if action == ACTION_VIDER {
+            self.chercher(String::new());
+            return;
+        }
+        if let Some(cherché) = action.strip_prefix(&format!("{ACTION_CHERCHER}:")) {
+            self.chercher(cherché.to_owned());
+            return;
+        }
+        let (_, _, pages) = self.fenêtre();
+        match action {
+            ACTION_PREMIÈRE => self.page = 0,
+            ACTION_AVANT => self.page = self.page.saturating_sub(1),
+            ACTION_APRÈS => self.page = (self.page + 1).min(pages - 1),
+            ACTION_DERNIÈRE => self.page = pages - 1,
+            _ => {}
+        }
+    }
+
+    /// Une recherche qui change ramène en première page : rester page
+    /// sept d'une liste qui n'en compte plus qu'une, c'est se
+    /// retrouver devant rien sans comprendre pourquoi.
+    fn chercher(&mut self, cherché: String) {
+        self.query = cherché;
+        self.page = 0;
+    }
 }
 
 impl ReModule for GadgetsModule {
@@ -89,75 +146,73 @@ impl ReModule for GadgetsModule {
         self.total = self.found.len();
         self.page = 0;
         self.query.clear();
-        self.query_appliquée.clear();
     }
 
-    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
-        ui.weak(ctx.t(
-            "Une pile non exécutable (NX) empêche d'exécuter des octets qu'on y \
-             dépose. Ces fragments-là, eux, sont déjà dans le code : chacun finit \
-             par `ret`, et les enchaîner revient à écrire un programme avec les \
-             morceaux d'un autre. C'est ce que les autres protections — RELRO, le \
-             canari, IBT — cherchent à empêcher.",
-            "A non-executable stack (NX) stops bytes written onto it from running. \
-             These fragments are already in the code: each ends with `ret`, and \
-             chaining them amounts to writing a program out of someone else's \
-             pieces. That is what the other protections — RELRO, the canary, IBT — \
-             are there to prevent.",
-        ));
+    fn vue(&self, ctx: &ReContext) -> Option<Vue> {
+        let mut blocs = vec![Bloc::Texte(
+            Fragment::dit(ctx.t(
+                "Une pile non exécutable (NX) empêche d'exécuter des octets qu'on y \
+                 dépose. Ces fragments-là, eux, sont déjà dans le code : chacun finit \
+                 par `ret`, et les enchaîner revient à écrire un programme avec les \
+                 morceaux d'un autre. C'est ce que les autres protections — RELRO, le \
+                 canari, IBT — cherchent à empêcher.",
+                "A non-executable stack (NX) stops bytes written onto it from running. \
+                 These fragments are already in the code: each ends with `ret`, and \
+                 chaining them amounts to writing a program out of someone else's \
+                 pieces. That is what the other protections — RELRO, the canary, IBT — \
+                 are there to prevent.",
+            ))
+            .faible()
+            .into(),
+        )];
         if self.found.is_empty() {
-            ui.add_space(4.0);
-            ui.weak(ctx.t(
-                "Aucun fragment ici : le programme est trop court.",
-                "No fragments here: the program is too short.",
-            ));
-            return;
+            return Some(Vue {
+                blocs: {
+                    blocs.push(Bloc::Texte(
+                        Fragment::dit(ctx.t(
+                            "Aucun fragment ici : le programme est trop court.",
+                            "No fragments here: the program is too short.",
+                        ))
+                        .faible()
+                        .into(),
+                    ));
+                    blocs
+                },
+            });
         }
-        ui.add_space(4.0);
-        ui.horizontal(|ui| {
-            ui.add(
-                egui::TextEdit::singleline(&mut self.query)
-                    .hint_text(ctx.t("chercher — « pop rdi »…", "search — \"pop rdi\"…"))
-                    .desired_width(160.0),
+
+        let mut champ = Champ::pour(ACTION_CHERCHER)
+            .valeur(&self.query)
+            .indice(ctx.t("chercher — « pop rdi »…", "search — \"pop rdi\"…"))
+            .caractères(22);
+        if !self.query.is_empty() {
+            champ = champ.bouton(
+                Fragment::dit("x")
+                    .bouton(ACTION_VIDER)
+                    .survol(ctx.t("Vider la recherche", "Clear the search")),
             );
-            if !self.query.is_empty() && framed_small_button(ui, "x").clicked() {
-                self.query.clear();
-            }
-        });
-        let query = self.query.to_lowercase();
-        let montrés: Vec<&Gadget> = self
-            .found
-            .iter()
-            .filter(|gadget| query.is_empty() || gadget.text().to_lowercase().contains(&query))
-            .collect();
-
-        // Une recherche qui change ramène en première page.
-        if self.query != self.query_appliquée {
-            self.query_appliquée = self.query.clone();
-            self.page = 0;
         }
-        let pages = montrés.len().div_ceil(PAR_PAGE).max(1);
-        self.page = self.page.min(pages - 1);
-        let début = self.page * PAR_PAGE;
-        let fin = (début + PAR_PAGE).min(montrés.len());
+        blocs.push(Bloc::Champ(champ));
 
+        let montrés = self.montrés();
+        let (début, fin, pages) = self.fenêtre();
         // Ce qu'on a sous les yeux, et de quoi : « 41 à 80 sur 1 274 ».
         // Un simple « 40 montrés » ne dit pas qu'il y a une suite, et
         // c'est précisément ce qu'on reprochait à ce panneau.
-        ui.horizontal_wrapped(|ui| {
-            if montrés.is_empty() {
-                ui.label(ctx.t("Aucun fragment ne correspond", "No fragment matches"));
-            } else {
-                ui.label(format!(
-                    "{}–{} {} {}",
-                    début + 1,
-                    fin,
-                    ctx.t("sur", "of"),
-                    montrés.len()
-                ));
-            }
-            if !query.is_empty() {
-                ui.weak(format!(
+        let mut état = vec![if montrés.is_empty() {
+            Fragment::dit(ctx.t("Aucun fragment ne correspond", "No fragment matches"))
+        } else {
+            Fragment::dit(format!(
+                "{}–{} {} {}",
+                début + 1,
+                fin,
+                ctx.t("sur", "of"),
+                montrés.len()
+            ))
+        }];
+        if !self.query.is_empty() {
+            état.push(
+                Fragment::dit(format!(
                     "({} {} {})",
                     self.found.len(),
                     ctx.t("fragments en tout", "fragments in all"),
@@ -166,95 +221,95 @@ impl ReModule for GadgetsModule {
                     } else {
                         ""
                     }
-                ));
-            } else if self.total >= RÉCOLTE {
-                ui.weak(ctx.t(
+                ))
+                .faible(),
+            );
+        } else if self.total >= RÉCOLTE {
+            état.push(
+                Fragment::dit(ctx.t(
                     "— la récolte s'arrête là, le binaire en contient davantage",
                     "— the harvest stops there, the binary holds more",
-                ));
-            }
-        });
+                ))
+                .faible(),
+            );
+        }
+        blocs.push(Bloc::Texte(état.into()));
 
         // La navigation : première, précédente, la page, suivante,
         // dernière. Les boutons s'éteignent au bout plutôt que de
         // disparaître — une rangée qui change de forme se relit à
         // chaque fois.
+        //
+        // « « ‹ › » » et non des triangles : ceux-ci n'existent pas
+        // dans les polices qu'egui embarque, et se peignaient en carré
+        // vide — un bouton qui ne montre rien ne se clique pas.
         if pages > 1 {
-            // « « ‹ › » » et non des triangles : ceux-ci n'existent
-            // pas dans les polices qu'egui embarque, et se peignaient
-            // en carré vide — un bouton qui ne montre rien ne se
-            // clique pas.
-            ui.horizontal(|ui| {
-                let première = self.page == 0;
-                let dernière = self.page + 1 >= pages;
-                if ui
-                    .add_enabled(!première, framed(ui, "\u{00ab}"))
-                    .on_hover_text(ctx.t("Première page", "First page"))
-                    .clicked()
-                {
-                    self.page = 0;
-                }
-                if ui
-                    .add_enabled(!première, framed(ui, "\u{2039}"))
-                    .on_hover_text(ctx.t("Page précédente", "Previous page"))
-                    .clicked()
-                {
-                    self.page -= 1;
-                }
-                ui.label(format!(
-                    "{} {} / {}",
-                    ctx.t("page", "page"),
-                    self.page + 1,
-                    pages
-                ));
-                if ui
-                    .add_enabled(!dernière, framed(ui, "\u{203a}"))
-                    .on_hover_text(ctx.t("Page suivante", "Next page"))
-                    .clicked()
-                {
-                    self.page += 1;
-                }
-                if ui
-                    .add_enabled(!dernière, framed(ui, "\u{00bb}"))
-                    .on_hover_text(ctx.t("Dernière page", "Last page"))
-                    .clicked()
-                {
-                    self.page = pages - 1;
-                }
-            });
+            let première = self.page == 0;
+            let dernière = self.page + 1 >= pages;
+            blocs.push(Bloc::Texte(
+                vec![
+                    Fragment::dit("\u{00ab}")
+                        .bouton(ACTION_PREMIÈRE)
+                        .inactif_si(première)
+                        .survol(ctx.t("Première page", "First page")),
+                    Fragment::dit("\u{2039}")
+                        .bouton(ACTION_AVANT)
+                        .inactif_si(première)
+                        .survol(ctx.t("Page précédente", "Previous page")),
+                    Fragment::dit(format!(
+                        "{} {} / {}",
+                        ctx.t("page", "page"),
+                        self.page + 1,
+                        pages
+                    )),
+                    Fragment::dit("\u{203a}")
+                        .bouton(ACTION_APRÈS)
+                        .inactif_si(dernière)
+                        .survol(ctx.t("Page suivante", "Next page")),
+                    Fragment::dit("\u{00bb}")
+                        .bouton(ACTION_DERNIÈRE)
+                        .inactif_si(dernière)
+                        .survol(ctx.t("Dernière page", "Last page")),
+                ]
+                .into(),
+            ));
         }
-        // Relevé pendant le dessin, posé après : la grille emprunte
-        // `self`, et le module ne peut donc pas s'écrire dedans.
-        let mut demande: Option<ReRequest> = None;
-        egui::Grid::new("gadgets_grid")
-            .num_columns(2)
-            .striped(true)
-            .min_col_width(0.0)
-            .show(ui, |ui| {
-                for gadget in &montrés[début..fin] {
-                    if let Some(cible) = clickable_address(ui, ctx, gadget.addr) {
-                        demande = Some(ReRequest::GoTo {
-                            addr: gadget.addr,
-                            target: cible,
-                        });
-                    }
-                    // Tronqué plutôt que débordant : un fragment de
-                    // quatre instructions fait soixante-dix caractères,
-                    // et la fenêtre d'analyse réduite n'en montre que
-                    // quarante. L'infobulle rend le reste, et le texte
-                    // ne court plus hors du panneau.
-                    let texte = gadget.text();
-                    ui.add(
-                        egui::Label::new(egui::RichText::new(&texte).monospace())
-                            .truncate()
-                            .sense(egui::Sense::hover()),
-                    )
-                    .on_hover_text(egui::RichText::new(&texte).monospace());
-                    ui.end_row();
-                }
-            });
-        if demande.is_some() {
-            self.demande = demande;
+
+        // TRONQUÉ PLUTÔT QUE DÉBORDANT, et le module n'a plus à le
+        // dire : un fragment de quatre instructions fait soixante-dix
+        // caractères, et la fenêtre d'analyse réduite n'en montre que
+        // quarante. Le peintre borne la colonne la plus large d'un
+        // tableau et rend le reste au survol — une fois, pour tous les
+        // tableaux.
+        blocs.push(Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées: montrés[début..fin]
+                .iter()
+                .map(|gadget| {
+                    vec![
+                        Fragment::dit(format!("{:#x}", gadget.addr))
+                            .code()
+                            .mène_à(gadget.addr)
+                            .into(),
+                        Fragment::dit(gadget.text()).code().into(),
+                    ]
+                })
+                .collect(),
+            rayé: true,
+        });
+        Some(Vue { blocs })
+    }
+
+    fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
+        let Some(vue) = self.vue(ctx) else {
+            return;
+        };
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &vue);
+        if gestes.demande.is_some() {
+            self.demande = gestes.demande;
+        }
+        for action in &gestes.actions {
+            self.agit(action);
         }
     }
 }
@@ -354,6 +409,15 @@ mod tests {
     ///
     /// Sinon l'on reste page sept d'une liste qui n'en compte plus
     /// qu'une : la grille est vide, et rien ne dit pourquoi.
+    /// Une recherche qui change ramène en première page.
+    ///
+    /// **PAR LE CHEMIN RÉEL, depuis P7.** Ce contrôle posait
+    /// `module.query` à la main, puis comptait sur le fait que `ui()`
+    /// s'apercevrait du changement en dessinant. Le tri n'est plus
+    /// dans le dessin : la vue PROPOSE l'action du champ, et c'est
+    /// elle qu'on joue — ce qui éprouve le chemin entier et fait
+    /// tomber le contrôle si le nom de l'action change d'un côté
+    /// seulement.
     #[test]
     fn a_new_search_comes_back_to_the_first_page() {
         let mut bytes = Vec::new();
@@ -374,10 +438,38 @@ mod tests {
         };
         let mut module = GadgetsModule::default();
         module.on_binary_loaded(&ctx);
-        module.page = 2;
-        module.query = "pop rsi".to_owned();
+
+        // On s'en va page trois, par les boutons que la vue propose.
+        let vue = module.vue(&ctx).expect("le panneau dit quelque chose");
+        let suivante = vue
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Texte(ligne) => Some(ligne),
+                _ => None,
+            })
+            .flat_map(|ligne| &ligne.fragments)
+            .find(|f| f.texte == "\u{203a}")
+            .and_then(|f| f.action.clone())
+            .expect("la page suivante se demande");
+        module.agit(&suivante);
+        module.agit(&suivante);
+        assert_eq!(module.page, 2, "on est page trois");
+
+        // Puis l'on cherche, par l'action du champ.
+        let vue = module.vue(&ctx).expect("le panneau dit quelque chose");
+        let champ = vue
+            .blocs
+            .iter()
+            .find_map(|bloc| match bloc {
+                Bloc::Champ(champ) => Some(champ.action.clone()),
+                _ => None,
+            })
+            .expect("le panneau porte un champ de recherche");
+        module.agit(&format!("{champ}:pop rsi"));
+        assert_eq!(module.page, 0, "la recherche ramène en tête");
+
         let texte = textes(&mut module, &ctx).join(" | ");
-        assert_eq!(module.page, 0, "la recherche ramène en tête : {texte}");
         assert!(texte.contains("1–1 sur 1"), "{texte}");
     }
 

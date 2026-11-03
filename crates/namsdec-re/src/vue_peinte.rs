@@ -174,8 +174,17 @@ fn peindre_bloc(ui: &mut egui::Ui, ctx: &ReContext, bloc: &Bloc, gestes: &mut Ge
             // mots-clés et fait des adresses des liens vers le listing.
             // Un module qui décrit sa vue n'a pas à redire tout cela —
             // il dit « ceci est du code ».
+            // BORNÉ À LA LARGEUR DU PANNEAU, et c'est l'interface qui
+            // le décide : une ligne d'`objdump` fait parfois deux
+            // cents caractères, et peinte sans borne elle court hors
+            // du panneau — où rien ne la rattrape, puisque la fenêtre
+            // d'analyse ne défile pas en largeur. Le panneau des
+            // outils l'écrivait lui-même avant P7 ; celui de la
+            // décompilation ne l'écrivait nulle part, et débordait
+            // donc sans que personne le mesure.
+            let largeur = ui.available_width().max(80.0);
             if let Some(adresse) =
-                crate::dzf_decompiler_module::pseudocode_cliquable(ui, texte, f32::INFINITY)
+                crate::dzf_decompiler_module::pseudocode_cliquable(ui, texte, largeur)
             {
                 // Vers le CODE, sans demander : une adresse du
                 // pseudo-code y désigne un appel ou un saut, et le

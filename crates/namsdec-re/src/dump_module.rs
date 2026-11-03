@@ -1,4 +1,18 @@
-use crate::{ReContext, ReModule, ReRequest, ReSection, digest, entropy, framed_button};
+use crate::vue::{Bloc, Champ, Fragment, Ligne, Vue};
+use crate::{ReContext, ReModule, ReRequest, ReSection, digest, entropy};
+
+/// Ce que le panneau demande, par son nom.
+///
+/// `ALLER` porte LE MÊME NOM que le champ du début, et c'est voulu :
+/// un bouton qui porte l'action de son champ le valide, comme la
+/// touche Entrée. Sans cela, taper une adresse puis cliquer « Aller »
+/// aurait perdu ce qu'on vient d'écrire — le champ perd le clavier
+/// sans qu'Entrée ait été pressée.
+const ACTION_DÉBUT: &str = "vidage:début";
+const ACTION_LONGUEUR: &str = "vidage:longueur";
+const ACTION_TOUT: &str = "vidage:tout";
+const ACTION_COPIER: &str = "vidage:copier";
+const ACTION_ÉCRIRE: &str = "vidage:écrire";
 
 /// Le vidage hexadécimal du fichier, et l'empreinte de ce qu'on y
 /// sélectionne.
@@ -26,6 +40,13 @@ pub struct DumpModule {
     remplacement: String,
     /// Ce qu'on demande à l'application, relevé à l'image suivante.
     demande: Option<ReRequest>,
+    /// Le texte à poser dans le presse-papier, quand on l'a demandé.
+    ///
+    /// Posé par `agit`, consommé par `ui` : copier demande le contexte
+    /// egui, que le comportement n'a pas — et c'est tant mieux, car
+    /// c'est ce qui permet d'éprouver « copier le vidage » sans
+    /// peindre, en lisant ce qui a été mis là.
+    à_copier: Option<String>,
 }
 
 impl Default for DumpModule {
@@ -39,6 +60,7 @@ impl Default for DumpModule {
             aller_à: None,
             remplacement: String::new(),
             demande: None,
+            à_copier: None,
         }
     }
 }
@@ -114,6 +136,235 @@ pub fn tranche(taille_du_fichier: usize, début: usize, longueur: usize) -> Opti
     Some((début, fin))
 }
 
+impl DumpModule {
+    /// La tranche que les deux champs désignent, s'ils en désignent une.
+    fn choisie(&self, octets: &[u8]) -> Option<(usize, usize)> {
+        nombre(&self.début)
+            .zip(nombre(&self.longueur))
+            .and_then(|(d, l)| tranche(octets.len(), d, l))
+    }
+
+    /// Ce que la tranche VAUT : son étendue, son empreinte, son
+    /// entropie, le texte qu'on y lit — et de quoi la remplacer.
+    ///
+    /// C'est la part de ce panneau qui est de la compréhension, et
+    /// c'est elle qui passe la frontière. La grille d'octets reste
+    /// peinte : voir le commentaire de `ui`.
+    fn vue_de_la_tranche(&self, ctx: &ReContext, octets: &[u8]) -> Vue {
+        // LA SÉLECTION SE VALIDE, ELLE NE SE DEVINE PLUS À CHAQUE
+        // LETTRE. Le panneau relisait les deux champs à chaque image,
+        // de sorte que la tranche bougeait sous les doigts pendant
+        // qu'on tapait « 0x1 », « 0x10 », « 0x100 ». Le tampon de
+        // frappe vit maintenant chez celui qui peint, et le module
+        // n'apprend ce qui est écrit qu'à la validation — par Entrée,
+        // ou par le bouton qui porte la même action.
+        let mut blocs = vec![
+            Bloc::Champ(
+                Champ::pour(ACTION_DÉBUT)
+                    .étiquette(Fragment::dit(ctx.t("De", "From")).faible())
+                    .valeur(&self.début)
+                    .code()
+                    .caractères(12)
+                    .bouton(
+                        Fragment::dit(ctx.t("Aller", "Go"))
+                            .bouton(ACTION_DÉBUT)
+                            .survol(ctx.t(
+                                "Amener le vidage sur cette tranche",
+                                "Bring the dump to this range",
+                            )),
+                    ),
+            ),
+            Bloc::Champ(
+                Champ::pour(ACTION_LONGUEUR)
+                    .étiquette(Fragment::dit(ctx.t("longueur", "length")).faible())
+                    .valeur(&self.longueur)
+                    .code()
+                    .caractères(12)
+                    .bouton(Fragment::dit(ctx.t("Tout", "Everything")).bouton(ACTION_TOUT))
+                    // Le vidage entier dans le presse-papier : on le
+                    // colle dans un compte rendu, ou on le compare à
+                    // celui d'un autre outil. C'est la forme de `xxd`,
+                    // donc celle qu'un `diff` sait lire.
+                    .bouton(
+                        Fragment::dit(ctx.t("Copier le vidage", "Copy the dump"))
+                            .bouton(ACTION_COPIER)
+                            .survol(ctx.t(
+                                "Le fichier entier, au format de xxd",
+                                "The whole file, in xxd's format",
+                            )),
+                    ),
+            ),
+        ];
+
+        let Some((début, fin)) = self.choisie(octets) else {
+            blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Cette tranche ne désigne rien : un début dans le fichier, une longueur \
+                     non nulle. Cliquez un octet du vidage pour poser le début.",
+                    "That range points at nothing: a start inside the file, a non-zero \
+                     length. Click a byte in the dump to set the start.",
+                ))
+                .faible()
+                .into(),
+            ));
+            return Vue { blocs };
+        };
+
+        let morceau = &octets[début..fin];
+        let nom = |texte: &str| -> Ligne { Fragment::dit(texte).faible().into() };
+        let valeur = entropy::shannon(morceau);
+        blocs.push(Bloc::Tableau {
+            colonnes: Vec::new(),
+            rangées: vec![
+                vec![
+                    nom(ctx.t("Tranche", "Range")),
+                    Fragment::dit(format!(
+                        "{:#x} … {:#x} ({} {})",
+                        début,
+                        fin,
+                        morceau.len(),
+                        ctx.t("octets", "bytes")
+                    ))
+                    .code()
+                    .into(),
+                ],
+                vec![
+                    nom("SHA-256"),
+                    // Une empreinte sert à être collée quelque part,
+                    // pas à être recopiée à la main.
+                    Fragment::dit(digest::hex(&digest::sha256(morceau)))
+                        .code()
+                        .copiable()
+                        .into(),
+                ],
+                vec![
+                    nom("CRC-32"),
+                    Fragment::dit(format!("{:08x}", digest::crc32(morceau)))
+                        .code()
+                        .into(),
+                ],
+                vec![
+                    nom(ctx.t("Entropie", "Entropy")),
+                    Fragment::dit(format!(
+                        "{valeur:.2} — {}",
+                        entropy::Verdict::of(valeur).label(ctx.lang.starts_with("fr"))
+                    ))
+                    .code()
+                    .into(),
+                ],
+                vec![
+                    nom(ctx.t("Texte", "Text")),
+                    Fragment::dit(lisible(morceau, 48)).code().into(),
+                ],
+            ],
+            rayé: true,
+        });
+
+        // Et l'écriture. Le vidage montrait ; il laisse maintenant
+        // changer, ce qui est la suite naturelle : on a repéré la
+        // constante qu'on veut voir autrement, et l'on n'avait jusqu'ici
+        // aucun moyen de la poser.
+        //
+        // Autant d'octets que la tranche en compte, exactement. C'est la
+        // même règle que pour l'inversion d'un saut : un octet de plus
+        // ou de moins décalerait tout ce qui suit, et chaque adresse du
+        // fichier deviendrait fausse.
+        let attendus = morceau.len();
+        let écrits = octets_écrits(&self.remplacement);
+        let prêt = écrits.as_ref().is_some_and(|o| o.len() == attendus);
+        blocs.push(Bloc::Champ(
+            Champ::pour(ACTION_ÉCRIRE)
+                .étiquette(Fragment::dit(ctx.t("Remplacer par", "Replace with")).faible())
+                .valeur(&self.remplacement)
+                .indice("41 42 43…")
+                .code()
+                .caractères(26)
+                .bouton(
+                    Fragment::dit(ctx.t("Écrire", "Write"))
+                        .bouton(ACTION_ÉCRIRE)
+                        .inactif_si(!prêt)
+                        .survol(ctx.t(
+                            "Le changement se défait depuis Outils > Patcher le binaire.",
+                            "The change can be undone from Tools > Patch the binary.",
+                        )),
+                ),
+        ));
+        match &écrits {
+            _ if self.remplacement.trim().is_empty() => {}
+            None => blocs.push(Bloc::Texte(
+                Fragment::dit(ctx.t(
+                    "Des octets en hexadécimal, par paires : « 90 90 » ou « 9090 ».",
+                    "Bytes in hexadecimal, in pairs: \"90 90\" or \"9090\".",
+                ))
+                .faible()
+                .into(),
+            )),
+            Some(o) if o.len() != attendus => blocs.push(Bloc::Texte(
+                Fragment::dit(format!(
+                    "{} {attendus} {} {} {}",
+                    ctx.t("La tranche en compte", "The range holds"),
+                    ctx.t("octets", "bytes"),
+                    ctx.t("; vous en donnez", "; you give"),
+                    o.len()
+                ))
+                .faible()
+                .into(),
+            )),
+            Some(_) => {}
+        }
+        Vue { blocs }
+    }
+
+    /// Ce que le panneau fait de ce qu'on lui demande.
+    ///
+    /// À part du dessin pour être éprouvé sans peindre : poser une
+    /// tranche, copier, écrire sont des comportements.
+    fn agit(&mut self, action: &str, octets: &[u8]) {
+        if let Some(valeur) = action.strip_prefix(&format!("{ACTION_DÉBUT}:")) {
+            self.début = valeur.to_owned();
+            // Valider le début, c'est demander à voir : « Aller » porte
+            // la même action, et Entrée vaut « Aller ».
+            if let Some((début, _)) = self.choisie(octets) {
+                self.aller_à = Some(début);
+            }
+            return;
+        }
+        if let Some(valeur) = action.strip_prefix(&format!("{ACTION_LONGUEUR}:")) {
+            self.longueur = valeur.to_owned();
+            return;
+        }
+        if let Some(valeur) = action.strip_prefix(&format!("{ACTION_ÉCRIRE}:")) {
+            self.remplacement = valeur.to_owned();
+            let Some((début, fin)) = self.choisie(octets) else {
+                return;
+            };
+            let Some(bytes) = octets_écrits(&self.remplacement) else {
+                return;
+            };
+            if bytes.len() != fin - début {
+                return;
+            }
+            self.demande = Some(ReRequest::PatchBytes {
+                offset: début,
+                // Autant retirés qu'écrits : le vidage du panneau
+                // latéral remplace sur place, et ne déplace jamais rien.
+                retirés: bytes.len(),
+                bytes,
+            });
+            self.remplacement.clear();
+            return;
+        }
+        match action {
+            ACTION_TOUT => {
+                self.début = "0".to_owned();
+                self.longueur = format!("{:#x}", octets.len());
+            }
+            ACTION_COPIER => self.à_copier = Some(hex_dump(octets)),
+            _ => {}
+        }
+    }
+}
+
 impl ReModule for DumpModule {
     fn section(&self) -> ReSection {
         ReSection::Bytes
@@ -138,193 +389,52 @@ impl ReModule for DumpModule {
     fn ui(&mut self, ui: &mut egui::Ui, ctx: &ReContext) {
         let octets = ctx.binary;
         if octets.is_empty() {
-            ui.weak(ctx.t(
-                "Rien de chargé : il n'y a pas de fichier à vider.",
-                "Nothing loaded: there is no file to dump.",
-            ));
+            crate::vue_peinte::peindre(
+                ui,
+                ctx,
+                &Vue::neuve().texte(
+                    Fragment::dit(ctx.t(
+                        "Rien de chargé : il n'y a pas de fichier à vider.",
+                        "Nothing loaded: there is no file to dump.",
+                    ))
+                    .faible(),
+                ),
+            );
             return;
         }
 
-        // La sélection, écrite à la main ou posée d'un clic.
-        let mut aller = false;
-        ui.horizontal_wrapped(|ui| {
-            ui.weak(ctx.t("De", "From"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.début)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(90.0),
-            );
-            ui.weak(ctx.t("longueur", "length"));
-            ui.add(
-                egui::TextEdit::singleline(&mut self.longueur)
-                    .font(egui::TextStyle::Monospace)
-                    .desired_width(90.0),
-            );
-            aller |= framed_button(ui, ctx.t("Aller", "Go"))
-                .on_hover_text(ctx.t(
-                    "Amener le vidage sur cette tranche",
-                    "Bring the dump to this range",
-                ))
-                .clicked();
-            if framed_button(ui, ctx.t("Tout", "Everything")).clicked() {
-                self.début = "0".to_owned();
-                self.longueur = format!("{:#x}", octets.len());
-            }
-            ui.separator();
-            // Le vidage entier dans le presse-papier : on le colle dans
-            // un compte rendu, ou on le compare à celui d'un autre
-            // outil. C'est la forme de `xxd`, donc celle qu'un `diff`
-            // sait lire.
-            if framed_button(ui, ctx.t("Copier le vidage", "Copy the dump"))
-                .on_hover_text(ctx.t(
-                    "Le fichier entier, au format de xxd",
-                    "The whole file, in xxd's format",
-                ))
-                .clicked()
-            {
-                ui.ctx().copy_text(hex_dump(octets));
-            }
-        });
-
-        let choisie = nombre(&self.début)
-            .zip(nombre(&self.longueur))
-            .and_then(|(d, l)| tranche(octets.len(), d, l));
-        match choisie {
-            Some((début, fin)) => {
-                if aller {
-                    self.aller_à = Some(début);
-                }
-                let morceau = &octets[début..fin];
-                ui.add_space(4.0);
-                egui::Grid::new("dump_selection")
-                    .num_columns(2)
-                    .min_col_width(0.0)
-                    .striped(true)
-                    .spacing([14.0, 3.0])
-                    .show(ui, |ui| {
-                        ui.weak(ctx.t("Tranche", "Range"));
-                        ui.monospace(format!(
-                            "{:#x} … {:#x} ({} {})",
-                            début,
-                            fin,
-                            morceau.len(),
-                            ctx.t("octets", "bytes")
-                        ));
-                        ui.end_row();
-
-                        ui.weak("SHA-256");
-                        let empreinte = digest::hex(&digest::sha256(morceau));
-                        if crate::clickable_label(
-                            ui,
-                            egui::Label::new(
-                                egui::RichText::new(&empreinte).monospace().size(11.0),
-                            ),
-                        )
-                        .on_hover_text(ctx.t("Cliquer pour copier", "Click to copy"))
-                        .clicked()
-                        {
-                            ui.ctx().copy_text(empreinte);
-                        }
-                        ui.end_row();
-
-                        ui.weak("CRC-32");
-                        ui.monospace(format!("{:08x}", digest::crc32(morceau)));
-                        ui.end_row();
-
-                        ui.weak(ctx.t("Entropie", "Entropy"));
-                        let valeur = entropy::shannon(morceau);
-                        ui.monospace(format!(
-                            "{valeur:.2} — {}",
-                            entropy::Verdict::of(valeur).label(ctx.lang.starts_with("fr"))
-                        ));
-                        ui.end_row();
-
-                        ui.weak(ctx.t("Texte", "Text"));
-                        ui.monospace(lisible(morceau, 48));
-                        ui.end_row();
-                    });
-
-                // Et l'écriture. Le vidage montrait ; il laisse
-                // maintenant changer, ce qui est la suite naturelle : on
-                // a repéré la constante qu'on veut voir autrement, et
-                // l'on n'avait jusqu'ici aucun moyen de la poser.
-                //
-                // Autant d'octets que la tranche en compte, exactement.
-                // C'est la même règle que pour l'inversion d'un saut :
-                // un octet de plus ou de moins décalerait tout ce qui
-                // suit, et chaque adresse du fichier deviendrait fausse.
-                ui.add_space(6.0);
-                let attendus = morceau.len();
-                let écrits = octets_écrits(&self.remplacement);
-                ui.horizontal(|ui| {
-                    ui.weak(ctx.t("Remplacer par", "Replace with"));
-                    ui.add(
-                        egui::TextEdit::singleline(&mut self.remplacement)
-                            .hint_text(ctx.t("41 42 43…", "41 42 43…"))
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(220.0),
-                    );
-                    let prêt = écrits.as_ref().is_some_and(|o| o.len() == attendus);
-                    ui.add_enabled_ui(prêt, |ui| {
-                        if framed_button(ui, ctx.t("Écrire", "Write"))
-                            .on_hover_text(ctx.t(
-                                "Le changement se défait depuis Outils > Patcher le binaire.",
-                                "The change can be undone from Tools > Patch the binary.",
-                            ))
-                            .clicked()
-                            && let Some(bytes) = écrits.clone()
-                        {
-                            self.demande = Some(ReRequest::PatchBytes {
-                                offset: début,
-                                // Autant retirés qu'écrits : le vidage
-                                // du panneau latéral remplace sur
-                                // place, et ne déplace jamais rien.
-                                retirés: bytes.len(),
-                                bytes,
-                            });
-                            self.remplacement.clear();
-                        }
-                    });
-                });
-                match &écrits {
-                    _ if self.remplacement.trim().is_empty() => {}
-                    None => {
-                        ui.weak(ctx.t(
-                            "Des octets en hexadécimal, par paires : « 90 90 » ou « 9090 ».",
-                            "Bytes in hexadecimal, in pairs: \"90 90\" or \"9090\".",
-                        ));
-                    }
-                    Some(o) if o.len() != attendus => {
-                        ui.weak(format!(
-                            "{} {attendus} {} {} {}",
-                            ctx.t("La tranche en compte", "The range holds"),
-                            ctx.t("octets", "bytes"),
-                            ctx.t("; vous en donnez", "; you give"),
-                            o.len()
-                        ));
-                    }
-                    Some(_) => {}
-                }
-            }
-            None => {
-                ui.add_space(4.0);
-                ui.weak(ctx.t(
-                    "Cette tranche ne désigne rien : un début dans le fichier, une longueur \
-                     non nulle. Cliquez un octet du vidage pour poser le début.",
-                    "That range points at nothing: a start inside the file, a non-zero \
-                     length. Click a byte in the dump to set the start.",
-                ));
-            }
+        // LA TÊTE PASSE LA FRONTIÈRE, LA GRILLE RESTE PEINTE — et c'est
+        // la même décision que pour l'éditeur binaire, pour les mêmes
+        // raisons plus une.
+        //
+        // Ce qu'un rapport veut de ce panneau, c'est ce que la tranche
+        // VAUT : son empreinte SHA-256, son CRC, son entropie, le texte
+        // qu'on y lit. C'est de la compréhension, et cela passe. La
+        // grille d'octets, elle, est un instrument : un curseur, une
+        // sélection, un clic par octet.
+        //
+        // Et ici une mesure s'ajoute à l'argument : la grille est
+        // VIRTUALISÉE (`show_rows`), parce qu'un fichier de trois cents
+        // kilo-octets fait vingt mille lignes. Une vue se rebâtit à
+        // chaque image ; la décrire entière, ce serait composer
+        // 320 000 fragments soixante fois par seconde pour en peindre
+        // quarante. La frontière coûterait alors ce qu'elle doit faire
+        // gagner.
+        let gestes = crate::vue_peinte::peindre_tout(ui, ctx, &self.vue_de_la_tranche(ctx, octets));
+        for action in &gestes.actions {
+            self.agit(action, octets);
+        }
+        if let Some(texte) = self.à_copier.take() {
+            ui.ctx().copy_text(texte);
         }
 
+        let choisie = self.choisie(octets);
         ui.add_space(6.0);
         ui.separator();
         ui.add_space(4.0);
 
         // Le vidage lui-même, une ligne à la fois et seulement celles
-        // qu'on voit : un fichier de trois cents kilo-octets fait vingt
-        // mille lignes, et les disposer toutes coûterait une seconde
-        // par image.
+        // qu'on voit.
         let hauteur = ui.text_style_height(&egui::TextStyle::Monospace) + 2.0;
         let lignes = octets.len().div_ceil(PAR_LIGNE);
         let mut zone = egui::ScrollArea::vertical()
@@ -517,6 +627,124 @@ mod tests {
         assert_eq!(lisible(b"ELF\x01\x02 ok", 16), "ELF.. ok");
         assert_eq!(lisible(b"abcdef", 3), "abc");
         assert_eq!(lisible(b"", 16), "");
+    }
+
+    /// La tête du panneau se lit sans être peinte — et la grille non.
+    ///
+    /// **C'est la frontière telle qu'elle a été tranchée pour ce
+    /// panneau** : ce que la tranche VAUT (son étendue, son empreinte,
+    /// son CRC, son entropie, le texte qu'on y lit) est de la
+    /// compréhension et passe ; la grille d'octets est un instrument,
+    /// et de surcroît virtualisée sur vingt mille lignes — une vue se
+    /// rebâtit à chaque image.
+    ///
+    /// Le contrôle suit le chemin entier SANS PEINDRE : la vue propose
+    /// les actions, `agit` les applique, la vue suivante porte la
+    /// nouvelle tranche.
+    #[test]
+    fn la_tête_du_vidage_se_lit_sans_être_peinte() {
+        use namsdec_core::{Cpu, Memory};
+        let octets: Vec<u8> = (0..=255u8).collect();
+        let cpu = Cpu::new(Memory::new(0x400000, 0x100));
+        let ctx = ReContext {
+            cpu: &cpu,
+            disasm: &[],
+            source: "",
+            binary: &octets,
+            lang: "fr",
+            names: None,
+            patches: &[],
+        };
+        let mut module = DumpModule::default();
+
+        /// Les paires nom/valeur du tableau de mesures.
+        fn mesures(module: &DumpModule, ctx: &ReContext, octets: &[u8]) -> Vec<(String, String)> {
+            module
+                .vue_de_la_tranche(ctx, octets)
+                .blocs
+                .iter()
+                .filter_map(|bloc| match bloc {
+                    Bloc::Tableau { rangées, .. } => Some(rangées),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|rangée| match rangée.as_slice() {
+                    [nom, valeur] => Some((nom.texte_nu(), valeur.texte_nu())),
+                    _ => None,
+                })
+                .collect()
+        }
+
+        // Au départ, seize octets depuis zéro : une réponse tout de
+        // suite plutôt qu'un champ vide.
+        let départ = mesures(&module, &ctx, &octets);
+        let tranche = &départ
+            .iter()
+            .find(|(nom, _)| nom == "Tranche")
+            .expect("la tranche est dite")
+            .1;
+        assert!(tranche.contains("0x10"), "seize octets : {tranche}");
+        let empreinte_16 = départ
+            .iter()
+            .find(|(nom, _)| nom == "SHA-256")
+            .expect("l'empreinte est dite")
+            .1
+            .clone();
+
+        // « TOUT », par l'action que la vue propose.
+        let vue = module.vue_de_la_tranche(&ctx, &octets);
+        let tout = vue
+            .blocs
+            .iter()
+            .filter_map(|bloc| match bloc {
+                Bloc::Champ(champ) => Some(&champ.boutons),
+                _ => None,
+            })
+            .flatten()
+            .find(|f| f.texte == "Tout")
+            .and_then(|f| f.action.clone())
+            .expect("« Tout » se demande");
+        module.agit(&tout, &octets);
+
+        let après = mesures(&module, &ctx, &octets);
+        let tranche = &après
+            .iter()
+            .find(|(nom, _)| nom == "Tranche")
+            .expect("la tranche est dite")
+            .1;
+        assert!(tranche.contains("256"), "le fichier entier : {tranche}");
+        let empreinte_256 = &après
+            .iter()
+            .find(|(nom, _)| nom == "SHA-256")
+            .expect("l'empreinte est dite")
+            .1;
+        // L'EMPREINTE A CHANGÉ : c'est ce qui prouve qu'elle porte sur
+        // la tranche et non sur le fichier, et c'est la moitié du
+        // contrôle — sans elle, on ne vérifierait que l'affichage d'un
+        // nombre.
+        assert_ne!(
+            &empreinte_16, empreinte_256,
+            "l'empreinte de seize octets n'est pas celle de deux cent cinquante-six"
+        );
+
+        // ET VALIDER LE DÉBUT, C'EST DEMANDER À VOIR. « Aller » porte
+        // l'action du champ : sans cela, taper une adresse puis cliquer
+        // aurait perdu ce qu'on vient d'écrire.
+        module.agit(&format!("{ACTION_DÉBUT}:0x20"), &octets);
+        assert_eq!(module.aller_à, Some(0x20), "le vidage s'y rend");
+
+        // COPIER LE VIDAGE ne peint pas : le texte attend d'être pris.
+        assert!(module.à_copier.is_none());
+        module.agit(ACTION_COPIER, &octets);
+        let copié = module
+            .à_copier
+            .take()
+            .expect("le vidage attend d'être pris");
+        assert!(
+            copié.starts_with("00000000  00 01 02 03"),
+            "la forme de xxd, celle qu'un `diff` sait lire : {}",
+            &copié[..copié.len().min(40)]
+        );
     }
 
     /// L'empreinte porte sur la tranche choisie, non sur le fichier.

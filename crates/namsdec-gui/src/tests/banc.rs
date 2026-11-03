@@ -3863,6 +3863,24 @@ fn captures_de_toutes_les_scenes() {
         // remettrait l'état à zéro sous ce qu'on regarde. C'est ce que
         // fait le relevé du banc, et pour la même raison.
         prépare(&mut app);
+        // L'ÉCLAT DES VALEURS QUI VIENNENT DE CHANGER EST ÉTEINT, et
+        // c'est ce qui rend ces images comparables.
+        //
+        // `flash_fraction` lit une horloge MURALE
+        // (`Instant::elapsed`) : l'orange tient `FLASH_SECONDS`
+        // secondes après un pas d'exécution, puis s'estompe. La scène
+        // avance de huit pas dans `prépare`, et l'on rend six images
+        // aussitôt après — à la vitesse de la machine. Selon qu'elle
+        // est chargée ou non, RCX se peignait donc en orange plein ou
+        // en gris, et `vue / flow` différait D'UN TIRAGE À L'AUTRE
+        // SANS QUE LE CODE CHANGE. Mesuré en rendant deux fois de
+        // suite : une capture sur 122 bougeait toute seule.
+        //
+        // Une image qui change d'elle-même ne prouve rien de ce qu'on
+        // lui demande — et pire, elle fait douter des 121 autres. Le
+        // banc compare des MISES EN PAGE, pas des animations à
+        // mi-course.
+        app.values_changed_at = None;
         // Relevé AVANT le déplacement d'`app` : `theme` est un
         // `&'static Theme`, donc il survit à la closure.
         let attendu = app.theme;
