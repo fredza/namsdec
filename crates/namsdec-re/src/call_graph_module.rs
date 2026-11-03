@@ -166,6 +166,12 @@ impl ReModule for CallGraphModule {
         ReSection::Code
     }
 
+    /// La structure du programme avant ses instructions — et un
+    /// arbre se lit sans rien savoir.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "call_graph"
     }

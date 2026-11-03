@@ -37,6 +37,12 @@ impl ReModule for BinaryInfoModule {
         ReSection::File
     }
 
+    /// La première question devant un fichier inconnu : qu'est-ce
+    /// que c'est ? Rien ne se comprend avant elle.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "binary_info"
     }
@@ -104,6 +110,17 @@ impl ReModule for BinaryInfoModule {
             .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
+                // L'ACCORD EN NOMBRE, PARCE QU'UN COMPTE PEUT VALOIR UN.
+                //
+                // « 1 instructions », « 1 (cibles de `call`) » : un
+                // outil qui sert à apprendre ne peut pas écrire cela,
+                // et sur un programme d'une ligne c'est exactement ce
+                // qu'il écrivait. Trouvé par le banc, sur la scène du
+                // mode débutant — une scène neuve voit ce qu'aucune
+                // autre ne montrait.
+                let accord = |n: usize, un: &'static str, plusieurs: &'static str| {
+                    if n > 1 { plusieurs } else { un }
+                };
                 let mut ligne = |label: &str, valeur: String| {
                     ui.label(label);
                     ui.monospace(valeur);
@@ -114,7 +131,10 @@ impl ReModule for BinaryInfoModule {
                     format!(
                         "{} {} · {} {}",
                         self.size,
-                        ctx.t("octets", "bytes"),
+                        ctx.t(
+                            accord(self.size, "octet", "octets"),
+                            accord(self.size, "byte", "bytes")
+                        ),
                         self.instructions,
                         ctx.t("instructions", "instructions")
                     ),
@@ -128,7 +148,10 @@ impl ReModule for BinaryInfoModule {
                     format!(
                         "{} ({})",
                         self.functions,
-                        ctx.t("cibles de `call`", "`call` targets")
+                        ctx.t(
+                            accord(self.functions, "cible de `call`", "cibles de `call`"),
+                            accord(self.functions, "`call` target", "`call` targets")
+                        )
                     ),
                 );
                 ligne(ctx.t("Chaînes", "Strings"), format!("{}", self.strings));
@@ -137,9 +160,15 @@ impl ReModule for BinaryInfoModule {
                     format!(
                         "{} {} · {} {}",
                         self.imports,
-                        ctx.t("fonctions", "functions"),
+                        ctx.t(
+                            accord(self.imports, "fonction", "fonctions"),
+                            accord(self.imports, "function", "functions")
+                        ),
                         self.syscalls,
-                        ctx.t("appels système", "system calls")
+                        ctx.t(
+                            accord(self.syscalls, "appel système", "appels système"),
+                            accord(self.syscalls, "system call", "system calls")
+                        )
                     ),
                 );
                 if let Some(scan) = &self.scan {

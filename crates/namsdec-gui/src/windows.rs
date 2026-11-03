@@ -1258,7 +1258,26 @@ impl NamsdecApp {
         // « Décompilation par RetDec » passe sur deux lignes dans deux
         // cents pixels, et cinq entrées de ce genre repoussent les
         // dernières sous le bord.
-        let titres = self.re_registry.nav_entries(lang);
+        // BORNÉES AU NIVEAU : neuf rubriques pour qui apprend,
+        // vingt-cinq pour qui sait ce qu'il cherche. Les panneaux
+        // cachés restent enregistrés — ils travaillent toujours pour le
+        // compte rendu « Tout », et la case des préférences les rend
+        // sans rien recharger.
+        let niveau = if self.debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        };
+        // LA RUBRIQUE OUVERTE RESTE DANS LA LISTE, même au-dessus du
+        // niveau. Un lien d'un autre panneau peut y mener — « aller
+        // voir cette adresse dans les octets » —, et c'est une
+        // demande : l'escamoter laisserait un panneau à l'écran sans
+        // entrée dans la colonne, c'est-à-dire sans moyen de savoir où
+        // l'on est ni d'en sortir. Le niveau allège la liste ; il ne
+        // reprend pas ce qu'on a demandé.
+        let titres = self
+            .re_registry
+            .nav_entries_pour(lang, niveau, &self.analysis_module);
         let theme = self.theme;
         egui::Panel::left(egui::Id::new("analysis_nav"))
             .resizable(true)

@@ -1706,6 +1706,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "à une ; rangées ainsi, on sait où regarder avant d'avoir lu — et l'on "
          "trouve une rubrique qu'on n'a jamais ouverte, parce qu'on sait de quelle "
          "question elle relève."),
+        ("note",
+         "<b>Mode débutant.</b> namsdec sert à apprendre l'assembleur et la "
+         "rétro-ingénierie, et vingt-cinq rubriques devant quelqu'un qui ouvre son "
+         "premier binaire lui demandent de savoir ce qu'il cherche avant d'avoir appris "
+         "à chercher. Coché — et il l'est sur une installation neuve —, la colonne n'en "
+         "montre que <b>neuf</b> : « En bref », « Carte du fichier », « Fonctions », "
+         "« Graphe d'appels », « Références croisées », « Chaînes lisibles », « Appels "
+         "système », « Fonctions importées », « Éditeur binaire ». Ce sont celles qui se "
+         "lisent sans rien savoir d'avance, et elles suffisent à faire le tour d'un "
+         "programme. <b>Rien n'est désinstallé</b> : les autres travaillent toujours — le "
+         "compte rendu qu'on copie reste entier —, et la case des Préférences les rend "
+         "toutes d'un clic. Une rubrique où l'on vous envoie depuis un autre panneau "
+         "reste visible, même au-dessus du niveau : on ne vous retire pas ce que vous "
+         "avez demandé."),
         ("p", "Ce qu'on y trouve :"),
         ("liste", [
          "<b>En bref</b> — la première réponse, avant d'ouvrir les autres panneaux : taille "
@@ -2813,9 +2827,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "L'onglet <b>Modules</b> sépare deux choses qu'un même mot embrouillait : les "
          "<b>Composants</b> dont namsdec est fait — sains ou non, on ne les allume pas, on "
          "lit leur état — et les <b>Fonctions optionnelles</b> qu'on choisit d'allumer "
-         "(l'onglet RE, les exercices, la décompilation par un outil extérieur, et le module "
-         "qui va chercher et construit ces outils). Rien d'optionnel n'est obligatoire : "
-         "namsdec tourne sans."),
+         "(le <b>mode débutant</b>, l'onglet RE, les exercices, la décompilation par un "
+         "outil extérieur, et le module qui va chercher et construit ces outils). Rien "
+         "d'optionnel n'est obligatoire : namsdec tourne sans."),
+        ("p",
+         "La première case y décide de ce que l'application montre d'elle-même : le "
+         "<b>mode débutant</b> réduit le panneau d'analyse aux neuf rubriques qui se "
+         "lisent sans rien savoir d'avance. Il est coché sur une installation neuve, et "
+         "<b>décoché</b> pour une configuration qui existait avant lui — on hérite d'un "
+         "défaut, on ne se fait pas retirer ce dont on se servait."),
         ("p",
          "Chaque composant tient dans une <b>carte</b>, et les cartes partagent une "
          "largeur : c'est une liste, et une liste s'aligne sur un bord droit. Une "

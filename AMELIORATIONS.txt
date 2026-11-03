@@ -9305,3 +9305,42 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
      RESTE LA GRILLE DE L'ÉDITEUR BINAIRE, et la proposition est de ne
      pas la faire passer : c'est un instrument, pas une compréhension.
+
+9.60 UN MODE DÉBUTANT, ET UNE INTERFACE QUI SE GRADUE (3 novembre 2026)
+
+     Demandé le jour même : namsdec est à usage PÉDAGOGIQUE — apprendre
+     l'assembleur et la rétro-ingénierie —, les fonctions avancées
+     doivent pouvoir s'allumer et s'éteindre, l'interface débutant être
+     plus simple, l'avancée rester celle d'aujourd'hui.
+
+     Trois pièces : `ReModule::niveau()`, déclaré par le panneau comme
+     sa famille (c'est lui qui sait ce qu'il demande de SAVOIR) ;
+     `Settings::debutant`, dans settings.json comme tout réglage ; la
+     colonne d'analyse qui s'y borne. Un panneau neuf est avancé par
+     défaut — le silence range du bon côté.
+
+     NEUF RUBRIQUES SUR VINGT-CINQ, chacune avec la raison de sa
+     présence. Ce qu'on regarde pour apprendre : qu'est-ce que c'est,
+     où sont les choses, par où lire le code, qui se sert de quoi, ce
+     qu'il dit, ce qu'il demande au dehors, et changer un octet.
+
+     TROIS DÉCISIONS PRISES CONTRE MA PREMIÈRE IDÉE :
+       — une rubrique OUVERTE ne disparaît pas sous les pieds. Sept
+         contrôles sont tombés d'un coup pour le dire : on arrive à un
+         panneau avancé par un lien d'un autre panneau, et c'est une
+         demande ;
+       — « Tout » suit le niveau, mais le COMPTE RENDU reste entier :
+         un export tronqué serait un piège ;
+       — le défaut vit dans le réglage (vrai pour une installation
+         neuve, faux à la migration pour une configuration qui existait
+         déjà), et non dans le `Default` de l'application — le banc doit
+         mesurer l'interface entière, sinon seize rubriques sortaient
+         d'un coup de toute mesure.
+
+     ET UNE SCÈNE DE BANC POUR LE MODE DÉBUTANT, qui a trouvé un défaut
+     dès la première image : « Fonctions 1 (cibles de `call`) ». Un
+     outil qui sert à apprendre ne peut pas écrire cela.
+
+     RESTE À GRADUER : la barre d'outils, les onglets du panneau
+     latéral, les menus. Le mécanisme est là ; la question est chaque
+     fois la même — qu'est-ce qui se comprend sans rien savoir ?

@@ -57,6 +57,7 @@ impl NamsdecApp {
                 theme: self.theme,
                 lang: self.lang,
                 show_re_tab: self.show_re_tab,
+                debutant: self.debutant,
                 exercises: self.exercises,
                 decompiler_module: self.show_decompiler_module,
                 installer_module: self.show_installer_module,
@@ -78,6 +79,7 @@ impl NamsdecApp {
             self.theme = snapshot.theme;
             self.lang = snapshot.lang;
             self.show_re_tab = snapshot.show_re_tab;
+            self.debutant = snapshot.debutant;
             self.exercises = snapshot.exercises;
             self.show_decompiler_module = snapshot.decompiler_module;
             self.show_installer_module = snapshot.installer_module;
@@ -600,6 +602,13 @@ impl NamsdecApp {
         ui.add_space(12.0);
         ui.strong(s.modules_features_title);
         ui.weak(s.modules_features_hint);
+        ui.add_space(6.0);
+        // EN TÊTE, parce que c'est la case la plus structurante de la
+        // page : elle décide de ce que l'application montre d'elle-même
+        // à quelqu'un qui l'ouvre pour apprendre. Décochée, l'interface
+        // est celle d'aujourd'hui, entière.
+        ui.checkbox(&mut self.debutant, s.beginner_checkbox);
+        ui.weak(s.beginner_hint);
         ui.add_space(6.0);
         ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
         ui.checkbox(&mut self.exercises, s.exercises_checkbox);

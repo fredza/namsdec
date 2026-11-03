@@ -54,6 +54,12 @@ impl ReModule for MapModule {
         ReSection::File
     }
 
+    /// Où les choses sont dans le fichier. C'est la carte qu'on
+    /// regarde avant de descendre quelque part.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "map"
     }

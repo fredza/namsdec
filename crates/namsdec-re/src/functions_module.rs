@@ -58,6 +58,12 @@ impl ReModule for FunctionsModule {
         ReSection::Code
     }
 
+    /// Par où commencer à lire du code : la liste des fonctions
+    /// et leur importance.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "functions"
     }

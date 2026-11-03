@@ -979,6 +979,9 @@ fn every_setting_that_is_written_is_read_back() {
         show_tooltips: false,
         flow_pseudo: true,
         completion: false,
+        // Faux : le défaut est VRAI, et ce contrôle n'accepte que des
+        // valeurs qui ne soient pas celles d'origine.
+        debutant: false,
         exercises: true,
         auto_indent: false,
         auto_pairs: false,

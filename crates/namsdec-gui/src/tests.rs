@@ -1242,6 +1242,23 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // LE MODE DÉBUTANT, qui est ce qu'une installation neuve montre.
+    //
+    // Sans scène, l'interface que verra quelqu'un qui ouvre namsdec
+    // pour la première fois ne serait mesurée par rien — ni le banc,
+    // ni les captures —, alors que c'est elle qui décide s'il reste.
+    if let Some(octets) = binaire_fabriqué() {
+        scènes.push((
+            "analyse / mode débutant".to_owned(),
+            Some("analysis_window"),
+            Box::new(move |app| {
+                app.load_elf(&octets, NOM_FABRIQUÉ);
+                app.debutant = true;
+                app.show_analysis = true;
+                app.analysis_module.clear();
+            }),
+        ));
+    }
     // L'ÉDITEUR BINAIRE AVEC UN OCTET CHOISI, et c'est le seul état où
     // son INSPECTEUR existe : « ce que cet octet vaut lu en int8, en
     // float64, en caractère ». Sans octet choisi, le panneau dit

@@ -2652,3 +2652,90 @@ fn une_liste_qui_tient_ne_cache_aucune_ligne() {
         adresses.len()
     );
 }
+
+/// LE MODE DÉBUTANT ALLÈGE LA COLONNE, SANS RIEN DÉSINSTALLER.
+///
+/// namsdec sert à apprendre l'assembleur et la rétro-ingénierie.
+/// Vingt-cinq rubriques devant quelqu'un qui ouvre son premier binaire
+/// lui demandent de savoir ce qu'il cherche avant d'avoir appris à
+/// chercher ; neuf se parcourent.
+///
+/// Trois choses à tenir, et chacune est une façon de se tromper :
+/// la liste RACCOURCIT vraiment ; ce qui reste est ce qui se lit sans
+/// rien savoir ; et la rubrique OUVERTE ne disparaît jamais, même
+/// au-dessus du niveau — on y arrive par un lien d'un autre panneau, et
+/// l'escamoter laisserait un panneau à l'écran sans moyen d'en sortir.
+#[test]
+fn le_mode_debutant_allege_la_colonne_sans_rien_desinstaller() {
+    let mut app = NamsdecApp::default();
+    let lang = "fr";
+    let entier = app.re_registry.nav_entries(lang);
+    let débutant = app
+        .re_registry
+        .nav_entries_jusqu_a(lang, namsdec_re::Niveau::Débutant);
+    assert!(
+        débutant.len() * 2 < entier.len(),
+        "le mode débutant doit vraiment alléger : {} sur {}",
+        débutant.len(),
+        entier.len()
+    );
+    // Ce qui reste : ce qu'on regarde pour apprendre. Les identifiants
+    // et non les titres — un titre change avec la langue.
+    let ids: Vec<&str> = débutant.iter().map(|(id, _, _)| *id).collect();
+    for attendu in [
+        "binary_info",
+        "map",
+        "functions",
+        "call_graph",
+        "xrefs",
+        "strings",
+        "syscalls",
+        "imports",
+        "hex_editor",
+    ] {
+        assert!(
+            ids.contains(&attendu),
+            "« {attendu} » se lit sans rien savoir d'avance : {ids:?}"
+        );
+    }
+    // Et ce qui part : ce qui suppose qu'on sache déjà ce qu'on cherche.
+    for écarté in ["entropy", "gadgets", "yara", "detour", "slack"] {
+        assert!(
+            !ids.contains(&écarté),
+            "« {écarté} » demande de savoir ce qu'on cherche : {ids:?}"
+        );
+    }
+
+    // La rubrique ouverte reste listée, même au-dessus du niveau.
+    let avec_entropie =
+        app.re_registry
+            .nav_entries_pour(lang, namsdec_re::Niveau::Débutant, "entropy");
+    assert!(
+        avec_entropie.iter().any(|(id, _, _)| *id == "entropy"),
+        "une rubrique ouverte ne disparaît pas sous les pieds"
+    );
+    assert_eq!(
+        avec_entropie.len(),
+        débutant.len() + 1,
+        "et elle n'en ramène aucune autre"
+    );
+
+    // Enfin, ce que la colonne PEINT vraiment : le relevé, et non la
+    // liste. Une liste juste et une colonne qui montre autre chose
+    // seraient deux choses différentes.
+    app.debutant = true;
+    app.show_analysis = true;
+    app.analysis_module.clear();
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, Some("analysis_window"), 3);
+    let peints: Vec<&str> = textes.iter().map(|(t, _)| t.as_str()).collect();
+    let écrit = |quoi: &str| peints.contains(&quoi);
+    assert!(écrit("Chaînes lisibles"), "{peints:?}");
+    assert!(
+        !écrit("Entropie"),
+        "l'entropie n'est pas dans la colonne du débutant : {peints:?}"
+    );
+    // « Tout » existe à tous les niveaux : c'est le compte rendu.
+    assert!(écrit(strings(Lang::Fr).analysis_all), "{peints:?}");
+}

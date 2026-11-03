@@ -380,6 +380,12 @@ impl ReModule for HexEditorModule {
         ReSection::Bytes
     }
 
+    /// Changer un octet et voir le programme faire autre chose :
+    /// c'est l'exercice par lequel tout le monde commence.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "hex_editor"
     }

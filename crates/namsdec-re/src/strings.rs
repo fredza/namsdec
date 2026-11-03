@@ -146,6 +146,12 @@ impl ReModule for StringsModule {
         ReSection::Says
     }
 
+    /// Ce que le programme dit en clair : le premier endroit où
+    /// l'on trouve quelque chose, et souvent le plus parlant.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "strings"
     }

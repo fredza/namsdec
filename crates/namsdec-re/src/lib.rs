@@ -550,6 +550,29 @@ pub fn clickable_address(ui: &mut egui::Ui, ctx: &ReContext, addr: u64) -> Optio
     choix
 }
 
+/// À partir de quel niveau un panneau paraît.
+///
+/// **namsdec sert à apprendre l'assembleur et la rétro-ingénierie**, et
+/// vingt-cinq rubriques devant quelqu'un qui ouvre son premier binaire
+/// ne l'aident pas : elles lui demandent de savoir ce qu'il cherche
+/// avant d'avoir appris à chercher. Le niveau « débutant » ne retire
+/// rien de l'outil — il met de côté ce qui ne se comprend qu'une fois
+/// les bases en place, et une case le rend d'un clic.
+///
+/// DÉCLARÉ PAR LE PANNEAU, comme sa famille ([`ReSection`]) : c'est lui
+/// qui sait ce qu'il demande de savoir. Un panneau neuf est « avancé »
+/// par défaut, et doit se déclarer autrement pour paraître d'emblée —
+/// le silence range du bon côté.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum Niveau {
+    /// Ce qu'on regarde pour apprendre : où est le code, ce qu'il
+    /// emprunte, ce qu'il dit, et les octets eux-mêmes.
+    Débutant,
+    /// Ce qui suppose qu'on sache déjà ce qu'on cherche.
+    #[default]
+    Avancé,
+}
+
 /// La famille à laquelle un panneau appartient.
 ///
 /// Vingt-quatre rubriques à plat dans une colonne ne se cherchent pas :
@@ -630,6 +653,15 @@ pub trait ReModule {
     /// qui sait de quelle question il relève, et un panneau nouveau
     /// doit choisir sa place plutôt que d'échouer en bas d'une liste.
     fn section(&self) -> ReSection;
+
+    /// À partir de quel niveau ce panneau paraît.
+    ///
+    /// « Avancé » par défaut, et c'est voulu : un panneau neuf ne
+    /// s'invite pas devant quelqu'un qui apprend sans qu'on l'ait
+    /// décidé. Voir [`Niveau`].
+    fn niveau(&self) -> Niveau {
+        Niveau::Avancé
+    }
 
     /// Ce module veut-il toute la largeur du panneau, ou la largeur de
     /// LECTURE ?
@@ -758,8 +790,42 @@ impl ReModuleRegistry {
     /// entier ne tient pas dans la colonne — voir [`ReModule::nav_title`]
     /// — et la section qui le range, voir [`ReSection`].
     pub fn nav_entries(&self, lang: &str) -> Vec<(&'static str, &'static str, ReSection)> {
+        self.nav_entries_jusqu_a(lang, Niveau::Avancé)
+    }
+
+    /// Les mêmes, bornées à un niveau.
+    ///
+    /// `Niveau::Débutant` ne garde que les panneaux qui se lisent sans
+    /// rien savoir d'avance ; `Niveau::Avancé` les garde tous. C'est
+    /// l'unique endroit où le niveau décide de ce qu'on voit — la
+    /// colonne de navigation —, et c'est voulu : un panneau caché
+    /// reste enregistré, continue de travailler pour le compte rendu
+    /// « Tout », et reparaît sans rien recharger.
+    pub fn nav_entries_jusqu_a(
+        &self,
+        lang: &str,
+        niveau: Niveau,
+    ) -> Vec<(&'static str, &'static str, ReSection)> {
+        self.nav_entries_pour(lang, niveau, "")
+    }
+
+    /// Les mêmes, en gardant d'office la rubrique OUVERTE.
+    ///
+    /// Le niveau allège la liste ; il n'escamote pas ce qu'on regarde.
+    /// Un panneau au-dessus du niveau peut très bien être à l'écran :
+    /// on y est arrivé par un lien d'un autre panneau — « aller voir
+    /// cette adresse dans les octets » —, et c'est une demande. Le
+    /// retirer de la colonne laisserait une rubrique ouverte sans
+    /// entrée : on ne saurait plus où l'on est, ni comment en sortir.
+    pub fn nav_entries_pour(
+        &self,
+        lang: &str,
+        niveau: Niveau,
+        ouvert: &str,
+    ) -> Vec<(&'static str, &'static str, ReSection)> {
         self.modules
             .iter()
+            .filter(|m| m.niveau() <= niveau || m.id() == ouvert)
             .map(|m| (m.id(), m.nav_title(lang), m.section()))
             .collect()
     }

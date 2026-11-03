@@ -120,6 +120,12 @@ impl ReModule for SyscallsModule {
         ReSection::Borrows
     }
 
+    /// Ce que le programme demande au noyau. Apprendre
+    /// l'assembleur, c'est d'abord apprendre à demander.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "syscalls"
     }

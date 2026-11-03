@@ -1103,6 +1103,9 @@ pub struct Strings {
     pub module_core_detail: &'static str,
     pub modules_components_title: &'static str,
     pub modules_features_title: &'static str,
+    /// La case du mode débutant, et ce qu'elle fait.
+    pub beginner_checkbox: &'static str,
+    pub beginner_hint: &'static str,
     pub modules_features_hint: &'static str,
     pub modules_legend: &'static str,
     pub show_re_tab_checkbox: &'static str,
@@ -2038,6 +2041,11 @@ déclenchera jamais.",
     module_core_detail: "Registres, indicateurs (RFLAGS), mémoire simulée, état CPU.",
     modules_components_title: "Composants",
     modules_features_title: "Fonctions optionnelles",
+    beginner_checkbox: "Mode débutant : ne montrer que l'essentiel",
+    beginner_hint: "namsdec sert à apprendre l'assembleur et la rétro-ingénierie. Coché, le \
+                    panneau d'analyse ne montre que les neuf rubriques qui se lisent sans rien \
+                    savoir d'avance — où est le code, ce qu'il dit, ce qu'il emprunte, les \
+                    octets. Rien n'est désinstallé : décocher rend les vingt-cinq.",
     modules_features_hint: "Ce qu'on allume ou éteint soi-même. Rien ici n'est obligatoire : namsdec tourne sans.",
     modules_legend: "L'état des composants dont namsdec est fait. Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
     show_re_tab_checkbox: "Afficher l'onglet RE dans la barre latérale",
@@ -2942,6 +2950,11 @@ other is there to compare — that is how gaps and clashes become visible.",
     module_core_detail: "Registers, flags (RFLAGS), simulated memory, CPU state.",
     modules_components_title: "Components",
     modules_features_title: "Optional features",
+    beginner_checkbox: "Beginner mode: show only the essentials",
+    beginner_hint: "namsdec is for learning assembly and reverse engineering. When checked, \
+                    the analysis panel shows only the nine sections that read without prior \
+                    knowledge — where the code is, what it says, what it borrows, the bytes. \
+                    Nothing is uninstalled: unchecking brings back all twenty-five.",
     modules_features_hint: "What you turn on or off yourself. Nothing here is required: namsdec runs without them.",
     modules_legend: "The health of the components namsdec is made of. Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
     show_re_tab_checkbox: "Show the RE tab in the sidebar",

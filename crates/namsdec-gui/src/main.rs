@@ -1142,6 +1142,13 @@ struct NamsdecApp {
     /// settings.json » ; la case de Préférences > Modules le rallume pour
     /// la session en cours.
     show_re_tab: bool,
+    /// L'interface est-elle réduite à l'essentiel ?
+    ///
+    /// Voir `Settings::debutant` : neuf rubriques d'analyse au lieu de
+    /// vingt-cinq, pour que namsdec s'ouvre sur ce qui s'apprend. Rien
+    /// n'est désinstallé — les panneaux cachés continuent de travailler
+    /// pour le compte rendu « Tout », et la case les rend d'un clic.
+    debutant: bool,
     /// Le module des exercices : éteint tant qu'on ne le demande pas, et
     /// alors une entrée dans le menu Outils, rien de plus. Persisté,
     /// contrairement à l'onglet RE : c'est une case qu'on coche une fois,
@@ -1776,6 +1783,7 @@ struct PreferencesSnapshot {
     theme: &'static Theme,
     lang: Lang,
     show_re_tab: bool,
+    debutant: bool,
     exercises: bool,
     show_tooltips: bool,
     keybindings: KeyBindings,
@@ -2205,6 +2213,20 @@ impl Default for NamsdecApp {
             help_back: Vec::new(),
             preferences_tab: PreferencesTab::General,
             show_re_tab: false,
+            // FAUX ICI, VRAI DANS `Settings::default()`, et la
+            // différence est voulue.
+            //
+            // Ce `Default`-ci n'est pas ce qu'un utilisateur reçoit :
+            // l'application vient toujours de ses réglages
+            // (`session.rs`), et un fichier neuf porte `debutant:
+            // true` — une installation fraîche s'ouvre donc sur ce qui
+            // s'apprend. Ce `Default`-ci sert aux contrôles et au
+            // banc, qui doivent mesurer l'interface ENTIÈRE : sinon
+            // seize rubriques sortiraient d'un coup de toute mesure,
+            // ce qui est exactement le trou qu'on a passé la séance à
+            // reprocher ailleurs. Une scène du banc allume le mode
+            // débutant pour le mesurer lui aussi.
+            debutant: false,
             exercises: false,
             show_exercises: false,
             show_calculator: false,

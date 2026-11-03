@@ -3463,7 +3463,22 @@ impl NamsdecApp {
             patches: &self.patches,
         };
         let théme = self.theme;
+        // « TOUT » SUIT LE NIVEAU, LUI AUSSI. Une colonne allégée
+        // au-dessus d'un « Tout » qui déroule les vingt-cinq panneaux
+        // se contredit : on simplifie d'un côté, on rend tout de
+        // l'autre, et le débutant tombe sur l'entropie et les
+        // fragments ROP sans les avoir demandés. Le COMPTE RENDU, lui
+        // — « Copier le rapport », « Enregistrer… » —, reste entier :
+        // c'est un export, et un export tronqué serait un piège.
+        let niveau = if self.debutant {
+            namsdec_re::Niveau::Débutant
+        } else {
+            namsdec_re::Niveau::Avancé
+        };
         for module in self.re_registry.iter_mut() {
+            if seul.is_none() && module.niveau() > niveau {
+                continue;
+            }
             match seul {
                 // Un seul, choisi : il prend toute la place, sans cadre
                 // ni flèche de repli. Il n'y a rien à replier quand il

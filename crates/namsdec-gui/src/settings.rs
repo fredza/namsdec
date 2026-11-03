@@ -31,7 +31,7 @@ use crate::keybindings::{Action, Chord, KeyBindings, Preset, Sequence};
 /// Version du format de réglages. À incrémenter quand un *défaut* change
 /// d'une façon qui doit atteindre les fichiers déjà écrits — voir
 /// `migrate`.
-pub const SETTINGS_VERSION: u32 = 2;
+pub const SETTINGS_VERSION: u32 = 3;
 
 /// Un fichier écrit avant que le numéro de version n'existe est, par
 /// définition, un fichier de version 1.
@@ -98,6 +98,23 @@ pub struct Settings {
     /// aucun, il ouvre ce qu'on lui donne.
     #[serde(default)]
     pub donation_url: String,
+    /// L'interface est-elle réduite à l'essentiel ?
+    ///
+    /// **namsdec sert à apprendre l'assembleur et la
+    /// rétro-ingénierie.** Vingt-cinq rubriques d'analyse devant
+    /// quelqu'un qui ouvre son premier binaire lui demandent de savoir
+    /// ce qu'il cherche avant d'avoir appris à chercher. En mode
+    /// débutant, la colonne n'en montre que neuf — celles qui se lisent
+    /// sans rien savoir d'avance ; rien n'est désinstallé, et la case
+    /// rend le reste d'un clic.
+    ///
+    /// VRAI PAR DÉFAUT, et c'est la pédagogie qui le décide : une
+    /// première ouverture doit montrer un outil qu'on peut lire. Une
+    /// configuration qui existe DÉJÀ, elle, passe à faux lors de la
+    /// migration — son propriétaire se sert de l'outil entier depuis
+    /// toujours, et un réglage neuf n'a pas à le lui retirer.
+    #[serde(default = "vrai")]
+    pub debutant: bool,
     /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
     /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
     /// rien n'apparaît tant qu'il ne le demande pas.
@@ -355,6 +372,9 @@ impl Default for Settings {
             show_console: true,
             show_explorer: false,
             show_tooltips: true,
+            // Vrai : voir le champ, et la raison — un outil qui sert à
+            // apprendre s'ouvre sur ce qui s'apprend.
+            debutant: true,
             // Le graphe d'abord : c'est la vue qui montre la FORME, et
             // c'est elle qui manque quand on découvre un binaire.
             flow_pseudo: false,
@@ -497,6 +517,18 @@ impl Settings {
                     self.shortcuts.insert(id.to_owned(), new_default.clone());
                 }
             }
+        }
+        if self.version < 3 {
+            // v2 -> v3 : le mode débutant paraît, et il est vrai par
+            // défaut. Mais une configuration qui existait AVANT lui
+            // appartient à quelqu'un qui se sert de l'outil entier
+            // depuis toujours : lui retirer seize rubriques au nom
+            // d'un défaut neuf serait prendre une décision à sa place.
+            //
+            // C'est la même règle que pour les raccourcis juste
+            // au-dessus, et elle vaut d'être redite : on hérite d'un
+            // défaut, on ne se fait pas imposer un changement.
+            self.debutant = false;
         }
         self.version = SETTINGS_VERSION;
         self
@@ -991,6 +1023,43 @@ mod tests {
         assert!(settings.show_toolbar);
         assert_eq!(settings.theme().id, namsdec_theme::VSCODE_DARK.id);
         assert_eq!(settings.keybindings().map, KeyBindings::default().map);
+    }
+
+    /// LE MODE DÉBUTANT EST VRAI POUR UNE INSTALLATION NEUVE, ET FAUX
+    /// POUR UNE CONFIGURATION QUI EXISTAIT DÉJÀ.
+    ///
+    /// namsdec sert à apprendre : une première ouverture doit montrer
+    /// un outil qu'on peut lire, donc neuf rubriques et non vingt-cinq.
+    /// Mais le fichier de quelqu'un qui se sert de l'outil entier
+    /// depuis des mois ne doit pas se réveiller amputé — il a hérité
+    /// d'un défaut qui n'existait pas, et la migration le range du côté
+    /// où il était.
+    #[test]
+    fn le_mode_debutant_est_neuf_pour_une_installation_neuve() {
+        // Une installation neuve : le mode débutant.
+        assert!(
+            Settings::default().debutant,
+            "une installation neuve s'ouvre sur ce qui s'apprend"
+        );
+        // Un fichier qui existait avant lui : l'interface entière.
+        let ancien: Settings = serde_json::from_str(r#"{"version":2}"#).unwrap();
+        assert!(
+            ancien.debutant,
+            "le champ absent prend le défaut, c'est la migration qui décide"
+        );
+        let migré = ancien.migrate();
+        assert!(
+            !migré.debutant,
+            "une configuration d'avant garde l'interface entière"
+        );
+        assert_eq!(migré.version, SETTINGS_VERSION);
+        // Et un fichier déjà à jour n'est pas retouché : ce qu'on a
+        // choisi reste choisi.
+        let choisi: Settings = serde_json::from_str(&format!(
+            r#"{{"version":{SETTINGS_VERSION},"debutant":true}}"#
+        ))
+        .unwrap();
+        assert!(choisi.migrate().debutant);
     }
 
     /// Un fichier écrit avant que les raccourcis d'exécution ne changent

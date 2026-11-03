@@ -4283,6 +4283,68 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       justesse — invisible pour qui apprend —, et l'émulateur porte
       désormais de quoi tenir 7.9 honnêtement.
 
+- [x] **Un mode débutant, et une interface qui se gradue** (3 novembre
+      2026) — demandé le jour même : *« ce sera à usage pédagogique
+      pour apprendre l'assembleur et le RE ; les fonctions avancées
+      pourront être activées/désactivées. L'interface débutant doit
+      être plus simple, la version avancée identique à l'actuelle. »*
+
+      **Le mécanisme, et il tient en trois pièces.** `ReModule::niveau()`
+      — déclaré par le panneau, comme sa famille, parce que c'est lui
+      qui sait ce qu'il demande de SAVOIR. `Settings::debutant`, qui va
+      dans `settings.json` comme tout réglage. Et la colonne d'analyse,
+      qui s'y borne. Un panneau neuf est **avancé par défaut** : le
+      silence range du bon côté, et personne ne s'invite devant
+      quelqu'un qui apprend sans qu'on l'ait décidé.
+
+      **Neuf rubriques sur vingt-cinq**, et chacune porte la raison de
+      sa présence : « En bref » (qu'est-ce que c'est ?), « Carte du
+      fichier » (où sont les choses), « Fonctions » et « Graphe
+      d'appels » (par où lire le code), « Références croisées » (« qui
+      se sert de ceci ? », la question fondatrice), « Chaînes lisibles »
+      (ce qu'il dit en clair), « Appels système » et « Fonctions
+      importées » (ce qu'il demande au dehors), « Éditeur binaire »
+      (changer un octet et voir le programme faire autre chose —
+      l'exercice par lequel tout le monde commence).
+
+      **Trois décisions prises contre ma première idée, chacune sur un
+      défaut observé :**
+
+      1. **Une rubrique ouverte ne disparaît pas sous les pieds.** Ma
+         première règle refermait sur « Tout » ce qui passait au-dessus
+         du niveau — et sept contrôles d'analyse sont tombés d'un coup
+         pour le dire : un lien d'un autre panneau (« aller voir cette
+         adresse dans les octets ») mène à un panneau avancé, et c'est
+         une DEMANDE. L'escamoter laisse un panneau à l'écran sans
+         entrée dans la colonne : on ne sait plus où l'on est.
+      2. **« Tout » suit le niveau, le compte rendu non.** Une colonne
+         allégée au-dessus d'un « Tout » qui déroule les vingt-cinq
+         panneaux se contredit. Mais « Copier le rapport » reste
+         entier : c'est un export, et un export tronqué serait un piège.
+      3. **Le défaut vit dans le RÉGLAGE, pas dans le code des
+         contrôles.** `Settings::default()` dit vrai — une installation
+         neuve s'ouvre sur ce qui s'apprend — et la migration v2→v3 dit
+         faux pour une configuration qui existait déjà : son
+         propriétaire se sert de l'outil entier depuis toujours. Le
+         `Default` de l'application, lui, reste avancé, parce que le
+         banc et les contrôles doivent mesurer l'interface ENTIÈRE —
+         sinon seize rubriques sortaient d'un coup de toute mesure.
+
+      **Et une scène de banc pour le mode débutant**, qui a trouvé un
+      défaut dès la première image : « Fonctions **1 (cibles de
+      `call`)** ». Un outil qui sert à apprendre ne peut pas écrire
+      cela. L'accord en nombre est posé sur les quatre comptes de « En
+      bref » — un programme d'une ligne les met tous à un.
+
+      Retenu par trois contrôles : la colonne raccourcit vraiment et
+      garde ce qui se lit sans rien savoir ; la rubrique ouverte reste
+      listée ; le réglage traverse l'enregistrement et la migration.
+
+      **Ce qui reste à graduer**, et qui n'est pas fait : la barre
+      d'outils, les onglets du panneau latéral, les menus. Le mécanisme
+      est là — `niveau()` et un réglage —, la question est à chaque fois
+      la même : *qu'est-ce qui se comprend sans rien savoir d'avance ?*
+
 ---
 
 ## Comment cette liste se tient

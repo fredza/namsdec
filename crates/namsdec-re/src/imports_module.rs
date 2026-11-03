@@ -130,6 +130,12 @@ impl ReModule for ImportsModule {
         ReSection::Borrows
     }
 
+    /// Ce que le programme emprunte à la bibliothèque C, avec la
+    /// fiche de chaque fonction : c'est un cours en soi.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "imports"
     }

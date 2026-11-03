@@ -57,6 +57,13 @@ impl ReModule for XrefsModule {
         ReSection::Code
     }
 
+    /// « Qui se sert de cette chaîne ? » est la question
+    /// fondatrice de la rétro-ingénierie, et elle se pose dès le
+    /// premier jour.
+    fn niveau(&self) -> crate::Niveau {
+        crate::Niveau::Débutant
+    }
+
     fn id(&self) -> &'static str {
         "xrefs"
     }
