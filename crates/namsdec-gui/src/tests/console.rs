@@ -524,12 +524,18 @@ fn a_program_can_be_given_its_arguments() {
 /// cadre par le haut et que « Recharger » sortait par la droite. Deux
 /// libellés de largeurs différentes faisaient en outre commencer les
 /// champs à des abscisses différentes.
+///
+/// Les arguments se replient par défaut depuis le 4 novembre 2026 ; ce
+/// contrôle les ouvre, puisque c'est leur ALIGNEMENT qu'il mesure.
 #[test]
 fn the_input_rows_line_up_and_stay_inside_their_frame() {
     let Some(octets) = binaire_fabriqué() else {
         return;
     };
-    let mut app = NamsdecApp::default();
+    let mut app = NamsdecApp {
+        console_args_open: true,
+        ..Default::default()
+    };
     assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
 
     let s = strings(app.lang);
@@ -669,12 +675,22 @@ fn a_program_can_be_given_its_environment() {
 ///
 /// Le test précédent ne l'a pas vu parce qu'il assemblait un source, où
 /// les deux rangées du milieu n'existent pas.
+///
+/// **LES ARGUMENTS SONT DEMANDÉS EXPRÈS** depuis le 4 novembre 2026 :
+/// ils ne se déplient plus d'eux-mêmes — ils ne se tapent pas pendant
+/// qu'un programme tourne, et ils prenaient deux rangées sur quatre à
+/// la sortie (voir `Settings::console_args_open`). Ce contrôle les
+/// ouvre pour mesurer ce qu'il mesurait : la zone ENTIÈRE, quand elle
+/// est entière.
 #[test]
 fn a_waiting_binary_shows_the_whole_input_area() {
     let Some(octets) = binaire_fabriqué() else {
         return;
     };
-    let mut app = NamsdecApp::default();
+    let mut app = NamsdecApp {
+        console_args_open: true,
+        ..Default::default()
+    };
     assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
     app.do_run();
     for _ in 0..4000 {
@@ -1181,6 +1197,14 @@ fn the_input_row_is_visible_at_every_console_height() {
             let mut app = NamsdecApp {
                 console_height: hauteur,
                 console_env_open: env_ouvert,
+                // LES ARGUMENTS OUVERTS, parce que c'est la zone
+                // ENTIÈRE qu'on balaie ici — six rangées, la pire des
+                // configurations pour la hauteur. Depuis le 4 novembre
+                // 2026 ils se replient par défaut (voir
+                // `Settings::console_args_open`), mais rien n'empêche
+                // de les rouvrir, et c'est alors que le compte doit
+                // tenir.
+                console_args_open: true,
                 ..Default::default()
             };
             assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "l'ELF se charge");
@@ -2015,5 +2039,68 @@ _start:
     assert!(
         !app.show_console,
         "refermée pendant la course, elle le reste"
+    );
+}
+
+/// Les arguments ne prennent plus la place de la sortie.
+///
+/// **Signalé à l'écran le 4 novembre 2026 :** « la console et les autres
+/// champs ne sont pas adaptés → inutilisable ». Sur la capture, la
+/// sortie d'un programme qui attendait une réponse tenait en une
+/// demi-ligne, pendant que les arguments, l'en-tête de l'environnement
+/// et la ligne de saisie occupaient quatre rangées.
+///
+/// Les arguments et l'environnement ne se tapent pas pendant qu'un
+/// programme tourne — ils sont posés sur la pile avant la première
+/// instruction. C'est le partage des outils de développement, et celui
+/// des captures envoyées en modèle : ce qu'on RÈGLE avant de lancer vit
+/// à part ; ce qu'on LIT et ce qu'on TAPE pendant la course occupe la
+/// fenêtre.
+#[test]
+fn les_arguments_ne_prennent_plus_la_place_de_la_sortie() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp::default();
+    app.load_elf(&octets, NOM_FABRIQUÉ);
+    app.show_console = true;
+    app.console_tab = ConsoleTab::Output;
+
+    // Une installation neuve les garde fermés.
+    assert!(
+        !Settings::default().console_args_open,
+        "fermés sur une installation neuve"
+    );
+
+    // 1. FERMÉS : la rangée n'est pas peinte, mais le bouton qui la
+    //    rouvre l'est — une commande qu'on ne voit pas n'existe pas.
+    app.console_args_open = false;
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains(s.console_args),
+        "la rangée des arguments ne doit pas être peinte : {peint}"
+    );
+    assert!(
+        peint.contains(s.console_args_toggle),
+        "mais le bouton qui la rouvre, oui : {peint}"
+    );
+    // ET CE QU'ON NE TOUCHE PAS RESTE : la ligne où l'on tape est
+    // toujours là, programme en marche ou non. C'est une décision
+    // écrite (`console_shows_input`) — « un champ qui n'apparaît qu'à
+    // une condition que l'utilisateur ne peut pas voir n'est pas une
+    // économie, c'est une disparition » —, et ce lot ne la défait pas :
+    // il retire ce qu'on RÈGLE, pas ce qu'on TAPE.
+    assert!(
+        peint.contains(s.console_input_label) && peint.contains(s.console_send),
+        "la ligne de saisie reste : {peint}"
+    );
+
+    // 2. DEMANDÉS : la rangée paraît, avec son champ et son bouton.
+    app.console_args_open = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.console_args) && peint.contains(s.console_args_apply),
+        "demandée, la rangée est là : {peint}"
     );
 }

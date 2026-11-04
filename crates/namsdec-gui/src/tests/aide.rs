@@ -1331,7 +1331,10 @@ fn the_changelog_covers_the_version_being_built() {
 #[test]
 fn both_languages_say_the_same_things() {
     /// Les champs dont les deux langues partagent le texte, et pourquoi.
-    const LES_MÊMES: [&str; 32] = [
+    const LES_MÊMES: [&str; 33] = [
+        // « Arguments » s'écrit pareil des deux côtés de la Manche, et
+        // c'est le mot qu'emploient tous les outils.
+        "console_args_toggle",
         // « Pseudo-code » s'écrit pareil des deux côtés de la Manche.
         "flow_pseudo",
         // Une adresse d'exemple : elle s'écrit pareil partout.

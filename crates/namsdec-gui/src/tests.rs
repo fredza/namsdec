@@ -1224,6 +1224,52 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // LA CONSOLE D'UN PROGRAMME QUI A ÉCRIT, à sa hauteur automatique.
+    //
+    // C'est l'écran de la capture du 4 novembre 2026 : « la console et
+    // les autres champs ne sont pas adaptés → inutilisable ». La sortie
+    // y reçoit une demi-ligne pendant que les arguments, l'environnement
+    // et la ligne de saisie prennent le reste — et aucune scène ne la
+    // montrait, puisque la seule qui charge un binaire fige sa hauteur.
+    if let Some(octets) = binaire_fabriqué() {
+        scènes.push((
+            "console / un programme a écrit".to_owned(),
+            None,
+            Box::new(move |app| {
+                app.load_elf(&octets, NOM_FABRIQUÉ);
+                app.do_run();
+                for _ in 0..4000 {
+                    if !app.running {
+                        break;
+                    }
+                    app.tick_run(&egui::Context::default());
+                }
+                // ON RÉPOND, ET LE PROGRAMME VA AU BOUT.
+                //
+                // Arrêté sur son attente, il ouvre la boîte de saisie —
+                // une fenêtre flottante par-dessus l'écran —, et la
+                // scène mesurerait alors deux couches superposées au
+                // lieu de la console. C'est d'ailleurs ce que le banc a
+                // dit tout de suite : « RAX » peint sur « Entrée du
+                // programme » à 800 × 520.
+                //
+                // Répondre donne en outre l'écran de la capture du
+                // 4 novembre : un programme TERMINÉ, sa sortie entière,
+                // et la console à sa hauteur automatique.
+                if matches!(app.status, Status::WaitingForInput) {
+                    app.send_input(Some("sesame".to_owned()));
+                    for _ in 0..4000 {
+                        if !app.running {
+                            break;
+                        }
+                        app.tick_run(&egui::Context::default());
+                    }
+                }
+                app.show_console = true;
+                app.console_tab = ConsoleTab::Output;
+            }),
+        ));
+    }
     // L'ÉDITEUR BINAIRE EN FENÊTRE AGRANDIE : la seule disposition où
     // son inspecteur se pose à côté du vidage, donc celle qu'on veut
     // voir. Elle avait dû être retirée le 28 octobre 2026 — le banc

@@ -902,6 +902,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "sous les doigts de quelqu'un qui vient de le fermer. "
          "<b>Affichage › Console</b> l'ouvre et la ferme à la demande, et le réglage "
          "est gardé d'une session à l'autre."),
+        ("p",
+         "<b>Les arguments et l'environnement ne sont plus dans la console</b>, et c'est "
+         "ce qui lui rend sa place&nbsp;: ils ne se tapent pas pendant qu'un programme "
+         "tourne — ils sont posés sur la pile <i>avant</i> la première instruction. "
+         "Toujours affichés, ils prenaient deux rangées sur quatre, et la sortie n'avait "
+         "plus qu'une demi-ligne. Le bouton <b>« Arguments… »</b>, à droite de la rangée "
+         "d'onglets, les rouvre quand on en a besoin, et le réglage est gardé. C'est le "
+         "partage des outils de développement&nbsp;: ce qu'on RÈGLE avant de lancer vit à "
+         "part&nbsp;; ce qu'on LIT et ce qu'on TAPE pendant la course occupe la fenêtre."),
         ("p", "En bas, trois onglets :"),
         ("liste", [
          "<b>Console</b> — ce que le programme écrit lui-même, par "

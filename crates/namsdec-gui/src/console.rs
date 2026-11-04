@@ -214,6 +214,7 @@ impl NamsdecApp {
             .assemble_state
             .as_ref()
             .is_some_and(|état| état.from_binary.is_some())
+            && self.console_args_open
         {
             // Les arguments, et l'en-tête de l'environnement.
             hauteur += rangée * 2.0;
@@ -336,8 +337,48 @@ impl NamsdecApp {
             .iter()
             .position(|tab| *tab == self.console_tab)
             .unwrap_or(0);
-        if let Some(rang) = rangée_d_onglets(ui, self.theme, &étiquettes, actif, 0.0, |_| {}) {
+        // LE BOUTON DES ARGUMENTS, à droite de la rangée d'onglets.
+        //
+        // C'est la place des commandes d'un panneau dans cette
+        // application — « Détacher » se pose ainsi sur la rangée des
+        // vues —, et c'est aussi celle qu'ont les outils dont Fred a
+        // envoyé les captures : la fenêtre « Run » d'un JetBrains porte
+        // sa barre d'icônes au bord, et laisse TOUT le reste à la
+        // sortie.
+        //
+        // Il ne paraît que devant un binaire ouvert, comme la rangée
+        // qu'il commande : un programme qu'on vient d'assembler n'a pas
+        // d'arguments à recevoir.
+        let avec_arguments = self
+            .assemble_state
+            .as_ref()
+            .is_some_and(|état| état.from_binary.is_some());
+        let largeur_bouton = if avec_arguments {
+            let galette = ui.painter().layout_no_wrap(
+                s.console_args_toggle.to_owned(),
+                egui::TextStyle::Body.resolve(ui.style()),
+                egui::Color32::PLACEHOLDER,
+            );
+            galette.size().x + ui.spacing().button_padding.x * 2.0 + 4.0 + ONGLET_MARGE * 2.0
+        } else {
+            0.0
+        };
+        let mut bascule_arguments = false;
+        if let Some(rang) =
+            rangée_d_onglets(ui, self.theme, &étiquettes, actif, largeur_bouton, |ui| {
+                if avec_arguments
+                    && small_framed_button(ui, self.theme, s.console_args_toggle)
+                        .on_hover_text(s.console_args_toggle_hint)
+                        .clicked()
+                {
+                    bascule_arguments = true;
+                }
+            })
+        {
             self.console_tab = ConsoleTab::ALL[rang];
+        }
+        if bascule_arguments {
+            self.console_args_open = !self.console_args_open;
         }
         ui.separator();
         match self.console_tab {
@@ -1291,10 +1332,15 @@ impl NamsdecApp {
             // dans `argv[1]` plutôt que sur l'entrée standard. Ils ne se
             // tapent pas pendant qu'il tourne — ils sont posés sur la pile
             // avant la première instruction —, d'où le bouton qui recharge.
-            if self
-                .assemble_state
-                .as_ref()
-                .is_some_and(|état| état.from_binary.is_some())
+            // DÉPLIÉE SEULEMENT SI ON LA DEMANDE, par le bouton
+            // « Arguments… » de la rangée d'onglets. Voir
+            // `Settings::console_args_open` : toujours affichées, ces
+            // deux rangées ne laissaient qu'une demi-ligne à la sortie.
+            if self.console_args_open
+                && self
+                    .assemble_state
+                    .as_ref()
+                    .is_some_and(|état| état.from_binary.is_some())
             {
                 ui.horizontal(|ui| {
                     ui.allocate_ui_with_layout(

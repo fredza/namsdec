@@ -979,6 +979,34 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 quatertricies. La console : ce qu'on règle quitte ce qu'on lit (A 9.70)
+
+Consigne écrite sur une capture : « la console et les autres champs ne
+sont pas adaptés → inutilisable, s'inspirer des outils jetbrains ».
+
+- [x] **La scène manquait** — aucune ne montrait une console à hauteur
+      **automatique** devant un programme qui a écrit ; la seule qui
+      charge un binaire fige sa hauteur. Ajoutée, elle sert de mesure
+      avant/après.
+- [x] **Les arguments et l'environnement quittent la console** — ils ne
+      se tapent pas pendant qu'un programme tourne, ils sont posés sur
+      la pile **avant** la première instruction. Deux rangées sur quatre
+      rendues à la sortie. Bouton « Arguments… » à droite de la rangée
+      d'onglets — la place des commandes dans cette application, et
+      celle qu'elles ont dans les captures de référence. Réglage gardé
+      dans `settings.json`.
+- [x] **Ce qu'on tape reste** — la ligne « Entrée : » est toujours là :
+      c'est une décision écrite, « un champ qui n'apparaît qu'à une
+      condition que l'utilisateur ne peut pas voir n'est pas une
+      économie, c'est une disparition ». Le contrôle le vérifie, pour
+      qu'un lot suivant ne la retire pas par distraction.
+- [ ] **Une barre d'icônes de panneau** — relancer, arrêter, effacer,
+      comme la fenêtre « Run » des captures.
+- [ ] **Les barres latérales à icônes** qui montrent et cachent les
+      panneaux (« Afficher l'explorateur »).
+
+---
+
 ## 0 tertricies. « Restaurer » ne restaurait rien (A 9.69)
 
 Signalé à l'écran, capture à l'appui : on agrandit une fenêtre, on

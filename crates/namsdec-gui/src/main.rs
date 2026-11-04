@@ -716,6 +716,9 @@ struct NamsdecApp {
     /// celle que la console doit réserver, et l'on doit pouvoir la
     /// connaître sans fouiller l'état interne d'egui.
     console_env_open: bool,
+    /// La rangée des arguments est-elle dépliée ? Voir
+    /// `Settings::console_args_open`.
+    console_args_open: bool,
     /// L'utilisateur a repris la main sur le champ d'entrée par Échap.
     ///
     /// Tant que le programme attend, le champ réclame le focus à chaque
@@ -2228,6 +2231,7 @@ impl Default for NamsdecApp {
             program_env: String::new(),
             console_input_height: None,
             console_env_open: false,
+            console_args_open: false,
             console_input_released: false,
             resume_run_after_input: false,
             explorer: FileExplorer::default(),

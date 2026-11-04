@@ -117,6 +117,7 @@ impl NamsdecApp {
             flow_current_only: settings.flow_current_only,
             timeline_notable_only: settings.timeline_notable_only,
             console_env_open: settings.console_env_open,
+            console_args_open: settings.console_args_open,
             exercises_done: settings.exercises_done.iter().cloned().collect(),
             exercises_best: settings.exercises_best.iter().cloned().collect(),
             recent_files: settings.recent_files.iter().map(PathBuf::from).collect(),
@@ -559,6 +560,7 @@ impl NamsdecApp {
             flow_current_only: self.flow_current_only,
             timeline_notable_only: self.timeline_notable_only,
             console_env_open: self.console_env_open,
+            console_args_open: self.console_args_open,
             exercises_done: self.exercises_done.iter().cloned().collect(),
             exercises_best: self
                 .exercises_best

@@ -6,6 +6,16 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**La console rend sa place à la sortie**
+- Les **arguments** et les **variables d'environnement** quittent la
+  console : ils ne se tapent pas pendant qu'un programme tourne — ils
+  sont posés avant la première instruction. Ils prenaient deux rangées
+  sur quatre, et la sortie n'avait plus qu'une demi-ligne. Le bouton
+  **« Arguments… »**, à droite de la rangée d'onglets, les rouvre quand
+  on en a besoin, et le réglage est gardé.
+- La ligne **« Entrée : »**, elle, ne bouge pas : on retire ce qu'on
+  règle, pas ce qu'on tape.
+
 **« Restaurer » restaure vraiment**
 - Une fenêtre agrandie puis restaurée retrouve **sa taille et sa place**.
   Elle restait pleine page : le bouton basculait bien, mais personne ne

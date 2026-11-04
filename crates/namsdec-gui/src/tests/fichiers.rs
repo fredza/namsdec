@@ -1005,6 +1005,7 @@ fn every_setting_that_is_written_is_read_back() {
         flow_current_only: false,
         timeline_notable_only: true,
         console_env_open: true,
+        console_args_open: true,
         system_titlebar: true,
         console_height: Some(321),
         sidebar_tab_height: Some(222),

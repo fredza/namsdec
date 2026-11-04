@@ -236,6 +236,22 @@ pub struct Settings {
     /// La console : le repli des variables d'environnement, déplié ou non.
     #[serde(default)]
     pub console_env_open: bool,
+    /// La rangée des arguments du programme est-elle dépliée ?
+    ///
+    /// **Fermée par défaut, et c'est ce qui rend la console lisible.**
+    /// Les arguments et l'environnement ne se tapent pas pendant qu'un
+    /// programme tourne — ils sont posés sur la pile avant la première
+    /// instruction. Toujours affichés, ils prenaient deux rangées sur
+    /// les quatre du bas, et la sortie n'avait plus qu'une demi-ligne :
+    /// « la console et les autres champs ne sont pas adaptés →
+    /// inutilisable » (signalé à l'écran le 4 novembre 2026, capture à
+    /// l'appui).
+    ///
+    /// C'est le partage des outils de développement : ce qu'on RÈGLE
+    /// avant de lancer vit à part, ce qu'on LIT et ce qu'on TAPE pendant
+    /// la course occupe la fenêtre. Le bouton « Arguments… » de la
+    /// rangée d'onglets les rouvre, et le réglage est gardé.
+    pub console_args_open: bool,
     /// Rendre la barre de titre au système au lieu de celle que namsdec
     /// dessine. Faux par défaut : les menus *sont* la barre de titre, ce
     /// qui économise une rangée. Vrai pour qui préfère la décoration de
@@ -441,6 +457,9 @@ impl Default for Settings {
             flow_current_only: true,
             timeline_notable_only: false,
             console_env_open: false,
+            // Fermée : voir le champ. La sortie passe avant ce qu'on
+            // règle une fois pour toutes.
+            console_args_open: false,
             system_titlebar: false,
             console_height: None,
             sidebar_tab_height: None,

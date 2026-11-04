@@ -10409,3 +10409,48 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      agrandisse — sans quoi il passerait au vert sur une fenêtre qui ne
      bouge jamais. Éprouvé en retirant la restauration : quatorze
      écarts.
+
+9.70 [EN COURS] LA CONSOLE : CE QU'ON RÈGLE QUITTE CE QU'ON LIT
+     (4 novembre 2026 — première part, signalée à l'écran)
+
+     LA CONSIGNE, écrite sur une capture : « la console et les autres
+     champs ne sont pas adaptés → inutilisable, s'inspirer des outils
+     jetbrains ». Sur l'image, un programme attend une réponse : sa
+     sortie tient en UNE ligne — coupée par le milieu — pendant que
+     quatre rangées lui mangent le bas : la mention d'attente, les
+     arguments, l'en-tête de l'environnement, la ligne de saisie.
+
+     LA SCÈNE MANQUAIT, ENCORE. Aucune scène du banc ne montrait une
+     console à hauteur AUTOMATIQUE devant un programme qui a écrit : la
+     seule qui charge un binaire fige sa hauteur à la poignée. Ajoutée
+     (« console / un programme a écrit »), et c'est elle qui sert de
+     mesure avant/après.
+
+     CE QUI PART, ET POURQUOI CELUI-LÀ : les arguments et
+     l'environnement. Ils ne se tapent pas pendant qu'un programme
+     tourne — ils sont posés sur la pile AVANT la première instruction,
+     ce que le code disait déjà en commentaire. C'est exactement le
+     partage des outils qu'on nous donne en modèle : dans un JetBrains,
+     ce qu'on règle avant de lancer vit dans la configuration
+     d'exécution, et la fenêtre « Run » ne porte que la sortie et sa
+     barre d'icônes. Deux rangées rendues à la sortie.
+
+     CE QUI RESTE, ET POURQUOI : la ligne « Entrée : », toujours. C'est
+     une décision écrite et argumentée (`console_shows_input`) — « un
+     champ qui n'apparaît qu'à une condition que l'utilisateur ne peut
+     pas voir n'est pas une économie, c'est une disparition ». Ce lot
+     retire ce qu'on RÈGLE, pas ce qu'on TAPE.
+
+     LE BOUTON « Arguments… » se pose à DROITE DE LA RANGÉE D'ONGLETS,
+     qui est la place des commandes d'un panneau dans cette application
+     — « Détacher » s'y pose déjà sur la rangée des vues — et celle
+     qu'elles ont dans les captures de référence. Il ne paraît que
+     devant un binaire ouvert, comme la rangée qu'il commande.
+
+     LE RÉGLAGE VA DANS `settings.json`, comme tout ce que l'utilisateur
+     règle : rouvrir les arguments une fois ne doit pas obliger à le
+     refaire à chaque lancement.
+
+     RESTE DE CETTE CONSIGNE, et ce sont les plus gros morceaux : une
+     barre d'icônes de panneau (relancer, arrêter, effacer), et les
+     barres latérales à icônes qui montrent et cachent les panneaux.
