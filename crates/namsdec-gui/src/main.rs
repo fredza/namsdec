@@ -1152,6 +1152,12 @@ struct NamsdecApp {
     /// attend le pas, au niveau débutant seulement. Sans effet au
     /// niveau avancé, et le réglage le dit en se grisant.
     prevoir: bool,
+    /// La réponse que l'on écrit à la question d'un exercice de lecture.
+    ///
+    /// De la session, pas du disque : une réponse à moitié tapée n'a
+    /// rien à survivre à la fermeture, et la remettre au lancement
+    /// suivant priverait du geste qu'on vient apprendre.
+    question_answer: String,
     /// L'adresse dont la réponse a été demandée par « Montrer ».
     ///
     /// Une ADRESSE et non un drapeau : au pas suivant, la question se
@@ -1879,7 +1885,7 @@ impl PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de cent huit exercices vous attend : Préférences > Modules.
+; Un parcours de cent quatorze exercices vous attend : Préférences > Modules.
 
 global _start
 
@@ -2186,6 +2192,7 @@ impl Default for NamsdecApp {
             // qu'elle a toujours été, et ceux de la prévision allument
             // les deux cases.
             prevoir: true,
+            question_answer: String::new(),
             prevision_révélée: None,
             next_detail_open: false,
             next_detail_addr: None,

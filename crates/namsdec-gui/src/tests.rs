@@ -877,7 +877,7 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
         }),
         ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
         // LA FENÊTRE DES EXERCICES N'Y ÉTAIT PAS, et c'est la plus
-        // longue liste que namsdec sache peindre : cent huit titres,
+        // longue liste que namsdec sache peindre : cent quatorze titres,
         // leur énoncé, leur palier, leurs fiches utiles. Aucun
         // invariant ne l'avait jamais regardée — ni recouvrement, ni
         // découpage, ni taille —, et le parcours vient d'y gagner douze

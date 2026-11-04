@@ -374,6 +374,24 @@
    "level": "discovery"
   },
   {
+   "id": "prevoir_tous_les_bits",
+   "title": {
+    "fr": "Tous les bits, puis quatre",
+    "en": "Every bit, then four"
+   },
+   "description": {
+    "fr": "Trois instructions, aucune valeur écrite en clair. `xor` d'un registre avec lui-même donne zéro — c'est l'idiome le plus courant de tout l'assembleur. `not` inverse les soixante-quatre bits. `shr` les pousse vers le bas, et ce qui dépasse tombe. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. Le bandeau « Prochaine instruction » dit ce que chacune va faire, et « Dernier pas » ce qu'elle a fait.",
+    "en": "Three instructions, no value written in plain sight. `xor` of a register with itself gives zero — the most common idiom in all of assembly. `not` flips all sixty-four bits. `shr` pushes them down, and what falls off is gone. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. The \"Next instruction\" banner says what each one will do, and \"Last step\" what it did."
+   },
+   "code": "; Tous les bits, puis quatre.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : `not` sur zéro allume les soixante-quatre bits. `shr rax, 60`\n; en jette soixante par le bas ; combien en reste-t-il, et que valent-ils ?\n\nglobal _start\n\nsection .text\n_start:\n    xor rax, rax\n    not rax\n    shr rax, 60\n    hlt\n",
+   "level": "discovery",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 0xf"
+  },
+  {
    "code": "; Multiplier et diviser sans multiplier.\n;\n; But : à l'arrêt, RAX doit valoir 40, RBX 5, RCX 0xFFFFFFFFFFFFFFFE et\n; RDX 0x7FFFFFFFFFFFFFFF.\n;\n; Décaler à gauche d'un cran, c'est multiplier par deux ; à droite,\n; diviser par deux. Un processeur le fait en un souffle là où `mul`\n; demande plusieurs cycles, et c'est pourquoi un compilateur remplace\n; `x * 8` par `x << 3` sans qu'on le lui demande.\n;\n; Mais il y a deux décalages à droite, et confondre les deux coûte cher :\n; `shr` fait entrer des zéros — bon pour un nombre non signé —, `sar`\n; recopie le bit de signe — bon pour un nombre signé. Sur -4, `sar` rend\n; -2 ; `shr` rend un nombre positif énorme. Les deux sont ici, côte à\n; côte.\n\nglobal _start\n\nsection .text\n_start:\n    mov rax, 5\n    shl rax, 3              ; 5 x 8 = 40\n\n    mov rbx, 40\n    shr rbx, 3              ; 40 / 8 = 5\n\n    mov rcx, -4\n    sar rcx, 1              ; -4 / 2 = -2, le signe est conservé\n\n    mov rdx, -2\n    shr rdx, 1              ; le même décalage, sans le signe\n\n    hlt\n",
    "description": {
     "en": "Shifting left by one multiplies by two, right divides by two — and a compiler turns `x * 8` into `x << 3` unasked. But there are two right shifts: `shr` brings in zeroes, `sar` copies the sign bit. On -4, one gives -2, the other a huge positive number.",
@@ -889,6 +907,60 @@
    ],
    "par": 7,
    "level": "practice"
+  },
+  {
+   "id": "prevoir_decalage",
+   "title": {
+    "fr": "Multiplier sans multiplier",
+    "en": "Multiplying without a multiply"
+   },
+   "description": {
+    "fr": "Un compilateur ne multiplie presque jamais par huit : il décale de trois rangs, ce qui coûte un cycle au lieu de trois. C'est pourquoi `shl` est partout dans le code qu'on lit, et pourquoi il faut savoir le relire comme une multiplication. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. Puis « Dernier pas », dans le panneau de droite, dira ce que chaque instruction a changé.",
+    "en": "A compiler almost never multiplies by eight: it shifts left by three, which costs one cycle instead of three. That is why `shl` is everywhere in the code one reads, and why one must read it back as a multiplication. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. Then \"Last step\", in the right-hand panel, will say what each instruction changed."
+   },
+   "code": "; Multiplier sans multiplier.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : décaler de n rangs vers la gauche multiplie par 2 puissance n.\n\nglobal _start\n\nsection .text\n_start:\n    mov rax, 5\n    shl rax, 3\n    sub rax, 8\n    hlt\n",
+   "level": "practice",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 0x20"
+  },
+  {
+   "id": "prevoir_somme",
+   "title": {
+    "fr": "Ce que la boucle a accumulé",
+    "en": "What the loop added up"
+   },
+   "description": {
+    "fr": "Une boucle de cinq lignes, et la question n'est pas ce qu'elle fait mais ce qu'elle a accumulé quand elle s'arrête. C'est la lecture qu'on fait devant une fonction inconnue : combien de tours, et que reste-t-il. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. L'onglet Profil de la console compte les passages par ligne, et la bande de chaleur dans la gouttière les montre.",
+    "en": "A five-line loop, and the question is not what it does but what it has added up when it stops. This is the reading one does in front of an unknown function: how many turns, and what is left. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. The console's Profile tab counts visits per line, and the heat band in the gutter shows them."
+   },
+   "code": "; Ce que la boucle a accumulé.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : `jnz` saute tant que le dernier résultat n'est pas zéro, et\n; `dec` pose cet indicateur. Combien de tours, et de quoi la somme ?\n\nglobal _start\n\nsection .text\n_start:\n    mov rcx, 10\n    xor rax, rax\n.boucle:\n    add rax, rcx\n    dec rcx\n    jnz .boucle\n    hlt\n",
+   "level": "practice",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 0x37"
+  },
+  {
+   "id": "prevoir_octet_choisi",
+   "title": {
+    "fr": "Lequel des quatre octets ?",
+    "en": "Which of the four bytes?"
+   },
+   "description": {
+    "fr": "`[rsi + rcx]` ne dit pas quelle adresse est lue : il faut tenir les deux registres de tête et faire l'addition. C'est le calcul le plus fréquent de toute lecture de code, et celui où l'on se trompe d'un rang. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. Le bandeau « Prochaine instruction » fait ce calcul pour vous — après que vous l'avez fait, pas avant.",
+    "en": "`[rsi + rcx]` does not say which address is read: one has to hold both registers in mind and add. It is the most frequent computation in all code reading, and the one where people are off by one. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. The \"Next instruction\" banner does that computation for you — after you have done it, not before."
+   },
+   "code": "; Lequel des quatre octets ?\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut AL à l'arrêt ?\n;\n; Indice : le premier octet du tampon est à l'index 0, pas 1.\n\ndefault rel\nglobal _start\n\nsection .data\n    tampon db 0x11, 0x22, 0x33, 0x44\n\nsection .text\n_start:\n    mov rsi, tampon\n    mov rcx, 2\n    mov al, [rsi + rcx]\n    hlt\n",
+   "level": "practice",
+   "question": {
+    "fr": "Que vaut AL à l'arrêt ?",
+    "en": "What is AL at halt?"
+   },
+   "answer": "al == 0x33"
   },
   {
    "code": "; Parcourir une chaîne.\n;\n; But : à l'arrêt, RCX doit contenir la longueur de `message`, soit 5.\n;\n; Une chaîne en mémoire n'est qu'une suite d'octets ; ce qui en marque\n; la fin est une convention. Ici, un zéro final — celui que le C\n; appelle « terminateur ».\n;\n; `movzx` lit un octet et l'élargit avec des zéros : sans lui, écrire\n; dans `al` laisserait intact le reste de RAX, et la comparaison\n; porterait sur une valeur qu'on n'a pas lue.\n\nglobal _start\n\nsection .data\nmessage: db \"salut\", 0\n\nsection .text\n_start:\n    mov rsi, message        ; où l'on en est de la lecture\n    xor rcx, rcx            ; combien d'octets lus\n\nparcours:\n    movzx eax, byte [rsi]   ; l'octet courant, élargi par des zéros\n    test al, al             ; est-il nul ?\n    jz fini\n    inc rsi                 ; l'octet suivant\n    inc rcx\n    jmp parcours\n\nfini:\n    hlt\n",
@@ -1466,6 +1538,42 @@
    ],
    "par": 6,
    "level": "structures"
+  },
+  {
+   "id": "prevoir_pile",
+   "title": {
+    "fr": "Ce que la pile rend d'abord",
+    "en": "What the stack gives back first"
+   },
+   "description": {
+    "fr": "Deux valeurs empilées, deux dépilées : l'ordre est inversé, et c'est toute la pile. Se tromper ici fait lire à l'envers toute fonction qui sauvegarde ses registres — c'est-à-dire presque toutes. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. La vue Pile du panneau de droite montre les valeurs et le sommet.",
+    "en": "Two values pushed, two popped: the order is reversed, and that is the whole point of a stack. Getting it wrong makes you read backwards every function that saves its registers — that is, nearly all of them. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. The Stack view in the right-hand panel shows the values and the top."
+   },
+   "code": "; Ce que la pile rend d'abord.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : le dernier empilé est le premier dépilé. Lequel des deux\n; nombres atterrit dans RAX, et lequel dans RBX ?\n\nglobal _start\n\nsection .text\n_start:\n    push 7\n    push 9\n    pop rax\n    pop rbx\n    imul rax, rbx\n    hlt\n",
+   "level": "structures",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 0x3f"
+  },
+  {
+   "id": "prevoir_signe",
+   "title": {
+    "fr": "`ja` n'est pas `jg`",
+    "en": "`ja` is not `jg`"
+   },
+   "description": {
+    "fr": "Les deux disent « plus grand » et répondent l'inverse sur les mêmes octets : `ja` lit les nombres comme non signés, `jg` comme signés. C'est l'endroit précis où l'on se trompe en apprenant, et un vrai binaire en est rempli. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera. Le bandeau dit, sous le saut, la règle qu'il suit et s'il lit ses nombres comme signés — mais seulement une fois que vous avez répondu.",
+    "en": "Both say \"greater\" and answer the opposite on the same bytes: `ja` reads numbers as unsigned, `jg` as signed. It is exactly where learners go wrong, and a real binary is full of it. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it. The banner says, under the jump, which rule it follows and whether it reads its numbers as signed — but only once you have answered."
+   },
+   "code": "; `ja` n'est pas `jg`.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RBX à l'arrêt ?\n;\n; Indice : RAX vaut -1. Écrit sur soixante-quatre bits sans signe,\n; combien cela fait-il ? Et `ja` lit-il un signe ?\n\nglobal _start\n\nsection .text\n_start:\n    mov rax, -1\n    cmp rax, 1\n    ja .au_dessus\n    mov rbx, 1\n    hlt\n.au_dessus:\n    mov rbx, 2\n    hlt\n",
+   "level": "structures",
+   "question": {
+    "fr": "Que vaut RBX à l'arrêt ?",
+    "en": "What is RBX at halt?"
+   },
+   "answer": "rbx == 2"
   },
   {
    "code": "; Parler au système.\n;\n; But : la console doit afficher le message, et le programme se terminer\n; avec le code 0.\n;\n; Un appel système : le numéro dans RAX, les arguments dans RDI, RSI,\n; RDX — la même convention que pour un appel ordinaire, à ceci près que\n; c'est le noyau qui répond. namsdec en simule quatre : read (0),\n; write (1), brk (12) et exit (60).\n\nglobal _start\n\nsection .data\n    message  db \"Je parle au processeur !\", 10\n    longueur equ $ - message\n\nsection .text\n_start:\n    mov rax, 1              ; write\n    mov rdi, 1              ; sortie standard\n    mov rsi, message        ; quoi\n    mov rdx, longueur       ; combien\n    syscall\n\n    ; À faire : terminer proprement avec exit (60) et le code 0,\n    ; au lieu du `hlt` ci-dessous.\n    hlt\n",

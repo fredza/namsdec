@@ -40,6 +40,21 @@
 //! regarde ; avec lui, namsdec dit « atteint » ou « pas encore » au lieu
 //! de laisser vérifier à l'œil.
 //!
+//! `question` et `answer` font un exercice de **lecture** : le programme
+//! est donné complet, et il s'agit de dire ce qu'il fait AVANT de
+//! l'exécuter.
+//!
+//! ```json
+//! "question": { "fr": "Que vaut RAX à l'arrêt ?", "en": "What is RAX at halt?" },
+//! "answer": "rax == 0x20"
+//! ```
+//!
+//! La réponse s'écrit comme une condition, de la même grammaire que
+//! `goal` : ce qui est à gauche du `==` dit ce qu'on interroge, ce qui
+//! est à droite est la réponse. Celui qui répond l'écrit comme il veut —
+//! « 32 », « 0x20 », « 20h », « 0b100000 » sont la même réponse. Les
+//! deux champs vont ensemble : l'un sans l'autre est ignoré.
+//!
 //! Un titre ou un énoncé s'écrit au choix en texte simple — le même dans
 //! les deux langues — ou en objet `{ "fr": …, "en": … }`. Traduire est un
 //! travail ; ne pas le faire ne doit pas empêcher d'écrire une série.
@@ -49,7 +64,7 @@ use std::path::Path;
 use serde::Deserialize;
 use thiserror::Error;
 
-use crate::{Exercise, Level, Pack, Text};
+use crate::{Exercise, Level, Pack, Question, Text};
 
 /// `Display` en anglais, comme les autres erreurs des crates métier : la
 /// traduction se fait dans l'interface.
@@ -108,6 +123,15 @@ struct ExerciseFile {
     /// ce qui reste vrai d'une série qu'on découvre.
     #[serde(default)]
     level: Option<String>,
+    /// La question d'un exercice de lecture. Facultative.
+    #[serde(default)]
+    question: Option<TextField>,
+    /// Sa réponse, en condition — `"rax == 0x20"`. Sans elle, la
+    /// question est ignorée : une question sans réponse ne peut rien
+    /// trancher, et poser une question à laquelle on ne répondra jamais
+    /// est pire que de ne rien demander.
+    #[serde(default)]
+    answer: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -171,6 +195,15 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
                 .as_deref()
                 .map(Level::by_id)
                 .unwrap_or(Level::Discovery),
+            // LES DEUX, OU RIEN. Une question sans réponse ne peut rien
+            // trancher ; une réponse sans question n'a rien à trancher.
+            question: match (exercise.question, exercise.answer) {
+                (Some(texte), Some(réponse)) if !réponse.trim().is_empty() => Some(Question {
+                    texte: texte.into(),
+                    réponse,
+                }),
+                _ => None,
+            },
         });
     }
 
@@ -203,6 +236,49 @@ mod goal_tests {
         )
         .expect("série lisible sans but");
         assert!(sans.exercises[0].goal.is_empty());
+    }
+
+    /// Une question et sa réponse se lisent ensemble, ou pas du tout.
+    ///
+    /// **L'un sans l'autre est ignoré, et c'est voulu** : une question
+    /// sans réponse ne peut rien trancher — elle resterait posée pour
+    /// toujours —, et une réponse sans question n'a rien à trancher.
+    /// Les accepter à moitié donnerait un panneau qui demande quelque
+    /// chose et ne répond jamais, ce qui est pire que de ne rien
+    /// demander.
+    #[test]
+    fn une_question_et_sa_réponse_vont_ensemble() {
+        let exercice = |champs: &str| -> crate::Exercise {
+            let texte = format!(
+                r#"{{"id":"s","name":"S","exercises":[
+                     {{"id":"e","title":"T","description":"D","code":"hlt\n"{champs}}}]}}"#
+            );
+            parse(&texte).expect("série lisible").exercises.remove(0)
+        };
+
+        let avec = exercice(r#","question":"Que vaut RAX ?","answer":"rax == 0x20""#);
+        let question = avec.question.expect("la question est lue");
+        assert_eq!(question.texte.get("fr"), "Que vaut RAX ?");
+        assert_eq!(question.réponse, "rax == 0x20");
+        // Et ce qu'on attend se tire de la condition.
+        assert_eq!(crate::reponse::attendue(&question.réponse), "0x20");
+
+        // Les deux moitiés, séparément : ignorées.
+        assert!(
+            exercice(r#","question":"Que vaut RAX ?""#)
+                .question
+                .is_none()
+        );
+        assert!(exercice(r#","answer":"rax == 1""#).question.is_none());
+        // Une réponse vide ne vaut pas mieux qu'une réponse absente.
+        assert!(
+            exercice(r#","question":"Que vaut RAX ?","answer":"  ""#)
+                .question
+                .is_none()
+        );
+        // Et rien du tout reste lisible : les cent huit autres
+        // exercices n'en portent pas.
+        assert!(exercice("").question.is_none());
     }
 }
 

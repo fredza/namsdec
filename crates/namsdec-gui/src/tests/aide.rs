@@ -895,11 +895,11 @@ fn the_readme_tells_the_truth() {
 
     let exercices = builtin_pack().exercises.len();
     assert_eq!(
-        exercices, 108,
-        "le parcours livré compte cent huit exercices"
+        exercices, 114,
+        "le parcours livré compte cent quatorze exercices"
     );
     assert!(
-        readme.contains("parcours de cent huit exercices"),
+        readme.contains("parcours de cent quatorze exercices"),
         "le README doit annoncer le bon nombre d'exercices"
     );
     // Les crates listées dans le tableau existent toutes.

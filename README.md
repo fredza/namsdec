@@ -395,7 +395,18 @@ Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
 ### Les exercices
 
-Cent un des cent huit exercices portent un **but vérifiable** (`rax == 0xf`) :
+Six exercices demandent de **lire** plutôt que d'écrire : le programme
+est donné complet, une question est posée — « que vaut RAX à l'arrêt ? »
+—, et l'on répond avant d'exécuter. Le verdict ne donne pas la bonne
+réponse : elle s'obtient en exécutant, c'est-à-dire en faisant ce que
+l'exercice enseigne. On écrit « 32 », « 0x20 », « 20h » ou
+« 0b100000 » — c'est la même réponse, et celui qui la donne en binaire a
+compris la même chose. **Et la réponse écrite dans la série est celle
+que la machine donne** : un contrôle assemble chacun de ces programmes,
+l'exécute et vérifie — une réponse écrite à la main dans un fichier JSON
+est une affirmation, passée à l'épreuve de l'émulateur c'est un fait.
+
+Cent un des cent quatorze exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -409,17 +420,18 @@ remplace par une formule. Le meilleur score est retenu par exercice, un
 anneau marque ceux passés sous le budget, et un test vérifie que chaque
 budget annoncé est tenable : promettre un chiffre qu'aucune solution
 n'atteint serait pire que de n'en pas donner. Une série installée peut en porter
-aussi — champ `goal` du fichier JSON.
+aussi — champ `goal` du fichier JSON, et `question` + `answer` pour un
+exercice de lecture.
 
-Un parcours de cent huit exercices est livré avec le
+Un parcours de cent quatorze exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
-- **Découverte** (21) — registres, échange, mise à zéro, boucles,
+- **Découverte** (22) — registres, échange, mise à zéro, boucles,
   `loop`, bits, comparaisons, indicateurs, signe, nombres négatifs,
   écritures d'un nombre, `inc` contre `add`, `test`, `xchg`/`bswap`,
   masques de bits, constantes calculées à l'assemblage, rotations,
   `setcc`, `not` et `neg`, division signée, coût d'un immédiat.
-- **Pratique** (29) — décalages, compte de bits, multiplication,
+- **Pratique** (32) — décalages, compte de bits, multiplication,
   division, mémoire, tailles d'opérande, ordre des octets, données
   déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et
   maximum, parité, occurrences, retournement sur place, bornage sans
@@ -429,8 +441,10 @@ programme, rangé en quatre paliers de difficulté croissante :
   alignement et trous d'une structure. Puis la **rétro-ingénierie**
   commence, avant même de lire du code : la signature d'un fichier,
   ce qu'un `strings` laisse voir, position dans le fichier contre
-  adresse en mémoire.
-- **Structures** (33) — chaînes, instructions de chaîne, comparaison de
+  adresse en mémoire. Et trois exercices de **prévision** : multiplier
+  par un décalage, ce qu'une boucle a accumulé, lequel des quatre octets
+  `[rsi + rcx]` désigne.
+- **Structures** (35) — chaînes, instructions de chaîne, comparaison de
   chaînes, texte vers nombre, macros, enregistrements et champs, table
   de saut, choix sans branchement, pile, appels, convention d'appel,
   récursion, Fibonacci, cadre de pile, tableau local, tri, `strlen` par
@@ -439,7 +453,9 @@ programme, rangé en quatre paliers de difficulté croissante :
   d'un mot, récursion terminale, tri par insertion, recherche binaire,
   liste chaînée, transposition. Côté **rétro-ingénierie** : la
   comparaison et le saut qui en dépend, dérouler un calcul plutôt
-  que l'exécuter, un aiguillage vu du désassemblage.
+  que l'exécuter, un aiguillage vu du désassemblage. Deux de
+  **prévision** : ce que la pile rend d'abord, et `ja` qui n'est pas
+  `jg`.
 - **Maîtrise** (25) — sortie, entrée, tas, flottants, SIMD, affichage
   décimal et hexadécimal, majuscules, débordement, protections,
   chiffrement XOR, somme de contrôle, canari posé à la main, choix

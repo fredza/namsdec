@@ -10003,3 +10003,126 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      se corrige pas en gros, parce que les blancs ne veulent pas tous
      dire la même chose — dans une phrase ils sont une faute, dans un
      tableau ils sont la mise en page.
+
+9.66 [FAIT] SIX EXERCICES QUI DEMANDENT DE LIRE, ET NON D'ÉCRIRE
+     (4 novembre 2026)
+
+     LE CONSTAT QUI OUVRAIT CE LOT : les cent huit exercices font tous
+     écrire du code. Douze d'entre eux disent où regarder dans namsdec —
+     c'est déjà de la lecture —, mais leur but s'atteint en EXÉCUTANT le
+     programme livré : rien ne vérifie qu'on a lu quoi que ce soit.
+     `re_un_octet` le dit lui-même dans son énoncé : « ce programme
+     réussit déjà ». On apprend `shl` en l'écrivant, jamais à dire ce
+     qu'il VA faire — et c'est pourtant le seul geste qu'on ait devant
+     un binaire qu'on n'a pas écrit.
+
+     SIX ÉTAPES DE PLUS, qui donnent un programme COMPLET et posent une
+     question. On lit, on répond, puis on exécute — et la machine
+     tranche. C'est « prévoir avant d'avancer » (9.64) à l'échelle d'un
+     programme entier, et le même chemin : lire, prévoir, avancer,
+     constater.
+
+       — `prevoir_tous_les_bits` (découverte) — `xor`, `not`, `shr 60`.
+       — `prevoir_decalage` (pratique) — `shl rax, 3` est une
+         multiplication, et c'est ainsi qu'un compilateur multiplie.
+       — `prevoir_somme` (pratique) — ce qu'une boucle a accumulé quand
+         elle s'arrête.
+       — `prevoir_octet_choisi` (pratique) — `[rsi + rcx]` désigne
+         lequel des quatre octets ?
+       — `prevoir_pile` (structures) — le dernier empilé est le premier
+         dépilé, et se tromper là fait lire à l'envers toute fonction
+         qui sauvegarde ses registres.
+       — `prevoir_signe` (structures) — `ja` n'est pas `jg`. Les deux
+         disent « plus grand » et répondent l'inverse sur les mêmes
+         octets.
+
+     LA DÉCISION QUI COMPTE LE PLUS : **LA RÉPONSE S'ÉCRIT COMME ON LA
+     PENSE.** « 32 », `0x20`, `20h` et `0b100000` sont la même réponse,
+     et celui qui la donne en binaire a compris la même chose. On
+     compare donc des NOMBRES, pas des chaînes ; à défaut de nombre, des
+     mots rognés et sans casse, pour une question dont la réponse est
+     `jne`. Et `-1` vaut `0xffffffffffffffff` : c'est la même valeur
+     dans le registre, et refuser l'une des deux écritures serait
+     interroger notre notation plutôt que la machine.
+
+     RIEN D'ÉCRIT N'EST PAS UNE ERREUR. Le champ vide rend `Vide`, et
+     non `Faux` : dire « faux » à quelqu'un qui réfléchit encore est
+     exactement le moment où l'on abandonne.
+
+     LE VERDICT NE DONNE PAS LA RÉPONSE. « Pas celle-là », et rien de
+     plus : la bonne s'obtient en exécutant le programme, c'est-à-dire
+     en faisant ce que l'exercice enseigne. L'afficher ici retirerait le
+     seul geste du lot — et c'est le défaut que 9.64 venait de corriger
+     dans le bandeau.
+
+     LA RÉPONSE EST ÉCRITE COMME UNE CONDITION — `rax == 0x20` —, la
+     même grammaire que les buts, et ce n'est pas de l'élégance : un
+     contrôle peut alors **assembler le programme par le vrai nasm,
+     l'exécuter jusqu'à son arrêt, et vérifier que la machine donne bien
+     cette réponse-là**. Une réponse écrite à la main dans un fichier
+     JSON est une affirmation — la mienne —, passée à l'épreuve de
+     l'émulateur c'est un fait. Le contrôle relève TOUTES les fautes
+     d'un coup et dit ce que la machine a répondu à la place : éprouvé
+     en écrivant 0x38 au lieu de 0x37, il répond « prevoir_somme annonce
+     « rax == 0x38 », mais rax vaut 0x37 ».
+
+     LES DEUX CHAMPS VONT ENSEMBLE, ou ils sont ignorés : une question
+     sans réponse ne peut rien trancher — elle resterait posée pour
+     toujours —, et une réponse sans question n'a rien à trancher. Les
+     accepter à moitié donnerait un panneau qui demande quelque chose et
+     ne répond jamais, ce qui est pire que de ne rien demander. Retenu
+     au niveau du FORMAT (`une_question_et_sa_réponse_vont_ensemble`),
+     donc pour toute série qu'on écrit soi-même.
+
+     ET UN DÉFAUT QUE CE LOT DEVAIT S'ÉVITER À LUI-MÊME : ces exercices
+     n'ont PAS de but — il n'y a rien à écrire, et un but afficherait la
+     réponse sous la question. Or la règle des démonstrations note une
+     étape faite dès qu'on l'a regardée tourner jusqu'au bout. Leur
+     programme MARCHE DÉJÀ : la pastille passait donc au vert au premier
+     « Exécuter », en sautant exactement le geste que l'exercice
+     enseigne. Un exercice de lecture se réussit en RÉPONDANT, et le
+     contrôle vérifie les trois états — exécuté sans réponse, réponse
+     fausse, réponse juste.
+
+     TROIS CHOSES APPRISES EN ÉCRIVANT LES CONTRÔLES, et chacune a fait
+     tomber une première version :
+
+       1. `lire_` ÉTAIT DÉJÀ PRIS. `lire_nombre` existe depuis
+          longtemps : il lit une entrée. Le préfixe est devenu
+          `prevoir_`, qui dit ce que l'exercice demande.
+       2. L'HEXADÉCIMAL NU NE SE CHERCHE PAS DANS UNE PHRASE. Le
+          contrôle qui vérifie qu'un énoncé ne donne pas sa réponse
+          cherchait les trois écritures du nombre — et pour quinze,
+          l'une d'elles est « f », une lettre qu'on trouve dans
+          n'importe quelle phrase française. Un contrôle qui crie au
+          loup sur la lettre f ne sera plus lu.
+       3. LE PROGRAMME PEUT PORTER LA RÉPONSE, L'ÉNONCÉ NON.
+          `prevoir_octet_choisi` déclare `db 0x11, 0x22, 0x33, 0x44` et
+          sa réponse est 0x33 : elle est donc écrite dans le code, et
+          c'est TOUT l'exercice — les quatre octets sont là, la question
+          est de savoir lequel est lu. Les données qu'on doit lire ne
+          sont pas une réponse donnée ; une phrase d'énoncé, si.
+
+     ET LE RELEVÉ D'ÉCRAN A DEMANDÉ DEUX CORRECTIONS DE PLUS, toutes
+     deux du même genre — un contrôle qui trouve ce qu'il cherche au
+     mauvais endroit :
+       — chercher la question dans ce qui est peint la trouvait dans
+         l'ÉDITEUR, parce que le programme de l'exercice redit sa
+         question en commentaire. C'est l'étiquette du panneau qu'il
+         faut chercher ;
+       — et chercher « 32 » dans tout l'écran le trouvait dans le
+         troisième énoncé de la liste, qui parle d'« un registre 32
+         bits ». Le contrôle découpe maintenant le bloc de la question.
+
+     LES COMPTES ANNONCÉS ONT SUIVI, et trois contrôles les retiennent :
+     le programme d'accueil (« un parcours de cent quatorze exercices »,
+     en toutes lettres), le README (le total, les quatre paliers, le
+     nombre d'exercices à but) et le guide, qui tire tous ses nombres du
+     fichier de la série. C'est la leçon de 9.50, et elle a tenu : rien
+     à relire à la main.
+
+     RESTE OUVERT : six exercices de prévision ne couvrent pas tout ce
+     qui se lit. Les appels système, la convention d'appel, une table de
+     sauts, un canari — chacun mériterait sa question. Le format est là,
+     le contrôle qui vérifie les réponses aussi : en ajouter se résume
+     désormais à écrire un programme et une question.

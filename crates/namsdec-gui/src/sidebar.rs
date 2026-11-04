@@ -446,6 +446,66 @@ impl NamsdecApp {
         self.sidebar_tab_last.max(voulue).clamp(0.0, total)
     }
 
+    /// La question d'un exercice de LECTURE : on lit, on répond, puis on
+    /// exécute.
+    ///
+    /// Rend `true` quand elle a pris la parole — l'appelant n'a alors
+    /// rien d'autre à dire : ces exercices n'ont pas de but, et le bloc
+    /// des buts se tairait de toute façon.
+    ///
+    /// **Le verdict ne révèle pas la réponse.** « Pas celle-là » et
+    /// rien de plus : la bonne réponse s'obtient en exécutant le
+    /// programme, ce que l'exercice demande de faire ENSUITE. La
+    /// donner ici retirerait le seul geste qu'il enseigne — et c'est
+    /// exactement le défaut que « prévoir avant d'avancer » corrigeait
+    /// dans le bandeau, à l'échelle d'une instruction.
+    fn question_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some((question, verdict)) = self.exercise_question() else {
+            return false;
+        };
+        let énoncé = question.texte.get(self.lang.code()).to_owned();
+        ui.add_space(4.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.colored_label(theme.dim, s.question_label);
+            ui.label(&énoncé);
+        })
+        .response
+        .on_hover_text(s.question_hint);
+
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 6.0;
+            // Étroit : une réponse est un nombre, pas une phrase, et un
+            // champ large dans un panneau de trois cents pixels
+            // mangerait la ligne entière.
+            let champ = egui::TextEdit::singleline(&mut self.question_answer)
+                .desired_width(110.0)
+                .hint_text(s.question_answer)
+                .font(egui::TextStyle::Monospace);
+            ui.add(champ).on_hover_text(s.question_field_hint);
+            use namsdec_exercises::reponse::Verdict;
+            match verdict {
+                // RIEN D'ÉCRIT N'EST PAS UNE ERREUR : « faux » devant un
+                // champ vide dirait à quelqu'un qui réfléchit qu'il
+                // s'est trompé, et c'est le moment où l'on abandonne.
+                Verdict::Vide => {}
+                Verdict::Juste => {
+                    ui.colored_label(theme.good, s.question_right);
+                }
+                Verdict::Faux => {
+                    ui.colored_label(theme.warn, s.question_wrong);
+                }
+            }
+        });
+        // Et ce qu'il reste à faire, dit une fois : exécuter. La machine
+        // est l'arbitre, pas ce panneau.
+        if !verdict.est_juste() {
+            ui.colored_label(theme.dim, s.question_run_to_see);
+        }
+        true
+    }
+
     /// Où en est le but de l'exercice, quand il y en a un.
     ///
     /// Un énoncé qui dit « RAX doit valoir 15 » laisse l'élève vérifier
@@ -454,6 +514,14 @@ impl NamsdecApp {
     pub(crate) fn goal_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
+        // LA QUESTION D'ABORD, quand il y en a une : un exercice de
+        // lecture donne un programme complet, et ce qu'on y fait est
+        // répondre. Elle prend la place du but, qui n'existe pas pour
+        // ces exercices-là — et qui, s'il existait, afficherait la
+        // réponse sous la question.
+        if self.question_ui(ui) {
+            return;
+        }
         // UNE DÉMONSTRATION LE DIT, au lieu de se taire. Sept exercices
         // n'ont pas de but — ce sont des programmes à regarder tourner
         // —, et le panneau sortait ici sans rien écrire : on cherchait

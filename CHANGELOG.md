@@ -6,6 +6,24 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Six exercices qui demandent de lire, et non d'écrire**
+- Les cent huit exercices faisaient tous **écrire** du code. Six de plus
+  donnent un programme **complet** et posent une question — « que vaut
+  RAX à l'arrêt ? » : on lit, on répond, puis on exécute, et la machine
+  tranche. C'est « prévoir avant d'avancer » à l'échelle d'un programme
+  entier. Le parcours compte **cent quatorze** étapes.
+- **La réponse s'écrit comme on la pense** : « 32 », `0x20`, `20h` et
+  `0b100000` sont la même réponse, et `-1` vaut `0xffffffffffffffff`.
+  Refuser trois écritures sur quatre n'enseignerait que notre notation.
+- **Le verdict ne donne pas la bonne réponse** — « pas celle-là », et
+  rien de plus : elle s'obtient en exécutant le programme, c'est-à-dire
+  en faisant ce que l'exercice enseigne. Et un champ vide ne vaut pas
+  « faux ».
+- **Et la réponse écrite dans la série est celle que la machine donne** :
+  un contrôle assemble chacun de ces programmes, l'exécute jusqu'à
+  l'arrêt et vérifie. Une série que vous écrivez porte ces exercices de
+  la même façon — champs `question` et `answer`.
+
 **Prévoir avant d'avancer**
 - Devant une instruction pas encore exécutée, namsdec disait déjà tout :
   ce qu'elle fait en clair, ses opérandes résolus, et si un saut sera

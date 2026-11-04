@@ -1543,6 +1543,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "un gadget ROP, et l'octet qui change tout. Chacune <b>dit où regarder</b> : "
          "c'est le geste qu'on vient apprendre, pas la syntaxe.",),
         ("p",
+         "<b>Et six étapes demandent de PRÉVOIR</b>, ce qui est l'autre moitié de la "
+         "lecture. Le programme est donné <b>complet</b> — il n'y a rien à écrire —, une "
+         "question est posée (« que vaut RAX à l'arrêt ? »), et l'on répond <i>avant</i> "
+         "d'exécuter. C'est le même chemin que « prévoir avant d'avancer » dans le "
+         "bandeau, à l'échelle d'un programme entier&nbsp;: lire, prévoir, avancer, "
+         "constater."),
+        ("p",
+         "La réponse s'écrit comme on la pense&nbsp;: « 32 », "
+         "<font face='Courier'>0x20</font>, <font face='Courier'>20h</font> et "
+         "<font face='Courier'>0b100000</font> sont la même réponse, et celui qui la "
+         "donne en binaire a compris la même chose. Refuser trois de ces quatre écritures "
+         "n'enseignerait que notre propre notation. <b>Le verdict ne donne pas la bonne "
+         "réponse</b> — « pas celle-là », et rien de plus&nbsp;: elle s'obtient en "
+         "exécutant le programme, c'est-à-dire en faisant ce que l'exercice enseigne. Et "
+         "l'étape ne se note faite qu'une fois la réponse juste&nbsp;: son programme "
+         "marche déjà, donc l'exécuter ne prouve rien."),
+        ("note",
+         "<b>La réponse écrite dans la série est celle que la machine donne.</b> Un "
+         "contrôle assemble chacun de ces programmes par le vrai nasm, l'exécute jusqu'à "
+         "son arrêt et vérifie la réponse annoncée — et il dit, quand elle ne tient pas, "
+         "ce que la machine a répondu à la place. Une réponse écrite à la main dans un "
+         "fichier JSON est une affirmation&nbsp;; passée à l'épreuve de l'émulateur, "
+         "c'est un fait. Une série que vous écrivez porte ces exercices de la même façon "
+         "— champs <font face='Courier'>question</font> et "
+         "<font face='Courier'>answer</font>."),
+        ("p",
          "<b>Les autres sont des démonstrations</b> : des programmes à regarder tourner, "
          "sans rien à y réussir — le tout premier du parcours en est un, qui montre ce "
          "qu'une écriture 32 bits fait à la moitié haute d'un registre. Une "

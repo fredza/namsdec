@@ -193,6 +193,9 @@ impl NamsdecApp {
         self.current_exercise = Some(id.to_owned());
         self.saved_source = exercise.starter_code.clone();
         self.set_source(exercise.starter_code.clone());
+        // La réponse d'avant n'est pas celle de celui-ci : la garder
+        // ferait dire « juste » à une question qu'on n'a pas lue.
+        self.question_answer.clear();
         self.current_file = None;
         self.assemble_state = None;
         self.emulator = None;
@@ -204,7 +207,7 @@ impl NamsdecApp {
     /// L'exercice en cours est-il une DÉMONSTRATION ?
     ///
     /// C'est-à-dire : un programme à regarder tourner, sans but à
-    /// atteindre. Sept des cent huit en sont, et le tout
+    /// atteindre. Sept des cent quatorze en sont, et le tout
     /// premier du parcours aussi — « Registres et largeurs » montre ce
     /// qu'une écriture 32 bits fait à la moitié haute, et il n'y a rien
     /// à y réussir.
@@ -212,7 +215,28 @@ impl NamsdecApp {
         self.current_exercise
             .as_deref()
             .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
-            .is_some_and(|exercise| exercise.goal.is_empty())
+            // UN EXERCICE DE LECTURE N'EST PAS UNE DÉMONSTRATION, même
+            // s'il n'a pas de but : il y a quelque chose à y réussir —
+            // répondre juste —, et lui dire « regardez tourner » serait
+            // lui retirer sa question.
+            .is_some_and(|exercise| exercise.goal.is_empty() && exercise.question.is_none())
+    }
+
+    /// La question de l'exercice en cours, et où en est la réponse.
+    ///
+    /// `None` quand l'exercice n'en pose pas — les cent huit autres,
+    /// ceux d'écriture.
+    pub(crate) fn exercise_question(
+        &self,
+    ) -> Option<(
+        &namsdec_exercises::Question,
+        namsdec_exercises::reponse::Verdict,
+    )> {
+        let id = self.current_exercise.as_deref()?;
+        let exercise = namsdec_exercises::find(&self.exercise_packs, id)?;
+        let question = exercise.question.as_ref()?;
+        let verdict = namsdec_exercises::reponse::verdict(&self.question_answer, &question.réponse);
+        Some((question, verdict))
     }
 
     /// Note l'exercice en cours comme réussi si son but est atteint.
@@ -234,9 +258,20 @@ impl NamsdecApp {
     /// autres, moins les conditions. Avoir exécuté quelque chose, et
     /// être allé jusqu'à l'arrêt.
     pub(crate) fn note_goal_reached(&mut self) {
-        let démonstration = self.exercise_is_demo();
-        if !démonstration && !matches!(self.exercise_goal(), Some((_, true))) {
-            return;
+        // UN EXERCICE DE LECTURE SE RÉUSSIT EN RÉPONDANT, et l'exécuter
+        // ne suffit pas : son programme marche déjà, puisqu'il est
+        // donné complet. Sans cette règle, la pastille passait au vert
+        // au premier « Exécuter » — c'est-à-dire en sautant exactement
+        // le geste que l'exercice vient enseigner.
+        if let Some((_, verdict)) = self.exercise_question() {
+            if !verdict.est_juste() {
+                return;
+            }
+        } else {
+            let démonstration = self.exercise_is_demo();
+            if !démonstration && !matches!(self.exercise_goal(), Some((_, true))) {
+                return;
+            }
         }
         // Un but atteint sans avoir rien exécuté n'est pas une
         // solution : « rax == 0 » est vrai avant le premier pas, et

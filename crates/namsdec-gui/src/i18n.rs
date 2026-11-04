@@ -111,7 +111,7 @@ pub struct Strings {
     pub goal_reached: &'static str,
     /// Ce que dit le panneau pour un exercice SANS but.
     ///
-    /// Sept des cent huit sont des programmes à regarder
+    /// Sept des cent quatorze sont des programmes à regarder
     /// tourner. Le panneau se taisait pour eux : rien ne disait ce
     /// qu'on attendait, et la pastille du parcours restait creuse quoi
     /// qu'on fasse.
@@ -135,6 +135,18 @@ pub struct Strings {
     pub goal_jump_always: &'static str,
     pub goal_jump_never: &'static str,
     pub goal_hint: &'static str,
+    /// LA QUESTION D'UN EXERCICE DE LECTURE, et ce qu'on répond.
+    ///
+    /// Un exercice de lecture donne un programme complet et demande ce
+    /// qu'il fait : on lit, on répond, puis on exécute — et la machine
+    /// tranche. Voir `namsdec_exercises::reponse`.
+    pub question_label: &'static str,
+    pub question_hint: &'static str,
+    pub question_field_hint: &'static str,
+    pub question_answer: &'static str,
+    pub question_right: &'static str,
+    pub question_wrong: &'static str,
+    pub question_run_to_see: &'static str,
     pub par_label: &'static str,
     pub par_best: &'static str,
     pub par_hint: &'static str,
@@ -1336,6 +1348,13 @@ const FR: Strings = Strings {
     goal_jump_always: "le saut de la ligne {ligne} a toujours été pris",
     goal_jump_never: "le saut de la ligne {ligne} n'a jamais été pris",
     goal_hint: "Le but de l'exercice en cours, vérifié sur les registres. Tout est hexadécimal, comme partout ailleurs.",
+    question_label: "À lire :",
+    question_hint: "Cet exercice donne un programme complet : il n'y a rien à écrire. Lisez-le, répondez, puis exécutez — la machine tranchera.",
+    question_field_hint: "Votre réponse. Écrivez-la comme vous la pensez : 32, 0x20, 20h et 0b100000 sont la même réponse.",
+    question_answer: "Votre réponse",
+    question_right: "juste",
+    question_wrong: "pas celle-là",
+    question_run_to_see: "Exécutez pour voir ce que la machine en dit.",
     par_label: "Instructions :",
     par_best: "meilleur",
     par_hint: "Ce que votre programme a coûté, contre le budget de la solution livrée. L'égaler est normal ; descendre en dessous est le vrai exercice.",
@@ -2264,6 +2283,13 @@ const EN: Strings = Strings {
     goal_jump_always: "the jump on line {ligne} was always taken",
     goal_jump_never: "the jump on line {ligne} was never taken",
     goal_hint: "The current exercise's goal, checked against the registers. Everything is hexadecimal, as everywhere else.",
+    question_label: "To read:",
+    question_hint: "This exercise gives a complete program: there is nothing to write. Read it, answer, then run it — the machine will settle it.",
+    question_field_hint: "Your answer. Write it the way you think it: 32, 0x20, 20h and 0b100000 are the same answer.",
+    question_answer: "Your answer",
+    question_right: "right",
+    question_wrong: "not that one",
+    question_run_to_see: "Run it to see what the machine says.",
     par_label: "Instructions:",
     par_best: "best",
     par_hint: "What your program cost, against the budget of the shipped solution. Matching it is normal; going below is the real exercise.",

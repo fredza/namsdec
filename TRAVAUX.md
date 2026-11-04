@@ -979,6 +979,62 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 tricies. Six exercices qui demandent de lire (A 9.66)
+
+Le travail que les deux lots précédents désignaient comme leur suite.
+Les cent huit exercices faisaient tous **écrire** du code ; douze
+disaient où regarder, mais leur but s'atteignait en exécutant le
+programme livré — rien ne vérifiait qu'on avait lu.
+
+- [x] **Six étapes qui donnent un programme complet et posent une
+      question** — `prevoir_tous_les_bits`, `prevoir_decalage`,
+      `prevoir_somme`, `prevoir_octet_choisi`, `prevoir_pile`,
+      `prevoir_signe`. On lit, on répond, puis on exécute : c'est
+      « prévoir avant d'avancer » à l'échelle d'un programme entier.
+- [x] **La réponse s'écrit comme on la pense** — « 32 », `0x20`, `20h`
+      et `0b100000` sont la même réponse ; `-1` vaut
+      `0xffffffffffffffff`. On compare des nombres, pas des chaînes.
+      Refuser trois écritures sur quatre n'enseignerait que notre
+      notation. Six contrôles sur la seule logique
+      (`namsdec_exercises::reponse`), sans rien peindre.
+- [x] **Rien d'écrit n'est pas une erreur** — le champ vide ne vaut pas
+      « faux » : dire « faux » à quelqu'un qui réfléchit encore est le
+      moment où l'on abandonne.
+- [x] **Le verdict ne donne pas la réponse** — « pas celle-là », et
+      rien de plus : la bonne s'obtient en exécutant, c'est-à-dire en
+      faisant ce que l'exercice enseigne. Contrôle :
+      `la_question_se_pose_dans_le_panneau_et_le_verdict_ne_vend_pas_la_réponse`,
+      qui mesure les trois états — rien d'écrit, faux, juste.
+- [x] **La réponse écrite dans la série est celle que la machine
+      donne** — un contrôle assemble chacun de ces programmes par le
+      vrai nasm, l'exécute jusqu'à l'arrêt et vérifie. Il relève toutes
+      les fautes d'un coup et dit ce que la machine a répondu à la
+      place. Une réponse écrite à la main est une affirmation ; passée
+      à l'épreuve de l'émulateur, c'est un fait.
+- [x] **Et l'exercice ne se note pas fait en appuyant sur
+      « Exécuter »** — c'est le défaut que ce lot devait s'éviter : ces
+      exercices n'ont pas de but, donc la règle des démonstrations les
+      aurait notés faits au premier lancement, alors que leur programme
+      **marche déjà**. Contrôle des trois états.
+- [x] **Les deux champs vont ensemble, ou sont ignorés** — une question
+      sans réponse resterait posée pour toujours ; une réponse sans
+      question n'a rien à trancher. Retenu au niveau du **format**, donc
+      pour toute série qu'on écrit soi-même.
+- [ ] **Les autres questions qui mériteraient d'être posées** — les
+      appels système, la convention d'appel, une table de sauts, un
+      canari. Le format est là et les réponses sont vérifiées : en
+      ajouter se résume à écrire un programme et une question.
+
+**Trois contrôles ont fait tomber leur première version**, chaque fois
+pour la même raison — ils trouvaient ce qu'ils cherchaient au mauvais
+endroit : `lire_` était déjà pris par `lire_nombre` (qui lit une
+entrée) ; chercher l'hexadécimal nu de quinze revient à chercher la
+lettre « f » dans une phrase française ; et chercher la question dans ce
+qui est peint la trouvait dans l'éditeur, parce que le programme de
+l'exercice redit sa question en commentaire.
+
+---
+
 ## 0 novovicies. Prévoir avant d'avancer (A 9.64)
 
 Le second des deux travaux retenus pour le 4 novembre, et la direction

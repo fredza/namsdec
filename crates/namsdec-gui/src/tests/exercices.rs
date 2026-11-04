@@ -430,6 +430,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "not_neg",
             "division_signee",
             "immediats",
+            "prevoir_tous_les_bits",
             "decalages",
             "compter_bits",
             "multiplier",
@@ -461,6 +462,9 @@ fn the_built_in_pack_is_a_course_in_order() {
             "re_entete",
             "re_chaines",
             "re_position_adresse",
+            "prevoir_decalage",
+            "prevoir_somme",
+            "prevoir_octet_choisi",
             "chaine",
             "chaines",
             "comparer_chaines",
@@ -496,6 +500,8 @@ fn the_built_in_pack_is_a_course_in_order() {
             "re_comparaison",
             "re_derouler",
             "re_table_sauts",
+            "prevoir_pile",
+            "prevoir_signe",
             "sortie",
             "entree",
             "tas",
@@ -636,7 +642,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("cent huit exercices"), "{painted}");
+    assert!(painted.contains("cent quatorze exercices"), "{painted}");
 }
 
 /// Le programme d'accueil annonce le bon nombre d'exercices.
@@ -795,12 +801,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // vingt-quatrième des cent huit étapes.
-    assert!(painted.contains("30/108"), "{painted}");
+    // trente et unième des cent quatorze étapes.
+    assert!(painted.contains("31/114"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de cent huit.
+/// retrouver son rang dans une liste de cent quatorze.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -848,7 +854,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/108"),
+        painted.contains("1/114"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -1193,7 +1199,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/108 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/114 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -2476,7 +2482,7 @@ fn the_workshop_exercises_are_complete_and_reach_their_goal() {
 
 /// Un exercice SANS but se termine quand on l'a regardé tourner.
 ///
-/// Sept des cent huit sont des programmes à observer, et le
+/// Sept des cent quatorze sont des programmes à observer, et le
 /// tout premier du parcours en est un. `exercise_goal` rend `None` pour
 /// eux, et `note_goal_reached` sortait là sans rien noter : on allait
 /// jusqu'au `hlt`, la pastille restait creuse, « en cours » ne partait
@@ -2566,4 +2572,349 @@ fn a_demonstration_says_that_it_is_one() {
         peint.contains(s.goal_demo_watch),
         "et dire ce qu'on en attend :\n{peint}"
     );
+}
+
+/// **La réponse écrite dans la série est celle que la machine donne.**
+///
+/// C'est l'invariant qui fait exister les exercices de lecture : une
+/// réponse écrite à la main dans un fichier JSON est une affirmation —
+/// la mienne, et je me suis trompé deux fois en les écrivant. Passée à
+/// l'épreuve de l'émulateur, c'est un fait.
+///
+/// Le programme est assemblé par le vrai nasm, exécuté jusqu'à son
+/// arrêt, et la condition de la réponse est évaluée par la même
+/// grammaire que les buts. Un exercice dont la réponse ne tiendrait pas
+/// serait un exercice qui apprend quelque chose de faux, et c'est la
+/// seule chose qu'un atelier ne peut pas se permettre.
+#[test]
+fn la_réponse_d_un_exercice_de_lecture_est_celle_que_la_machine_donne() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let pack = builtin_pack();
+    let questions: Vec<&namsdec_exercises::Exercise> = pack
+        .exercises
+        .iter()
+        .filter(|e| e.question.is_some())
+        .collect();
+    assert!(
+        questions.len() >= 6,
+        "un exercice de lecture tout seul ne fait pas un apprentissage : {}",
+        questions.len()
+    );
+
+    // TOUTES LES RÉPONSES D'UN COUP, et non la première qui tombe : un
+    // relevé qui s'arrête au premier écart fait recommencer l'épreuve
+    // autant de fois qu'il y a de fautes — et une épreuve ici coûte un
+    // assemblage et une exécution.
+    let mut fautes = Vec::new();
+    for exercice in &questions {
+        let question = exercice.question.as_ref().unwrap();
+        let mut app = NamsdecApp {
+            source: exercice.starter_code.clone(),
+            ..Default::default()
+        };
+        app.do_assemble();
+        if !matches!(app.status, Status::AssembleOk) {
+            fautes.push(format!(
+                "{} ne s'assemble pas : {:?}",
+                exercice.id, app.status
+            ));
+            continue;
+        }
+        app.do_run();
+        for _ in 0..50 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&egui::Context::default());
+        }
+        let Some(emulator) = &app.emulator else {
+            fautes.push(format!("{} ne tourne pas", exercice.id));
+            continue;
+        };
+        let cpu = emulator.cpu();
+        if !cpu.halted {
+            fautes.push(format!("{} ne s'arrête pas", exercice.id));
+            continue;
+        }
+        // La condition de la réponse, lue par la grammaire des buts.
+        let Some(condition) = condition::parse(&question.réponse) else {
+            fautes.push(format!(
+                "{} : « {} » ne se lit pas comme une condition",
+                exercice.id, question.réponse
+            ));
+            continue;
+        };
+        let mémoire = PeekMemory(&cpu.mem);
+        if !condition.holds(&cpu.regs, Some(&mémoire)) {
+            // CE QUE LA MACHINE DIT, et non seulement « c'est faux » :
+            // sans cela, il faut relancer le programme à la main pour
+            // trouver la bonne réponse — ce que ce contrôle vient de
+            // faire.
+            let constat = condition
+                .sides(&cpu.regs, Some(&mémoire))
+                .map(|(gauche, _)| format!("{} vaut {gauche:#x}", condition.left()))
+                .unwrap_or_else(|| "illisible".to_owned());
+            fautes.push(format!(
+                "{} annonce « {} », mais {constat}",
+                exercice.id, question.réponse
+            ));
+        }
+    }
+    assert!(fautes.is_empty(), "{fautes:#?}");
+}
+
+/// Un exercice de lecture donne un programme COMPLET, et dit qu'on n'a
+/// pas à l'écrire.
+///
+/// **C'est ce qui le distingue des cent huit autres**, et ce qu'un
+/// énoncé doit dire d'emblée : quelqu'un qui croit avoir un trou à
+/// remplir cherche ce qui manque, ne trouve rien, et conclut que
+/// l'exercice est cassé.
+#[test]
+fn un_exercice_de_lecture_dit_qu_il_ne_se_remplit_pas() {
+    let pack = builtin_pack();
+    let questions: Vec<&namsdec_exercises::Exercise> = pack
+        .exercises
+        .iter()
+        .filter(|e| e.question.is_some())
+        .collect();
+
+    for exercice in &questions {
+        let question = exercice.question.as_ref().unwrap();
+        // L'énoncé le dit, dans les deux langues.
+        assert!(
+            exercice
+                .description
+                .fr
+                .contains("Ne touchez pas au programme"),
+            "{} ne dit pas qu'il est complet",
+            exercice.id
+        );
+        assert!(
+            exercice
+                .description
+                .en
+                .contains("Do not change the program"),
+            "{} ne le dit pas en anglais",
+            exercice.id
+        );
+        // Et le programme le redit en tête, là où on le lit vraiment :
+        // dans l'éditeur, pas dans la liste.
+        assert!(
+            exercice.starter_code.contains("À LIRE, pas à écrire"),
+            "{} ne le redit pas dans son code",
+            exercice.id
+        );
+        // La question est posée dans les deux langues, et se termine
+        // par un point d'interrogation — c'est une question.
+        for texte in [question.texte.fr.as_str(), question.texte.en.as_str()] {
+            assert!(texte.ends_with('?'), "{} : « {texte} »", exercice.id);
+        }
+        // PAS DE BUT À ATTEINDRE : il n'y a rien à écrire, donc rien à
+        // réussir au sens des autres. Un but afficherait la réponse —
+        // « rax == 0x20 » sous une question qui demande RAX.
+        assert!(
+            exercice.goal.is_empty(),
+            "{} afficherait sa réponse dans son but",
+            exercice.id
+        );
+        // ET L'ÉNONCÉ NE LA DONNE PAS NON PLUS. C'est le défaut qu'on
+        // ne verrait pas en relisant le code : les douze exercices
+        // `re_` disent « à l'arrêt, RAX vaut 1 » dans leur énoncé,
+        // parce que c'était leur but. Ici, ce serait la réponse.
+        let valeur = namsdec_exercises::reponse::attendue(&question.réponse);
+        let nombre = namsdec_exercises::reponse::nombre(valeur);
+        // DEUX ÉCRITURES, ET PAS LA TROISIÈME. L'hexadécimal NU est
+        // écarté, et c'est la première version de ce contrôle qui l'a
+        // appris : pour quinze, il vaut « f », une lettre qu'on trouve
+        // dans n'importe quelle phrase française. Un contrôle qui crie
+        // au loup sur la lettre f ne sera plus lu.
+        let écritures: Vec<String> = match nombre {
+            Some(n) if n > 9 => vec![format!("{n}"), format!("{n:#x}")],
+            // Sous dix, un chiffre se rencontre partout — « 5 » est
+            // dans « mov rax, 5 », qui est l'énoncé lui-même.
+            _ => Vec::new(),
+        };
+        // L'ÉNONCÉ, ET NON LE PROGRAMME, et la distinction s'est
+        // imposée d'elle-même : `prevoir_octet_choisi` porte
+        // « db 0x11, 0x22, 0x33, 0x44 » et sa réponse est 0x33. Elle
+        // est donc écrite dans le code — et c'est tout l'exercice :
+        // les quatre octets sont là, la question est de savoir LEQUEL
+        // est lu. Les données qu'on doit lire ne sont pas une réponse
+        // donnée ; une phrase d'énoncé, si.
+        let texte = format!("{} {}", exercice.description.fr, exercice.description.en);
+        for écriture in écritures {
+            assert!(
+                !texte.contains(&écriture),
+                "{} donne sa réponse (« {écriture} ») au lieu de la demander",
+                exercice.id
+            );
+        }
+    }
+
+    // Sur plusieurs paliers : prévoir ce qu'une instruction fait
+    // s'apprend dès le premier jour, et ne cesse jamais.
+    let paliers: std::collections::BTreeSet<namsdec_exercises::Level> =
+        questions.iter().map(|e| e.level).collect();
+    assert!(
+        paliers.len() >= 3,
+        "la lecture s'apprend par paliers, pas d'un bloc : {paliers:?}"
+    );
+}
+
+/// La question d'un exercice de lecture se pose dans le panneau, et le
+/// verdict ne donne pas la réponse.
+///
+/// Trois états mesurés : rien d'écrit, une réponse fausse, la bonne. Un
+/// contrôle qui ne verrait que le dernier passerait aussi si le panneau
+/// disait « juste » à tout.
+#[test]
+fn la_question_se_pose_dans_le_panneau_et_le_verdict_ne_vend_pas_la_réponse() {
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        exercise_packs: vec![builtin_pack()],
+        exercises: true,
+        // LA FENÊTRE DES EXERCICES, parce que c'est là que le but d'un
+        // exercice vit — et non dans le bandeau, qui restait affiché
+        // quand on chargeait un binaire sans rapport. La question suit
+        // le but, là où l'on lit l'énoncé.
+        show_exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise("namsdec/prevoir_decalage");
+    let question = app
+        .exercise_question()
+        .map(|(q, _)| q.texte.fr.clone())
+        .expect("l'exercice pose une question");
+    assert_eq!(question, "Que vaut RAX à l'arrêt ?");
+
+    // 1. RIEN D'ÉCRIT : la question est là, aucun verdict.
+    //
+    // L'ÉTIQUETTE ET NON LA QUESTION, et la nuance a fait tomber la
+    // première écriture de ce contrôle : le programme de l'exercice
+    // REDIT sa question en commentaire — « ; À LIRE, pas à écrire. Que
+    // vaut RAX à l'arrêt ? » —, et chercher la question dans ce qui est
+    // peint la trouvait dans l'éditeur, panneau éteint ou non.
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.question_label),
+        "la question est posée par le panneau : {peint}"
+    );
+    assert!(
+        peint.contains(s.question_answer),
+        "et le champ invite à répondre : {peint}"
+    );
+    assert!(
+        !peint.contains(s.question_right) && !peint.contains(s.question_wrong),
+        "mais rien n'est jugé avant qu'on ait écrit : {peint}"
+    );
+
+    // 2. UNE RÉPONSE FAUSSE : on le dit, SANS donner la bonne.
+    app.question_answer = "30".to_owned();
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.question_wrong), "{peint}");
+    assert!(
+        peint.contains(s.question_run_to_see),
+        "et l'on dit où est l'arbitre : {peint}"
+    );
+    // LA RÉPONSE N'EST PAS DANS LE BLOC DE LA QUESTION. C'est tout
+    // l'exercice : « 32 » ou « 0x20 » affichés là le rendraient inutile.
+    //
+    // LE BLOC, ET NON TOUT L'ÉCRAN, et la première écriture de ce
+    // contrôle s'y est trompée : la fenêtre liste les cent quatorze
+    // énoncés, et le troisième parle d'« un registre 32 bits ». Un
+    // contrôle qui cherche « 32 » dans tout ce qui est peint le trouve
+    // toujours, et ne regarde donc rien.
+    let bloc = bloc_de_la_question(&peint);
+    for écriture in ["32", "0x20"] {
+        assert!(
+            !bloc.contains(écriture),
+            "« {écriture} » ne doit pas être montré : {bloc}"
+        );
+    }
+
+    // 3. LA BONNE, écrite comme on veut : « 0x20 » vaut « 32 ».
+    app.question_answer = "0x20".to_owned();
+    let peint = paint(&mut app);
+    assert!(peint.contains(s.question_right), "{peint}");
+    assert!(
+        !peint.contains(s.question_run_to_see),
+        "et il n'y a plus rien à aller voir : {peint}"
+    );
+}
+
+/// Un exercice de lecture ne se note pas fait en appuyant sur
+/// « Exécuter ».
+///
+/// **C'est le défaut que ce lot devait éviter**, et il serait passé
+/// inaperçu : ces exercices n'ont pas de but, donc la règle des
+/// démonstrations — avoir exécuté jusqu'à l'arrêt — les aurait notés
+/// faits au premier lancement. Leur programme MARCHE DÉJÀ : la pastille
+/// serait passée au vert en sautant exactement le geste que l'exercice
+/// enseigne.
+#[test]
+fn un_exercice_de_lecture_ne_se_réussit_pas_en_exécutant() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let mut app = NamsdecApp {
+        exercise_packs: vec![builtin_pack()],
+        exercises: true,
+        ..Default::default()
+    };
+    app.load_exercise("namsdec/prevoir_decalage");
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_run();
+    for _ in 0..50 {
+        if !app.running {
+            break;
+        }
+        app.tick_run(&egui::Context::default());
+    }
+    assert!(
+        app.emulator.as_ref().is_some_and(|e| e.cpu().halted),
+        "le programme est allé jusqu'au bout"
+    );
+
+    // Exécuté jusqu'à l'arrêt, et toujours pas fait : il reste à
+    // répondre.
+    app.note_goal_reached();
+    assert!(
+        !app.exercises_done.contains("namsdec/prevoir_decalage"),
+        "exécuter ne suffit pas"
+    );
+    // Une réponse fausse ne suffit pas non plus.
+    app.question_answer = "30".to_owned();
+    app.note_goal_reached();
+    assert!(!app.exercises_done.contains("namsdec/prevoir_decalage"));
+    // La bonne, oui.
+    app.question_answer = "32".to_owned();
+    app.note_goal_reached();
+    assert!(
+        app.exercises_done.contains("namsdec/prevoir_decalage"),
+        "répondre juste le réussit"
+    );
+
+    // ET CE N'EST PAS UNE DÉMONSTRATION : lui dire « regardez tourner »
+    // serait lui retirer sa question.
+    assert!(!app.exercise_is_demo());
+}
+
+/// Ce que le bloc de la question écrit, et rien d'autre.
+///
+/// `paint` rend TOUT l'écran, et la fenêtre des exercices liste les cent
+/// quatorze énoncés : y chercher un nombre le trouve toujours quelque
+/// part. On découpe donc entre l'étiquette de la question et ce qui la
+/// suit immédiatement dans la fenêtre — la ligne « Chercher : ».
+fn bloc_de_la_question(peint: &str) -> String {
+    let s = strings(Lang::Fr);
+    let début = peint
+        .find(s.question_label)
+        .expect("le bloc de la question est peint");
+    let reste = &peint[début..];
+    let fin = reste.find(s.exercises_search).unwrap_or(reste.len());
+    reste[..fin].to_owned()
 }

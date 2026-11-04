@@ -21,6 +21,7 @@
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod pack;
+pub mod reponse;
 
 /// Un texte dans les deux langues de l'interface.
 ///
@@ -149,6 +150,28 @@ pub struct Exercise {
     pub par: Option<u64>,
     /// Le palier auquel il appartient.
     pub level: Level,
+    /// La question d'un exercice de LECTURE, et sa réponse.
+    ///
+    /// `None` pour les cent huit exercices d'écriture : on y répond en
+    /// écrivant du code, et le but dit si l'on a réussi. Un exercice de
+    /// lecture, lui, donne un programme COMPLET et demande ce qu'il
+    /// fait — on lit, on répond, puis on exécute, et la machine
+    /// tranche. Voir [`reponse`].
+    pub question: Option<Question>,
+}
+
+/// Ce qu'un exercice de lecture demande, et ce qu'il attend.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Question {
+    pub texte: Text,
+    /// La réponse, écrite comme une condition — `rax == 0x20`.
+    ///
+    /// La même grammaire que les buts, et pour une raison qui n'est pas
+    /// d'élégance : un contrôle peut **exécuter le programme et
+    /// vérifier que la machine donne bien cette réponse-là**. Une
+    /// réponse écrite à la main dans un fichier JSON est une
+    /// affirmation ; passée à l'épreuve de l'émulateur, c'est un fait.
+    pub réponse: String,
 }
 
 /// Une série d'exercices : celle qui est livrée, ou une installée depuis
@@ -221,9 +244,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : cent huit étapes, et
+        // Un parcours, pas une poignée : cent quatorze étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 108);
+        assert_eq!(pack.exercises.len(), 114);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
