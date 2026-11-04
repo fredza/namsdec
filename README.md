@@ -770,15 +770,46 @@ namsdec-cli programme --rubriques       # ce dont ce fichier a de quoi parler
 namsdec-cli programme -s protections    # une seule rubrique
 ```
 
-**Ce qu'elle rend possible, et qui est sa raison d'être : comparer deux
+**Et ce qu'elle rend possible, qui est sa raison d'être : comparer deux
 versions d'un binaire.** Une protection qui disparaît, une chaîne qui
 apparaît, une fonction qui grossit — un `diff` d'octets dirait « le
 fichier a changé à l'offset 0x15604 », ce qui n'apprend rien.
 
 ```sh
-namsdec-cli programme.v1 -f json -o v1.json
-namsdec-cli programme.v2 -f json -o v2.json
-diff v1.json v2.json          # ce qui a changé dans l'ANALYSE
+namsdec-cli programme.v2 --contre programme.v1
+```
+
+```diff
+# Ce qui a changé — programme.v1 → programme.v2
+
+2 rubriques ont changé, 17 disent la même chose.
+
+## Protections du binaire — changée
+
+- - √ **NX** pile non exécutable — Du code déposé sur la pile ne s'exécutera pas.
++ - × **NX** pile exécutable — La pile est exécutable : des octets qu'on y écrit
++     peuvent être exécutés tels quels.
++ - × **Segment W+X** 0x0 — Une zone est à la fois inscriptible et exécutable.
+- | GNU_STACK | rw- | 0x0 | 0 o |
++ | GNU_STACK | rwx | 0x0 | 0 o |
+```
+
+Ci-dessus, **un seul bit a changé dans le fichier** — celui qui rend la
+pile exécutable. Un `diff` d'octets aurait dit « un octet a changé » ;
+l'analyse en tire trois phrases, et le signal qui va avec.
+
+**Le compte de ce qui n'a pas changé est la moitié utile du rapport** :
+« quinze rubriques disent la même chose » est ce qui permet de croire
+aux quatre qui ont bougé. Une rubrique qui apparaît ou disparaît entière
+est dite comme telle, sans recopier ses trois cents lignes.
+
+En CI, `-s protections` pose la seule question qui compte — les
+empreintes, elles, changent à chaque compilation — et **le code de
+retour porte la réponse** : `4` quand les deux analyses diffèrent, comme
+`diff` rend `1`. Rien à relire pour le savoir.
+
+```sh
+namsdec-cli programme.v2 -c programme.v1 -s protections || echo "une protection a bougé"
 ```
 
 Le rapport est **reproductible** : deux appels sur le même fichier
@@ -790,10 +821,11 @@ restent muettes, pour qu'un rapport ne parle jamais de la machine qui l'a
 produit.
 
 Ses codes de retour sont faits pour une chaîne d'intégration : `0` le
-rapport est écrit, `1` la ligne de commande est fautive, `2` le fichier
-ne se lit pas, `3` il se lit mais il n'y a rien à analyser — un artefact
-vide ou tronqué, qui sans cela passerait pour analysé. `namsdec-cli
---aide` dit tout le reste.
+rapport est écrit (et, en comparaison, rien n'a changé), `1` la ligne de
+commande est fautive, `2` le fichier ne se lit pas, `3` il se lit mais il
+n'y a rien à analyser — un artefact vide ou tronqué, qui sans cela
+passerait pour analysé —, `4` les deux analyses comparées diffèrent.
+`namsdec-cli --aide` dit tout le reste.
 
 ### Les mises à jour
 

@@ -33,11 +33,18 @@ entrée par version, et ce qui change pour qui s'en sert.
   par le même chemin — l'analyse est sortie de l'écran, et rien n'y est
   peint.
 - **Ce qu'elle rend possible, et qui est sa raison d'être : comparer
-  deux versions d'un binaire.** Une protection qui disparaît, une chaîne
-  qui apparaît, une fonction qui grossit — `namsdec-cli v1 -f json` et
-  `namsdec-cli v2 -f json`, puis un `diff` qui dit ce qui a changé dans
-  l'**analyse**, et non dans les octets. Le rapport est reproductible :
-  deux appels sur le même fichier rendent le même texte.
+  deux versions d'un binaire.** `namsdec-cli prog.v2 --contre prog.v1`
+  dit ce qui a changé dans l'**analyse** — une protection qui disparaît,
+  une chaîne qui apparaît —, rubrique par rubrique, là où un `diff`
+  d'octets répond « le fichier a changé à l'offset 0x15604 ». Il
+  **compte aussi ce qui n'a pas changé** : « quinze rubriques disent la
+  même chose » est ce qui permet de croire aux quatre qui ont bougé. Une
+  ligne qui a seulement changé de place n'est pas un changement.
+- En intégration continue, `-s protections` pose la seule question qui
+  compte — les empreintes changent à chaque compilation — et **le code
+  de retour porte la réponse** : `4` quand les deux analyses diffèrent,
+  comme `diff` rend `1`. Le rapport est reproductible : deux appels sur
+  le même fichier rendent le même texte.
 - **Faite pour une chaîne d'intégration** : quatre codes de retour, dont
   un qui dit « il se lit, mais il n'y a rien à analyser ». Un fichier
   vide rendait dix-huit rubriques annonçant toutes « 0 octet », avec un

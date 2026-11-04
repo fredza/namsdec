@@ -9895,3 +9895,111 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      après ? » — est ce que cette séance rend possible, puisque le
      chemin prévoir → avancer → constater existe maintenant dans
      l'interface.
+
+9.65 [FAIT] UN DIFF D'ANALYSES, ET NON DE DEUX JSON
+     (4 novembre 2026)
+
+     CE QUE 9.63 LAISSAIT À FAIRE, et qui était toute sa raison d'être :
+     comparer deux versions d'un binaire. On s'en sortait par un `diff`
+     sur deux sorties JSON — cela marche, et cela se lit mal : on y voit
+     des `"texte":` et des accolades, c'est-à-dire la FORME du rapport
+     et non le fond. `namsdec-cli prog.v2 --contre prog.v1` dit
+     maintenant ce qui a changé dans l'ANALYSE, rubrique par rubrique.
+
+     TROIS DÉCISIONS, ET ELLES FONT TOUT LE CARACTÈRE DU RÉSULTAT.
+
+       1. ON COMPARE DES LIGNES, PAS DES ARBRES. Une vue est un arbre de
+          blocs ; le comparer nœud par nœud dirait « le troisième bloc
+          de la deuxième section a changé », ce qui ne se lit pas. Les
+          lignes comparées sont celles que le RAPPORT écrit, par le même
+          écrivain (`rapport::lignes`) : ce qu'on compare est ce qu'on
+          lit. Une seconde traversée des blocs, écrite pour la
+          comparaison, aurait fini par dire autre chose que le rapport.
+       2. L'ORDRE NE COMPTE PAS, LE CONTENU COMPTE. Deux analyses se
+          comparent comme deux SACS de lignes. C'est la décision la plus
+          lourde de conséquences : une fonction de plus au milieu d'une
+          liste triée décale tout ce qui la suit, et comparer deux
+          SUITES aurait annoncé trois cents changements pour un. Des
+          sacs et non des ENSEMBLES, d'ailleurs : un tableau peut porter
+          deux fois la même valeur, et « trois fois d'un côté, une fois
+          de l'autre » laisse deux retraits.
+       3. LES RUBRIQUES GARDENT LEUR ORDRE, celui dans lequel on lit un
+          binaire inconnu. Trier par nombre de changements mettrait les
+          chaînes en tête à chaque fois. Les DISPARITIONS se disent à
+          leur place — là où elles étaient dans la première version — et
+          non entassées à la fin, loin de ce dont elles parlent.
+
+     CE QUI N'A PAS CHANGÉ EST COMPTÉ, ET DIT. « Quinze rubriques disent
+     la même chose » est ce qui permet de croire aux quatre qui ont
+     bougé : sans ce nombre, on ne sait pas si l'on regarde un détail ou
+     le seul endroit où l'on a regardé. Et une rubrique APPARUE ou
+     DISPARUE ne recopie pas ses trois cents lignes — elle EST le
+     changement, et le rapport dit où la lire en entier (`-s <id>`).
+
+     RIEN N'EST INTERPRÉTÉ. « NX est passé de oui à non » n'est pas
+     qualifié de régression, et aucun score n'est calculé. C'est la même
+     règle que les signaux du panneau d'analyse, qui n'additionnent
+     rien : le module dit ce qui a changé, à qui sait ce qu'il cherche.
+
+     LE CODE DE RETOUR PORTE LA RÉPONSE : 4 quand les deux analyses
+     diffèrent, comme `diff` rend 1. En CI, c'est lui qui arrête la
+     chaîne quand une protection a disparu, sans qu'on relise le
+     rapport. **4 et non 1**, parce que 1 dit déjà « la ligne de
+     commande est fautive » : confondre les deux ferait passer une faute
+     de frappe pour une régression du binaire. Et `-s protections` est
+     la forme qui sert en CI — les empreintes, elles, changent à chaque
+     compilation, donc la comparaison entière dirait toujours que
+     quelque chose a bougé.
+
+     COMPARER AVEC RIEN SE PLAINT. Une analyse contre un fichier vide
+     rendrait « tout a disparu » — vrai, et trompeur : le défaut est que
+     l'autre fichier est vide. Même famille que le fichier vide de 9.63,
+     et la même réponse : un état à part, dit comme tel.
+
+     LES CONTRÔLES, onze en tout (six sur la logique, cinq sur la
+     commande), chacun éprouvé en remettant le défaut. Deux méritent
+     d'être nommés :
+       — `comparer_un_fichier_avec_lui_même_ne_trouve_rien` est le
+         TÉMOIN CONTRAIRE, et sans lui le reste ne prouverait rien : un
+         comparateur qui annonce des changements à tout propos passerait
+         tous les autres contrôles.
+       — `comparer_une_seule_rubrique_répond_à_la_question_de_la_ci`
+         vérifie la PAIRE : 0 sur les protections (inchangées) et 4 sur
+         les chaînes (changées), pour le même couple de fichiers. C'est
+         ce qui prouve que le code de retour regarde la rubrique
+         demandée, et non le fichier en gros.
+       — `une_protection_qui_disparaît_se_voit` est le cas pour lequel
+         tout ceci existe, et il est éprouvé sur le vrai binaire : un
+         SEUL BIT du segment `PT_GNU_STACK` rend la pile exécutable —
+         ce qu'un éditeur hexadécimal fait en dix secondes, et qu'un
+         `diff` d'octets rapporterait comme « un octet a changé ».
+         L'analyse en tire trois phrases : la marque de NX qui passe de
+         √ à ×, les droits du segment qui deviennent `rwx`, et un
+         segment W+X qui apparaît.
+
+     ET UN DÉTAIL DE FRANÇAIS, attrapé en lisant la sortie : « 1
+     rubrique(s) ont changé » est la marque d'une phrase qu'aucun humain
+     n'a relue, et ce rapport est fait pour être lu. L'accord en nombre
+     ne coûte qu'une fonction de trois lignes ; un contrôle refuse
+     désormais « (s) » dans la sortie.
+
+     LE CONTRÔLE QUI A SERVI LE PLUS N'EST PAS DE CE LOT, et la leçon
+     vaut pour tout le dépôt : `cargo fmt` a RECOLLÉ une continuation
+     de chaîne (`"… \` suivi d'un retrait) en gardant le retrait, et
+     DIX-HUIT ESPACES sont entrés au milieu d'un message d'erreur —
+     « … dans ces deux fichiers.                  « --rubriques » les
+     liste. » Le programme compilait, les contrôles de la commande
+     passaient, et personne ne lit un message d'erreur avant de l'avoir
+     provoqué. C'est
+     `aucune_phrase_ne_porte_l_indentation_du_source` — un contrôle de
+     l'INTERFACE, qui relit tous les `.rs` du dépôt — qui l'a nommé par
+     son numéro de ligne.
+
+     ET LA RÉPARATION A FAILLI COÛTER PLUS CHER QUE LE DÉFAUT : une
+     expression régulière passée sur tout le fichier a écrasé les
+     vingt-deux ALIGNEMENTS de l'écran d'aide, où les colonnes d'espaces
+     sont le propos. Remise depuis la version commitée, puis les ajouts
+     réécrits à la main. La règle qui en sort : un défaut de blancs ne
+     se corrige pas en gros, parce que les blancs ne veulent pas tous
+     dire la même chose — dans une phrase ils sont une faute, dans un
+     tableau ils sont la mise en page.

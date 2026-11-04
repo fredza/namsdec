@@ -2756,9 +2756,34 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "d'octets dirait « le fichier a changé à l'offset 0x15604 », ce qui n'apprend rien. "
          "Un diff d'<b>analyses</b> dit ce qui a changé."),
         ("code",
-         "namsdec-cli programme.v1 -f json -o v1.json\n"
-         "namsdec-cli programme.v2 -f json -o v2.json\n"
-         "diff v1.json v2.json"),
+         "namsdec-cli programme.v2 --contre programme.v1"),
+        ("p",
+         "Le rapport nomme en tête les deux versions comparées, l'ancienne d'abord, puis "
+         "dit rubrique par rubrique ce qui a changé. Et il <b>compte ce qui n'a pas "
+         "changé</b>&nbsp;: « quinze rubriques disent la même chose » est ce qui permet "
+         "de croire aux quatre qui ont bougé. Une ligne qui a seulement changé de "
+         "PLACE n'est pas un changement — sans quoi une fonction de plus au milieu "
+         "d'une liste triée en annoncerait trois cents."),
+        ("code",
+         "4 rubriques ont changé, 15 disent la même chose.\n"
+         "\n"
+         "## Chaînes lisibles — changée\n"
+         "\n"
+         "- | 00015604 | /dev/null |\n"
+         "+ | 00015604 | /dev/nulX |"),
+        ("p",
+         "Une rubrique APPARUE ou DISPARUE est dite comme telle, sans recopier ses "
+         "trois cents lignes&nbsp;: elle <i>est</i> le changement, et le rapport dit où "
+         "la lire en entier. Rien n'est interprété pour autant — « NX est passé de oui "
+         "à non » n'est pas qualifié de régression, et aucun score n'est calculé&nbsp;: "
+         "c'est la même règle que les signaux du panneau d'analyse, qui n'additionnent "
+         "rien."),
+        ("note",
+         "En intégration continue, <font face='Courier'>-s protections</font> pose la "
+         "seule question qui compte — les empreintes, elles, changent à chaque "
+         "compilation — et <b>le code de retour porte la réponse</b>&nbsp;: "
+         "<b>4</b> quand les deux analyses diffèrent, comme "
+         "<font face='Courier'>diff</font> rend 1. Rien à relire pour le savoir."),
         ("p",
          "Le rapport est <b>reproductible</b>&nbsp;: deux appels sur le même fichier rendent "
          "le même texte, parce que la commande repart des octets. C'est aussi ce qu'elle ne "

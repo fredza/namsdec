@@ -80,6 +80,27 @@ pub fn markdown(panneaux: &[Panneau], titre: &str) -> String {
     out
 }
 
+/// Les lignes d'un panneau, telles que le rapport les écrirait.
+///
+/// **C'est la base de la comparaison de deux analyses** (voir
+/// [`crate::comparaison`]), et elle passe exprès par le même écrivain
+/// que le rapport : ce qu'on compare est ce qu'on lit. Une seconde
+/// traversée des blocs, écrite pour la comparaison, aurait fini par
+/// dire autre chose que le rapport — et l'on aurait comparé deux
+/// versions d'un texte que personne ne voit.
+///
+/// Les lignes vides tombent, et chacune est rognée : un décalage de
+/// retrait n'est pas un changement d'analyse.
+pub fn lignes(panneau: &Panneau) -> Vec<String> {
+    let mut out = String::new();
+    écrire_blocs(&mut out, &panneau.vue.blocs, 0);
+    out.lines()
+        .map(str::trim)
+        .filter(|ligne| !ligne.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
 /// La même chose pour un autre programme.
 pub fn json(panneaux: &[Panneau]) -> String {
     serde_json::to_string_pretty(panneaux).unwrap_or_else(|_| "[]".to_owned())

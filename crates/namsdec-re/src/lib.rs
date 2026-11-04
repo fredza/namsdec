@@ -9,6 +9,7 @@ pub mod behaviour;
 mod binary_info;
 mod call_graph_module;
 pub mod cfg;
+pub mod comparaison;
 pub mod cyclic;
 pub mod detour_module;
 pub mod digest;

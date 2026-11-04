@@ -1084,10 +1084,28 @@ ouvre une fenêtre, `namsdec-cli` écrit un rapport.
       le PATH (`--no-cli` pour s'en passer), `uninstall.sh` la retire.
       `default-members` ne bouge pas, pour que `cargo run` sache encore
       quoi lancer ; les deux paquets sont nommés à la compilation.
-- [ ] **La comparaison elle-même** — aujourd'hui elle se fait par
-      `diff` sur deux JSON : cela marche et se lit mal. Une
-      sous-commande qui ne dirait que ce qui a changé, rubrique par
-      rubrique, est le lot d'après.
+- [x] **La comparaison elle-même** (A 9.65) — `--contre` dit ce qui a
+      changé dans l'analyse, rubrique par rubrique, et **compte ce qui
+      n'a pas changé** : « quinze rubriques disent la même chose » est ce
+      qui permet de croire aux quatre qui ont bougé. Une ligne qui a
+      seulement changé de **place** n'est pas un changement — comparer
+      deux suites plutôt que deux sacs aurait annoncé trois cents
+      changements pour un. Le code de retour porte la réponse (`4`,
+      comme `diff` rend `1`), et `-s protections` est la forme qui sert
+      en CI. Douze contrôles, dont le témoin contraire — comparer un
+      fichier avec lui-même — sans lequel les autres ne prouveraient
+      rien, et **le cas pour lequel tout ceci existe** : un seul bit du
+      segment `PT_GNU_STACK` rend la pile exécutable, et l'analyse en
+      tire trois phrases là où un `diff` d'octets dirait « un octet a
+      changé ».
+- [x] **Un trou de dix-huit espaces dans un message d'erreur** —
+      `cargo fmt` a recollé une continuation de chaîne en gardant son
+      retrait. Le programme compilait, les contrôles de la commande
+      passaient, et personne ne lit un message d'erreur avant de
+      l'avoir provoqué. C'est
+      `aucune_phrase_ne_porte_l_indentation_du_source`, un contrôle de
+      l'**interface** qui relit tous les `.rs` du dépôt, qui l'a nommé
+      par son numéro de ligne.
 
 **Ce qu'elle ne fait pas, et c'est voulu :** elle repart des octets,
 donc elle ne porte rien d'une session (pas de nom donné à une fonction,

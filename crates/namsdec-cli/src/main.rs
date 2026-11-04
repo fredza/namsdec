@@ -10,11 +10,12 @@
 //! * un rapport Markdown qu'on colle dans un compte rendu, un ticket ou
 //!   un support de cours, sans capture d'écran ;
 //! * le même fond en JSON, pour un autre programme ;
-//! * **et surtout, de quoi comparer deux versions d'un binaire** : une
-//!   protection qui disparaît, une chaîne qui apparaît, une fonction qui
-//!   grossit. Un `diff` de deux analyses, et non de deux tas d'octets —
-//!   qui, lui, n'apprend rien. C'est la raison d'être de la sortie JSON
-//!   stable.
+//! * **et surtout, la comparaison de deux versions d'un binaire** :
+//!   `--contre` dit ce qui a changé dans l'ANALYSE — une protection qui
+//!   disparaît, une chaîne qui apparaît, une fonction qui grossit —,
+//!   rubrique par rubrique, et le code de retour le dit aussi. Un `diff`
+//!   d'octets, lui, répond « le fichier a changé à l'offset 0x15604 »,
+//!   ce qui n'apprend rien.
 //!
 //! **Ce qu'elle n'est pas, et il faut le dire :** elle ne remplace pas
 //! l'application. Elle repart des octets, donc elle ne porte rien de ce
@@ -49,6 +50,14 @@ struct Demande {
     rubriques: Vec<String>,
     /// Lister les rubriques que ce fichier remplit, et s'arrêter là.
     lister: bool,
+    /// L'autre version, à comparer avec celle qu'on analyse.
+    ///
+    /// C'EST LA PREMIÈRE VERSION, et le fichier de la ligne est la
+    /// seconde : « namsdec-cli programme.v2 --contre programme.v1 » se
+    /// lit « analyse v2, contre v1 », et le rapport dit v1 → v2. Dans
+    /// l'autre sens, les `+` et les `-` seraient à l'envers de ce qu'on
+    /// a dans la tête.
+    contre: Option<PathBuf>,
     /// Sauter la prose d'ouverture, et n'écrire que les panneaux.
     sans_prose: bool,
     aide: bool,
@@ -80,6 +89,18 @@ mod code {
     /// chaîne, sans quoi un artefact tronqué passe pour analysé — avec
     /// un titre, des tableaux et des sections qui disent toutes zéro.
     pub const RIEN_À_DIRE: u8 = 3;
+    /// Les deux analyses comparées diffèrent.
+    ///
+    /// **Comme `diff`**, qui rend 1 quand les fichiers ne se
+    /// ressemblent pas : en CI, ce qui intéresse est qu'une analyse ait
+    /// bougé — une protection qui disparaît entre deux versions doit
+    /// pouvoir arrêter une chaîne, sans qu'on relise un rapport pour
+    /// s'en apercevoir.
+    ///
+    /// 4 ET NON 1, parce que 1 dit déjà « la ligne de commande est
+    /// fautive ». Confondre les deux ferait passer une faute de frappe
+    /// pour une régression du binaire.
+    pub const ÇA_A_CHANGÉ: u8 = 4;
 }
 
 fn main() -> ExitCode {
@@ -168,6 +189,38 @@ fn exécuter(args: &[String]) -> Result<u8, String> {
             .unwrap_or_else(|| chemin.display().to_string())
     });
 
+    // LA COMPARAISON, qui est une autre question : non pas « que dit ce
+    // fichier ? » mais « qu'est-ce qui a changé depuis l'autre ? ». Elle
+    // vient avant les autres sorties parce qu'elle les remplace toutes.
+    if let Some(ancien) = demande.contre.clone() {
+        // ET CE QU'ELLE REMPLACE, ON LE DIT. Sans cela, « --rubriques
+        // --contre » comparait en IGNORANT `--rubriques` : l'option
+        // était là, elle ne faisait rien, et rien ne le disait. C'est
+        // le même défaut qu'un format ignoré en silence.
+        let inutile = if demande.lister {
+            Some("--rubriques")
+        } else if demande.sans_prose {
+            // Une comparaison n'a pas de prose d'ouverture : l'option
+            // décrit ce qu'elle fait déjà, et une option qui ne change
+            // rien ferait croire qu'elle change quelque chose.
+            Some("--sans-prose")
+        } else {
+            None
+        };
+        if let Some(inutile) = inutile {
+            return Err(t(
+                &demande.langue,
+                &format!(
+                    "namsdec-cli : « {inutile} » ne veut rien dire avec « --contre », qui compare deux analyses. Les deux séparément, ou l'un des deux."
+                ),
+                &format!(
+                    "namsdec-cli: `{inutile}` means nothing with `--against`, which compares two analyses. Either separately, or just one of them."
+                ),
+            ));
+        }
+        return comparer(&demande, &chemin, &octets, &ancien, &titre);
+    }
+
     // LE CAS COURT D'ABORD : lister les rubriques ne demande pas
     // d'écrire un rapport, et c'est ce qu'on fait avant de choisir
     // `--rubrique`.
@@ -248,6 +301,108 @@ fn exécuter(args: &[String]) -> Result<u8, String> {
 
     écrire(&demande, texte)?;
     Ok(code::SUCCÈS)
+}
+
+/// Deux versions d'un binaire, comparées par leur analyse.
+///
+/// **C'est ce que cette commande existait pour rendre possible, et
+/// qu'elle ne faisait pas encore.** On s'en sortait par un `diff` sur
+/// deux sorties JSON : cela marche, et cela se lit mal — on y voit des
+/// `"texte":` et des accolades, c'est-à-dire la forme du rapport et non
+/// le fond. Ici, c'est `namsdec_re::comparaison` qui compare ce que
+/// namsdec COMPREND, rubrique par rubrique.
+fn comparer(
+    demande: &Demande,
+    chemin: &std::path::Path,
+    octets: &[u8],
+    ancien: &std::path::Path,
+    titre: &str,
+) -> Result<u8, String> {
+    let anciens_octets = match std::fs::read(ancien) {
+        Ok(octets) => octets,
+        Err(erreur) => {
+            eprintln!(
+                "{}",
+                t(
+                    &demande.langue,
+                    &format!(
+                        "namsdec-cli : {} ne se lit pas — {erreur}",
+                        ancien.display()
+                    ),
+                    &format!("namsdec-cli: cannot read {} — {erreur}", ancien.display()),
+                )
+            );
+            return Ok(code::ILLISIBLE);
+        }
+    };
+    // LES DEUX FICHIERS DOIVENT AVOIR QUELQUE CHOSE À DIRE. Comparer une
+    // analyse à rien rendrait « tout a disparu », ce qui est vrai et
+    // trompeur : le défaut est que le second fichier est vide.
+    if anciens_octets.is_empty() {
+        eprintln!(
+            "{}",
+            t(
+                &demande.langue,
+                &format!(
+                    "namsdec-cli : {} est vide — il n'y a rien à comparer.",
+                    ancien.display()
+                ),
+                &format!(
+                    "namsdec-cli: {} is empty — nothing to compare.",
+                    ancien.display()
+                ),
+            )
+        );
+        return Ok(code::RIEN_À_DIRE);
+    }
+
+    let mut avant = namsdec_re::rapport::analyse(&anciens_octets, &demande.langue);
+    let mut après = namsdec_re::rapport::analyse(octets, &demande.langue);
+    if avant.is_empty() || après.is_empty() {
+        let muet = if avant.is_empty() { ancien } else { chemin };
+        return Ok(rien_à_dire(&demande.langue, muet));
+    }
+    // `--rubrique` RESTREINT LA COMPARAISON, et c'est là qu'elle sert le
+    // plus : « ce qui a changé dans les protections » est la question
+    // qu'on pose en CI, et les empreintes d'un binaire recompilé
+    // changent toujours.
+    if !demande.rubriques.is_empty() {
+        let garder = |panneaux: &mut Vec<namsdec_re::rapport::Panneau>| {
+            panneaux.retain(|p| demande.rubriques.iter().any(|id| id == &p.id));
+        };
+        garder(&mut avant);
+        garder(&mut après);
+        if avant.is_empty() && après.is_empty() {
+            return Err(t(
+                &demande.langue,
+                "namsdec-cli : aucune des rubriques demandées n'est dans ces deux fichiers. « --rubriques » les liste.",
+                "namsdec-cli: none of the requested sections is in either file. `--sections` lists them.",
+            ));
+        }
+    }
+
+    let comparaison = namsdec_re::comparaison::comparer(&avant, &après);
+    let nom = |chemin: &std::path::Path| {
+        chemin
+            .file_name()
+            .map(|nom| nom.to_string_lossy().into_owned())
+            .unwrap_or_else(|| chemin.display().to_string())
+    };
+    let texte = match demande.format {
+        Format::Json => namsdec_re::comparaison::json(&comparaison),
+        Format::Markdown => {
+            namsdec_re::comparaison::markdown(&comparaison, &nom(ancien), titre, &demande.langue)
+        }
+    };
+    écrire(demande, texte)?;
+    // LE CODE DE RETOUR PORTE LA RÉPONSE, et c'est tout l'intérêt en
+    // CI : on n'a pas à relire le rapport pour savoir si quelque chose a
+    // bougé.
+    Ok(if comparaison.rien_ne_change() {
+        code::SUCCÈS
+    } else {
+        code::ÇA_A_CHANGÉ
+    })
 }
 
 /// Le fichier se lit, et namsdec n'en comprend rien.
@@ -349,6 +504,7 @@ fn analyse_args(args: &[String]) -> Result<Demande, String> {
                 };
             }
             "--sortie" | "--output" | "-o" => demande.sortie = Some(PathBuf::from(valeur(arg)?)),
+            "--contre" | "--against" | "-c" => demande.contre = Some(PathBuf::from(valeur(arg)?)),
             "--langue" | "--lang" | "-l" => demande.langue = valeur(arg)?,
             "--titre" | "--title" | "-t" => demande.titre = Some(valeur(arg)?),
             "--rubrique" | "--section" | "-s" => demande.rubriques.push(valeur(arg)?),
@@ -357,11 +513,11 @@ fn analyse_args(args: &[String]) -> Result<Demande, String> {
                     &demande.langue,
                     &format!(
                         "namsdec-cli : option inconnue « {autre} ». \
-                         « namsdec-cli --aide » les liste."
+ « namsdec-cli --aide » les liste."
                     ),
                     &format!(
                         "namsdec-cli: unknown option `{autre}`. \
-                         Try `namsdec-cli --help`."
+ Try `namsdec-cli --help`."
                     ),
                 ));
             }
@@ -419,6 +575,9 @@ EMPLOI
 
 OPTIONS
   -f, --format <markdown|json>  La forme du rapport. Markdown par défaut.
+  -c, --contre <fichier>        Comparer : dire ce qui a changé dans l'analyse
+                                depuis CE fichier-là. L'ancien d'abord dans le
+                                rapport, le nouveau ensuite.
   -o, --sortie <chemin>         Où l'écrire. La sortie standard par défaut.
   -l, --langue <fr|en>          La langue du rapport. Celle du système, sinon fr.
   -t, --titre <texte>           Le titre du rapport. Le nom du fichier par défaut.
@@ -432,18 +591,26 @@ OPTIONS
   --                            Tout ce qui suit est un chemin.
 
 CODES DE RETOUR
-  0  le rapport est écrit
+  0  le rapport est écrit (en comparaison : rien n'a changé)
   1  la ligne de commande est fautive
   2  le fichier ne se lit pas
   3  il se lit, mais il n'y a rien à analyser (vide, ou aucune rubrique)
+  4  en comparaison seulement : les deux analyses diffèrent — comme « diff »,
+     qui rend 1 pour cela. En CI, c'est ce code qui arrête la chaîne quand une
+     protection a disparu, sans qu'on relise le rapport.
 
 EXEMPLES
   namsdec-cli programme                       le rapport, à l'écran
   namsdec-cli programme -o rapport.md         le rapport, dans un fichier
-  namsdec-cli programme -f json -o a.json     de quoi comparer deux versions :
-  namsdec-cli programme.v2 -f json -o b.json  puis « diff a.json b.json », qui
-                                              dit ce qui a changé dans l'ANALYSE
-                                              et non dans les octets
+  namsdec-cli prog.v2 --contre prog.v1        ce qui a changé dans l'analyse,
+                                              rubrique par rubrique
+  namsdec-cli prog.v2 -c prog.v1 -s protections
+                                              la seule question qui compte en
+                                              CI : une protection a-t-elle
+                                              disparu ? (les empreintes, elles,
+                                              changent à chaque compilation)
+  namsdec-cli programme -f json -o a.json     l'analyse entière, pour un autre
+                                              programme
   namsdec-cli programme --rubriques           ce dont ce fichier a de quoi parler
   namsdec-cli programme -s protections        une seule rubrique
 
@@ -463,6 +630,9 @@ USAGE
 
 OPTIONS
   -f, --format <markdown|json>  Report shape. Markdown by default.
+  -c, --against <file>          Compare: say what changed in the analysis
+                                since THAT file. The older one comes first in
+                                the report, the newer one second.
   -o, --output <path>           Where to write it. Standard output by default.
   -l, --lang <fr|en>            Report language. The system's, else fr.
   -t, --title <text>            Report title. The file name by default.
@@ -476,18 +646,25 @@ OPTIONS
   --                            Everything after this is a path.
 
 EXIT CODES
-  0  the report is written
+  0  the report is written (when comparing: nothing changed)
   1  the command line is wrong
   2  the file cannot be read
   3  it reads, but there is nothing to analyse (empty, or no section)
+  4  when comparing only: the two analyses differ — like `diff`, which returns
+     1 for that. In CI, this is the code that stops the pipeline when a
+     protection is gone, without anyone reading the report.
 
 EXAMPLES
   namsdec-cli program                       the report, on screen
   namsdec-cli program -o report.md          the report, into a file
-  namsdec-cli program -f json -o a.json     how to compare two versions:
-  namsdec-cli program.v2 -f json -o b.json  then `diff a.json b.json`, which
-                                            tells what changed in the ANALYSIS,
-                                            not in the bytes
+  namsdec-cli prog.v2 --against prog.v1     what changed in the analysis,
+                                            section by section
+  namsdec-cli prog.v2 -c prog.v1 -s protections
+                                            the only question that matters in
+                                            CI: is a protection gone? (the
+                                            fingerprints change on every build)
+  namsdec-cli program -f json -o a.json     the whole analysis, for another
+                                            program
   namsdec-cli program --sections            what this file has to talk about
   namsdec-cli program -s protections        a single section
 
