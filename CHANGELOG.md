@@ -6,6 +6,25 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Douze instructions de plus savent s'expliquer**
+- Un contrôle lit les binaires du système et exige une fiche pour chaque
+  instruction rencontrée. Douze manquaient : **cinq fiches neuves** — le
+  `cmov` du coprocesseur, l'environnement du x87, tout l'état flottant
+  d'un bloc (`fxsave`), le mot de contrôle de SSE (`stmxcsr`, et ce que
+  `-ffast-math` y pose), la mémoire transactionnelle (`xtest`) — et
+  **deux élargies** : la pile fantôme gagne le changement de pile,
+  « Comparer dans un masque » gagne les quarante-quatre alias d'AVX-512
+  qu'elle décrivait déjà sans les nommer. Cent quatre-vingt-neuf fiches
+  en tout.
+- Chaque alias a été passé à nasm un par un : on ne documente que ce qui
+  s'écrit, puisque les fiches nourrissent aussi l'autocomplétion. Et ce
+  que les fiches affirment a été relu par `objdump`.
+- **Cinq de ces fiches disent ce que namsdec ne simule pas**, et c'est
+  souvent leur information la plus utile : « une transaction suppose
+  plusieurs cœurs qui se marchent dessus, et namsdec n'en a qu'un ».
+  Une fiche qui décrirait une instruction que l'interpréteur refuse sans
+  le dire promettrait une exécution qui n'aura pas lieu.
+
 **Six exercices qui demandent de lire, et non d'écrire**
 - Les cent huit exercices faisaient tous **écrire** du code. Six de plus
   donnent un programme **complet** et posent une question — « que vaut

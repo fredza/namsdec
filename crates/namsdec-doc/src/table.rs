@@ -598,17 +598,45 @@ pub const ENTRIES: &[Entry] = &[
             "incsspd",
             "saveprevssp",
             "clrssbsy",
+            "rstorssp",
+            "setssbsy",
+            "wrssd",
+            "wrssq",
+            "wrussd",
+            "wrussq",
         ],
         title: Text {
             fr: "La pile fantôme",
             en: "The shadow stack",
         },
         body: Text {
-            fr: "Un second exemplaire des adresses de retour, que le processeur tient à part et que le programme ne peut pas écrire. À chaque `call`, l'adresse y est copiée ; à chaque `ret`, les deux sont comparées — si la pile ordinaire a été récrite, elles diffèrent, et le processeur arrête tout. C'est la réponse matérielle au débordement de tampon, et elle rend inopérante la technique qui consiste à écraser une adresse de retour.\n\n`rdssp` lit le pointeur de cette pile, `incssp` l'avance, `saveprevssp` et `clrssbsy` servent au changement de contexte. Sur une machine sans le dispositif — la plupart —, elles ne font **rien** : `rdssp` laisse son registre inchangé, et c'est ainsi qu'une bibliothèque teste la présence du dispositif. Elle met zéro dans un registre, lit, et regarde si c'est toujours zéro. namsdec fait comme ces machines-là.",
-            en: "A second copy of the return addresses, kept aside by the processor and unwritable by the program. Every `call` copies the address there; every `ret` compares the two — if the ordinary stack was rewritten they differ, and the processor stops everything. This is the hardware answer to the buffer overflow, and it defeats the technique of smashing a return address.\n\n`rdssp` reads that stack's pointer, `incssp` advances it, `saveprevssp` and `clrssbsy` serve context switches. On a machine without the feature — most of them — they do **nothing**: `rdssp` leaves its register untouched, and that is how a library tests for the feature. It zeroes a register, reads, and checks whether it is still zero. namsdec behaves like those machines.",
+            fr: "Un second exemplaire des adresses de retour, que le processeur tient à part et que le programme ne peut pas écrire. À chaque `call`, l'adresse y est copiée ; à chaque `ret`, les deux sont comparées — si la pile ordinaire a été récrite, elles diffèrent, et le processeur arrête tout. C'est la réponse matérielle au débordement de tampon, et elle rend inopérante la technique qui consiste à écraser une adresse de retour.\n\n`rdssp` lit le pointeur de cette pile, `incssp` l'avance. Les autres servent au **changement de pile** — ce que fait un changeur de contexte, une fibre, ou `setjmp`/`longjmp` : `rstorssp` installe une pile fantôme à partir du jeton qui la scelle, `saveprevssp` range l'ancienne, `setssbsy` et `clrssbsy` posent et retirent le bit « occupée » qui empêche deux fils de partager la même. `wrss` écrit dans la pile fantôme, ce qu'un programme ordinaire ne peut pas faire — seul le noyau y touche, pour y déposer précisément ces jetons. Sur une machine sans le dispositif — la plupart —, elles ne font **rien** : `rdssp` laisse son registre inchangé, et c'est ainsi qu'une bibliothèque teste la présence du dispositif. Elle met zéro dans un registre, lit, et regarde si c'est toujours zéro. namsdec fait comme ces machines-là.",
+            en: "A second copy of the return addresses, kept aside by the processor and unwritable by the program. Every `call` copies the address there; every `ret` compares the two — if the ordinary stack was rewritten they differ, and the processor stops everything. This is the hardware answer to the buffer overflow, and it defeats the technique of smashing a return address.\n\n`rdssp` reads that stack’s pointer, `incssp` advances it. The others serve **stack switching** — what a context switch, a fiber, or `setjmp`/`longjmp` does: `rstorssp` installs a shadow stack from the token that seals it, `saveprevssp` puts the old one away, `setssbsy` and `clrssbsy` set and clear the \"busy\" bit that keeps two threads from sharing one. `wrss` writes into the shadow stack, which an ordinary program cannot do — only the kernel touches it, precisely to leave those tokens there. On a machine without the feature — most of them — they do **nothing**: `rdssp` leaves its register untouched, and that is how a library tests for the feature. It zeroes a register, reads, and checks whether it is still zero. namsdec behaves like those machines.",
         },
         flags: "",
         example: "xor eax, eax\n    rdsspq rax\n    test rax, rax",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["xbegin", "xend", "xabort", "xtest"],
+        title: Text {
+            fr: "La mémoire transactionnelle",
+            en: "Transactional memory",
+        },
+        body: Text {
+            fr: "Un verrou qu'on ne prend pas. Entre `xbegin` et `xend`, le processeur exécute normalement mais **garde tout en suspens** : si un autre cœur touche la même mémoire, tout est annulé et l'exécution reprend à l'adresse donnée à `xbegin`, comme si rien n'avait eu lieu. C'est un pari — la plupart des sections critiques ne se croisent jamais —, et il se perd souvent.
+
+D'où la forme qu'on lit dans un vrai binaire : un chemin transactionnel, et **toujours** un chemin de repli avec un vrai verrou. `xbegin` donne la raison de l'échec dans EAX, `xabort` abandonne volontairement avec un code, `xtest` répond « sommes-nous dans une transaction ? » en posant ZF — c'est la seule des quatre à écrire un indicateur, et la seule qu'on puisse appeler de n'importe où. Elle efface les cinq autres au passage : la réponse est dans ZF, et seulement là.
+
+`xtest` est d'ailleurs ce qu'on rencontre le plus, loin devant les autres : la bibliothèque C l'emploie pour savoir si un `pthread_mutex_unlock` doit vraiment relâcher quelque chose. Sur une machine sans le dispositif — Intel l'a désactivé par microcode sur beaucoup de générations —, elle rend simplement « non ».\n\nnamsdec ne les simule pas : une transaction suppose plusieurs cœurs qui se marchent dessus, et il n'en a qu'un. Elles se lisent ici — c'est ce qu'on fait devant la bibliothèque C —, et l'interpréteur les refuse plutôt que de faire semblant de réussir une transaction qui n'a jamais eu lieu.",
+            en: "A lock you do not take. Between `xbegin` and `xend` the processor runs normally but **holds everything in suspense**: if another core touches the same memory, all of it is undone and execution resumes at the address given to `xbegin`, as though nothing had happened. It is a bet — most critical sections never cross — and it is often lost.
+
+Hence the shape one reads in a real binary: a transactional path, and **always** a fallback path with a real lock. `xbegin` gives the failure reason in EAX, `xabort` gives up deliberately with a code, `xtest` answers \"are we inside a transaction?\" by setting ZF — the only one of the four to write a flag, and the only one callable from anywhere. It clears the other five on the way: the answer is in ZF, and only there.
+
+`xtest` is in fact the one most often met, far ahead of the others: the C library uses it to know whether a `pthread_mutex_unlock` really has anything to release. On a machine without the feature — Intel disabled it by microcode on many generations — it simply answers \"no\".\n\nnamsdec does not simulate them: a transaction supposes several cores treading on each other, and it has only one. They are for reading here — which is what one does in front of the C library — and the interpreter refuses them rather than pretend to succeed at a transaction that never took place.",
+        },
+        flags: "ZF CF OF SF PF AF",
+        example: "xtest\n    jz pas_de_transaction",
     },
     Entry {
         kind: Kind::Instruction,
@@ -1074,6 +1102,74 @@ pub const ENTRIES: &[Entry] = &[
     },
     Entry {
         kind: Kind::Instruction,
+        names: &[
+            "fcmovb", "fcmove", "fcmovbe", "fcmovu", "fcmovnb", "fcmovne", "fcmovnbe", "fcmovnu",
+        ],
+        title: Text {
+            fr: "Choisir sans sauter, côté flottant",
+            en: "Choosing without jumping, on the float side",
+        },
+        body: Text {
+            fr: "`cmov` pour la pile du coprocesseur : copient `st(i)` dans le sommet **si la condition tient**, et ne font rien sinon. Elles lisent les indicateurs du PROCESSEUR — CF, ZF, PF —, pas le mot d'état du coprocesseur : l'ordre habituel est donc `fcomi` (qui écrit ces indicateurs), puis `fcmov`.
+
+Quatre conditions seulement, et c'est ce qui surprend : `b` plus petit, `e` égal, `be` plus petit ou égal, `u` *unordered* — c'est-à-dire qu'un NaN est dans les parages —, plus leurs quatre négations. Pas de « plus grand » : on échange les opérandes de la comparaison. Rien pour le signe non plus, parce qu'un flottant n'a pas deux lectures.
+
+Comme `cmov`, elles lisent leur source **toujours** : le but est de n'avoir aucune branche, donc aucune prédiction à rater.\n\nnamsdec ne les simule pas : il les montre, les explique, et refuse de les exécuter plutôt que de choisir une valeur au hasard. On les rencontre en lisant du code optimisé pour le flottant, rarement en l'écrivant.",
+            en: "`cmov` for the coprocessor stack: copy `st(i)` into the top **if the condition holds**, and do nothing otherwise. They read the PROCESSOR's flags — CF, ZF, PF — not the coprocessor's status word: so the usual order is `fcomi` (which writes those flags), then `fcmov`.
+
+Only four conditions, which is the surprise: `b` below, `e` equal, `be` below or equal, `u` *unordered* — meaning a NaN is around — plus their four negations. No \"greater\": you swap the comparison's operands. Nothing about signedness either, because a float has only one reading.
+
+Like `cmov`, they always read their source: the point is to have no branch at all, hence no prediction to miss.\n\nnamsdec does not simulate them: it shows them, explains them, and refuses to run them rather than pick a value at random. One meets them reading float-optimised code, rarely writing it.",
+        },
+        flags: "",
+        example: "fcomi st1\n    fcmovb st0, st1     ; garder le plus petit",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["fnstenv", "fstenv", "fldenv", "fnsave", "fsave", "frstor"],
+        title: Text {
+            fr: "L'environnement du coprocesseur",
+            en: "The coprocessor's environment",
+        },
+        body: Text {
+            fr: "Rangent — ou relisent — tout ce que le coprocesseur sait de lui-même SANS les nombres : le mot de contrôle, le mot d'état, le mot des étiquettes (quelles cases sont occupées), et les pointeurs de la dernière instruction et de son opérande. Vingt-huit octets en mode 32 bits. `fsave` y ajoute les huit nombres eux-mêmes, soit cent huit octets, et **remet le coprocesseur à neuf** au passage ; `frstor` relit le tout.
+
+Le `n` de `fnstenv` veut dire *no wait* : la forme sans `n` attendait d'abord que les exceptions en attente soient traitées, ce qui compte sur une machine où le coprocesseur était une puce à part.
+
+**Pourquoi on les rencontre :** d'abord dans `setjmp`, un gestionnaire de signal ou un changeur de contexte, qui doivent rendre la machine telle qu'ils l'ont trouvée. Ensuite — et c'est l'usage le plus intéressant à savoir lire — dans du code qui veut connaître **sa propre adresse** : `fnstenv` écrit le pointeur de la dernière instruction flottante exécutée, donc une instruction flottante bidon suivie d'un `fnstenv` donne une adresse du code courant, sans `call`. C'est l'ancêtre du `lea rax, [rel $]`, et un motif classique du code auto-déchiffrant.\n\nnamsdec ne les simule pas : son coprocesseur n'a ni mot d'étiquettes ni pointeurs d'instruction à ranger. Elles se lisent ici, et s'exécutent sur une vraie machine.",
+            en: "Store — or reload — everything the coprocessor knows about itself WITHOUT the numbers: the control word, the status word, the tag word (which slots are occupied), and the pointers to the last instruction and its operand. Twenty-eight bytes in 32-bit mode. `fsave` adds the eight numbers themselves, making one hundred and eight bytes, and **resets the coprocessor** on the way; `frstor` reloads all of it.
+
+The `n` in `fnstenv` means *no wait*: the form without it first waited for pending exceptions to be handled, which mattered on a machine where the coprocessor was a separate chip.
+
+**Why one meets them:** first in `setjmp`, a signal handler or a context switch, which must leave the machine as they found it. Then — and this is the most interesting use to be able to read — in code that wants to know **its own address**: `fnstenv` writes the pointer of the last floating-point instruction executed, so a dummy float instruction followed by `fnstenv` yields an address in the current code, with no `call`. It is the ancestor of `lea rax, [rel $]`, and a classic pattern of self-decrypting code.\n\nnamsdec does not simulate them: its coprocessor has neither a tag word nor instruction pointers to store. They are for reading here, and for running on a real machine.",
+        },
+        flags: "",
+        example: "fnstenv [env]        ; vingt-huit octets\n    fldenv [env]         ; et l'on remet comme c'était",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["fxsave", "fxrstor", "fxsave64", "fxrstor64"],
+        title: Text {
+            fr: "Tout l'état flottant d'un bloc",
+            en: "The whole float state in one block",
+        },
+        body: Text {
+            fr: "Cinq cent douze octets, alignés sur seize, qui portent **tout** : l'environnement du coprocesseur, ses huit nombres, les seize registres XMM et `MXCSR`. Une instruction pour sauver, une pour relire — c'est ce qui a remplacé `fnsave` quand SSE est arrivé, parce qu'il n'y avait plus que la pile du x87 à garder.
+
+On les rencontre là où un programme doit **rendre la machine comme il l'a trouvée** : l'entrée d'un gestionnaire de signal, un changement de tâche, une bibliothèque qui emprunte les registres vectoriels. Un `fxsave` dans un prologue est d'ailleurs un bon indice : la fonction va se servir du flottant et ne veut rien casser.
+
+L'adresse doit être alignée sur seize octets, et c'est la faute la plus fréquente : sans cela, le processeur lève une exception. Les formes `64` sauvent les pointeurs sur soixante-quatre bits plutôt que sur trente-deux ; c'est la seule différence.\n\nnamsdec ne les simule pas : les cinq cents octets qu'elles écrivent décrivent un processeur entier, et le sien est simplifié. Il les montre et refuse de les exécuter, plutôt que d'écrire une zone à moitié juste — qu'un `fxrstor` relirait ensuite comme si elle l'était.",
+            en: "Five hundred and twelve bytes, sixteen-aligned, carrying **everything**: the coprocessor's environment, its eight numbers, the sixteen XMM registers and `MXCSR`. One instruction to save, one to reload — this is what replaced `fnsave` when SSE arrived, because there was no longer only the x87 stack to keep.
+
+One meets them wherever a program must **leave the machine as it found it**: entering a signal handler, a task switch, a library borrowing the vector registers. An `fxsave` in a prologue is in fact a good hint: the function is about to use floating point and does not want to break anything.
+
+The address must be sixteen-byte aligned, and that is the most frequent mistake: without it the processor raises an exception. The `64` forms save the pointers as sixty-four bits rather than thirty-two; that is the only difference.\n\nnamsdec does not simulate them: the five hundred bytes they write describe a whole processor, and its own is simplified. It shows them and refuses to run them, rather than write a half-correct area — which an `fxrstor` would then read back as though it were correct.",
+        },
+        flags: "",
+        example: "fxsave [zone]        ; 512 octets, alignés sur 16\n    fxrstor [zone]",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["fxam"],
         title: Text {
             fr: "Examiner le sommet",
@@ -1115,6 +1211,28 @@ pub const ENTRIES: &[Entry] = &[
         },
         flags: "",
         example: "finit",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["stmxcsr", "ldmxcsr", "vstmxcsr", "vldmxcsr"],
+        title: Text {
+            fr: "Le mot de contrôle de SSE",
+            en: "The SSE control word",
+        },
+        body: Text {
+            fr: "`MXCSR` est au vectoriel ce que le mot de contrôle est au x87 : un seul registre de trente-deux bits qui gouverne **tout** le calcul flottant SSE et AVX. Il ne se lit ni ne s'écrit directement — il faut passer par la mémoire, et c'est à cela que servent ces deux instructions.
+
+Ce qu'il porte : les six indicateurs d'exception accumulés (bits 0-5), leurs six masques (bits 7-12), le **mode d'arrondi** (bits 13-14, au plus proche par défaut), et deux bits qui changent le résultat sans prévenir — *flush to zero* (bit 15), qui rend zéro au lieu d'un nombre dénormalisé, et *denormals are zero* (bit 6), qui lit zéro à la place. Il vaut 0x1f80 au repos : tout masqué, arrondi au plus proche.
+
+**Pourquoi cela compte en lisant un binaire :** un programme compilé avec `-ffast-math` pose souvent ces deux bits, et le même calcul ne donne alors plus le même résultat. Un `ldmxcsr` dans un prologue est le signe qu'on vient de changer les règles du jeu — et qu'il faudra les remettre.\n\nnamsdec ne les simule pas, et c'est une limite à connaître : son calcul vectoriel arrondit toujours au plus proche et ne signale aucune exception. Le mot de contrôle du x87, lui, est respecté — voir `fldcw`. Ici, ces deux instructions se lisent et ne s'exécutent pas.",
+            en: "`MXCSR` is to the vector unit what the control word is to the x87: a single thirty-two-bit register governing **all** SSE and AVX floating-point arithmetic. It can be neither read nor written directly — you go through memory, and that is what these two instructions are for.
+
+What it carries: the six accumulated exception flags (bits 0-5), their six masks (bits 7-12), the **rounding mode** (bits 13-14, nearest by default), and two bits that change results without warning — *flush to zero* (bit 15), which returns zero instead of a denormal, and *denormals are zero* (bit 6), which reads zero instead. It reads 0x1f80 at rest: everything masked, round to nearest.
+
+**Why it matters when reading a binary:** a program compiled with `-ffast-math` often sets those two bits, and the same computation then stops giving the same result. An `ldmxcsr` in a prologue is the sign that the rules of the game have just changed — and that they will have to be put back.\n\nnamsdec does not simulate them, and that is a limit worth knowing: its vector arithmetic always rounds to nearest and reports no exception. The x87 control word, on the other hand, is honoured — see `fldcw`. Here these two instructions are for reading, not for running.",
+        },
+        flags: "",
+        example: "stmxcsr [ancien]     ; garder le réglage\n    ldmxcsr [rapide]     ; 0x9fc0 : flush-to-zero\n    ldmxcsr [ancien]     ; remettre comme on l'a trouvé",
     },
     Entry {
         kind: Kind::Instruction,
@@ -1643,14 +1761,58 @@ pub const ENTRIES: &[Entry] = &[
             "vpcmpuw",
             "vpcmpud",
             "vpcmpuq",
+            "vpcmpltb",
+            "vpcmpleb",
+            "vpcmpneqb",
+            "vpcmpnltb",
+            "vpcmpnleb",
+            "vpcmpltw",
+            "vpcmplew",
+            "vpcmpneqw",
+            "vpcmpnltw",
+            "vpcmpnlew",
+            "vpcmpltd",
+            "vpcmpled",
+            "vpcmpneqd",
+            "vpcmpnltd",
+            "vpcmpnled",
+            "vpcmpltq",
+            "vpcmpleq",
+            "vpcmpneqq",
+            "vpcmpnltq",
+            "vpcmpnleq",
+            "vpcmpequb",
+            "vpcmpltub",
+            "vpcmpleub",
+            "vpcmpnequb",
+            "vpcmpnltub",
+            "vpcmpnleub",
+            "vpcmpequw",
+            "vpcmpltuw",
+            "vpcmpleuw",
+            "vpcmpnequw",
+            "vpcmpnltuw",
+            "vpcmpnleuw",
+            "vpcmpequd",
+            "vpcmpltud",
+            "vpcmpleud",
+            "vpcmpnequd",
+            "vpcmpnltud",
+            "vpcmpnleud",
+            "vpcmpequq",
+            "vpcmpltuq",
+            "vpcmpleuq",
+            "vpcmpnequq",
+            "vpcmpnltuq",
+            "vpcmpnleuq",
         ],
         title: Text {
             fr: "Comparer dans un masque",
             en: "Compare into a mask",
         },
         body: Text {
-            fr: "Ce qui REMPLIT un registre de masque. `vptestmb k1, ymm2, ymm3` pose un bit par octet, là où le ET des deux n'est pas nul ; la forme `nm` fait l'inverse. Elles remplacent à elles seules le couple `pcmpeqb` + `pmovmskb` des jeux précédents.\n\n`vpcmp*` va plus loin : les jeux d'avant n'avaient que « égal » et « plus grand », et l'on composait le reste à la main. Ici le **prédicat** est un immédiat — 0 égal, 1 plus petit, 2 plus petit ou égal, 4 différent, 5 pas plus petit, 6 plus grand —, et le `u` du nom dit que les éléments sont lus sans signe. Un désassembleur écrit souvent l'alias plutôt que l'immédiat : `vpcmpltub` est `vpcmpub …, 1`.",
-            en: "What FILLS a mask register. `vptestmb k1, ymm2, ymm3` sets one bit per byte where the AND of the two is non-zero; the `nm` form does the opposite. On their own they replace the `pcmpeqb` + `pmovmskb` pair of earlier sets.\n\n`vpcmp*` goes further: earlier sets only had \"equal\" and \"greater\", and the rest was composed by hand. Here the **predicate** is an immediate — 0 equal, 1 less, 2 less or equal, 4 not equal, 5 not less, 6 greater — and the `u` in the name says elements are read unsigned. A disassembler often writes the alias rather than the immediate: `vpcmpltub` is `vpcmpub …, 1`.",
+            fr: "Ce qui REMPLIT un registre de masque. `vptestmb k1, ymm2, ymm3` pose un bit par octet, là où le ET des deux n'est pas nul ; la forme `nm` fait l'inverse. Elles remplacent à elles seules le couple `pcmpeqb` + `pmovmskb` des jeux précédents.\n\n`vpcmp*` va plus loin : les jeux d'avant n'avaient que « égal » et « plus grand », et l'on composait le reste à la main. Ici le **prédicat** est un immédiat — 0 égal, 1 plus petit, 2 plus petit ou égal, 4 différent, 5 pas plus petit, 6 plus grand —, et le `u` du nom dit que les éléments sont lus sans signe. Un désassembleur écrit souvent l'alias plutôt que l'immédiat : `vpcmpltub` est `vpcmpub …, 1`, `vpcmpnequb` est `vpcmpub …, 4`. Les huit alias existent pour chacun des huit types, et nasm les accepte — sauf deux, les prédicats 3 et 7, « toujours faux » et « toujours vrai » : un désassembleur les écrit `vpcmpfalseb` et `vpcmptrueb`, aucun compilateur ne les produit, et nasm n'en a pas de nom.",
+            en: "What FILLS a mask register. `vptestmb k1, ymm2, ymm3` sets one bit per byte where the AND of the two is non-zero; the `nm` form does the opposite. On their own they replace the `pcmpeqb` + `pmovmskb` pair of earlier sets.\n\n`vpcmp*` goes further: earlier sets only had \"equal\" and \"greater\", and the rest was composed by hand. Here the **predicate** is an immediate — 0 equal, 1 less, 2 less or equal, 4 not equal, 5 not less, 6 greater — and the `u` in the name says elements are read unsigned. A disassembler often writes the alias rather than the immediate: `vpcmpltub` is `vpcmpub …, 1`, `vpcmpnequb` is `vpcmpub …, 4`. The eight aliases exist for each of the eight types, and nasm accepts them — except two, predicates 3 and 7, \"always false\" and \"always true\": a disassembler writes them `vpcmpfalseb` and `vpcmptrueb`, no compiler produces them, and nasm has no name for them.",
         },
         flags: "",
         example: "vpcmpub k1, ymm0, ymm1, 1   ; les octets plus petits",

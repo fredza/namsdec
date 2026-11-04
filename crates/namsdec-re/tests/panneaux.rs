@@ -641,6 +641,14 @@ const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
     ("patterns.rs", include_str!("../src/patterns.rs")),
     ("provenance.rs", include_str!("../src/provenance.rs")),
     ("report.rs", include_str!("../src/report.rs")),
+    // Ces deux-là ne peignent rien — elles écrivent du texte et
+    // comparent deux analyses —, et c'est précisément pour cela
+    // qu'elles entrent dans la liste : le contrôle du dessous cherche
+    // des boutons plats, et une source qui n'en a aucun doit le
+    // prouver plutôt que d'être absente. Une liste à trous fait PASSER
+    // le contrôle, non échouer : c'est la pire sorte de vert.
+    ("rapport.rs", include_str!("../src/rapport.rs")),
+    ("comparaison.rs", include_str!("../src/comparaison.rs")),
     ("route.rs", include_str!("../src/route.rs")),
     ("signals.rs", include_str!("../src/signals.rs")),
     ("slack.rs", include_str!("../src/slack.rs")),

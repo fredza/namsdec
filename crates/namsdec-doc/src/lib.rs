@@ -288,6 +288,95 @@ mod tests {
         }
     }
 
+    /// Les douze mnémoniques que les binaires de la machine ont réclamés,
+    /// et les familles qu'ils ont fait écrire.
+    ///
+    /// **Pourquoi ce contrôle existe en plus de l'autre.**
+    /// `what_this_machine_runs_can_be_explained`, dans l'interface, lit
+    /// les binaires du système et exige une fiche pour chaque mnémonique
+    /// rencontré. C'est lui qui a TROUVÉ ces douze-là, et c'est sa
+    /// valeur : il cherche ce qu'on n'a pas pensé à chercher. Mais il
+    /// dépend de la machine — un autre poste, d'autres binaires, et il
+    /// ne garde plus rien de ce qu'il a obtenu ici. Celui-ci, lui, est
+    /// le même partout, et il tombe si une de ces fiches disparaît ou
+    /// change de famille.
+    ///
+    /// Chaque nom est vérifié AVEC SA FICHE, et non seulement présent :
+    /// un mnémonique glissé dans la mauvaise famille serait documenté
+    /// par un texte qui parle d'autre chose, ce qui est pire qu'une
+    /// absence — on lit une réponse, et elle est fausse.
+    #[test]
+    fn ce_que_les_binaires_de_la_machine_ont_réclamé_reste_expliqué() {
+        // Les douze trouvés le 4 novembre 2026, puis le reste de leurs
+        // familles : documenter `fnstenv` sans `fldenv` laisserait la
+        // moitié d'un couple sans explication.
+        let attendus: &[(&str, &str)] = &[
+            // x87 : le déplacement conditionnel.
+            ("fcmove", "Choisir sans sauter"),
+            ("fcmovb", "Choisir sans sauter"),
+            ("fcmovnu", "Choisir sans sauter"),
+            // x87 : l'environnement.
+            ("fldenv", "L'environnement du coprocesseur"),
+            ("fnstenv", "L'environnement du coprocesseur"),
+            ("frstor", "L'environnement du coprocesseur"),
+            // Tout l'état flottant d'un bloc.
+            ("fxsave", "Tout l'état flottant"),
+            ("fxrstor", "Tout l'état flottant"),
+            ("fxsave64", "Tout l'état flottant"),
+            // Le mot de contrôle de SSE.
+            ("stmxcsr", "Le mot de contrôle de SSE"),
+            ("ldmxcsr", "Le mot de contrôle de SSE"),
+            // La mémoire transactionnelle.
+            ("xtest", "La mémoire transactionnelle"),
+            ("xbegin", "La mémoire transactionnelle"),
+            ("xabort", "La mémoire transactionnelle"),
+            // La pile fantôme, qui a gagné le changement de pile.
+            ("rstorssp", "La pile fantôme"),
+            ("setssbsy", "La pile fantôme"),
+            ("wrssq", "La pile fantôme"),
+            // Les alias d'AVX-512, qui rejoignent la fiche qui les
+            // explique déjà : un désassembleur n'écrit que ceux-là.
+            ("vpcmpltub", "Comparer dans un masque"),
+            ("vpcmpneqb", "Comparer dans un masque"),
+            ("vpcmpneqd", "Comparer dans un masque"),
+            ("vpcmpnequb", "Comparer dans un masque"),
+            ("vpcmpleuq", "Comparer dans un masque"),
+            ("vpcmpnltw", "Comparer dans un masque"),
+        ];
+        for (mnémonique, début_du_titre) in attendus {
+            let fiche =
+                lookup(mnémonique).unwrap_or_else(|| panic!("« {mnémonique} » n'a pas de fiche"));
+            assert!(
+                fiche.title.fr.starts_with(début_du_titre),
+                "« {mnémonique} » est rangé sous « {} », pas sous « {début_du_titre} »",
+                fiche.title.fr
+            );
+        }
+
+        // ET LES HUIT PRÉDICATS POUR LES HUIT TYPES, sauf les deux que
+        // nasm ne nomme pas — « toujours faux » et « toujours vrai »,
+        // qu'aucun compilateur ne produit. La fiche le dit en toutes
+        // lettres, et c'est ce qu'on vérifie ici : la liste des noms et
+        // le texte qui l'explique ne peuvent pas diverger.
+        let masque = lookup("vpcmpub").expect("la fiche existe");
+        for prédicat in ["eq", "lt", "le", "neq", "nlt", "nle"] {
+            for type_ in ["b", "w", "d", "q", "ub", "uw", "ud", "uq"] {
+                let nom = format!("vpcmp{prédicat}{type_}");
+                assert!(lookup(&nom).is_some(), "« {nom} » n'a pas de fiche");
+            }
+        }
+        for absent in ["vpcmpfalseb", "vpcmptrueuq"] {
+            assert!(
+                lookup(absent).is_none(),
+                "« {absent} » est documenté alors que nasm n'en a pas de nom"
+            );
+            assert!(
+                masque.body.fr.contains("vpcmpfalseb") && masque.body.en.contains("vpcmpfalseb"),
+                "la fiche doit dire ce qu'un désassembleur écrit pour ces deux prédicats"
+            );
+        }
+    }
+
     /// Une fiche sans nom, sans titre ou sans exemple n'aide personne.
     #[test]
     fn every_entry_is_complete() {

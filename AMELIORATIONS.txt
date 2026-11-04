@@ -10126,3 +10126,139 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      sauts, un canari — chacun mériterait sa question. Le format est là,
      le contrôle qui vérifie les réponses aussi : en ajouter se résume
      désormais à écrire un programme et une question.
+
+9.67 [FAIT] LE SEUL ROUGE DU DÉPÔT : DOUZE MNÉMONIQUES SANS FICHE
+     (4 novembre 2026)
+
+     CE QUI ÉTAIT ÉCARTÉ DEPUIS LE 3 NOVEMBRE, et qui restait le seul
+     contrôle rouge du dépôt. `what_this_machine_runs_can_be_explained`
+     lit les soixante binaires du système, les désassemble, et exige une
+     fiche `namsdec-doc` pour chaque mnémonique rencontré. Douze
+     manquaient : `vpcmpltub` (92 fois), `xtest` (38), `vpcmpneqb` (37),
+     `vpcmpneqd` (11), `vpcmpnequb` (9), `stmxcsr` (4), `fldenv` (3),
+     `fnstenv` (3), `fxsave`, `fxrstor`, `rstorssp`, `fcmove`.
+
+     UN ROUGE INSTALLÉ FINIT PAR FAIRE DOUTER DE TOUTE LA SUITE, et
+     c'est la raison de le traiter maintenant que le plan de la séance
+     est fait : un contrôle qu'on apprend à ignorer ne protège plus
+     rien, et celui-ci est précisément celui qui trouve ce qu'on n'a pas
+     pensé à chercher.
+
+     CINQ FICHES NEUVES, et deux élargies. Le découpage suit les
+     FAMILLES, comme tout le reste de la table — documenter `fnstenv`
+     sans `fldenv` laisserait la moitié d'un couple sans explication :
+
+       — « Choisir sans sauter, côté flottant » (`fcmov*`, huit noms) :
+         le `cmov` du coprocesseur. Ce qui surprend et qui vaut d'être
+         écrit : elles lisent les indicateurs du PROCESSEUR, pas le mot
+         d'état du coprocesseur, et il n'y a que quatre conditions —
+         pas de « plus grand », on échange les opérandes.
+       — « L'environnement du coprocesseur » (`fnstenv`, `fldenv`,
+         `fsave`, `frstor`…) : les vingt-huit octets qui disent ce que
+         le coprocesseur sait de lui-même. Et l'usage qui en fait une
+         fiche intéressante plutôt qu'une notice : `fnstenv` écrit le
+         pointeur de la dernière instruction flottante, donc une
+         instruction bidon suivie d'un `fnstenv` donne une adresse du
+         code courant SANS `call` — l'ancêtre du `lea rax, [rel $]`, et
+         un motif classique du code auto-déchiffrant.
+       — « Tout l'état flottant d'un bloc » (`fxsave`, `fxrstor`) : cinq
+         cent douze octets alignés sur seize. Un `fxsave` dans un
+         prologue est un indice de lecture : la fonction va se servir du
+         flottant et ne veut rien casser.
+       — « Le mot de contrôle de SSE » (`stmxcsr`, `ldmxcsr`) : et
+         pourquoi cela compte en lisant un binaire — `-ffast-math` pose
+         *flush to zero* et *denormals are zero*, et le même calcul ne
+         donne plus le même résultat.
+       — « La mémoire transactionnelle » (`xbegin`, `xend`, `xabort`,
+         `xtest`) : un verrou qu'on ne prend pas, et la forme qu'on lit
+         vraiment — un chemin transactionnel et TOUJOURS un chemin de
+         repli. `xtest` est de loin la plus fréquente des quatre, parce
+         que la bibliothèque C s'en sert pour savoir si un
+         `pthread_mutex_unlock` a vraiment quelque chose à relâcher.
+
+     ÉLARGIES : « La pile fantôme » gagne `rstorssp`, `setssbsy` et la
+     famille `wrss`, c'est-à-dire le CHANGEMENT de pile — ce que fait un
+     changeur de contexte, une fibre, ou `setjmp`/`longjmp`. Et
+     « Comparer dans un masque » gagne les quarante-quatre ALIAS
+     d'AVX-512, qu'elle décrivait déjà sans les nommer : la fiche disait
+     « `vpcmpltub` est `vpcmpub …, 1` », mais le mot `vpcmpltub` n'était
+     dans aucune liste de noms — donc introuvable par la recherche, et
+     invisible pour le contrôle.
+
+     DEUX CHOSES VÉRIFIÉES PLUTÔT QUE SUPPOSÉES, et c'est tout l'écart
+     entre une fiche et une affirmation :
+
+       1. **LES ALIAS SONT PASSÉS À NASM, UN PAR UN.** Les huit
+          prédicats pour les huit types font soixante noms ; nasm en
+          accepte quarante-quatre et refuse seize — les prédicats 3 et 7,
+          « toujours faux » et « toujours vrai ». On ne documente donc
+          que ce qui s'écrit, puisque la liste des fiches nourrit aussi
+          l'autocomplétion : offrir un mot que nasm refuse serait un
+          mensonge dans l'éditeur. Et la fiche DIT ce qu'un désassembleur
+          écrit pour ces deux-là, de sorte qu'on trouve l'explication en
+          cherchant le texte ; un contrôle vérifie que la liste des noms
+          et cette phrase ne peuvent pas diverger.
+       2. **CE QUE LA FICHE AFFIRME EST VÉRIFIÉ À L'ASSEMBLEUR ET AU
+          DÉSASSEMBLEUR.** Les exemples des cinq fiches ont été
+          assemblés par nasm, puis relus par `objdump` : `vpcmpub …, 1`
+          et `vpcmpltub` donnent bien les mêmes octets, et objdump écrit
+          l'alias. C'est l'oracle du projet, appliqué à de la
+          documentation.
+
+     ET UN CONTRÔLE DÉTERMINISTE, EN PLUS DE CELUI QUI LIT LA MACHINE.
+     Les deux ne font pas le même travail, et il faut les deux : celui
+     de l'interface CHERCHE ce qu'on n'a pas prévu — c'est lui qui a
+     trouvé ces douze —, mais il dépend des binaires du poste, et sur un
+     autre il ne garde rien de ce qu'il a obtenu ici. Le nouveau
+     (`ce_que_les_binaires_de_la_machine_ont_réclamé_reste_expliqué`,
+     dans `namsdec-doc`) est le même partout : il vérifie chaque nom
+     AVEC SA FAMILLE, parce qu'un mnémonique glissé dans la mauvaise
+     fiche serait documenté par un texte qui parle d'autre chose — on
+     lirait une réponse, et elle serait fausse. Éprouvé en renommant une
+     fiche : il dit lequel est mal rangé, et où.
+
+     LE COMPTE ANNONCÉ A SUIVI : cent quatre-vingt-neuf fiches, dans le
+     README, dans le guide et dans la phrase du champ de recherche de la
+     fenêtre d'aide — trois contrôles les retiennent, dont un qui dit
+     que « un compte faux dans une documentation qui apprend à compter
+     serait un comble ».
+
+     ET LA VRAIE LEÇON DU LOT, QUI N'ÉTAIT PAS CELLE QU'ON CHERCHAIT :
+     **UN ROUGE INSTALLÉ NE FAIT PAS QUE FAIRE DOUTER DE LA SUITE, IL LA
+     CACHE.** `cargo test --workspace` s'arrête au premier paquet qui
+     échoue. Tant que le contrôle des mnémoniques était rouge, les
+     cibles qui venaient après ne tournaient PLUS DU TOUT — et
+     `crates/namsdec-re/tests/panneaux.rs` en faisait partie. En
+     l'éteignant, on a découvert qu'il y était rouge aussi :
+     `SOURCES_DES_PANNEAUX` ignorait `comparaison.rs` (ajouté le matin
+     même, lot 9.65) et `rapport.rs` (depuis P7). Or ce contrôle-là est
+     exactement du genre qu'une liste à trous fait PASSER au lieu
+     d'échouer — il cherche des boutons plats dans les sources qu'on lui
+     nomme, et une source absente n'en a jamais.
+
+     Les deux modules sont dans la liste, avec la raison écrite à côté :
+     ils ne peignent rien, et c'est précisément pour cela qu'ils doivent
+     le PROUVER. Et les comptes rendus de cette séance, qui annonçaient
+     « un seul rouge », décrivaient donc ce qui tournait, non ce qui
+     existait. `--no-fail-fast` dit la vérité ; sans lui, on mesure
+     jusqu'au premier échec.
+
+     ET DEUX CONTRÔLES DÉJÀ EN PLACE ONT TROUVÉ DEUX CHOSES, ce qui est
+     la meilleure part de ce lot :
+
+       — `every_documented_example_assembles_and_runs` ASSEMBLE l'exemple
+         de chaque fiche et l'EXÉCUTE. Les cinq exemples neufs
+         nommaient des données qui n'existaient pas dans le préambule du
+         contrôle (`env`, `zone`, `rapide`) et une étiquette de saut
+         absente de son épilogue : corrigés là, puisque le contrôle
+         entoure chaque extrait de ce qu'il nomme.
+       — ET SURTOUT, IL A EXIGÉ L'AVEU. Cinq de ces instructions ne sont
+         pas exécutées par l'interpréteur de namsdec, et sa règle est
+         qu'une fiche DOIT le dire — sans quoi elle promet une exécution
+         qui n'aura pas lieu. Les cinq le disent maintenant, et ce n'est
+         pas une formalité : c'est l'information la plus utile de
+         chacune. « namsdec ne les simule pas : une transaction suppose
+         plusieurs cœurs qui se marchent dessus, et il n'en a qu'un »
+         apprend quelque chose sur TSX, et pas seulement sur namsdec. Le
+         contrôle vérifie aussi que l'aveu est fait dans les deux
+         langues.

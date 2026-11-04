@@ -412,8 +412,13 @@ fn every_program_we_ship_is_a_complete_program() {
     }
 }
 
-/// Les quatre-vingt-onze exemples des fiches d'instructions s'assemblent,
-/// et namsdec les exécute.
+/// L'exemple de chaque fiche d'instruction s'assemble, et namsdec
+/// l'exécute.
+///
+/// Sans compte écrit ici : il y en a un par fiche, la table en porte
+/// cent quatre-vingt-neuf, et un nombre recopié dans un commentaire ne
+/// suit pas le code qui le dément — c'est la leçon que ce fichier a
+/// déjà payée deux fois.
 ///
 /// Un exemple est un extrait — deux lignes qui montrent la forme d'une
 /// instruction —, on l'entoure donc de ce qu'il nomme : des données, et
@@ -441,9 +446,11 @@ fn every_documented_example_assembles_and_runs() {
         \x20   vecteur times 16 db 0\n    non_aligné times 32 db 0\n\
         \x20   valeurs dq 1.0\n    sortie times 32 db 0\n    buf times 64 db 0\n\
         \x20   texte db \"abc\", 0\n\
-        \x20   ancien dw 0\n    vers_zero dw 0x0f7f\n\nsection .text\n_start:\n";
+        \x20   ancien dw 0\n    vers_zero dw 0x0f7f\n\
+        \x20   env times 28 db 0\n    rapide dd 0x9fc0\n\
+        \x20   align 16\n    zone times 512 db 0\n\nsection .text\n_start:\n";
     let epilogue = "\n    hlt\nplus_grand:\nfin:\nnul:\nfini:\nidentiques:\n\
-        non_comparable:\nétait_déjà_posé:\n    hlt\n";
+        non_comparable:\nétait_déjà_posé:\npas_de_transaction:\n    hlt\n";
 
     // Trois exemples ne peuvent pas s'assembler seuls, et c'est ce
     // qu'ils montrent : deux nomment un fichier qui n'existe que chez
@@ -915,6 +922,13 @@ fn the_readme_tells_the_truth() {
         "namsdec-explorer",
         "namsdec-update",
         "namsdec-gui",
+        // La douzième, arrivée le 4 novembre 2026. Le tableau du README
+        // l'oubliait, et rien ne le disait : ce contrôle vérifiait que
+        // chaque crate ANNONCÉE existe, jamais que chaque crate du
+        // dépôt est annoncée. Les deux sens comptent — une crate
+        // absente du tableau est une crate que personne ne sait
+        // chercher.
+        "namsdec-cli",
     ] {
         assert!(
             readme.contains(crate_name),
@@ -927,6 +941,32 @@ fn the_readme_tells_the_truth() {
             "{crate_name} est annoncée mais n'existe pas"
         );
     }
+
+    // ET LE SENS INVERSE, qui manquait : chaque crate du dépôt est dans
+    // le tableau. Sans lui, la liste ci-dessus serait exacte le jour où
+    // on l'écrit et muette sur la crate suivante — c'est exactement ce
+    // qui est arrivé à `namsdec-cli`, née le matin même et absente du
+    // README toute la journée.
+    let crates = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../"));
+    let mut oubliées = Vec::new();
+    for entrée in std::fs::read_dir(crates).expect("le dossier des crates se lit") {
+        let chemin = entrée.expect("une entrée lisible").path();
+        if !chemin.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let nom = chemin
+            .file_name()
+            .expect("un nom de dossier")
+            .to_string_lossy()
+            .into_owned();
+        if !readme.contains(&format!("`{nom}`")) {
+            oubliées.push(nom);
+        }
+    }
+    assert!(
+        oubliées.is_empty(),
+        "le tableau des crates du README n'annonce pas : {oubliées:?}"
+    );
     // Et les limites annoncées le sont toujours : les appels système
     // simulés sont bien ceux-là, ni plus ni moins.
     for simulé in [

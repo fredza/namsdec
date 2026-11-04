@@ -979,6 +979,60 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 untricies. Le seul rouge du dépôt est éteint (A 9.67)
+
+`what_this_machine_runs_can_be_explained` lit les soixante binaires du
+système et exige une fiche pour chaque mnémonique rencontré. Douze
+manquaient depuis le 3 novembre — et **un rouge installé finit par faire
+douter de toute la suite**.
+
+- [x] **Cinq fiches neuves** — le `cmov` du coprocesseur (`fcmov*`),
+      l'environnement du x87 (`fnstenv`/`fldenv`, et le `fnstenv` qui
+      donne l'adresse du code courant sans `call` — l'ancêtre du
+      `lea rax, [rel $]`), tout l'état flottant d'un bloc (`fxsave`),
+      le mot de contrôle de SSE (`stmxcsr`, et ce que `-ffast-math` y
+      pose), la mémoire transactionnelle (`xtest` et les trois autres).
+- [x] **Deux fiches élargies** — « La pile fantôme » gagne le
+      **changement** de pile (`rstorssp`, `setssbsy`, `wrss`), et
+      « Comparer dans un masque » gagne les quarante-quatre **alias**
+      d'AVX-512 qu'elle décrivait déjà sans les nommer : `vpcmpltub`
+      était expliqué dans le texte et introuvable par la recherche.
+- [x] **Les alias sont passés à nasm, un par un** — soixante noms
+      possibles, quarante-quatre acceptés, seize refusés (les prédicats
+      « toujours faux » et « toujours vrai »). On ne documente que ce
+      qui s'écrit, puisque la liste des fiches nourrit aussi
+      l'autocomplétion ; et la fiche dit ce qu'un désassembleur écrit
+      pour les deux autres, avec un contrôle qui empêche la liste et
+      cette phrase de diverger.
+- [x] **Ce que les fiches affirment est vérifié** — exemples assemblés
+      par nasm puis relus par `objdump` : `vpcmpub …, 1` et `vpcmpltub`
+      donnent les mêmes octets, et objdump écrit l'alias.
+- [x] **Et le rouge en CACHAIT un autre** — `cargo test --workspace`
+      s'arrête au premier paquet qui échoue : tant que le contrôle des
+      mnémoniques était rouge, `namsdec-re/tests/panneaux.rs` ne
+      tournait plus, et il y était rouge aussi.
+      `SOURCES_DES_PANNEAUX` ignorait `comparaison.rs` (ajouté le matin
+      même) et `rapport.rs` (depuis P7) — or c'est le genre de liste
+      dont un trou fait **passer** le contrôle au lieu de l'arrêter.
+      Lancer la suite avec `--no-fail-fast` dit la vérité ; sans lui, on
+      mesure jusqu'au premier échec.
+- [x] **Cinq fiches avouent ce que namsdec ne simule pas** — exigé par
+      `every_documented_example_assembles_and_runs`, qui assemble ET
+      exécute l'exemple de chaque fiche : une fiche qui décrit une
+      instruction que l'interpréteur refuse doit le dire, sans quoi elle
+      promet une exécution qui n'aura pas lieu. Ce n'est pas une
+      formalité — « une transaction suppose plusieurs cœurs qui se
+      marchent dessus, et namsdec n'en a qu'un » apprend quelque chose
+      sur TSX, et pas seulement sur namsdec.
+- [x] **Un contrôle déterministe en plus de celui qui lit la machine** —
+      les deux ne font pas le même travail. L'un **cherche** ce qu'on
+      n'a pas prévu mais dépend du poste ; l'autre est le même partout
+      et vérifie chaque nom **avec sa famille**, parce qu'un mnémonique
+      rangé sous la mauvaise fiche serait expliqué par un texte qui
+      parle d'autre chose.
+
+---
+
 ## 0 tricies. Six exercices qui demandent de lire (A 9.66)
 
 Le travail que les deux lots précédents désignaient comme leur suite.

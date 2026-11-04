@@ -277,7 +277,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 184 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 189 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -616,6 +616,7 @@ Un workspace Rust, une crate par responsabilité :
 | `namsdec-explorer` | l'explorateur de fichiers |
 | `namsdec-update` | la recherche de version publiée, et la comparaison SemVer |
 | `namsdec-gui` | l'interface (egui / eframe) |
+| `namsdec-cli` | la commande d'analyse : rapport, JSON, comparaison de deux versions |
 
 Les crates métier ne connaissent pas la langue de l'interface : leurs
 erreurs portent un message anglais et gardent leurs valeurs dans des
