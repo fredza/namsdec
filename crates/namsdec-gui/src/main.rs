@@ -1228,6 +1228,20 @@ struct NamsdecApp {
     /// qu'un booléen par fenêtre : le mécanisme sert à toutes, et
     /// n'ajoute rien à la structure quand on en ouvre une de plus.
     maximized_windows: std::collections::BTreeSet<&'static str>,
+    /// Où chaque fenêtre agrandissable se tenait AVANT de grandir.
+    ///
+    /// Relevé à chaque image tant qu'elle est normale : c'est la seule
+    /// mesure qui dise où l'utilisateur l'avait mise et de quelle
+    /// taille il l'avait faite. Sans elle, « Restaurer » ne savait pas
+    /// à quoi revenir — et ne revenait à rien.
+    /// Le rectangle ET le pivot : egui recalcule le coin haut gauche à
+    /// partir du pivot, et celui qu'il garde après un agrandissement
+    /// est le nôtre — « coin haut gauche » —, pas celui de la fenêtre.
+    /// Relevés ensemble, ils disent où elle était vraiment.
+    rects_avant_agrandissement:
+        std::collections::BTreeMap<&'static str, (egui::Rect, egui::Align2)>,
+    /// Les fenêtres à qui réimposer ce rectangle, le temps d'une image.
+    à_restaurer: std::collections::BTreeSet<&'static str>,
     /// N'afficher que la fonction où l'on se trouve.
     ///
     /// Vrai par défaut : sur un binaire ordinaire le graphe entier
@@ -2137,6 +2151,8 @@ impl Default for NamsdecApp {
             show_timeline: false,
             show_flow: false,
             maximized_windows: std::collections::BTreeSet::new(),
+            rects_avant_agrandissement: std::collections::BTreeMap::new(),
+            à_restaurer: std::collections::BTreeSet::new(),
             flow_current_only: true,
             flow_pseudo: false,
             flow_zoom: 1.0,
@@ -3355,6 +3371,10 @@ impl NamsdecApp {
             ctx.request_repaint();
         }
         self.dernière_échelle = Some(échelle);
+        // OÙ CHAQUE FENÊTRE AGRANDISSABLE SE TIENT QUAND ELLE EST
+        // NORMALE, relevé avant que les fenêtres ne soient construites :
+        // c'est ce que « Restaurer » leur rendra. Voir `maximize.rs`.
+        self.retenir_les_fenetres_normales(&ctx);
         // Avant tout le reste : le fichier qu'on vient de choisir dans la
         // boîte native doit être chargé avant que la frame ne s'affiche.
         self.poll_file_dialog(&ctx);
@@ -3649,6 +3669,10 @@ impl NamsdecApp {
             // réponse, elle passe donc devant toutes les autres.
             self.input_dialog_ui(&ctx);
         });
+
+        // Les fenêtres qu'on restaurait viennent d'être construites avec
+        // le rectangle qu'elles avaient : le drapeau a fait son office.
+        self.fin_des_restaurations();
 
         // En dernier : tout réglage changé pendant cette frame, d'où qu'il
         // vienne (menu, préférences, palette, raccourci), est sur le

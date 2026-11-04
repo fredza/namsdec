@@ -68,7 +68,13 @@ impl NamsdecApp {
         fenêtre = if agrandie {
             Self::fill_the_screen(fenêtre, ctx)
         } else {
-            fenêtre
+            // EN DERNIER, la restauration : `fixed_*` et `default_*` se
+            // disputent la même place, et le dernier écrit gagne —
+            // c'est déjà ce que dit `maximizable`. Posée avant, elle se
+            // faisait écraser par le `pivot` et le `default_size` qui
+            // suivent, et la fenêtre revenait à une taille qui n'était
+            // ni l'ancienne ni la pleine page.
+            let fenêtre = fenêtre
                 // Un graphe de blocs n'est pas une boîte de dialogue : il
                 // se lit à la taille de l'écran. Sept cent soixante
                 // pixels de large montraient trois boîtes sur mille.
@@ -86,7 +92,8 @@ impl NamsdecApp {
                 // La taille lui est passée : chargée, elle remplit
                 // l'écran, et une fenêtre qui le remplit garde le
                 // centre — un cran la ferait sortir.
-                .default_pos(default_window_pos_sized(ctx, "flow", taille_voulue))
+                .default_pos(default_window_pos_sized(ctx, "flow", taille_voulue));
+            self.restaurer_si_demandé(fenêtre, Self::FLOW_WINDOW)
         };
         let rendue = fenêtre.title_bar(false).show(ctx, |ui| {
             if chrome::window_head(ui, self.theme, s, s.flow_title) {

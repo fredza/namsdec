@@ -5030,52 +5030,104 @@ fn aucune_phrase_ne_perd_de_hauteur_au_decoupage() {
     );
 }
 
-/// Mesure jetable : ce que la console demande, ce qu'elle obtient.
+/// **UNE FENÊTRE AGRANDIE PUIS RESTAURÉE RETROUVE SA TAILLE.**
+///
+/// Signalé à l'écran le 4 novembre 2026, capture à l'appui : on agrandit
+/// la fenêtre des exercices, on clique « Restaurer », et il ne se passe
+/// rien — la fenêtre reste pleine page. « C'est identique sur tous les
+/// écrans. »
+///
+/// La cause tient à egui : `fixed_pos` et `fixed_size` ÉCRIVENT dans la
+/// mémoire de la fenêtre. Au retour, celle-ci est construite avec ses
+/// `default_*`, qui ne valent que la PREMIÈRE fois — la position et la
+/// taille retenues sont donc restées celles de la pleine page. Le
+/// bouton fonctionnait, l'état basculait bien ; c'est la géométrie qui
+/// ne revenait pas.
 #[test]
-#[ignore = "mesure"]
-fn mesure_console_premier_lancement() {
-    let ctx = egui::Context::default();
-    let mut app = NamsdecApp::default();
-    app.dispatcher.arm(&[egui::Key::Space]);
-    app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
-    app.apply_theme(&ctx);
-    let input = écran_du_banc();
-    for image in 0..3 {
-        let mut output = ctx.run_ui(input.clone(), |ui| {
-            if image == 2 {
-                let voulue = app.console_wanted_height(ui);
-                let ligne_mono = ui.text_style_height(&egui::TextStyle::Monospace);
-                let ligne_corps = ui.text_style_height(&egui::TextStyle::Body);
-                let bouton = ui.text_style_height(&egui::TextStyle::Button);
-                eprintln!(
-                    "voulue={voulue:.1}  mono={ligne_mono:.1}  corps={ligne_corps:.1}  bouton={bouton:.1}  CONSOLE_MIN={CONSOLE_MIN_HEIGHT}"
-                );
+fn une_fenetre_restauree_retrouve_sa_taille() {
+    // LES SEPT FENÊTRES QUI S'AGRANDISSENT, et elles seules : les
+    // autres n'ont pas de bouton. Deux identifiants par fenêtre, et
+    // c'est une chausse-trappe de ce code — la clé d'agrandissement
+    // (`EXERCISES_WINDOW` = « exercises ») n'est pas l'identifiant egui
+    // de la fenêtre (« exercises_window_v2 »). Les confondre fait
+    // basculer un drapeau que personne ne lit.
+    let agrandissables: &[(&str, &'static str, &str)] = &[
+        ("calculatrice", "calculator", "calculator_window"),
+        ("exercices", "exercises", "exercises_window_v2"),
+        ("désassemblage", "disassembly", "disassembly_window"),
+        ("chronologie", "timeline", "timeline_window"),
+        ("analyse", "analysis", "analysis_window"),
+        ("déroulement", "flow", "flow_window"),
+        ("décompilateur", "decompiler", "decompiler_window"),
+    ];
+    let mut fautifs = Vec::new();
+    for (nom, clé, id) in agrandissables.iter().copied() {
+        let Some((_, _, ouvre)) = fenêtres_ouvrables().into_iter().find(|(_, i, _)| *i == id)
+        else {
+            fautifs.push(format!("{nom} : aucune scène n'ouvre « {id} »"));
+            continue;
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        ouvre(&mut app);
+        app.apply_theme(&ctx);
+        let input = écran_du_banc();
+
+        // Ce qu'elle mesure normalement, une fois posée.
+        let mesure = |ctx: &egui::Context, app: &mut NamsdecApp| -> Option<egui::Rect> {
+            for _ in 0..6 {
+                let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+                output.textures_delta.clear();
             }
-            app.draw(ui);
-        });
-        if image == 2 {
-            for clipped in &output.shapes {
-                let egui::epaint::Shape::Text(t) = &clipped.shape else {
-                    continue;
-                };
-                if !t.galley.text().contains("Lig 1") {
-                    continue;
-                }
-                for ligne in t.galley.rows.iter() {
-                    let encre = ligne
-                        .rect_without_leading_space()
-                        .translate(t.pos.to_vec2());
-                    eprintln!(
-                        "encre y {:.1}..{:.1} (h {:.1})  clip y {:.1}..{:.1}",
-                        encre.top(),
-                        encre.bottom(),
-                        encre.height(),
-                        clipped.clip_rect.top(),
-                        clipped.clip_rect.bottom()
-                    );
-                }
-            }
+            egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect())
+        };
+        let Some(avant) = mesure(&ctx, &mut app) else {
+            continue;
+        };
+
+        // Agrandie : elle doit grandir, sans quoi le reste ne prouve
+        // rien.
+        app.toggle_maximized(clé);
+        let Some(agrandie) = mesure(&ctx, &mut app) else {
+            continue;
+        };
+        if agrandie.area() <= avant.area() {
+            fautifs.push(format!("{nom} : agrandir ne l'agrandit pas"));
+            continue;
         }
-        output.textures_delta.clear();
+
+        // Restaurée : elle doit retrouver ce qu'elle avait.
+        app.toggle_maximized(clé);
+        let Some(après) = mesure(&ctx, &mut app) else {
+            continue;
+        };
+        let écart = (après.size() - avant.size()).abs();
+        if écart.x > 2.0 || écart.y > 2.0 {
+            fautifs.push(format!(
+                "{nom} : restaurée à {:.0}×{:.0}, elle faisait {:.0}×{:.0} \
+                 (agrandie : {:.0}×{:.0})",
+                après.width(),
+                après.height(),
+                avant.width(),
+                avant.height(),
+                agrandie.width(),
+                agrandie.height()
+            ));
+        }
+        // ET LÀ OÙ ELLE ÉTAIT, car agrandir la pose au coin haut
+        // gauche : une fenêtre qui revient à sa taille mais reste
+        // collée au coin n'est pas revenue.
+        let bougé = (après.min - avant.min).abs();
+        if bougé.x > 2.0 || bougé.y > 2.0 {
+            fautifs.push(format!(
+                "{nom} : restaurée en ({:.0}, {:.0}), elle était en ({:.0}, {:.0})",
+                après.min.x, après.min.y, avant.min.x, avant.min.y
+            ));
+        }
     }
+    assert!(
+        fautifs.is_empty(),
+        "des fenêtres ne reviennent pas de leur agrandissement :\n  {}",
+        fautifs.join("\n  ")
+    );
 }

@@ -979,6 +979,37 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 tertricies. « Restaurer » ne restaurait rien (A 9.69)
+
+Signalé à l'écran, capture à l'appui : on agrandit une fenêtre, on
+clique « Restaurer », elle reste pleine page. **Les sept fenêtres
+agrandissables** étaient dans ce cas.
+
+- [x] **La cause** — `fixed_pos` et `fixed_size` écrivent dans la
+      mémoire d'egui ; au retour, les `default_*` qui les remplacent ne
+      valent que la première fois. Personne ne gardait ce qu'il fallait
+      rendre. On retient désormais, à chaque image, où chaque fenêtre se
+      tient quand elle est normale — et « Restaurer » le lui réimpose le
+      temps d'une image.
+- [x] **Trois pièges, tous trouvés par la mesure** — deux identifiants
+      pour une même fenêtre (la clé d'agrandissement n'est pas
+      l'identifiant egui, et la première écriture du contrôle les a
+      confondus) ; le bornage d'egui qui emploie la taille de l'image
+      d'avant, donc celle de la pleine page, et colle la fenêtre au
+      coin ; le pivot, qui est celui de la fenêtre et non le nôtre —
+      relevé en même temps que le rectangle, sans quoi la fenêtre saute
+      d'un demi-format à l'image suivante.
+- [x] **Et la restauration se pose en dernier**, comme
+      `maximizable` le dit déjà de l'agrandissement : posée avant, le
+      `pivot` et le `default_size` du déroulement et du décompilateur
+      l'écrasaient.
+- [x] **Le contrôle** — `une_fenetre_restauree_retrouve_sa_taille`
+      vérifie taille **et** position sur les sept fenêtres, et exige
+      d'abord que l'agrandissement agrandisse. Éprouvé en retirant la
+      restauration : quatorze écarts.
+
+---
+
 ## 0 duotricies. L'écran que l'on voit en premier (A 9.68)
 
 Le mode débutant devient celui par défaut : l'écran du premier

@@ -1135,7 +1135,10 @@ impl NamsdecApp {
         fenêtre = if agrandie {
             Self::fill_the_screen(fenêtre, ctx)
         } else {
-            fenêtre
+            // EN DERNIER, la restauration : voir `flow.rs` et
+            // `maximizable`. Le `pivot` et le `max_width` qui suivent
+            // écrasaient ce qu'elle impose.
+            let fenêtre = fenêtre
                 .resizable(true)
                 .default_size(window_size(
                     !self.decompilers.is_empty(),
@@ -1156,7 +1159,8 @@ impl NamsdecApp {
                 // chevauche.
                 .max_width(900.0)
                 .pivot(egui::Align2::CENTER_CENTER)
-                .default_pos(default_window_pos(ctx, "decompiler"))
+                .default_pos(default_window_pos(ctx, "decompiler"));
+            self.restaurer_si_demandé(fenêtre, Self::DECOMPILER_WINDOW)
         };
         let rendue = fenêtre.title_bar(false).show(ctx, |ui| {
             if chrome::window_head(ui, self.theme, s, s.decompiler_title) {

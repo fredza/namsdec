@@ -10,6 +10,24 @@
 
 use super::*;
 
+/// Les fenêtres qui savent s'agrandir : leur **clé d'agrandissement**,
+/// puis l'**identifiant egui** de la fenêtre.
+///
+/// **Deux identifiants pour une fenêtre, et c'est une chausse-trappe de
+/// ce code** : la clé (`EXERCISES_WINDOW` vaut « exercises ») n'est pas
+/// l'identifiant de la fenêtre (« exercises_window_v2 »). Les confondre
+/// fait basculer un drapeau que personne ne lit — le bouton paraît
+/// mort. Les deux sont donc écrits côte à côte, une fois, ici.
+pub(crate) const FENÊTRES_AGRANDISSABLES: &[(&str, &str)] = &[
+    ("calculator", "calculator_window"),
+    ("exercises", "exercises_window_v2"),
+    ("disassembly", "disassembly_window"),
+    ("timeline", "timeline_window"),
+    ("analysis", "analysis_window"),
+    ("flow", "flow_window"),
+    ("decompiler", "decompiler_window"),
+];
+
 impl NamsdecApp {
     /// La fenêtre du déroulement : le programme, tel qu'il se parcourt.
     ///
@@ -84,7 +102,7 @@ impl NamsdecApp {
         ctx: &egui::Context,
     ) -> egui::Window<'a> {
         if !self.window_maximized(id) {
-            return fenêtre;
+            return self.restaurer_si_demandé(fenêtre, id);
         }
         let place = self.work_area_rect(ctx);
         let marge = ctx.style_of(ctx.theme()).spacing.window_margin;
@@ -123,7 +141,7 @@ impl NamsdecApp {
         if self.window_maximized(id) {
             Self::fill_the_screen(fenêtre, ctx)
         } else {
-            fenêtre
+            self.restaurer_si_demandé(fenêtre, id)
         }
     }
 
@@ -192,9 +210,118 @@ impl NamsdecApp {
     }
 
     /// Applique ce qu'un clic sur le bouton d'agrandissement demande.
+    ///
+    /// **Restaurer demande plus que d'oublier l'agrandissement**, et
+    /// c'est ce qui manquait : `fixed_pos` et `fixed_size` ÉCRIVENT
+    /// dans la mémoire de la fenêtre, et les `default_*` qui les
+    /// remplacent au retour ne valent que la première fois. La fenêtre
+    /// restait donc pleine page, et le bouton paraissait mort —
+    /// signalé à l'écran le 4 novembre 2026, capture à l'appui.
+    ///
+    /// On note donc la fenêtre comme « à restaurer », et la prochaine
+    /// image lui réimpose le rectangle qu'elle avait avant de grandir.
     pub(crate) fn toggle_maximized(&mut self, id: &'static str) {
-        if !self.maximized_windows.remove(id) {
+        if self.maximized_windows.remove(id) {
+            self.à_restaurer.insert(id);
+        } else {
             self.maximized_windows.insert(id);
         }
+    }
+
+    /// Retient où chaque fenêtre agrandissable se tient quand elle n'est
+    /// PAS agrandie.
+    ///
+    /// Relevé à chaque image, avant que les fenêtres ne soient
+    /// construites : c'est la seule mesure qui dise où l'utilisateur
+    /// l'avait mise et de quelle taille il l'avait faite. Une fenêtre
+    /// agrandie, ou qu'on est en train de restaurer, n'est pas relevée
+    /// — on écraserait justement ce qu'on cherche à lui rendre.
+    pub(crate) fn retenir_les_fenetres_normales(&mut self, ctx: &egui::Context) {
+        for (clé, id) in FENÊTRES_AGRANDISSABLES {
+            if self.maximized_windows.contains(clé) || self.à_restaurer.contains(clé) {
+                continue;
+            }
+            if let Some(état) = egui::AreaState::load(ctx, egui::Id::new(*id)) {
+                let rect = état.rect();
+                if rect.is_positive() {
+                    self.rects_avant_agrandissement
+                        .insert(clé, (rect, état.pivot));
+                }
+            }
+        }
+    }
+
+    /// Réimpose à une fenêtre, le temps d'UNE image, le rectangle
+    /// qu'elle avait avant de grandir.
+    ///
+    /// Une seule image suffit : egui retient ce qu'on vient de lui
+    /// imposer, et la fenêtre repart de là — redimensionnable comme
+    /// avant. L'imposer plus longtemps la figerait.
+    pub(crate) fn restaurer_si_demandé<'a>(
+        &self,
+        fenêtre: egui::Window<'a>,
+        id: &'static str,
+    ) -> egui::Window<'a> {
+        if !self.à_restaurer.contains(id) {
+            return fenêtre;
+        }
+        let Some((rect, pivot)) = self.rects_avant_agrandissement.get(id).copied() else {
+            return fenêtre;
+        };
+        // LA TAILLE RELEVÉE, SANS RIEN RETRANCHER — et c'est l'inverse
+        // de `fill_the_screen`, qui enlève les marges du cadre.
+        //
+        // La différence tient à ce qu'on mesure : là-bas, on vise une
+        // ZONE (l'écran) et l'on calcule le contenu qui la remplira
+        // exactement ; ici, on rend à la fenêtre une taille qu'on a
+        // relevée SUR ELLE-MÊME. La retrancher d'un cadre la rétrécit à
+        // chaque aller-retour — vingt-quatre pixels par voyage, mesuré.
+        let taille = rect.size();
+        // LA POSITION EXPRIMÉE DANS LE PIVOT DE LA FENÊTRE, et non dans
+        // le nôtre.
+        //
+        // egui garde une position de PIVOT et recalcule le coin haut
+        // gauche à partir de lui : `coin = pivot_pos − facteur ×
+        // taille`. Le pivot employé est celui que la FENÊTRE déclare —
+        // presque toutes disent « centre » —, et il est réécrit à
+        // chaque image. Imposer ici un pivot « coin haut gauche »
+        // tenait une image, puis la fenêtre sautait d'un demi-format
+        // quand elle reprenait le sien : restaurée en (120, 20) au lieu
+        // de (580, 380), mesuré.
+        //
+        // On lit donc son pivot, et on lui rend la position qui, DANS
+        // CE PIVOT, remet le coin où il était.
+        let ancre = rect.min
+            + egui::vec2(
+                pivot.x().to_factor() * taille.x,
+                pivot.y().to_factor() * taille.y,
+            );
+        fenêtre
+            .resizable(false)
+            // SANS BORNAGE, LE TEMPS DE CETTE IMAGE — et c'est le point
+            // qui a demandé la mesure.
+            //
+            // egui ramène une fenêtre dans l'écran en se servant de la
+            // taille qu'il CONNAÎT à cet instant : celle de l'image
+            // précédente, c'est-à-dire la pleine page. Une fenêtre de
+            // 920 × 720 remise en (580, 380) était donc bornée comme si
+            // elle en faisait 1576 × 1076 — elle ne tenait plus, et
+            // egui la collait au coin : (24, 24). La taille revenait,
+            // la position non, et c'est ce qu'on lisait à l'écran.
+            //
+            // La taille est posée dans la même image, donc ce bornage
+            // n'a plus lieu dès l'image suivante : on le coupe ici, et
+            // nulle part ailleurs.
+            .constrain(false)
+            .fixed_pos(ancre)
+            .fixed_size(taille)
+    }
+
+    /// Les restaurations ont eu lieu : on les oublie.
+    ///
+    /// À la FIN de l'image, et non au début : la fenêtre est construite
+    /// entre les deux, et c'est elle qui avait besoin du drapeau.
+    pub(crate) fn fin_des_restaurations(&mut self) {
+        self.à_restaurer.clear();
     }
 }

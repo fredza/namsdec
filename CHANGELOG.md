@@ -6,6 +6,13 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**« Restaurer » restaure vraiment**
+- Une fenêtre agrandie puis restaurée retrouve **sa taille et sa place**.
+  Elle restait pleine page : le bouton basculait bien, mais personne ne
+  gardait la géométrie d'avant — et ce que namsdec impose à une fenêtre
+  agrandie reste dans la mémoire d'egui. Les sept fenêtres
+  agrandissables étaient dans ce cas.
+
 **L'écran du premier lancement, allégé**
 - **La console est fermée au départ** sur une installation neuve : avant
   d'avoir assemblé, elle occupait soixante-douze pixels pour annoncer
