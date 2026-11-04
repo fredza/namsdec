@@ -9782,3 +9782,116 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      se lit mal. Une sous-commande qui compare deux analyses et ne dit
      que ce qui a changé — rubrique par rubrique — est ce que cette
      commande rend possible, et ce qu'elle ne fait pas encore.
+
+9.64 [FAIT] PRÉVOIR AVANT D'AVANCER : LE DÉFAUT ÉTAIT UN EXCÈS
+     (4 novembre 2026)
+
+     CE QUE P4 RECOMMANDAIT, et la façon dont il fallait le prendre.
+     « Lire → prévoir → avancer → constater » : tous les ingrédients
+     existaient déjà — le bandeau « Prochaine instruction », « Dernier
+     pas », `explain`, les sept indicateurs. Le défaut n'était donc pas
+     un manque, c'était un EXCÈS : devant une instruction pas encore
+     exécutée, namsdec dit tout — ce qu'elle fait en clair, ses
+     opérandes résolus, et devant un saut conditionnel s'il sera pris.
+     On appuie sur « Pas à pas » pour vérifier une réponse qu'on vient
+     de lire, et l'on n'a JAMAIS l'occasion de se tromper — alors que
+     se tromper est la seule façon de savoir qu'on n'avait pas compris.
+
+     LE TRAVAIL CONSISTAIT DONC À RETENIR, PAS À AJOUTER. Rien n'est
+     calculé de neuf : l'adresse et l'instruction restent à l'écran —
+     c'est l'énoncé —, la réponse attend le pas, et « Dernier pas » la
+     révèle à côté de ce qui a vraiment changé. Les deux l'une sous
+     l'autre sont la seule façon de savoir si l'on avait prévu juste :
+
+         Prochaine instruction
+           0x400005  mov ebx, 2
+           Qu'est-ce que ça va changer ?   [Montrer]
+
+         Dernier pas  0x400000  mov eax, 1
+           Ce que ça disait : EAX = 1
+           RAX 0x0 -> 0x1
+
+     TROIS DÉCISIONS, ET CHACUNE SE DÉFEND.
+
+       1. UNE ADRESSE, PAS UN DRAPEAU. « Montrer » retient l'ADRESSE
+          dont la réponse a été demandée. Un booléen aurait marché à
+          l'écran et aurait éteint la prévision pour tout le reste de
+          la séance, au premier clic — le genre de défaut qui ne se
+          voit pas, puisqu'il ressemble à ce qu'on a demandé. Avec
+          l'adresse, la question se repose au pas suivant : c'est ce
+          qui fait de la prévision une habitude plutôt qu'une case
+          cochée une fois.
+       2. AU NIVEAU DÉBUTANT SEULEMENT. Un exercice imposé à qui se
+          sert de l'outil tous les jours serait une taxe. Le réglage
+          vit dans `settings.json` et se grise sous le niveau avancé —
+          une case qui n'agit pas dans le contexte courant doit le
+          DIRE, et c'est la règle de la checklist d'avant-commit.
+       3. LA RÉPONSE SE DEMANDE SANS AVEU. « Montrer », un clic, pas de
+          confirmation, et pas de compte de ce qu'on a demandé. Un
+          atelier qui tiendrait les scores apprendrait à ne plus
+          cliquer, pas à prévoir.
+
+     ET CE QUE CELA NE CACHE PAS, qu'il faut dire : la vue
+     « Désassemblage » montre le pseudo-code quand on le lui demande,
+     et le listing entier est là. La prévision ne SOUSTRAIT pas
+     l'information à qui va la chercher — elle cesse de la TENDRE dans
+     le panneau qu'on regarde entre deux pas. C'est la différence
+     entre un atelier et un examen.
+
+     TROIS CHOSES TROUVÉES PAR LES CONTRÔLES EXISTANTS, et c'est pour
+     cela qu'ils sont là :
+
+       — LE BANC A REFUSÉ LE BOUTON. « Montrer » était écrit avec
+         `ui.small_button`, qui pose un bouton PLAT — invisible au
+         repos dans ce thème. Un bouton qu'on ne voit pas, dans une
+         rangée où l'on attend une réponse, n'existe pas.
+         `outside_the_menus_a_button_shows_itself_without_being_hovered`
+         connaît les quatre écritures de bouton de l'application et l'a
+         nommé par son numéro de ligne. `small_framed_button`.
+       — LA LISTE DES SOURCES A RÉCLAMÉ LE MODULE NEUF.
+         `prevision.rs` n'était pas dans `SOURCES_DE_L_INTERFACE` :
+         tous les contrôles qui LISENT le code — les boutons, les
+         curseurs, les écritures de texte — l'auraient ignoré en
+         silence.
+       — ET LE CONTRÔLE DES RÉGLAGES A RÉCLAMÉ LE CHAMP.
+         `every_setting_that_is_written_is_read_back` refuse de
+         compiler tant qu'un réglage neuf n'est pas dans son
+         instantané, avec une valeur qui ne soit pas celle par défaut.
+         C'est la meilleure façon qu'un réglage ne se perde pas au
+         lancement suivant : le contrôle ne se contente pas de passer,
+         il EMPÊCHE d'oublier.
+
+     UN FAUX POSITIF ÉVITÉ, ET IL VALAIT LE DÉTOUR : l'adresse révélée
+     appartient au programme qu'on regardait. Deux programmes
+     différents ont des instructions différentes à la même adresse —
+     et le point d'entrée, lui, est presque toujours le même. Sans
+     remise à zéro au chargement, à la réinitialisation et au
+     changement d'onglet, la prévision donnait la réponse d'une
+     instruction qu'on n'avait jamais vue : sa toute première
+     impression aurait été qu'elle ne marche pas. Contrôle :
+     `réinitialiser_repose_la_question`, éprouvé en retirant la remise
+     à zéro.
+
+     DEUX LIMITES DU BANC RENCONTRÉES EN CHEMIN, et notées pour la
+     prochaine fois :
+       — `Harness::run` s'arrête au bout de quatre images en disant que
+         l'interface ne se stabilise pas. Ce n'en était pas une : le
+         battement d'orange d'un registre qui vient de changer redemande
+         une image tant qu'il brille. Le contrôle l'éteint, parce que
+         cette animation n'a rien à voir avec ce qu'il mesure.
+       — `get_all_by_label_contains` PANIQUE quand il ne trouve rien, et
+         « ne rien trouver » est précisément ce qu'un contrôle de
+         prévision doit pouvoir constater. `query_all_by_label_contains`.
+
+     ET UN DÉTAIL D'ASSEMBLEUR QUI A FAIT TOMBER LE CONTRÔLE D'ABORD :
+     `mov rbx, 2` s'assemble en `mov ebx, 2` — nasm sait qu'écrire dans
+     EBX met à zéro le haut de RBX, et c'est deux octets de moins. La
+     réponse attendue se tire donc du moteur, et non d'une chaîne
+     écrite de mémoire.
+
+     RESTE À FAIRE, et c'est le lot d'après : **rien ne fait encore
+     LIRE**. Les cent huit exercices font tous ÉCRIRE du code. Un
+     exercice de lecture — « voici trois instructions, que vaut RAX
+     après ? » — est ce que cette séance rend possible, puisque le
+     chemin prévoir → avancer → constater existe maintenant dans
+     l'interface.

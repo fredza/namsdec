@@ -759,6 +759,36 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>Boucle</font> n'est pas "
          "<font face='Courier'>boucle</font> —, parce qu'elle compte pour nasm."),
 
+        ("h2", "Prévoir avant d'avancer"),
+        ("p",
+         "Le bandeau décrit ci-dessous est une <b>réponse donnée avant la "
+         "question</b>&nbsp;: il dit ce que l'instruction va faire, ses opérandes "
+         "résolus, et si un saut sera pris. On appuie alors sur « Pas à pas » pour "
+         "vérifier ce qu'on vient de lire — et l'on n'a jamais l'occasion de se "
+         "tromper, alors que se tromper est la seule façon de savoir qu'on n'avait pas "
+         "compris."),
+        ("p",
+         "En <b>mode débutant</b>, l'adresse et l'instruction restent à l'écran — c'est "
+         "l'énoncé —, la réponse attend le pas, et <b>« Dernier pas » la révèle à côté "
+         "de ce qui a vraiment changé</b>. Les deux l'une sous l'autre sont la seule "
+         "façon de savoir si l'on avait prévu juste."),
+        ("code",
+         "Prochaine instruction\n"
+         "  0x400005  mov ebx, 2\n"
+         "  Qu'est-ce que ça va changer ?   [Montrer]\n"
+         "\n"
+         "Dernier pas  0x400000  mov eax, 1\n"
+         "  Ce que ça disait : EAX = 1\n"
+         "  RAX 0x0 -> 0x1"),
+        ("note",
+         "« <b>Montrer</b> » donne la réponse sans attendre le pas, d'un clic — demander "
+         "une aide ne doit pas coûter un aveu —, et elle reste montrée pour cette "
+         "instruction-là&nbsp;: au pas suivant, la question se repose. Le réglage est "
+         "dans <b>Préférences › Modules</b>, sous le mode débutant, et il <b>ne vaut "
+         "qu'avec lui</b>&nbsp;: un exercice imposé à qui se sert de l'outil tous les "
+         "jours serait une taxe. Rien n'est calculé de neuf — ce que namsdec disait "
+         "déjà change seulement de moment."),
+
         ("h2", "Le panneau de droite"),
         ("p",
          "Il se lit de haut en bas, et se partage en <b>deux zones</b> : le bandeau, "

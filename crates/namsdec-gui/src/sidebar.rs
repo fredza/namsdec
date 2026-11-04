@@ -784,9 +784,10 @@ impl NamsdecApp {
     fn last_step_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
-        let (Some((addr, text)), Some(emulator)) = (&self.last_step, &self.emulator) else {
+        let (Some(pas), Some(emulator)) = (&self.last_step, &self.emulator) else {
             return;
         };
+        let (addr, text) = (pas.addr, pas.texte.as_str());
         let Some(before) = &self.regs_before else {
             return;
         };
@@ -822,6 +823,27 @@ impl NamsdecApp {
             );
             ui.label(egui::RichText::new(text).monospace());
         });
+        // CE QUE ÇA DISAIT, et seulement si on avait eu à le prévoir.
+        //
+        // C'est la troisième étape du chemin — lire, prévoir, avancer,
+        // CONSTATER : l'annonce que le bandeau avait retenue se relit
+        // ici, juste au-dessus de ce qui a vraiment changé. Les deux
+        // côte à côte sont la seule façon de savoir si l'on avait
+        // compris.
+        //
+        // Hors de ce mode, rien n'est ajouté : le panneau garde
+        // exactement ce qu'il montrait, parce qu'une ligne de plus à
+        // chaque pas devant quelqu'un qui n'a rien demandé est du
+        // bruit.
+        if self.prevoir
+            && self.niveau() == namsdec_re::Niveau::Débutant
+            && let Some(annonce) = &pas.annonce
+        {
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, format!("{} :", s.foresee_said));
+                ui.colored_label(theme.good, egui::RichText::new(annonce).monospace());
+            });
+        }
         if changes.is_empty() {
             // Une instruction peut ne rien changer de visible — un saut,
             // un `nop`. Le dire vaut mieux que de laisser croire qu'on a
@@ -1022,6 +1044,56 @@ impl NamsdecApp {
             );
             ui.label(egui::RichText::new(&text).monospace().strong());
         });
+        // PRÉVOIR AVANT D'AVANCER : au niveau débutant, et si on l'a
+        // demandé, tout ce qui suit attend le pas.
+        //
+        // L'adresse et l'instruction viennent d'être peintes — c'est
+        // l'énoncé, et il reste entier. Ce qui est retenu est la
+        // RÉPONSE : le pseudo-code en clair, la fiche, les opérandes
+        // résolus, et surtout le verdict d'un saut conditionnel, qui
+        // est la réponse même. Voir `crate::prevision` pour le
+        // pourquoi.
+        if crate::prevision::réponse(self.prevoir, self.niveau(), rip, self.prevision_révélée)
+            .est_retenue()
+        {
+            ui.add_space(2.0);
+            ui.horizontal_wrapped(|ui| {
+                ui.colored_label(theme.dim, s.foresee_question)
+                    .on_hover_text(s.foresee_question_hint);
+                // « Montrer » et non « Révéler » : on ne dévoile pas un
+                // secret, on demande une aide — et la demander ne doit
+                // pas coûter un aveu. Un clic, pas de confirmation, et
+                // la réponse reste montrée pour cette instruction-là.
+                // ENCADRÉ, ET PETIT : `small_button` pose un bouton PLAT,
+                // qu'on ne voit pas tant qu'on ne passe pas dessus — et
+                // un bouton qu'on ne voit pas, dans une rangée où l'on
+                // attend une réponse, n'existe pas. Relevé par le banc
+                // (`outside_the_menus_a_button_shows_itself_without_being_hovered`),
+                // qui connaît les quatre écritures de bouton de
+                // l'application.
+                if crate::small_framed_button(ui, theme, s.foresee_reveal)
+                    .on_hover_text(s.foresee_reveal_hint)
+                    .clicked()
+                {
+                    self.prevision_révélée = Some(rip);
+                }
+            });
+            // Le détail est refermé : rouvert tel quel au pas suivant,
+            // il montrerait la réponse qu'on vient de retenir.
+            //
+            // `next_detail_addr` N'EST PAS POSÉE ICI, et ce n'est pas un
+            // oubli : c'est elle qui permet au détail de s'ouvrir de
+            // lui-même, une fois par instruction, devant un appel ou un
+            // saut conditionnel. La poser maintenant ferait croire que
+            // cela a déjà eu lieu, et « Montrer » ne révélerait alors
+            // RIEN du cas le plus intéressant — le verdict d'un saut
+            // vit précisément dans ce détail.
+            self.next_detail_open = false;
+            self.open_requested_sheet(None);
+            ui.separator();
+            return;
+        }
+
         // L'instruction dite en clair, sous sa forme machine : c'est le
         // même moteur que le panneau de désassemblage, et c'est ici
         // qu'on en a le plus besoin — devant l'instruction qui va

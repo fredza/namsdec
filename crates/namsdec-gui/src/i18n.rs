@@ -1116,6 +1116,22 @@ pub struct Strings {
     /// qu'une entrée de menu se parcourt du regard.
     pub beginner_toggle: &'static str,
     pub beginner_hint: &'static str,
+    /// « Prévoir avant d'avancer » : la case, ce qu'elle retient, et
+    /// pourquoi elle se grise hors du niveau débutant.
+    pub foresee_checkbox: &'static str,
+    pub foresee_hint: &'static str,
+    pub foresee_only_beginner: &'static str,
+    /// La question posée à la place de la réponse, dans le bandeau, et
+    /// où l'on va si l'on ne veut plus qu'elle soit posée.
+    pub foresee_question: &'static str,
+    pub foresee_question_hint: &'static str,
+    /// Le bouton qui donne la réponse sans attendre le pas, et ce qu'il
+    /// promet au survol.
+    pub foresee_reveal: &'static str,
+    pub foresee_reveal_hint: &'static str,
+    /// « Ce que ça disait » — l'annonce de l'instruction exécutée,
+    /// relue à côté de ce qui a changé.
+    pub foresee_said: &'static str,
     pub modules_features_hint: &'static str,
     pub modules_legend: &'static str,
     pub show_re_tab_checkbox: &'static str,
@@ -2060,6 +2076,20 @@ déclenchera jamais.",
                     panneau d'analyse ne montre que les neuf rubriques qui se lisent sans rien \
                     savoir d'avance — où est le code, ce qu'il dit, ce qu'il emprunte, les \
                     octets. Rien n'est désinstallé : décocher rend les vingt-cinq.",
+    foresee_checkbox: "Prévoir avant d'avancer",
+    foresee_hint: "Devant une instruction pas encore exécutée, namsdec dit déjà tout : ce \
+                   qu'elle fait en clair, ses opérandes résolus, et si un saut sera pris. On \
+                   avance alors pour vérifier une réponse qu'on a lue. Coché, l'instruction \
+                   reste à l'écran, la réponse attend le pas, et « Dernier pas » la révèle à \
+                   côté de ce qui a vraiment changé. « Montrer » la donne sans attendre.",
+    foresee_only_beginner: "Ne vaut qu'en mode débutant.",
+    foresee_question: "Qu'est-ce que ça va changer ?",
+    foresee_question_hint: "Avancez d'un pas, puis « Dernier pas » dira ce que l'instruction \
+                            annonçait et ce qui a changé. Pour ne plus attendre : Préférences \
+                            › Modules › « Prévoir avant d'avancer ».",
+    foresee_reveal: "Montrer",
+    foresee_reveal_hint: "La réponse, sans attendre le pas.",
+    foresee_said: "Ce que ça disait",
     modules_features_hint: "Ce qu'on allume ou éteint soi-même. Rien ici n'est obligatoire : namsdec tourne sans.",
     modules_legend: "L'état des composants dont namsdec est fait. Vert = sain/actif · Rouge = problème · Bleu = actif, des données à afficher · Gris = inactif pour l'instant.",
     show_re_tab_checkbox: "Afficher l'onglet RE dans la barre latérale",
@@ -2973,6 +3003,21 @@ other is there to compare — that is how gaps and clashes become visible.",
                     the analysis panel shows only the nine sections that read without prior \
                     knowledge — where the code is, what it says, what it borrows, the bytes. \
                     Nothing is uninstalled: unchecking brings back all twenty-five.",
+    foresee_checkbox: "Predict before stepping",
+    foresee_hint: "Before an instruction has run, namsdec already says everything: what it \
+                   does in plain words, its resolved operands, and whether a jump will be \
+                   taken. You then step to check an answer you have read. When checked, the \
+                   instruction stays on screen, the answer waits for the step, and \"Last \
+                   step\" reveals it next to what actually changed. \"Show\" gives it right \
+                   away.",
+    foresee_only_beginner: "Only applies in beginner mode.",
+    foresee_question: "What will this change?",
+    foresee_question_hint: "Take a step, then \"Last step\" will say what the instruction \
+                            announced and what changed. To stop waiting: Preferences › \
+                            Modules › \"Predict before stepping\".",
+    foresee_reveal: "Show",
+    foresee_reveal_hint: "The answer, without waiting for the step.",
+    foresee_said: "What it said",
     modules_features_hint: "What you turn on or off yourself. Nothing here is required: namsdec runs without them.",
     modules_legend: "The health of the components namsdec is made of. Green = healthy/active · Red = problem · Blue = active, has data to show · Gray = inactive for now.",
     show_re_tab_checkbox: "Show the RE tab in the sidebar",

@@ -564,6 +564,12 @@ impl NamsdecApp {
         self.regs_before = None;
         self.flags_before = None;
         self.last_step = None;
+        // Et pas de réponse déjà découverte : l'adresse révélée
+        // appartenait au programme d'avant, et deux programmes
+        // différents ont des instructions différentes à la même
+        // adresse. Sans cela, « Prévoir avant d'avancer » aurait
+        // montré la réponse d'une instruction qu'on n'a jamais vue.
+        self.prevision_révélée = None;
         self.error_advice = None;
         self.mem_before = None;
 
@@ -687,6 +693,9 @@ impl NamsdecApp {
         self.regs_before = None;
         self.flags_before = None;
         self.last_step = None;
+        // Ni de réponse déjà découverte : on recommence, donc on
+        // reprévoit. Voir `load_process` pour l'autre moitié.
+        self.prevision_révélée = None;
         self.error_advice = None;
         self.mem_before = None;
         let mut emulator = Emulator::new(cpu);
@@ -839,12 +848,27 @@ impl NamsdecApp {
     /// son sens à ce qui a changé — « RCX 0x5 → 0x4 » ne veut rien dire
     /// sans le `dec rcx` qui l'a fait.
     pub(crate) fn remember_step(&mut self) {
+        let lang = self.lang.code();
         self.last_step = self.emulator.as_ref().and_then(|emulator| {
             let cpu = emulator.cpu();
             let rip = cpu.regs.rip;
             let window = cpu.mem.peek_bytes(rip, 16).ok()?;
             let instr = namsdec_disasm::decode_one(window, rip)?;
-            Some((rip, namsdec_disasm::format_one(&instr)))
+            let texte = namsdec_disasm::format_one(&instr);
+            // CE QUE L'INSTRUCTION ANNONÇAIT, pris ici et nulle part
+            // ailleurs : c'est exactement ce que « prévoir avant
+            // d'avancer » avait retenu, et après le pas l'instruction
+            // n'est plus sous le pointeur. Le calculer plus tard
+            // demanderait de la redécoder en espérant que les octets
+            // n'ont pas bougé — ce qu'un programme qui se patche
+            // lui-même démentirait.
+            let annonce =
+                crate::prevision::annonce(&texte, &namsdec_disasm::pseudo::of(&instr, lang));
+            Some(crate::DernierPas {
+                addr: rip,
+                texte,
+                annonce,
+            })
         });
     }
 

@@ -85,6 +85,7 @@ impl NamsdecApp {
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
             show_re_tab: settings.re_tab,
             debutant: settings.debutant,
+            prevoir: settings.prevoir,
             program_args: settings.program_args.clone(),
             program_env: settings.program_env.clone(),
             active_tab: settings
@@ -549,6 +550,7 @@ impl NamsdecApp {
             sidebar_tab_height: self.sidebar_tab_height.map(|h| h.round() as u32),
             re_tab: self.show_re_tab,
             debutant: self.debutant,
+            prevoir: self.prevoir,
             decompiler_module: self.show_decompiler_module,
             installer_module: self.show_installer_module,
             decompiler: self.decompiler.clone(),

@@ -38,6 +38,7 @@ mod notes;
 mod occurrences;
 mod patching;
 mod preferences;
+mod prevision;
 mod profiling;
 mod readings;
 mod resources;
@@ -769,10 +770,10 @@ struct NamsdecApp {
     /// ce sur quoi on vient de buter — la fonction de bibliothèque qu'on
     /// appelait — et ce nom vient du fichier ouvert.
     error_advice: Option<String>,
-    /// L'instruction que le dernier pas vient d'exécuter : son adresse et
-    /// son texte. `None` après un Run, un retour en arrière ou une
-    /// réinitialisation — il n'y a plus « un » dernier pas à montrer.
-    last_step: Option<(u64, String)>,
+    /// L'instruction que le dernier pas vient d'exécuter. `None` après
+    /// un Run, un retour en arrière ou une réinitialisation — il n'y a
+    /// plus « un » dernier pas à montrer.
+    last_step: Option<DernierPas>,
     /// Les octets de la fenêtre mémoire avant le dernier pas, pour
     /// mettre en avant ceux qui ont changé.
     mem_before: Option<Vec<u8>>,
@@ -1144,6 +1145,20 @@ struct NamsdecApp {
     /// n'est désinstallé — les panneaux cachés continuent de travailler
     /// pour le compte rendu « Tout », et la case les rend d'un clic.
     debutant: bool,
+    /// Faut-il prévoir ce qu'une instruction va faire avant de
+    /// l'exécuter ?
+    ///
+    /// Voir `Settings::prevoir` et `crate::prevision` : la réponse
+    /// attend le pas, au niveau débutant seulement. Sans effet au
+    /// niveau avancé, et le réglage le dit en se grisant.
+    prevoir: bool,
+    /// L'adresse dont la réponse a été demandée par « Montrer ».
+    ///
+    /// Une ADRESSE et non un drapeau : au pas suivant, la question se
+    /// repose d'elle-même. Un booléen aurait éteint la prévision pour
+    /// toute la séance au premier clic — et aurait marché à l'écran,
+    /// ce qui est le propre des défauts qu'on ne trouve pas.
+    prevision_révélée: Option<u64>,
     /// Le module des exercices : éteint tant qu'on ne le demande pas, et
     /// alors une entrée dans le menu Outils, rien de plus. Persisté,
     /// contrairement à l'onglet RE : c'est une case qu'on coche une fois,
@@ -1772,6 +1787,21 @@ enum PaletteCommand {
     ToggleStatusbar,
 }
 
+/// Ce que le dernier pas a exécuté : l'adresse, l'instruction, et ce
+/// qu'elle ANNONÇAIT.
+///
+/// L'annonce est prise avant le pas, comme le reste : c'est elle que
+/// « prévoir avant d'avancer » avait retenue, et la relire à côté de ce
+/// qui a changé est tout l'intérêt du chemin. Voir
+/// [`crate::prevision`].
+#[derive(Debug, Clone)]
+struct DernierPas {
+    addr: u64,
+    texte: String,
+    /// Le pseudo-code en clair, quand il dit plus que l'instruction.
+    annonce: Option<String>,
+}
+
 struct PreferencesSnapshot {
     decompiler_module: bool,
     installer_module: bool,
@@ -1779,6 +1809,7 @@ struct PreferencesSnapshot {
     lang: Lang,
     show_re_tab: bool,
     debutant: bool,
+    prevoir: bool,
     exercises: bool,
     show_tooltips: bool,
     keybindings: KeyBindings,
@@ -2148,6 +2179,14 @@ impl Default for NamsdecApp {
             untitled_no: 1,
             next_untitled: 2,
             next_instruction_open: true,
+            // VRAI, comme dans `Settings::default()`, et sans effet
+            // ici : la prévision ne vaut qu'au niveau débutant, qui
+            // est faux dans ce `Default`-ci (voir plus haut). Les
+            // contrôles et le banc mesurent donc l'interface telle
+            // qu'elle a toujours été, et ceux de la prévision allument
+            // les deux cases.
+            prevoir: true,
+            prevision_révélée: None,
             next_detail_open: false,
             next_detail_addr: None,
             console_input: String::new(),

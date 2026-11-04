@@ -6,6 +6,26 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Prévoir avant d'avancer**
+- Devant une instruction pas encore exécutée, namsdec disait déjà tout :
+  ce qu'elle fait en clair, ses opérandes résolus, et si un saut sera
+  pris. On appuyait sur « Pas à pas » pour vérifier une réponse qu'on
+  venait de lire — et l'on n'avait jamais l'occasion de se tromper,
+  alors que se tromper est la seule façon de savoir qu'on n'avait pas
+  compris.
+- **En mode débutant**, l'adresse et l'instruction restent à l'écran,
+  la réponse attend le pas, et **« Dernier pas » la révèle à côté de ce
+  qui a vraiment changé** : « Ce que ça disait : EAX = 1 », puis
+  « RAX 0x0 -> 0x1 ».
+- **« Montrer »** donne la réponse sans attendre, d'un clic — demander
+  une aide ne doit pas coûter un aveu — et seulement pour
+  l'instruction qu'on regardait : au pas suivant, la question se
+  repose.
+- **Rien n'est imposé** : le réglage (Préférences › Modules, sous le
+  mode débutant) ne vaut qu'avec lui, et se grise en le disant. Rien
+  n'est calculé de neuf non plus — ce que namsdec disait déjà change
+  seulement de moment.
+
 **`namsdec-cli` : l'analyse sans ouvrir de fenêtre**
 - Une **seconde commande**, posée dans le PATH à côté de l'application :
   `namsdec-cli programme` écrit tout ce que les panneaux d'analyse

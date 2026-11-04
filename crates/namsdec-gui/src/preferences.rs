@@ -58,6 +58,7 @@ impl NamsdecApp {
                 lang: self.lang,
                 show_re_tab: self.show_re_tab,
                 debutant: self.debutant,
+                prevoir: self.prevoir,
                 exercises: self.exercises,
                 decompiler_module: self.show_decompiler_module,
                 installer_module: self.show_installer_module,
@@ -80,6 +81,7 @@ impl NamsdecApp {
             self.lang = snapshot.lang;
             self.show_re_tab = snapshot.show_re_tab;
             self.debutant = snapshot.debutant;
+            self.prevoir = snapshot.prevoir;
             self.exercises = snapshot.exercises;
             self.show_decompiler_module = snapshot.decompiler_module;
             self.show_installer_module = snapshot.installer_module;
@@ -609,6 +611,16 @@ impl NamsdecApp {
         // est celle d'aujourd'hui, entière.
         ui.checkbox(&mut self.debutant, s.beginner_checkbox);
         ui.weak(s.beginner_hint);
+        // SOUS LA CASE DU NIVEAU, ET GRISÉE AVEC ELLE : ce réglage ne
+        // vaut qu'au niveau débutant, et une case qui n'agit pas dans le
+        // contexte courant doit le DIRE plutôt que de laisser cocher
+        // dans le vide. C'est la règle de la checklist d'avant-commit,
+        // et elle se vérifie ici comme ailleurs.
+        ui.add_enabled_ui(self.debutant, |ui| {
+            ui.checkbox(&mut self.prevoir, s.foresee_checkbox)
+                .on_disabled_hover_text(s.foresee_only_beginner);
+            ui.weak(s.foresee_hint);
+        });
         ui.add_space(6.0);
         ui.checkbox(&mut self.show_re_tab, s.show_re_tab_checkbox);
         ui.checkbox(&mut self.exercises, s.exercises_checkbox);

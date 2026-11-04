@@ -115,6 +115,23 @@ pub struct Settings {
     /// toujours, et un réglage neuf n'a pas à le lui retirer.
     #[serde(default = "vrai")]
     pub debutant: bool,
+    /// Faut-il **prévoir** ce qu'une instruction va faire avant de
+    /// l'exécuter ?
+    ///
+    /// Devant une instruction pas encore exécutée, namsdec dit tout :
+    /// ce qu'elle fait en clair, ses opérandes résolus, et — devant un
+    /// saut conditionnel — s'il sera pris. On appuie sur « Pas à pas »
+    /// pour vérifier une réponse qu'on a lue, et l'on n'a jamais eu
+    /// l'occasion de se tromper. Avec ce réglage, l'instruction reste à
+    /// l'écran, la réponse attend le pas, et « Dernier pas » la révèle à
+    /// côté de ce qui a vraiment changé.
+    ///
+    /// **Il ne vaut qu'au niveau débutant** : un exercice imposé à qui
+    /// se sert de l'outil tous les jours serait une taxe. Vrai par
+    /// défaut, pour la même raison que `debutant` — et sans effet tant
+    /// que celui-ci est faux. Voir `crate::prevision`.
+    #[serde(default = "vrai")]
+    pub prevoir: bool,
     /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
     /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
     /// rien n'apparaît tant qu'il ne le demande pas.
@@ -375,6 +392,9 @@ impl Default for Settings {
             // Vrai : voir le champ, et la raison — un outil qui sert à
             // apprendre s'ouvre sur ce qui s'apprend.
             debutant: true,
+            // Vrai aussi, et sans effet tant que `debutant` est faux :
+            // le réglage ne se montre qu'avec lui.
+            prevoir: true,
             // Le graphe d'abord : c'est la vue qui montre la FORME, et
             // c'est elle qui manque quand on découvre un binaire.
             flow_pseudo: false,

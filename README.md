@@ -30,6 +30,30 @@ nombres comme signés. `ja` et `jg` disent tous les deux « plus grand » et
 répondent l'inverse sur les mêmes octets : c'est exactement là qu'on se
 trompe.
 
+**Et, pour qui apprend, de quoi les retenir : « Prévoir avant
+d'avancer ».** Les trois paragraphes ci-dessus sont une réponse donnée
+avant la question : on appuie sur « Pas à pas » pour vérifier ce qu'on
+vient de lire, et l'on n'a jamais l'occasion de se tromper — or se
+tromper est la seule façon de savoir qu'on n'avait pas compris. En mode
+débutant, l'adresse et l'instruction restent à l'écran, la réponse
+attend le pas, et « Dernier pas » la révèle **à côté de ce qui a
+vraiment changé** :
+
+```
+Prochaine instruction
+  0x400005  mov ebx, 2
+  Qu'est-ce que ça va changer ?   [Montrer]
+
+Dernier pas  0x400000  mov eax, 1
+  Ce que ça disait : EAX = 1
+  RAX 0x0 -> 0x1
+```
+
+« Montrer » donne la réponse sans attendre, d'un clic et sans aveu. Le
+réglage est dans Préférences ▸ Modules, sous le mode débutant — il ne
+vaut qu'avec lui : un exercice imposé à qui se sert de l'outil tous les
+jours serait une taxe.
+
 **L'appel système écrit en clair.** `syscall` ne porte aucun opérande —
 tout est dans les registres, selon une convention qu'on connaît ou qu'on
 va chercher ailleurs :

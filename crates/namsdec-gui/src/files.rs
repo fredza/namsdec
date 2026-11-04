@@ -475,6 +475,9 @@ impl NamsdecApp {
         // pas, le curseur qu'on voulait poser ailleurs.
         self.running = false;
         self.last_step = None;
+        // Un autre onglet, un autre programme : la réponse découverte
+        // ne vaut que pour celui qu'on quitte.
+        self.prevision_révélée = None;
         self.error_advice = None;
         self.regs_before = None;
         self.flags_before = None;

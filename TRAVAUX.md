@@ -979,6 +979,56 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 novovicies. Prévoir avant d'avancer (A 9.64)
+
+Le second des deux travaux retenus pour le 4 novembre, et la direction
+que P4 recommandait : **lire → prévoir → avancer → constater**. Tous
+les ingrédients existaient ; le défaut n'était pas un manque, c'était
+un **excès** — namsdec donnait la réponse avant qu'on ait essayé.
+
+- [x] **La réponse attend le pas** — au niveau débutant, l'adresse et
+      l'instruction restent à l'écran (c'est l'énoncé), et le
+      pseudo-code en clair, le détail et le verdict d'un saut
+      conditionnel attendent. La question posée à leur place :
+      « Qu'est-ce que ça va changer ? ». Contrôle :
+      `la_réponse_attend_le_pas_au_niveau_débutant`, qui mesure les
+      **trois** états — prévision allumée, éteinte, et niveau avancé.
+      Un contrôle qui ne regarderait que le premier passerait aussi si
+      la réponse avait disparu pour tout le monde.
+- [x] **Et « Dernier pas » la révèle à côté de ce qui a changé** —
+      « Ce que ça disait : EAX = 1 », puis « RAX 0x0 -> 0x1 ». Les deux
+      l'une sous l'autre sont la seule façon de savoir si l'on avait
+      prévu juste. L'annonce est prise **avant** le pas, comme le reste
+      du bloc : après, l'instruction n'est plus sous le pointeur.
+- [x] **« Montrer » donne la réponse sans attendre** — un clic, pas de
+      confirmation, aucun compte de ce qu'on a demandé. Il retient
+      l'**adresse** et non un drapeau : au pas suivant, la question se
+      repose. Contrôle : `montrer_donne_la_réponse_sans_attendre_le_pas`,
+      qui clique le vrai bouton.
+- [x] **Rien ne s'impose** — le réglage ne vaut qu'au niveau débutant,
+      vit dans `settings.json`, et se **grise** sous le niveau avancé en
+      disant pourquoi. Un exercice imposé à qui se sert de l'outil tous
+      les jours serait une taxe.
+- [x] **Réinitialiser repose la question** — l'adresse révélée
+      appartenait au programme qu'on regardait, et le point d'entrée est
+      presque toujours le même d'un programme à l'autre. Sans remise à
+      zéro, la prévision montrait la réponse d'une instruction jamais
+      vue. Contrôle : `réinitialiser_repose_la_question`, éprouvé en
+      retirant la remise à zéro.
+- [ ] **Rien ne fait encore LIRE** — les cent huit exercices font tous
+      **écrire** du code. Un exercice de lecture (« voici trois
+      instructions, que vaut RAX après ? ») est ce que ce lot rend
+      possible, et le lot d'après.
+
+**Trois contrôles déjà en place ont trouvé trois choses**, et c'est leur
+raison d'être : le banc a refusé un `small_button` plat (invisible au
+repos, donc inexistant), la liste des sources a réclamé le module neuf
+(sans quoi tous les contrôles qui lisent le code l'auraient ignoré), et
+`every_setting_that_is_written_is_read_back` **refuse de compiler** tant
+qu'un réglage neuf n'est pas dans son instantané.
+
+---
+
 ## 0 octovicies. L'analyse sans la fenêtre : `namsdec-cli` (A 9.63)
 
 Le lot que P7 avait rendu bon marché, et le premier des deux retenus

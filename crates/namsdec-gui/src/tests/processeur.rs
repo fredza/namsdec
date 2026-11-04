@@ -1798,3 +1798,248 @@ hlt
         "la valeur en binaire, où l'on LIT les quatre voies :\n{peint}"
     );
 }
+
+/// « Prévoir avant d'avancer » : la réponse attend le pas.
+///
+/// **Le défaut corrigé n'est pas un manque, c'est un excès.** Devant une
+/// instruction pas encore exécutée, le bandeau disait déjà ce qu'elle
+/// allait faire — on appuyait sur « Pas à pas » pour vérifier une
+/// réponse qu'on venait de lire, et l'on n'avait jamais l'occasion de se
+/// tromper.
+///
+/// Trois états mesurés dans le même contrôle, et il faut les trois : un
+/// contrôle qui ne regarderait que le mode allumé passerait aussi si la
+/// réponse avait disparu pour tout le monde.
+#[test]
+fn la_réponse_attend_le_pas_au_niveau_débutant() {
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+mov rbx, 2
+hlt
+"
+        .to_owned(),
+        debutant: true,
+        prevoir: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Un pas : on est arrêté SUR `mov rbx, 2`, qui n'a pas encore été
+    // exécuté — et `mov rax, 1` vient de l'être, ce qui donne les deux
+    // moitiés du chemin d'un coup.
+    app.do_step();
+
+    // Ce que l'instruction dit en clair vient du même moteur que le
+    // bandeau : on ne le recopie pas à la main, sinon le contrôle
+    // passerait au vert le jour où le pseudo-code changerait de forme.
+    let réponse = {
+        let cpu = app.emulator.as_ref().unwrap().cpu();
+        let rip = cpu.regs.rip;
+        let octets = cpu.mem.peek_bytes(rip, 16).unwrap();
+        let instr = namsdec_disasm::decode_one(octets, rip).unwrap();
+        namsdec_disasm::pseudo::of(&instr, "fr")
+    };
+    // `mov rbx, 2` s'assemble en `mov ebx, 2` — nasm sait qu'écrire dans
+    // EBX met à zéro le haut de RBX, et c'est deux octets de moins. La
+    // réponse attendue vient donc du moteur, et non d'une chaîne écrite
+    // de mémoire.
+    assert_eq!(réponse, "EBX = 2", "la réponse à retenir");
+
+    // 1. DÉBUTANT, PRÉVISION ALLUMÉE : l'énoncé entier, pas la réponse.
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("mov rbx"),
+        "l'instruction reste à l'écran — c'est l'énoncé : {peint}"
+    );
+    assert!(
+        peint.contains(s.foresee_question),
+        "la question est posée : {peint}"
+    );
+    assert!(
+        peint.contains(s.foresee_reveal),
+        "et « Montrer » la donne sans attendre : {peint}"
+    );
+    assert!(
+        !peint.contains(&réponse),
+        "mais « {réponse} » ne doit pas être là : {peint}"
+    );
+    // ET LE CONSTAT, qui est la raison de retenir : l'instruction qu'on
+    // vient d'exécuter dit ce qu'elle annonçait, à côté de ce qui a
+    // changé.
+    let annoncé = app
+        .last_step
+        .as_ref()
+        .and_then(|pas| pas.annonce.clone())
+        .expect("le pas qu'on vient de faire annonçait quelque chose");
+    assert_eq!(annoncé, "EAX = 1", "et celle du pas déjà fait");
+    assert!(
+        peint.contains(s.foresee_said) && peint.contains(&annoncé),
+        "ce que le pas précédent disait se relit : {peint}"
+    );
+    assert!(
+        peint.contains("RAX 0x0 -> 0x1"),
+        "et ce qui a vraiment changé est juste à côté : {peint}"
+    );
+
+    // 2. DÉBUTANT, PRÉVISION ÉTEINTE : namsdec se comporte comme avant.
+    app.prevoir = false;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&réponse),
+        "éteinte, la réponse revient tout de suite : {peint}"
+    );
+    assert!(
+        !peint.contains(s.foresee_question),
+        "et la question ne se pose plus : {peint}"
+    );
+    assert!(
+        !peint.contains(s.foresee_said),
+        "ni le rappel de ce que ça disait, qui n'aurait plus d'objet : {peint}"
+    );
+
+    // 3. NIVEAU AVANCÉ, PRÉVISION ALLUMÉE : elle ne s'impose pas.
+    //
+    // C'est une décision, et non un oubli : un exercice imposé à qui se
+    // sert de l'outil tous les jours serait une taxe.
+    app.prevoir = true;
+    app.debutant = false;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&réponse) && !peint.contains(s.foresee_question),
+        "au niveau avancé, la prévision ne retient rien : {peint}"
+    );
+}
+
+/// « Montrer » donne la réponse, et ne la donne que pour cette
+/// instruction-là.
+///
+/// Le bouton est cliqué pour de vrai : poser le champ à la main aurait
+/// mesuré la logique — déjà éprouvée dans `crate::prevision` — et non le
+/// bouton, qui est ce dont on se sert.
+#[test]
+fn montrer_donne_la_réponse_sans_attendre_le_pas() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    // Ce que le bandeau retient, et ce qu'un clic doit rendre. Vérifié
+    // par le contrôle voisin, qui le tire du moteur plutôt que de la
+    // mémoire : `mov rbx, 2` s'assemble en `mov ebx, 2`.
+    const RÉPONSE: &str = "EBX = 2";
+
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+mov rbx, 2
+hlt
+"
+        .to_owned(),
+        debutant: true,
+        prevoir: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    // LE BATTEMENT D'ORANGE EST ÉTEINT, et c'est ce qui rend ce contrôle
+    // déterministe : une valeur qui vient de changer s'éclaire puis
+    // retombe, et redemande une image tant qu'elle brille — `Harness::run`
+    // s'arrête alors au bout de quatre en disant que l'interface ne se
+    // stabilise pas. Ce n'est pas un défaut de l'application ; c'est une
+    // animation qui n'a rien à voir avec ce qu'on mesure ici.
+    app.values_changed_at = None;
+
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui(move |ui| app.draw(ui));
+    harness.run();
+
+    // `query_all` ET NON `get_all` : le second PANIQUE quand il ne
+    // trouve rien, et « ne rien trouver » est précisément ce que ce
+    // contrôle doit pouvoir constater au départ.
+    let combien = |harness: &Harness<'_>, quoi: &str| -> usize {
+        harness.query_all_by_label_contains(quoi).count()
+    };
+    assert_eq!(
+        combien(&harness, RÉPONSE),
+        0,
+        "la réponse est retenue au départ"
+    );
+    assert!(
+        combien(&harness, s.foresee_reveal) > 0,
+        "et « Montrer » est là"
+    );
+
+    harness.get_by_label(s.foresee_reveal).click();
+    harness.run();
+    assert!(combien(&harness, RÉPONSE) > 0, "un clic suffit à l'obtenir");
+    // Et la question ne se repose pas tant qu'on n'a pas avancé : sans
+    // l'adresse retenue, le bandeau recacherait la réponse à l'image
+    // suivante — ce qui se verrait comme un clignotement, et non comme
+    // un défaut de logique.
+    harness.run();
+    assert!(
+        combien(&harness, RÉPONSE) > 0,
+        "et elle tient d'une image à l'autre"
+    );
+}
+
+/// Réinitialiser remet la question : on recommence, donc on reprévoit.
+///
+/// **Ce que ce contrôle empêche est un faux positif, le genre le plus
+/// coûteux :** l'adresse révélée appartient au programme qu'on
+/// regardait. Deux programmes différents ont des instructions
+/// différentes à la même adresse — et le point d'entrée, lui, est
+/// presque toujours le même. Sans la remise à zéro, « Prévoir avant
+/// d'avancer » donnait la réponse d'une instruction qu'on n'avait
+/// jamais vue, et sa première impression était qu'il ne marchait pas.
+#[test]
+fn réinitialiser_repose_la_question() {
+    let s = strings(Lang::Fr);
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .text
+_start:
+mov rax, 1
+hlt
+"
+        .to_owned(),
+        debutant: true,
+        prevoir: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // La réponse demandée sur la première instruction.
+    let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+    app.prevision_révélée = Some(rip);
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("EAX = 1") && !peint.contains(s.foresee_question),
+        "la réponse est montrée : {peint}"
+    );
+
+    // Et « Réinitialiser » la retire : le programme repart du point
+    // d'entrée, et la question se pose de nouveau.
+    app.do_reset();
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.rip,
+        rip,
+        "on est revenu au point d'entrée"
+    );
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.foresee_question) && !peint.contains("EAX = 1"),
+        "et la question est reposée : {peint}"
+    );
+}
