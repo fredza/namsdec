@@ -979,6 +979,48 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 duotricies. L'écran que l'on voit en premier (A 9.68)
+
+Le mode débutant devient celui par défaut : l'écran du premier
+lancement est donc celui que tout le monde verra. Consigne : ne garder
+que le nécessaire.
+
+- [x] **La scène qui manquait** — le banc avait le mode débutant *en
+      marche* et *avec un binaire chargé*, jamais l'écran d'un nouveau
+      venu : programme d'accueil dans l'éditeur, rien d'assemblé, aucun
+      module allumé. On regardait partout sauf là.
+- [x] **Et la première image a montré un défaut qu'aucune mesure ne
+      cherchait** — la phrase de la console, « la sortie du programme
+      s'affichera ici », **tranchée par le milieu** : neuf pixels peints
+      sur quinze, dans quarante-trois scènes. Cause : la formule de
+      hauteur comptait la hauteur d'un bouton (15) là où la rangée
+      d'onglets mesure 26. Le nombre juste avait été essayé le
+      28 octobre puis défait ; remis, les soixante-deux invariants du
+      banc passent. **Un commentaire qui explique pourquoi un nombre
+      faux doit rester faux mérite d'être remesuré.**
+- [x] **L'invariant qui reste** — `aucune_phrase_ne_perd_de_hauteur_au_decoupage`,
+      à sa **troisième** formulation : les deux premières accusaient
+      des listes qui défilent à bon droit. Ce qui ne s'excuse jamais
+      est une zone dont l'**unique** ligne est coupée — elle montrait
+      tout ce qu'elle avait, et à moitié. Éprouvé en remettant le
+      défaut : 43 scènes rougissent.
+- [x] **La console est fermée sur une installation neuve** — elle
+      occupait soixante-douze pixels pour annoncer qu'elle est vide.
+      Elle paraît d'elle-même dès qu'elle a quelque chose à montrer :
+      une erreur de nasm (ce qui existait) ou le premier octet écrit
+      (ce qui est neuf). Les deux moitiés vont ensemble, et un contrôle
+      les mesure toutes les deux — fermer sans ouvrir cacherait la
+      sortie d'un programme qui écrit.
+- [x] **Une coupe essayée puis écartée par la mesure** — les sept
+      indicateurs de la barre de titre, candidat le plus évident.
+      L'exercice `drapeaux`, au palier **Découverte**, dit : « avancez
+      pas à pas et regardez les pastilles du bandeau changer ». Les
+      retirer rendrait la phrase fausse pour ceux à qui elle s'adresse.
+      Ce qui ressemble à du jargon sur une capture est parfois le sujet
+      de la leçon.
+
+---
+
 ## 0 untricies. Le seul rouge du dépôt est éteint (A 9.67)
 
 `what_this_machine_runs_can_be_explained` lit les soixante binaires du

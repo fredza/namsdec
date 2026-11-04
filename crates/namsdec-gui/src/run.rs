@@ -564,6 +564,9 @@ impl NamsdecApp {
         self.regs_before = None;
         self.flags_before = None;
         self.last_step = None;
+        // Et la console n'a pas encore paru pour CE programme : le
+        // suivant écrira peut-être, et il doit pouvoir l'ouvrir.
+        self.console_ouverte_pour_la_sortie = false;
         // Et pas de réponse déjà découverte : l'adresse révélée
         // appartenait au programme d'avant, et deux programmes
         // différents ont des instructions différentes à la même
@@ -693,6 +696,7 @@ impl NamsdecApp {
         self.regs_before = None;
         self.flags_before = None;
         self.last_step = None;
+        self.console_ouverte_pour_la_sortie = false;
         // Ni de réponse déjà découverte : on recommence, donc on
         // reprévoit. Voir `load_process` pour l'autre moitié.
         self.prevision_révélée = None;
@@ -814,7 +818,43 @@ impl NamsdecApp {
         }
     }
 
+    /// La console paraît dès que le programme écrit quelque chose.
+    ///
+    /// **C'est ce qui rend tenable une console fermée au départ.** Elle
+    /// l'est sur une installation neuve : avant d'avoir assemblé, elle
+    /// n'a rien à dire et occupe soixante-douze pixels pour l'annoncer.
+    /// Mais un programme qui affiche « salut » doit l'afficher quelque
+    /// part — sans cela, on croit qu'il n'a rien fait.
+    ///
+    /// Une fois par programme, et pas à chaque octet : qui referme la
+    /// console en pleine course a choisi, et on ne la lui rouvre pas
+    /// sous les doigts. Le drapeau se remet à zéro au chargement, comme
+    /// le reste du passé.
+    ///
+    /// C'est la même règle que les diagnostics de nasm
+    /// (`show_diagnostics_if_any`), et elle existe depuis plus
+    /// longtemps : une erreur d'assemblage ouvre déjà le panneau. On
+    /// étend à la SORTIE ce qui valait pour les erreurs.
+    fn montrer_la_console_si_le_programme_ecrit(&mut self) {
+        if self.console_ouverte_pour_la_sortie {
+            return;
+        }
+        let a_écrit = self
+            .emulator
+            .as_ref()
+            .is_some_and(|emulator| !emulator.output().is_empty());
+        if !a_écrit {
+            return;
+        }
+        self.console_ouverte_pour_la_sortie = true;
+        if !self.show_console {
+            self.show_console = true;
+            self.console_tab = ConsoleTab::Output;
+        }
+    }
+
     pub(crate) fn notify_step(&mut self) {
+        self.montrer_la_console_si_le_programme_ecrit();
         // Le battement d'orange part d'ici : notify_step est le point par
         // où passent tous les pas (un pas, un Run qui s'arrête, un retour
         // en arrière), et c'est à cet instant que l'état nouveau devient

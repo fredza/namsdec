@@ -55,6 +55,25 @@ pub struct Settings {
     pub show_sidebar: bool,
     pub show_statusbar: bool,
     /// Panneau bas — la console du programme et les diagnostics de nasm.
+    ///
+    /// **FAUX sur une installation neuve**, et c'est la seule des
+    /// quatre bascules d'affichage qui commence fermée. Avant d'avoir
+    /// assemblé quoi que ce soit, la console n'a rien à dire : elle
+    /// occupe soixante-douze pixels pour écrire « la sortie du
+    /// programme s'affichera ici », c'est-à-dire pour annoncer qu'elle
+    /// est vide. Sur l'écran que voit quelqu'un qui ouvre namsdec pour
+    /// la première fois — et c'est désormais le mode débutant —, cela
+    /// fait une zone de plus à comprendre pour rien.
+    ///
+    /// Elle s'ouvre **d'elle-même dès qu'elle a quelque chose à
+    /// montrer** : une erreur de nasm (`show_diagnostics_if_any`) ou le
+    /// premier octet qu'un programme écrit. C'est ce qui rend la
+    /// fermeture tenable — sans cela, un programme qui affiche « salut »
+    /// n'aurait nulle part où l'afficher, et l'on croirait qu'il n'a
+    /// rien fait.
+    ///
+    /// Une configuration qui existe déjà garde la sienne : le champ y
+    /// est écrit, donc ce défaut-ci ne la concerne pas.
     pub show_console: bool,
     /// L'explorateur de fichiers, à gauche.
     ///
@@ -386,7 +405,9 @@ impl Default for Settings {
             show_toolbar: true,
             show_sidebar: true,
             show_statusbar: true,
-            show_console: true,
+            // Faux : voir le champ. Elle s'ouvre dès qu'elle a quelque
+            // chose à montrer.
+            show_console: false,
             show_explorer: false,
             show_tooltips: true,
             // Vrai : voir le champ, et la raison — un outil qui sert à

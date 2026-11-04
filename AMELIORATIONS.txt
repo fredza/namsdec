@@ -10262,3 +10262,86 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
          apprend quelque chose sur TSX, et pas seulement sur namsdec. Le
          contrôle vérifie aussi que l'aveu est fait dans les deux
          langues.
+
+9.68 [FAIT] SIMPLIFIER L'ÉCRAN QUE L'ON VOIT EN PREMIER
+     (4 novembre 2026)
+
+     LE MODE DÉBUTANT DEVIENT CELUI PAR DÉFAUT — donc l'écran du premier
+     lancement est celui que tout le monde verra, et c'est lui qui décide
+     si quelqu'un reste. La consigne : ne garder que le nécessaire.
+
+     LA SCÈNE QUI MANQUAIT, ET C'EST LA PREMIÈRE CHOSE QU'ON A DÛ
+     ÉCRIRE. Le banc avait deux scènes de mode débutant : l'une avec un
+     programme EN MARCHE, l'autre avec un binaire CHARGÉ. L'écran qu'un
+     nouveau venu voit vraiment n'a ni l'un ni l'autre — le programme
+     d'accueil dans l'éditeur, rien d'assemblé, aucun module allumé — et
+     n'était mesuré par rien. On regardait partout sauf là.
+
+     ET LA PREMIÈRE IMAGE A MONTRÉ UN DÉFAUT QU'AUCUNE MESURE NE
+     CHERCHAIT : la phrase que la console affiche quand elle n'a rien à
+     dire — « la sortie du programme s'affichera ici » — était TRANCHÉE
+     PAR LE MILIEU, neuf pixels peints sur quinze, juste au-dessus de la
+     barre d'état. Sur l'écran du premier lancement, et sur quarante-deux
+     autres scènes.
+
+     LA CAUSE, ET ELLE ÉTAIT ÉCRITE DANS LE CODE DEPUIS DES SEMAINES :
+     la formule de hauteur comptait la hauteur du texte d'un bouton — 15
+     — là où la rangée d'onglets mesure `ONGLET_HAUTEUR`, 26. Onze
+     pixels de moins que la console n'occupe. Le commentaire disait « CE
+     NOMBRE A L'AIR FAUX ET NE L'EST PAS », parce que le nombre juste
+     avait été essayé le 28 octobre puis défait : il rognait alors une
+     ligne de la sortie par le bas. Remis aujourd'hui, les soixante-deux
+     invariants du banc passent — entre-temps, la hauteur de la saisie
+     s'est mise à se mesurer sur son contenu. **Un commentaire qui
+     explique pourquoi un nombre faux doit rester faux mérite d'être
+     remesuré de temps en temps.**
+
+     L'INVARIANT QUI RESTE, et il a demandé TROIS formulations — les
+     deux premières étant trop larges, ce qui vaut d'être raconté :
+
+       1. « aucune encre ne perd de hauteur au découpage » : 49 scènes
+          rouges, dont des lignes peintes ENTIÈREMENT hors du cadre.
+          C'est une zone qui défile, pas un défaut : egui pose les
+          formes même quand elles sortent.
+       2. « sauf celles qui sortent entièrement » : 6 scènes rouges, et
+          cette fois ce sont de vraies listes qui défilent — une zone
+          qui dépasse de MOINS d'une ligne n'a aucune ligne entièrement
+          dehors, donc aucune excuse à offrir.
+       3. Ce qui ne s'excuse jamais : **une zone dont l'UNIQUE ligne est
+          coupée**. Elle montrait tout ce qu'elle avait, et elle l'a
+          montré à moitié. Zéro scène rouge, et quarante-trois quand on
+          remet le défaut.
+
+     Deux précautions sont venues du même travail : ne juger que la
+     DERNIÈRE image — « Lig 1, Col 1 » est coupée à la deuxième et
+     entière à la troisième, parce qu'une barre ancrée se place après
+     s'être mesurée —, et laisser passer une console dont la hauteur est
+     FIGÉE à la poignée, puisque le code dit en toutes lettres qu'une
+     zone qui défile a le droit de couper quand on l'a serrée soi-même.
+
+     LA SIMPLIFICATION, ENSUITE : **la console est fermée sur une
+     installation neuve.** Avant d'avoir assemblé, elle occupe
+     soixante-douze pixels pour annoncer qu'elle est vide. Elle paraît
+     d'elle-même dès qu'elle a quelque chose à montrer — une erreur de
+     nasm (ce qui existait déjà) ou le premier octet qu'un programme
+     écrit (ce qui est neuf). Les deux moitiés vont ensemble : fermer
+     sans ouvrir serait cacher la sortie d'un programme qui écrit, et
+     l'on croirait qu'il n'a rien fait. Refermée en pleine course, elle
+     le reste : on ne rouvre pas un panneau sous les doigts de celui qui
+     vient de le fermer. Une configuration qui existe déjà garde la
+     sienne, le champ y étant écrit.
+
+     ET UNE COUPE ESSAYÉE PUIS ÉCARTÉE, PAR LA MESURE : **les sept
+     indicateurs de la barre de titre.** C'était le candidat le plus
+     évident — sept abréviations de deux lettres, toutes à zéro, en haut
+     à droite de l'écran qu'on voit en premier, et rien de plus opaque
+     pour qui débute. Écarté parce que l'exercice `drapeaux`, qui est au
+     palier DÉCOUVERTE, dit à son lecteur : « avancez pas à pas et
+     regardez les pastilles du bandeau changer : c'est la seule façon de
+     ne plus les confondre. » Les retirer au niveau débutant rendrait
+     cette phrase fausse pour exactement ceux à qui elle s'adresse. Six
+     autres exercices du même palier parlent des indicateurs.
+
+     Autrement dit : ce qui paraît du jargon sur une capture est parfois
+     le sujet de la leçon. La capture pose la question, le parcours y
+     répond — et c'est le parcours qui tranche.

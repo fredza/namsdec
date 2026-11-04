@@ -1243,6 +1243,35 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // LE PREMIER LANCEMENT, ET C'EST LA SCÈNE QUI MANQUAIT.
+    //
+    // Les deux scènes du mode débutant qui suivent montrent un programme
+    // EN MARCHE et un binaire CHARGÉ. Or l'écran qu'un nouveau venu voit
+    // vraiment n'a ni l'un ni l'autre : le programme d'accueil dans
+    // l'éditeur, rien d'assemblé, aucun module allumé. C'est l'image qui
+    // décide s'il reste, et elle n'était mesurée par rien — le banc
+    // regardait partout sauf là.
+    //
+    // Les réglages sont ceux d'un `settings.json` neuf, et non ceux de
+    // `NamsdecApp::default()` : mode débutant VRAI, exercices éteints,
+    // onglet RE masqué, explorateur fermé. Voir `Settings::default`.
+    scènes.push((
+        "application / premier lancement (débutant)".to_owned(),
+        None,
+        Box::new(|app| {
+            app.debutant = true;
+            app.exercises = false;
+            app.show_re_tab = false;
+            app.show_explorer = false;
+            app.show_sidebar = true;
+            // FERMÉE, comme sur une installation neuve : elle n'a rien
+            // à dire avant qu'on ait assemblé, et elle paraît d'
+            // elle-même au premier octet écrit.
+            app.show_console = false;
+            app.show_toolbar = true;
+            app.show_statusbar = true;
+        }),
+    ));
     // LE MODE DÉBUTANT, VU DE L'ÉCRAN PRINCIPAL : c'est la barre
     // d'outils qu'on vient y regarder — cinq commandes au lieu de
     // sept, et le pas nommé par ce qu'il fait plutôt qu'en anglais de

@@ -393,6 +393,13 @@ Pour lancer sans installer : `cargo run -p namsdec-gui`.
 
 Les raccourcis sont dans Préférences ▸ Raccourcis, et se changent.
 
+**La console n'est pas là au départ, et c'est voulu.** Avant d'avoir
+assemblé, elle n'aurait qu'une chose à écrire : qu'elle est vide. Elle
+paraît d'elle-même dès qu'elle a quelque chose à montrer — une erreur de
+nasm, ou le premier octet que le programme écrit. Refermée en pleine
+course, elle le reste ; Affichage ▸ Console l'ouvre à la demande, et le
+réglage est gardé.
+
 ### Les exercices
 
 Six exercices demandent de **lire** plutôt que d'écrire : le programme

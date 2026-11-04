@@ -4875,3 +4875,207 @@ fn l_editeur_binaire_remplit_la_largeur_qu_on_lui_donne() {
          jusqu'à « 1f »"
     );
 }
+
+/// AUCUNE PHRASE NE PERD DE HAUTEUR AU DÉCOUPAGE.
+///
+/// Le banc vérifiait déjà qu'une phrase n'est pas coupée en LARGEUR —
+/// et seulement dans l'onglet Mémoire. La hauteur n'était regardée
+/// nulle part, et c'est elle qui tombe quand une zone défilante reçoit
+/// moins de place qu'elle n'en demande : la dernière ligne garde ses
+/// jambages et perd ses hampes, ce qui donne un texte qu'on lit à moitié
+/// sans savoir pourquoi.
+///
+/// **Trouvé en REGARDANT**, pas en mesurant : la capture du premier
+/// lancement montrait la phrase d'accueil de la console tranchée par le
+/// milieu, au-dessus de la barre d'état. Les mesures ne répondent qu'aux
+/// questions qu'on leur pose, et personne n'avait posé celle-là.
+#[test]
+fn aucune_phrase_ne_perd_de_hauteur_au_decoupage() {
+    let mut fautifs = Vec::new();
+    for (nom, _, prépare) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        prépare(&mut app);
+        app.values_changed_at = None;
+        // UNE HAUTEUR FIGÉE À LA POIGNÉE EST UN CHOIX, PAS UN DÉFAUT.
+        //
+        // La console sait se replier jusqu'à ne plus montrer qu'une
+        // demi-ligne, et c'est écrit noir sur blanc dans `console.rs` :
+        // « une zone qui défile a le droit de couper ; ce qu'on
+        // protège, c'est la rangée où l'on tape ». Imposer des lignes
+        // entières a été essayé puis DÉFAIT sur mesure — la console
+        // débordait sur ses voisins, et quatre invariants l'ont dit.
+        // Ce contrôle-ci ne juge donc que les hauteurs que le programme
+        // choisit lui-même.
+        if app.console_height.is_some() {
+            continue;
+        }
+        app.apply_theme(&ctx);
+        let input = écran_du_banc();
+        // LA DERNIÈRE IMAGE, ET ELLE SEULE.
+        //
+        // Une surface ancrée ne se place qu'après s'être mesurée, et
+        // une fenêtre est AMENÉE à sa taille : pendant deux images, les
+        // barres du bas n'ont pas encore la hauteur qu'elles auront, et
+        // ce qu'elles portent passe sous le bord. Juger ces images-là
+        // ferait rougir sur une mise en place qui converge — « Lig 1,
+        // Col 1 » coupée à la deuxième image et entière à la
+        // troisième. Ce qu'on refuse, c'est ce qui reste coupé quand
+        // tout s'est posé.
+        for image in 0..3 {
+            let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            if image < 2 {
+                output.textures_delta.clear();
+                continue;
+            }
+            // CE QU'UNE ZONE DIT QUAND ELLE N'A QUE ÇA À DIRE.
+            //
+            // C'est la règle que ce contrôle retient, et elle est plus
+            // étroite que « rien n'est jamais coupé » — pour une
+            // raison mesurée, après deux formulations trop larges.
+            //
+            // Une liste plus longue que sa fenêtre coupe forcément une
+            // ligne à son bord : c'est ainsi qu'on SAIT qu'il y a une
+            // suite, et vingt listes du programme le font à bon droit.
+            // J'ai d'abord cru pouvoir les reconnaître à une autre
+            // ligne peinte entièrement hors du cadre — la preuve du
+            // débordement. Faux : une zone qui dépasse de MOINS d'une
+            // ligne n'en a aucune, et deux listes parfaitement
+            // normales se sont retrouvées accusées.
+            //
+            // Ce qui ne s'excuse jamais, en revanche, c'est une zone
+            // dont l'unique ligne est coupée : elle montrait tout ce
+            // qu'elle avait, et elle l'a montré à moitié. C'est le
+            // défaut qu'on a vu sur la capture du premier lancement —
+            // la console disant ce qu'elle montrera, tranchée par le
+            // milieu.
+            let mut lignes_par_cadre: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
+            for clipped in &output.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                let cadre = format!("{:?}", clipped.clip_rect);
+                for ligne in t.galley.rows.iter() {
+                    if ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2())
+                        .is_positive()
+                    {
+                        *lignes_par_cadre.entry(cadre.clone()).or_insert(0) += 1;
+                    }
+                }
+            }
+            for clipped in &output.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                for ligne in t.galley.rows.iter() {
+                    let texte = ligne.text();
+                    // Une PHRASE : plusieurs mots. Un libellé court qui
+                    // dépasse d'un pixel est une autre affaire, et la
+                    // troncature horizontale a déjà son contrôle.
+                    if texte.split_whitespace().count() < 4 {
+                        continue;
+                    }
+                    let encre = ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2());
+                    if !encre.is_positive() {
+                        continue;
+                    }
+                    let vu = encre.intersect(clipped.clip_rect);
+                    // CE QUI EST ENTIÈREMENT HORS DU CADRE N'EST PAS
+                    // COUPÉ : c'est une ligne qu'une zone défilante a
+                    // fait sortir par le haut ou par le bas, et egui la
+                    // pose quand même dans la liste des formes. Elle ne
+                    // se voit pas, personne ne la lit à moitié, et
+                    // l'accuser ferait crier ce contrôle sur toutes les
+                    // listes du programme. Le défaut qu'on cherche est
+                    // la ligne qu'on voit À MOITIÉ.
+                    if vu.height() < 0.5 {
+                        continue;
+                    }
+                    // La zone a plus d'une ligne : la coupure est le
+                    // bord d'un défilement, pas un défaut de mise en
+                    // page.
+                    if lignes_par_cadre
+                        .get(&format!("{:?}", clipped.clip_rect))
+                        .is_some_and(|combien| *combien > 1)
+                    {
+                        continue;
+                    }
+                    // UN PIXEL DE TOLÉRANCE : une zone défilante pose
+                    // son découpage au pixel près, et l'arrondi d'une
+                    // hauteur de ligne ne fait pas un texte coupé.
+                    if vu.height() + 1.0 < encre.height() {
+                        fautifs.push(format!(
+                            "{nom} : « {} » — {:.0} px peints sur {:.0}",
+                            texte.chars().take(45).collect::<String>(),
+                            vu.height().max(0.0),
+                            encre.height()
+                        ));
+                    }
+                }
+            }
+            output.textures_delta.clear();
+        }
+    }
+    fautifs.sort();
+    fautifs.dedup();
+    assert!(
+        fautifs.is_empty(),
+        "des phrases sont coupées en hauteur :\n  {}",
+        fautifs.join("\n  ")
+    );
+}
+
+/// Mesure jetable : ce que la console demande, ce qu'elle obtient.
+#[test]
+#[ignore = "mesure"]
+fn mesure_console_premier_lancement() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.dispatcher.arm(&[egui::Key::Space]);
+    app.leader_since = Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+    app.apply_theme(&ctx);
+    let input = écran_du_banc();
+    for image in 0..3 {
+        let mut output = ctx.run_ui(input.clone(), |ui| {
+            if image == 2 {
+                let voulue = app.console_wanted_height(ui);
+                let ligne_mono = ui.text_style_height(&egui::TextStyle::Monospace);
+                let ligne_corps = ui.text_style_height(&egui::TextStyle::Body);
+                let bouton = ui.text_style_height(&egui::TextStyle::Button);
+                eprintln!(
+                    "voulue={voulue:.1}  mono={ligne_mono:.1}  corps={ligne_corps:.1}  bouton={bouton:.1}  CONSOLE_MIN={CONSOLE_MIN_HEIGHT}"
+                );
+            }
+            app.draw(ui);
+        });
+        if image == 2 {
+            for clipped in &output.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                if !t.galley.text().contains("Lig 1") {
+                    continue;
+                }
+                for ligne in t.galley.rows.iter() {
+                    let encre = ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2());
+                    eprintln!(
+                        "encre y {:.1}..{:.1} (h {:.1})  clip y {:.1}..{:.1}",
+                        encre.top(),
+                        encre.bottom(),
+                        encre.height(),
+                        clipped.clip_rect.top(),
+                        clipped.clip_rect.bottom()
+                    );
+                }
+            }
+        }
+        output.textures_delta.clear();
+    }
+}

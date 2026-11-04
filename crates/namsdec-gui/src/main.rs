@@ -1152,6 +1152,13 @@ struct NamsdecApp {
     /// attend le pas, au niveau débutant seulement. Sans effet au
     /// niveau avancé, et le réglage le dit en se grisant.
     prevoir: bool,
+    /// La console a-t-elle déjà été ouverte pour la sortie de CE
+    /// programme ?
+    ///
+    /// Une fois par programme : qui la referme en pleine course a
+    /// choisi, et on ne la lui rouvre pas sous les doigts. Voir
+    /// `montrer_la_console_si_le_programme_ecrit`.
+    console_ouverte_pour_la_sortie: bool,
     /// La réponse que l'on écrit à la question d'un exercice de lecture.
     ///
     /// De la session, pas du disque : une réponse à moitié tapée n'a
@@ -2191,6 +2198,7 @@ impl Default for NamsdecApp {
             // contrôles et le banc mesurent donc l'interface telle
             // qu'elle a toujours été, et ceux de la prévision allument
             // les deux cases.
+            console_ouverte_pour_la_sortie: false,
             prevoir: true,
             question_answer: String::new(),
             prevision_révélée: None,

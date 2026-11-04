@@ -6,6 +6,19 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**L'écran du premier lancement, allégé**
+- **La console est fermée au départ** sur une installation neuve : avant
+  d'avoir assemblé, elle occupait soixante-douze pixels pour annoncer
+  qu'elle est vide. Elle **paraît d'elle-même** dès qu'elle a quelque
+  chose à montrer — une erreur de nasm, ou le premier octet que le
+  programme écrit. Refermée en pleine course, elle le reste. Votre
+  réglage, lui, ne change pas.
+- **Et la phrase de la console n'est plus coupée** : elle se peignait
+  tranchée par le milieu — neuf pixels sur quinze — juste au-dessus de
+  la barre d'état, parce que sa hauteur comptait onze pixels de moins
+  que la rangée d'onglets n'en occupe. Vu sur une capture, pas par une
+  mesure ; un invariant le retient désormais.
+
 **Douze instructions de plus savent s'expliquer**
 - Un contrôle lit les binaires du système et exige une fiche pour chaque
   instruction rencontrée. Douze manquaient : **cinq fiches neuves** — le

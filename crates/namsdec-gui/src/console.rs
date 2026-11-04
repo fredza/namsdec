@@ -134,22 +134,25 @@ impl NamsdecApp {
         };
         // Les onglets, le séparateur et les marges du panneau.
         //
-        // CE NOMBRE A L'AIR FAUX ET NE L'EST PAS. La rangée d'onglets
-        // mesure `ONGLET_HAUTEUR` — 26 —, et non la hauteur du texte
-        // d'un bouton — 15 : la formule semble donc compter onze pixels
-        // de moins que la console n'en occupe. Corrigé le 28 octobre
-        // 2026, puis DÉFAIT sur mesure : avec `ONGLET_HAUTEUR + 28`, la
-        // console réclame onze pixels de plus, les obtient, et une ligne
-        // de sa sortie se fait rogner par le bas — vu sur la capture de
-        // la scène « console / Output (en marche) », à comparer avec la
-        // même avant le changement, où rien n'est coupé.
+        // LA RANGÉE D'ONGLETS MESURE `ONGLET_HAUTEUR` — 26 —, et non la
+        // hauteur du texte d'un bouton — 15. La formule a compté la
+        // seconde pendant des semaines, c'est-à-dire onze pixels de
+        // moins que la console n'en occupe, et la conséquence se voyait
+        // sur toutes les captures sans qu'aucune mesure ne la nomme :
+        // **la phrase que la console affiche quand elle n'a rien à
+        // montrer était tranchée par le milieu** — neuf pixels peints
+        // sur quinze, sur l'écran du premier lancement comme sur
+        // quarante-deux autres scènes.
         //
-        // Autrement dit, ce qui ressemble à une sous-estimation est ce
-        // qui tient : réclamer la hauteur exacte fait déborder le
-        // panneau, et un panneau qui déborde vole la place de son voisin
-        // au lieu de la rendre. Le pourquoi n'est pas ici ; la mesure,
-        // si.
-        let chrome = ui.text_style_height(&egui::TextStyle::Button) + 28.0;
+        // Le nombre juste avait été essayé le 28 octobre 2026 puis
+        // défait : il faisait alors rogner une ligne de la sortie par le
+        // bas. Remis le 4 novembre, et cette fois les soixante-deux
+        // invariants du banc passent — la hauteur de la saisie se
+        // mesure depuis sur son contenu, ce qui n'était pas le cas
+        // alors. Retenu par
+        // `aucune_phrase_ne_perd_de_hauteur_au_decoupage`, éprouvé en
+        // remettant les quinze pixels : quarante-trois scènes rougissent.
+        let chrome = crate::widgets::ONGLET_HAUTEUR + 28.0;
         // La zone de saisie, comptée ligne à ligne comme elle se dessine.
         //
         // Une seule ligne y était réservée. Elle en porte jusqu'à quatre

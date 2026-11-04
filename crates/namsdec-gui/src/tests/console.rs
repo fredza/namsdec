@@ -961,9 +961,26 @@ fn after_the_answer_the_dialog_shows_what_the_program_said() {
     );
     // Plus rien à taper : un seul bouton.
     assert!(peint.contains(s.dialog_ok), "{peint}");
+    // DANS LA BOÎTE, ET NON SUR TOUT L'ÉCRAN.
+    //
+    // Cette assertion portait sur l'écran entier, et elle passait pour
+    // une mauvaise raison : la console porte sa PROPRE rangée
+    // « Entrée : / Fin d'entrée / Envoyer », qui a tout droit d'être
+    // là — et elle n'était pas peinte parce que la console manquait de
+    // onze pixels. Le jour où ces pixels lui ont été rendus (voir
+    // `console_wanted_height`), le contrôle a rougi sans qu'aucun
+    // comportement ait changé.
+    //
+    // Ce qu'il veut dire est : la BOÎTE ne propose plus d'envoyer. On
+    // découpe donc son bloc, qui va de la phrase qui annonce la réponse
+    // jusqu'à la fin de ce qui est peint.
+    let début = peint
+        .find(s.input_dialog_answered)
+        .expect("la boîte est peinte");
+    let boîte = &peint[début..];
     assert!(
-        !peint.contains(s.console_send),
-        "on ne propose plus d'envoyer à un programme terminé :\n{peint}"
+        !boîte.contains(s.console_send),
+        "on ne propose plus d'envoyer à un programme terminé :\n{boîte}"
     );
 
     // Relancer la referme : elle parlait de la course précédente.
@@ -1916,4 +1933,87 @@ _start:
             "l'explication est peinte et non seulement le titre ({lang:?}) : {début}"
         );
     }
+}
+
+/// La console est fermée au premier lancement, et paraît dès qu'elle a
+/// quelque chose à montrer.
+///
+/// **Simplifier, c'est retirer ce qui ne sert pas encore.** Avant tout
+/// assemblage, la console occupe soixante-douze pixels pour écrire « la
+/// sortie du programme s'affichera ici » — c'est-à-dire pour annoncer
+/// qu'elle est vide. Sur l'écran qu'un nouveau venu voit en premier, et
+/// qui est désormais le mode débutant, cela fait une zone de plus à
+/// comprendre pour rien.
+///
+/// Ce qui rend la fermeture tenable est la seconde moitié de la règle :
+/// elle s'ouvre **d'elle-même** au premier octet écrit. Sans cela, un
+/// programme qui affiche « salut » n'aurait nulle part où l'afficher, et
+/// l'on croirait qu'il n'a rien fait. Les deux moitiés sont mesurées
+/// ici ; l'une sans l'autre serait un défaut.
+#[test]
+fn la_console_parait_quand_le_programme_ecrit() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    // Une installation neuve : c'est `Settings`, et non
+    // `NamsdecApp::default()`, qui dit ce qu'un nouveau venu reçoit.
+    assert!(
+        !Settings::default().show_console,
+        "une installation neuve s'ouvre sans la console"
+    );
+
+    let mut app = NamsdecApp {
+        source: "\
+global _start
+section .data
+    msg db \"salut\", 10
+section .text
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, msg
+    mov rdx, 6
+    syscall
+    hlt
+"
+        .to_owned(),
+        show_console: false,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+
+    // Tant que rien n'est écrit, elle reste fermée : un pas qui ne
+    // produit rien ne doit pas faire surgir un panneau.
+    app.do_step();
+    assert!(
+        !app.show_console,
+        "rien n'a encore été écrit : la console n'a pas à paraître"
+    );
+
+    // Et au premier octet, elle paraît — sur l'onglet de la sortie.
+    for _ in 0..20 {
+        app.do_step();
+        if app.show_console {
+            break;
+        }
+    }
+    assert!(
+        app.show_console,
+        "le programme a écrit : la console doit paraître"
+    );
+    assert_eq!(app.console_tab, ConsoleTab::Output);
+
+    // UNE FOIS, ET PAS DAVANTAGE : qui la referme en pleine course a
+    // choisi. Sans ce témoin, la règle rouvrirait le panneau sous les
+    // doigts à chaque pas suivant, ce qui est pire que de l'avoir
+    // laissé ouvert.
+    app.show_console = false;
+    for _ in 0..5 {
+        app.do_step();
+    }
+    assert!(
+        !app.show_console,
+        "refermée pendant la course, elle le reste"
+    );
 }

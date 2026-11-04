@@ -893,6 +893,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« Panneau latéral partagé tout seul » rend le partage automatique."),
 
         ("h2", "La console"),
+        ("p",
+         "<b>Elle est fermée au premier lancement</b>, et c'est voulu&nbsp;: avant "
+         "d'avoir assemblé quoi que ce soit, elle n'aurait qu'une chose à écrire — "
+         "qu'elle est vide. Elle paraît <b>d'elle-même</b> dès qu'elle a quelque chose "
+         "à montrer&nbsp;: une erreur de nasm, ou le premier octet que le programme "
+         "écrit. Refermée en pleine course, elle le reste — on ne rouvre pas un panneau "
+         "sous les doigts de quelqu'un qui vient de le fermer. "
+         "<b>Affichage › Console</b> l'ouvre et la ferme à la demande, et le réglage "
+         "est gardé d'une session à l'autre."),
         ("p", "En bas, trois onglets :"),
         ("liste", [
          "<b>Console</b> — ce que le programme écrit lui-même, par "
