@@ -1,0 +1,28 @@
+[package]
+name = "namsdec-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "L'analyse de namsdec en ligne de commande : Markdown ou JSON, sans ouvrir de fenêtre."
+
+[[bin]]
+name = "namsdec-cli"
+path = "src/main.rs"
+
+[dependencies]
+# TOUT VIENT DE LÀ, et c'est le but : `rapport::rapport_complet` et
+# `rapport::analyse` rendent l'analyse entière sans peindre une image.
+# Cette commande n'analyse rien elle-même — elle lit des arguments,
+# appelle, et écrit.
+namsdec-re.workspace = true
+serde_json.workspace = true
+
+# PAS DE BIBLIOTHÈQUE D'ARGUMENTS. Il y a huit options, toutes des
+# chaînes, et aucune n'est positionnelle sauf le fichier : `clap` tire
+# une centaine de milliers de lignes pour faire ce que `analyse_args`
+# fait en quatre-vingts, et nous les écrivons dans la langue du projet.
+
+[dev-dependencies]
+# Les rapports écrits par les contrôles vont dans un dossier temporaire,
+# jamais dans les fichiers de l'utilisateur.
+tempfile.workspace = true

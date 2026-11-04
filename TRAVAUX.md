@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **3 novembre
+Tenue à jour au fil des séances. Dernière mise à jour : **4 novembre
 2026**, version 0.2.9-beta.3.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -976,6 +976,76 @@ La leçon qui se répète : ce qu'un relevé ne cherche pas, aucun contrôle
 ne le retient. Les trois axes de cette passe — l'écran le plus petit,
 l'inventaire des tailles, l'inventaire des commandes — n'étaient pas des
 défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
+
+---
+
+## 0 octovicies. L'analyse sans la fenêtre : `namsdec-cli` (A 9.63)
+
+Le lot que P7 avait rendu bon marché, et le premier des deux retenus
+pour le 4 novembre. Il y a maintenant **deux binaires** : `namsdec`
+ouvre une fenêtre, `namsdec-cli` écrit un rapport.
+
+- [x] **Un rapport Markdown, celui de l'application** — la prose
+      d'ouverture puis les rubriques, par le même chemin que l'export
+      de l'interface. `rapport_complet` ne désassemble qu'UNE fois,
+      sans quoi un rapport complet valait deux analyses du même
+      fichier. Contrôle : `le_rapport_markdown_porte_la_prose_et_les_panneaux`,
+      qui lance le vrai binaire.
+- [x] **Une sortie JSON stable** — c'est la condition de tout le
+      reste : une sortie qui bougerait d'un appel à l'autre ferait du
+      diff un bruit. Contrôle : `le_json_est_le_même_à_chaque_appel`.
+- [x] **Comparer deux versions d'un binaire** — la vraie raison de
+      faire ce lot d'abord. Contrôle :
+      `deux_versions_se_comparent_par_leur_analyse`, qui modifie une
+      chaîne **en place** dans le binaire d'épreuve et vérifie les deux
+      sens : la nouvelle chaîne paraît, l'ancienne disparaît, et ce qui
+      n'a pas changé se lit pareil. **La première écriture de ce
+      contrôle s'était trompée** : elle ajoutait la chaîne à la fin du
+      fichier, où l'analyse ne la voit pas — et elle a raison, le
+      panneau des chaînes lit les sections déclarées, pas le fichier
+      entier.
+- [x] **Un fichier vide ne passe plus pour un fichier analysé** — le
+      défaut que la mesure a trouvé, et le plus instructif du lot.
+      L'analyse de zéro octet rend dix-huit rubriques qui disent toutes
+      « 0 octet » : avec un titre, des tableaux et des sections, **ce
+      rapport a l'air d'une analyse**, et il sortait avec un code 0. En
+      CI, un artefact tronqué passait donc pour analysé. Contrôle :
+      `le_fichier_vide_s_arrête_sur_son_propre_code`, avec son témoin
+      contraire — sans lui, il passerait aussi si la commande échouait
+      sur tout.
+- [x] **Quatre codes de retour, pour une chaîne d'intégration** — `0`
+      écrit, `1` ligne de commande fautive, `2` fichier illisible, `3`
+      rien à analyser. Chacun est éprouvé.
+- [x] **Un tuyau qui se ferme ne fait pas paniquer** —
+      `namsdec-cli programme | head -1` est ordinaire, et `print!`
+      panique dessus : « failed printing to stdout » au bout d'un pipe
+      parfaitement normal. Contrôle : `un_tuyau_fermé_ne_fait_pas_paniquer`,
+      éprouvé en remettant `print!`.
+- [x] **Deux fichiers sur la ligne s'arrêtent** — le second écrasait le
+      premier en silence. Et **une rubrique mal nommée se plaint** au
+      lieu de rendre un rapport vide, en disant combien le fichier en
+      porte.
+- [x] **Les rubriques se listent avant de se choisir** —
+      `--rubriques` rend « identifiant <tab> titre », de quoi un
+      `cut -f1`. Le contrôle vérifie que ces identifiants sont bien
+      ceux que `--rubrique` accepte, et qu'ils ne se traduisent pas
+      quand les titres, eux, changent de langue.
+- [x] **Installée à côté de l'application** — `install.sh` la pose dans
+      le PATH (`--no-cli` pour s'en passer), `uninstall.sh` la retire.
+      `default-members` ne bouge pas, pour que `cargo run` sache encore
+      quoi lancer ; les deux paquets sont nommés à la compilation.
+- [ ] **La comparaison elle-même** — aujourd'hui elle se fait par
+      `diff` sur deux JSON : cela marche et se lit mal. Une
+      sous-commande qui ne dirait que ce qui a changé, rubrique par
+      rubrique, est le lot d'après.
+
+**Ce qu'elle ne fait pas, et c'est voulu :** elle repart des octets,
+donc elle ne porte rien d'une session (pas de nom donné à une fonction,
+pas de détour calculé), et elle ne lance aucun outil extérieur — les
+rubriques objdump, radare2, Ghidra et RetDec restent muettes. C'est le
+prix de la reproductibilité. Et elle **lie egui sans l'employer** :
+`namsdec-re` en dépend toujours par `ReModule::ui`, aucune image n'est
+rendue, et la commande tourne sans écran.
 
 ---
 

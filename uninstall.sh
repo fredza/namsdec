@@ -193,6 +193,13 @@ done
 
 say "Suppression du binaire"
 retirer rm -f "$BIN_DIR/$APP"
+# La commande d'analyse, posée par `install.sh` à côté de l'application.
+# `uninstall.sh` défait exactement ce que l'autre fait : un binaire
+# laissé derrière est un binaire que personne ne retrouvera.
+if [ -e "$BIN_DIR/namsdec-cli" ]; then
+    say "Suppression de namsdec-cli"
+    retirer rm -f "$BIN_DIR/namsdec-cli"
+fi
 # Les binaires des préversions, quand on en a essayé une à côté de la
 # version installée. Il n'y en a plus qu'un aujourd'hui, mais une
 # machine qui a connu les deux garderait l'autre sans que personne

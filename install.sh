@@ -14,6 +14,10 @@ set -euo pipefail
 
 APP=namsdec
 BIN_NAME=namsdec-gui           # nom produit par cargo
+# La commande d'analyse. Elle garde son nom tel quel : `namsdec` ouvre
+# une fenêtre, `namsdec-cli` écrit un rapport, et deux noms pour deux
+# gestes valent mieux qu'un sous-commande à retenir.
+CLI_NAME=namsdec-cli
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Marqueur pour retrouver — et n'ajouter qu'une fois — la ligne de PATH.
@@ -40,6 +44,7 @@ AVEC_LANCEUR=1
 AVEC_DOCK=1
 AVEC_PATH=1
 AVEC_EXERCICES=1
+AVEC_CLI=1
 AVEC_STRIP=1
 AVEC_COMPILATION=1
 PROFIL=release
@@ -70,6 +75,8 @@ ${GRAS}namsdec — installation${FIN}
     ${CYAN}--no-dock${FIN}         ne pas épingler au dock (GNOME)
     ${CYAN}--no-path${FIN}         ne pas toucher au fichier de configuration du shell
     ${CYAN}--no-exercises${FIN}    ne pas installer les séries d'exercices
+    ${CYAN}--no-cli${FIN}          ne pas installer ${GRIS}namsdec-cli${FIN}, la commande qui écrit
+                      l'analyse d'un binaire sans ouvrir de fenêtre
     ${CYAN}--no-strip${FIN}        garder les symboles de débogage dans le binaire
                       installé (deux mégaoctets de plus)
     ${CYAN}--no-build${FIN}        ne pas compiler : poser le binaire déjà construit.
@@ -103,6 +110,7 @@ while [ $# -gt 0 ]; do
         --no-dock)       AVEC_DOCK=0; shift ;;
         --no-path)       AVEC_PATH=0; shift ;;
         --no-exercises)  AVEC_EXERCICES=0; shift ;;
+        --no-cli)        AVEC_CLI=0; shift ;;
         --no-strip)      AVEC_STRIP=0; shift ;;
         --no-build)      AVEC_COMPILATION=0; shift ;;
         -n|--dry-run)    ESSAI=1; shift ;;
@@ -205,6 +213,7 @@ faire() {
 TOTAL=2
 [ "$AVEC_COMPILATION" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_EXERCICES" = 1 ] && TOTAL=$((TOTAL + 1))
+[ "$AVEC_CLI" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_LANCEUR" = 1 ] && TOTAL=$((TOTAL + 2))
 [ "$AVEC_PATH" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_DOCK" = 1 ] && TOTAL=$((TOTAL + 1))
@@ -228,6 +237,7 @@ if [ "$SILENCIEUX" != 1 ]; then
     reglage "$AVEC_COMPILATION" "compiler ($PROFIL)"        "--no-build, --debug"
     reglage "$AVEC_STRIP"       "alléger le binaire"        "--no-strip"
     reglage "$AVEC_EXERCICES"   "poser les exercices"       "--no-exercises"
+    reglage "$AVEC_CLI"         "poser namsdec-cli"         "--no-cli"
     reglage "$AVEC_LANCEUR"     "lanceur et icônes"         "--no-desktop"
     reglage "$AVEC_PATH"        "ajouter au PATH"           "--no-path"
     reglage "$AVEC_DOCK"        "épingler au dock"          "--no-dock"
@@ -254,17 +264,24 @@ done
 # --- Compilation -------------------------------------------------------
 if [ "$PROFIL" = release ]; then
     BUILT="$SOURCE_DIR/target/release/$BIN_NAME"
+    BUILT_CLI="$SOURCE_DIR/target/release/$CLI_NAME"
 else
     BUILT="$SOURCE_DIR/target/debug/$BIN_NAME"
+    BUILT_CLI="$SOURCE_DIR/target/debug/$CLI_NAME"
 fi
+# `-p` NOMMÉMENT, les deux : le workspace ne construit par défaut que
+# l'interface (`default-members`), et sans cela `--no-build` trouvait un
+# binaire et pas l'autre.
+PAQUETS=(-p namsdec-gui)
+[ "$AVEC_CLI" = 1 ] && PAQUETS+=(-p namsdec-cli)
 if [ "$AVEC_COMPILATION" = 1 ]; then
     if [ "$PROFIL" = release ]; then
         etape "Compilation (la première fois, comptez quelques minutes)"
-        faire cargo build --release --manifest-path "$SOURCE_DIR/Cargo.toml"
+        faire cargo build --release --manifest-path "$SOURCE_DIR/Cargo.toml" "${PAQUETS[@]}"
     else
         etape "Compilation de la version de débogage"
         detail "non optimisée : namsdec y sera plus lent, mais prêt en quelques secondes"
-        faire cargo build --manifest-path "$SOURCE_DIR/Cargo.toml"
+        faire cargo build --manifest-path "$SOURCE_DIR/Cargo.toml" "${PAQUETS[@]}"
     fi
 fi
 if [ "$ESSAI" != 1 ]; then
@@ -287,6 +304,28 @@ if [ "$AVEC_STRIP" = 1 ] && [ "$PROFIL" = release ] && command -v strip >/dev/nu
     faire strip "$BIN_DIR/$APP" 2>/dev/null || true
 fi
 [ "$ESSAI" = 1 ] || ok "$(du -h "$BIN_DIR/$APP" | cut -f1) installé"
+
+# --- La commande d'analyse ---------------------------------------------
+# Une commande qui n'est pas dans le PATH ne sert à personne : elle
+# s'installe à côté de l'application, sous son propre nom.
+if [ "$AVEC_CLI" = 1 ]; then
+    etape "Installation de la commande d'analyse"
+    detail "$BIN_DIR/$CLI_NAME"
+    if [ "$ESSAI" != 1 ] && [ ! -x "$BUILT_CLI" ]; then
+        # ON LE DIT ET ON CONTINUE. L'application, elle, est installée :
+        # s'arrêter ici laisserait l'installation à moitié faite pour
+        # une commande annexe. C'est le cas d'un `--no-build` après un
+        # `cargo build` qui ne nommait que l'interface.
+        avertir "$CLI_NAME introuvable : $BUILT_CLI
+    (compilez-le par « cargo build --release -p namsdec-cli », ou passez --no-cli)"
+    else
+        faire install -Dm755 "$BUILT_CLI" "$BIN_DIR/$CLI_NAME"
+        if [ "$AVEC_STRIP" = 1 ] && [ "$PROFIL" = release ] && command -v strip >/dev/null; then
+            faire strip "$BIN_DIR/$CLI_NAME" 2>/dev/null || true
+        fi
+        [ "$ESSAI" = 1 ] || ok "$(du -h "$BIN_DIR/$CLI_NAME" | cut -f1) installé"
+    fi
+fi
 
 # --- Exercices ---------------------------------------------------------
 # Le parcours n'est pas dans le binaire : c'est un fichier de données,

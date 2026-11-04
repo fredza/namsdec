@@ -2707,6 +2707,43 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "copier. Un atelier qui ne laisse rien sortir apprend à se servir de lui, pas de "
          "l'assembleur."),
 
+        ("h1", "L'analyse sans la fenêtre"),
+        ("p",
+         "<font face='Courier'>namsdec-cli</font> écrit ce que les panneaux d'analyse "
+         "montrent, sans ouvrir d'interface. C'est le même fond, par le même chemin&nbsp;: "
+         "l'analyse est sortie de l'interface, et rien n'y est peint. La commande est posée "
+         "dans le PATH par <font face='Courier'>install.sh</font>, à côté de l'application."),
+        ("code",
+         "namsdec-cli programme                 le rapport, à l'écran\n"
+         "namsdec-cli programme -o rapport.md   le rapport, dans un fichier\n"
+         "namsdec-cli programme --rubriques     ce dont ce fichier a de quoi parler\n"
+         "namsdec-cli programme -s protections  une seule rubrique\n"
+         "namsdec-cli --aide                    tout le reste"),
+        ("h2", "Comparer deux versions d'un binaire"),
+        ("p",
+         "C'est la raison d'être de la commande. Une protection qui disparaît, une chaîne qui "
+         "apparaît, une fonction qui grossit&nbsp;: un <font face='Courier'>diff</font> "
+         "d'octets dirait « le fichier a changé à l'offset 0x15604 », ce qui n'apprend rien. "
+         "Un diff d'<b>analyses</b> dit ce qui a changé."),
+        ("code",
+         "namsdec-cli programme.v1 -f json -o v1.json\n"
+         "namsdec-cli programme.v2 -f json -o v2.json\n"
+         "diff v1.json v2.json"),
+        ("p",
+         "Le rapport est <b>reproductible</b>&nbsp;: deux appels sur le même fichier rendent "
+         "le même texte, parce que la commande repart des octets. C'est aussi ce qu'elle ne "
+         "fait pas — elle ne porte rien d'une session (pas de nom donné à une fonction, pas "
+         "de détour calculé), et elle ne lance aucun outil extérieur&nbsp;: les rubriques "
+         "objdump, radare2, Ghidra et RetDec restent muettes, pour qu'un rapport ne parle "
+         "jamais de la machine qui l'a produit."),
+        ("note",
+         "Ses codes de retour sont faits pour une chaîne d'intégration&nbsp;: <b>0</b> le "
+         "rapport est écrit, <b>1</b> la ligne de commande est fautive, <b>2</b> le fichier "
+         "ne se lit pas, <b>3</b> il se lit mais il n'y a rien à analyser. Le dernier vaut le "
+         "détour&nbsp;: un fichier vide rend dix-huit rubriques qui disent toutes « 0 octet », "
+         "avec un titre et des tableaux — <b>ce rapport a l'air d'une analyse</b>, et un "
+         "artefact tronqué passait donc pour analysé."),
+
         ("h1", "Ajouter des plugins"),
         ("p",
          "Tout ce qui s'ajoute à namsdec sans le recompiler se range en deux familles, et la "

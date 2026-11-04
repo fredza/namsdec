@@ -283,6 +283,74 @@ fn écrire_tableau(out: &mut String, colonnes: &[Ligne], rangées: &[Vec<Ligne>]
 /// entier depuis son premier octet — c'est ce que fait l'application
 /// devant un tampon brut.
 pub fn analyse(octets: &[u8], lang: &str) -> Vec<Panneau> {
+    analyser(octets, lang).2
+}
+
+/// Le rapport complet d'un fichier, en Markdown : la prose d'abord, ce
+/// que chaque panneau montre ensuite.
+///
+/// **C'est ce que la commande `namsdec-cli` écrit**, et c'est le même
+/// assemblage que l'export de l'application : la prose de
+/// [`crate::report::markdown`] raconte le fichier en phrases — c'est ce
+/// qu'on lit en premier —, et les panneaux disent le reste, les
+/// rubriques que la prose ne couvre pas.
+///
+/// **La différence avec l'application est voulue** : ici on repart des
+/// octets, donc le rapport ne porte RIEN de ce qu'un utilisateur aurait
+/// fait — pas de tranche choisie dans le vidage, pas de détour calculé,
+/// pas de sortie d'outil extérieur. C'est précisément ce qui le rend
+/// reproductible : deux appels sur le même fichier rendent le même
+/// texte, et c'est la condition pour comparer deux versions d'un
+/// binaire.
+///
+/// Faute d'en-tête ELF, la prose n'a rien à dire et seuls les panneaux
+/// paraissent — plutôt qu'un titre suivi de phrases inventées.
+///
+/// `None` quand AUCUN panneau ne se remplit : il n'y a pas d'analyse, et
+/// un titre suivi de rien en serait une contrefaçon. C'est à l'appelant
+/// de le dire — la commande `namsdec-cli` s'arrête alors sur un code de
+/// retour à elle, parce qu'en CI « l'analyse n'a rien trouvé » doit
+/// pouvoir arrêter une chaîne.
+pub fn rapport_complet(octets: &[u8], lang: &str, titre: &str) -> Option<String> {
+    let (scan, disasm, panneaux) = analyser(octets, lang);
+    if panneaux.is_empty() {
+        return None;
+    }
+    let mut out = String::new();
+    if let Some(scan) = &scan {
+        out.push_str(&crate::report::markdown(scan, octets, &disasm, lang, titre));
+        out.push_str("\n\n");
+    }
+    out.push_str(&markdown(&panneaux, &titre_des_panneaux(lang, titre)));
+    Some(out)
+}
+
+/// Le titre de la seconde moitié du rapport.
+///
+/// Il dit « ce que chaque panneau montre » et non « annexe » : ce qui
+/// suit n'est pas un supplément, c'est le gros de l'analyse — la prose
+/// ne couvre que six rubriques.
+fn titre_des_panneaux(lang: &str, titre: &str) -> String {
+    if lang.starts_with("fr") {
+        format!("Ce que chaque panneau montre — {titre}")
+    } else {
+        format!("What each panel shows — {titre}")
+    }
+}
+
+/// Tout ce qu'une analyse produit, en un seul passage.
+///
+/// Le désassemblage est ce qui coûte le plus cher de l'affaire, et la
+/// prose comme les panneaux le réclament : le refaire pour chacun
+/// ferait d'un rapport complet deux analyses du même fichier.
+fn analyser(
+    octets: &[u8],
+    lang: &str,
+) -> (
+    Option<crate::elf_scan::Scan>,
+    Vec<namsdec_disasm::DecodedInstruction>,
+    Vec<Panneau>,
+) {
     use namsdec_core::{Cpu, Memory};
 
     let scan = crate::elf_scan::scan(octets);
@@ -319,7 +387,8 @@ pub fn analyse(octets: &[u8], lang: &str) -> Vec<Panneau> {
         patches: &[],
     };
     let mut registry = ReModuleRegistry::standard();
-    panneaux(&mut registry, &ctx)
+    let panneaux = panneaux(&mut registry, &ctx);
+    (scan, disasm, panneaux)
 }
 
 #[cfg(test)]

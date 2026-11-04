@@ -4,7 +4,34 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.2.9-beta.3 — 3 novembre 2026
+## 0.2.9-beta.3 — 3 et 4 novembre 2026
+
+**`namsdec-cli` : l'analyse sans ouvrir de fenêtre**
+- Une **seconde commande**, posée dans le PATH à côté de l'application :
+  `namsdec-cli programme` écrit tout ce que les panneaux d'analyse
+  montrent, en Markdown ou en JSON, sans interface. C'est le même fond
+  par le même chemin — l'analyse est sortie de l'écran, et rien n'y est
+  peint.
+- **Ce qu'elle rend possible, et qui est sa raison d'être : comparer
+  deux versions d'un binaire.** Une protection qui disparaît, une chaîne
+  qui apparaît, une fonction qui grossit — `namsdec-cli v1 -f json` et
+  `namsdec-cli v2 -f json`, puis un `diff` qui dit ce qui a changé dans
+  l'**analyse**, et non dans les octets. Le rapport est reproductible :
+  deux appels sur le même fichier rendent le même texte.
+- **Faite pour une chaîne d'intégration** : quatre codes de retour, dont
+  un qui dit « il se lit, mais il n'y a rien à analyser ». Un fichier
+  vide rendait dix-huit rubriques annonçant toutes « 0 octet », avec un
+  titre et des tableaux : ce rapport **avait l'air d'une analyse**, et un
+  artefact tronqué passait donc pour analysé.
+- `--rubriques` liste ce dont un fichier a de quoi parler, `-s` n'en
+  écrit qu'une, `--aide` dit le reste — en français ou en anglais.
+- **Ce qu'elle ne fait pas, et c'est voulu** : elle repart des octets,
+  donc elle ne porte rien d'une session (pas de nom donné à une
+  fonction, pas de détour calculé), et elle ne lance aucun outil
+  extérieur — objdump, radare2, Ghidra et RetDec restent muets, pour
+  qu'un rapport ne parle jamais de la machine qui l'a produit.
+- `./install.sh` la pose, `--no-cli` s'en passe, `./uninstall.sh` la
+  retire.
 
 **Une interface qui se gradue : débutant, ou avancée**
 - namsdec sert à apprendre l'assembleur et la rétro-ingénierie, et

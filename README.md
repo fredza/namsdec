@@ -733,6 +733,44 @@ ld -Ttext 0x400000 -o programme programme.o
 Un atelier qui ne laisse rien sortir apprend à se servir de lui, pas de
 l'assembleur.
 
+### L'analyse sans la fenêtre
+
+`namsdec-cli` écrit ce que les panneaux d'analyse montrent, sans ouvrir
+d'interface. C'est le même fond, par le même chemin : l'analyse est
+sortie de l'interface, et rien n'y est peint.
+
+```sh
+namsdec-cli programme                   # le rapport, à l'écran
+namsdec-cli programme -o rapport.md     # le rapport, dans un fichier
+namsdec-cli programme --rubriques       # ce dont ce fichier a de quoi parler
+namsdec-cli programme -s protections    # une seule rubrique
+```
+
+**Ce qu'elle rend possible, et qui est sa raison d'être : comparer deux
+versions d'un binaire.** Une protection qui disparaît, une chaîne qui
+apparaît, une fonction qui grossit — un `diff` d'octets dirait « le
+fichier a changé à l'offset 0x15604 », ce qui n'apprend rien.
+
+```sh
+namsdec-cli programme.v1 -f json -o v1.json
+namsdec-cli programme.v2 -f json -o v2.json
+diff v1.json v2.json          # ce qui a changé dans l'ANALYSE
+```
+
+Le rapport est **reproductible** : deux appels sur le même fichier
+rendent le même texte, parce que la commande repart des octets. C'est
+aussi ce qu'elle ne fait pas — elle ne porte rien d'une session (pas de
+nom donné à une fonction, pas de détour calculé), et elle ne lance aucun
+outil extérieur : les rubriques `objdump`, `radare2`, Ghidra et RetDec
+restent muettes, pour qu'un rapport ne parle jamais de la machine qui l'a
+produit.
+
+Ses codes de retour sont faits pour une chaîne d'intégration : `0` le
+rapport est écrit, `1` la ligne de commande est fautive, `2` le fichier
+ne se lit pas, `3` il se lit mais il n'y a rien à analyser — un artefact
+vide ou tronqué, qui sans cela passerait pour analysé. `namsdec-cli
+--aide` dit tout le reste.
+
 ### Les mises à jour
 
 « À propos ▸ Rechercher une mise à jour » demande à GitHub les versions

@@ -1650,6 +1650,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "namsdec-cli"
+version = "0.2.9-beta.3"
+dependencies = [
+ "namsdec-re",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "namsdec-core"
 version = "0.2.9-beta.3"
 dependencies = [

@@ -9675,3 +9675,110 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      de déménager les vingt-deux `ui()` dans `namsdec-gui`. Ici, « sans
      interface » veut dire : aucune image n'est rendue, et le résultat
      ne dépend d'aucun pixel.
+
+9.63 [FAIT] L'ANALYSE SANS LA FENÊTRE : `namsdec-cli`
+     (4 novembre 2026)
+
+     CE QUE P7 A RENDU BON MARCHÉ, et la raison de commencer par là.
+     `rapport::analyse(octets, lang)` rendait déjà toute l'analyse sans
+     peindre une image (9.62) ; une commande qui l'appelle et écrit du
+     Markdown ou du JSON tenait en une centaine de lignes. Le lot a
+     coûté plus que cela, et ce qui l'a allongé est précisément ce qui
+     valait la peine — voir plus bas.
+
+     CE QU'ELLE DÉBLOQUE, ET QUI EST SA VRAIE RAISON D'ÊTRE : comparer
+     deux versions d'un binaire. Une protection qui disparaît, une
+     chaîne qui apparaît, une fonction qui grossit. Un `diff` d'octets
+     dit « le fichier a changé à l'offset 0x15604 », ce qui n'apprend
+     rien ; un diff d'ANALYSES dit ce qui a changé. C'est pour cela que
+     la sortie JSON doit être STABLE, et c'est éprouvé comme tel : deux
+     appels sur le même fichier rendent le même octet.
+
+     UN SEUL PASSAGE POUR LES DEUX MOITIÉS DU RAPPORT. L'export de
+     l'application colle la prose (`report::markdown`) devant les
+     panneaux (`rapport::markdown`) — la première raconte le fichier en
+     phrases, les seconds portent le gros de l'analyse. La CLI veut le
+     même assemblage, et la prose réclame le désassemblage, qui est ce
+     qui coûte le plus cher de l'affaire. D'où `rapport_complet`, et un
+     `analyser` privé qui ne désassemble qu'une fois : sans lui, un
+     rapport complet valait deux analyses du même fichier.
+
+     ET `rapport_complet` REND UNE OPTION, non une chaîne. Faute du
+     moindre panneau, il n'y a pas d'analyse, et un titre suivi de rien
+     en serait une contrefaçon. C'est l'appelant qui décide quoi en
+     dire — la commande s'arrête alors sur un code de retour à elle.
+
+     LE DÉFAUT QUE LA MESURE A TROUVÉ, ET IL EST LE PLUS INSTRUCTIF DU
+     LOT : UN FICHIER VIDE PASSAIT POUR UN FICHIER ANALYSÉ. Le code de
+     retour « rien à dire » semblait ne jamais pouvoir se déclencher,
+     et l'essai a dit pourquoi : l'analyse d'un fichier de zéro octet
+     rend DIX-HUIT rubriques, qui disent toutes « 0 octet », « aucun
+     fichier chargé », « pas d'en-tête ELF ». Avec un titre, des
+     tableaux et des sections, ce rapport a l'air d'une analyse. En
+     CI — un artefact tronqué, un téléchargement coupé —, il passait
+     donc avec un code 0, et c'était le seul vrai mensonge de la
+     commande. Un code de retour qui ne peut jamais se déclencher ne
+     vaut pas mieux qu'un contrôle qui ne regarde rien.
+
+     ET UN DÉFAUT QUE LA PREMIÈRE ÉCRITURE DU CONTRÔLE A APPRIS. Pour
+     fabriquer une « seconde version » du binaire d'épreuve, j'avais
+     AJOUTÉ une chaîne à la fin du fichier — et l'analyse ne la voyait
+     pas. À juste titre : le panneau des chaînes lit les SECTIONS que
+     l'en-tête déclare, pas le fichier entier, parce que chercher
+     ailleurs ne rapporterait que du code qui ressemble à du texte. Des
+     octets collés après la dernière section n'appartiennent à rien.
+     Le contrôle modifie donc une chaîne EN PLACE, à longueur égale —
+     ce qu'un correctif fait vraiment —, et vérifie en plus que ce qui
+     n'a pas changé se lit pareil : si chaque rapport différait
+     partout, un diff d'analyses ne montrerait pas où regarder.
+
+     TROIS CHOSES QU'UNE COMMANDE DOIT FAIRE, et qu'un appel de
+     bibliothèque ne regarde pas. Chacune est retenue par un contrôle
+     qui lance le vrai binaire, éprouvé en remettant le défaut :
+       — UN TUYAU QUI SE FERME. `namsdec-cli programme | head -1` est
+         ordinaire, et `print!` panique dessus : le programme se
+         terminait sur « failed printing to stdout », un rapport de
+         panique Rust au bout d'un pipe parfaitement normal. L'écriture
+         passe par `write_all`, et `BrokenPipe` se tait.
+       — DEUX FICHIERS SUR LA LIGNE. Le second écrasait le premier en
+         silence : `namsdec-cli a.bin b.bin` analysait b.bin, et le
+         titre du rapport était le seul indice.
+       — UNE RUBRIQUE MAL NOMMÉE. `--rubrique protection`, au
+         singulier, rendait un rapport de zéro panneau sans un mot, et
+         l'on cherchait le défaut dans le binaire. Elle se plaint
+         maintenant en disant combien de rubriques le fichier porte, et
+         renvoie à `--rubriques`, qui les liste avec leur identifiant.
+
+     CE QU'ELLE NE FAIT PAS, ET C'EST VOULU. Elle repart des octets,
+     donc elle ne porte rien d'une session : pas de tranche choisie
+     dans le vidage, pas de détour calculé, pas de nom donné à une
+     fonction. Et elle ne lance aucun outil extérieur — les rubriques
+     objdump, radare2, Ghidra et RetDec restent muettes, par
+     `dans_un_rapport` (9.62), pour qu'un rapport ne parle jamais de la
+     machine qui l'a produit. C'est le prix de la reproductibilité, et
+     c'est ce qui la rend utilisable en CI.
+
+     PAS DE BIBLIOTHÈQUE D'ARGUMENTS. Huit options, toutes des
+     chaînes : `clap` tire une centaine de milliers de lignes pour ce
+     qu'une fonction de quatre-vingts lignes fait, et les noms sont
+     écrits dans la langue du projet — français d'abord, anglais
+     accepté partout, y compris pour l'aide, qui suit `--langue`.
+
+     ELLE LIE egui SANS L'EMPLOYER, et il faut le dire : `namsdec-re`
+     en dépend toujours, parce que le trait `ReModule` porte encore
+     `fn ui(…)`. Aucune surface n'est créée, aucune image n'est rendue,
+     et la commande tourne sans écran. S'en défaire demande de
+     déménager les vingt-deux `ui()` dans `namsdec-gui` — autre lot.
+
+     INSTALLÉE À CÔTÉ DE L'APPLICATION. Une commande qui n'est pas dans
+     le PATH ne sert à personne : `install.sh` la pose sous son propre
+     nom (`--no-cli` pour s'en passer), et `uninstall.sh` la retire.
+     Le workspace ne construit par défaut que l'interface, donc les
+     deux paquets sont nommés à la compilation ; `default-members`
+     reste inchangé, pour que `cargo run` sache encore quoi lancer.
+
+     RESTE À FAIRE, et c'est le lot d'après : la comparaison elle-même.
+     Aujourd'hui elle se fait par `diff` sur deux JSON, ce qui marche et
+     se lit mal. Une sous-commande qui compare deux analyses et ne dit
+     que ce qui a changé — rubrique par rubrique — est ce que cette
+     commande rend possible, et ce qu'elle ne fait pas encore.
