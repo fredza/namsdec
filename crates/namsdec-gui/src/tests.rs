@@ -1318,6 +1318,25 @@ fn scènes() -> Vec<Scène> {
             app.show_statusbar = true;
         }),
     ));
+    // LE DÉSASSEMBLAGE AU NIVEAU DÉBUTANT : trois moteurs au lieu de
+    // six, et la rangée « Moteur : » alignée. Deux consignes écrites
+    // sur une capture le 4 novembre 2026, et aucune scène ne montrait
+    // cette rangée à ce niveau-là.
+    if namsdec_asm::find_nasm().is_some() && namsdec_asm::find_linker() {
+        scènes.push((
+            "vue / désassemblage, mode débutant".to_owned(),
+            None,
+            Box::new(|app| {
+                app.source = PROGRAMME_DU_BANC.to_owned();
+                app.do_assemble();
+                for _ in 0..8 {
+                    app.do_step();
+                }
+                app.debutant = true;
+                app.vue_centrale = VueCentrale::Disassembly;
+            }),
+        ));
+    }
     // LE MODE DÉBUTANT, VU DE L'ÉCRAN PRINCIPAL : c'est la barre
     // d'outils qu'on vient y regarder — cinq commandes au lieu de
     // sept, et le pas nommé par ce qu'il fait plutôt qu'en anglais de

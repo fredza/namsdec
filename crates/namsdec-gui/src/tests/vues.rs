@@ -673,3 +673,102 @@ fn on_renomme_une_fonction_inconnue_depuis_la_rangee() {
         "le nom doit paraître dans la rubrique : {écrit:?}"
     );
 }
+
+/// La rangée « Moteur : » est alignée, et le niveau débutant n'en
+/// propose que trois.
+///
+/// **Deux consignes écrites sur une capture d'écran** (4 novembre
+/// 2026) : « ça doit être aligné », trait souligné sous la rangée, et
+/// « comme moteur de décompil en mode débutant, le choix doit être
+/// pseudo-code, nasm et objdump (Intel) ».
+///
+/// L'alignement d'abord, parce qu'il se mesure : dans une rangée egui,
+/// chaque élément est centré sur la hauteur que la rangée a **à cet
+/// instant**. L'étiquette arrive la première, sur une rangée haute de
+/// quinze pixels ; les choix sont des boutons de vingt-trois, et la
+/// rangée grandit sous eux. L'étiquette restait cinq pixels plus haut
+/// que ce qu'elle annonce.
+#[test]
+fn la_rangee_du_moteur_est_alignee_et_le_debutant_en_a_trois() {
+    let s = strings(Lang::Fr);
+    let rendre = |app: &mut NamsdecApp| -> Vec<(String, egui::Pos2)> {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        for _ in 0..3 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    vus.push((texte.galley.text().to_owned(), texte.pos));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    // 1. ALIGNÉE : l'étiquette et les choix sur la même ligne de base.
+    let mut app = NamsdecApp {
+        vue_centrale: VueCentrale::Disassembly,
+        ..Default::default()
+    };
+    let vus = rendre(&mut app);
+    let y = |quoi: &str| -> f32 {
+        vus.iter()
+            .find(|(texte, _)| texte == quoi)
+            .unwrap_or_else(|| panic!("« {quoi} » doit être peint"))
+            .1
+            .y
+    };
+    let étiquette = y(s.disassembly_engine);
+    for choix in [s.disassembly_pseudo, s.disassembly_nasm] {
+        assert!(
+            (y(choix) - étiquette).abs() < 1.0,
+            "« {} » est à {étiquette:.1}, « {choix} » à {:.1} : la rangée n'est pas alignée",
+            s.disassembly_engine,
+            y(choix)
+        );
+    }
+
+    // 2. TROIS AU NIVEAU DÉBUTANT. La syntaxe du système est celle de
+    //    gdb et d'as : elle suppose qu'on sache déjà ce qu'on cherche.
+    let mut app = NamsdecApp {
+        vue_centrale: VueCentrale::Disassembly,
+        debutant: true,
+        ..Default::default()
+    };
+    let textes: Vec<String> = rendre(&mut app).into_iter().map(|(t, _)| t).collect();
+    assert!(
+        textes.iter().any(|t| t == s.disassembly_pseudo)
+            && textes.iter().any(|t| t == s.disassembly_nasm),
+        "le pseudo-code et NASM restent : {textes:?}"
+    );
+    assert!(
+        !textes.iter().any(|t| t == s.disassembly_system),
+        "la syntaxe du système ne se propose pas au débutant : {textes:?}"
+    );
+
+    // 3. ET CE QU'ON REGARDE RESTE LISTÉ : un moteur choisi au niveau
+    //    avancé puis retrouvé au niveau débutant garde sa place, sans
+    //    quoi la rangée n'aurait plus rien de sélectionné et l'on ne
+    //    saurait plus d'où vient ce qu'on lit.
+    let mut app = NamsdecApp {
+        vue_centrale: VueCentrale::Disassembly,
+        debutant: true,
+        disassembler: "system".to_owned(),
+        ..Default::default()
+    };
+    let textes: Vec<String> = rendre(&mut app).into_iter().map(|(t, _)| t).collect();
+    assert!(
+        textes.iter().any(|t| t == s.disassembly_system),
+        "le moteur en cours reste listé, même au-dessus du niveau : {textes:?}"
+    );
+}

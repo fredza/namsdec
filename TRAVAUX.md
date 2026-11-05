@@ -979,6 +979,32 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 quintricies. La rangée « Moteur : » (A 9.71)
+
+Deux consignes écrites sur une capture du 4 novembre.
+
+- [x] **« Ça doit être aligné »** — l'étiquette était cinq pixels au-
+      dessus de ses choix. Dans une rangée egui, chaque élément est
+      centré sur la hauteur que la rangée a **à cet instant** : une
+      étiquette qui ouvre la rangée se pose avant que les boutons ne
+      l'aient fait grandir. Deux essais, le premier faux —
+      `interact_size` n'est pas la hauteur d'un `selectable_value`.
+- [x] **Trois moteurs au niveau débutant** — pseudo-code, NASM et
+      `objdump` (Intel), celui qu'on a sur toute machine et dont la
+      syntaxe est celle qu'on vient d'écrire. Et **ce qu'on regarde
+      reste listé** : un moteur choisi au niveau avancé garde sa place.
+- [x] **La scène manquait** — aucune ne montrait cette rangée au niveau
+      débutant. Troisième fois de la semaine qu'une consigne venue d'une
+      capture désigne un écran que le banc ne regardait pas.
+
+**Et un écart que j'ai cru voir et qui n'existait pas** : trois
+abscisses dans la même colonne (10, 12, 14). C'est l'encart du texte
+dans sa boîte — un champ pose son texte à quatre pixels de son bord. Les
+widgets commencent tous à 10. Un relevé qui compare des positions de
+**texte** ne dit rien des bords.
+
+---
+
 ## 0 quatertricies. La console : ce qu'on règle quitte ce qu'on lit (A 9.70)
 
 Consigne écrite sur une capture : « la console et les autres champs ne

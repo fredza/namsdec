@@ -1784,6 +1784,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "D'autres moteurs s'ajoutent en posant un fichier de description : voir "
          "« Brancher son propre outil »."),
+        ("note",
+         "<b>En mode débutant, la rangée n'en propose que trois</b>&nbsp;: le pseudo-code, "
+         "NASM, et <font face='Courier'>objdump</font> en syntaxe Intel — celui qu'on a "
+         "sur toute machine, et dont la syntaxe est celle qu'on vient d'apprendre en "
+         "écrivant du nasm. Les autres supposent qu'on sache déjà ce qu'on cherche&nbsp;: "
+         "six façons de lire le même code devant quelqu'un qui n'en connaît aucune ne "
+         "sont pas un choix, c'est une question de plus. Un moteur choisi au niveau "
+         "avancé <b>garde sa place</b> si l'on revient au niveau débutant&nbsp;: on ne "
+         "retire pas ce qu'on est en train de lire."),
         ("p",
          "Le module <b>RE</b> (Préférences › Modules) ajoute un onglet au panneau "
          "latéral et la vue Analyse. La douzaine de panneaux vit dans la vue&nbsp;: "

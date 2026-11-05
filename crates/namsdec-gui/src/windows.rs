@@ -281,8 +281,46 @@ impl NamsdecApp {
         let lang = self.lang.code();
         // Le choix du moteur, en tête : c'est lui qui décide de
         // tout ce qu'on lit en dessous.
+        let niveau = self.niveau();
+        let en_cours = self.disassembler.clone();
         ui.horizontal_wrapped(|ui| {
-            ui.label(s.disassembly_engine);
+            // L'ÉTIQUETTE SE POSE AVANT QUE LA RANGÉE N'AIT SA HAUTEUR,
+            // et c'est le défaut qu'on voyait sans savoir le nommer.
+            //
+            // Dans une rangée egui, chaque élément est centré sur la
+            // hauteur que la rangée a À CET INSTANT. « Moteur : » arrive
+            // le premier, sur une rangée haute de quinze pixels ; les
+            // choix qui suivent sont des boutons de vingt-trois, et la
+            // rangée grandit sous eux. L'étiquette restait donc cinq
+            // pixels plus haut que ce qu'elle annonce — mesuré :
+            // y = 132 contre y = 137.
+            //
+            // Lui allouer d'emblée la hauteur d'un élément interactif la
+            // centre sur la même chose que les boutons. C'est ce que
+            // fait déjà la rangée « Arguments : » de la console.
+            ui.allocate_ui_with_layout(
+                egui::vec2(
+                    ui.painter()
+                        .layout_no_wrap(
+                            s.disassembly_engine.to_owned(),
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            egui::Color32::PLACEHOLDER,
+                        )
+                        .size()
+                        .x,
+                    // LA HAUTEUR D'UN CHOIX, et non `interact_size` :
+                    // un `selectable_value` fait la hauteur de son
+                    // texte plus deux fois le rembourrage d'un bouton,
+                    // ce qui n'est pas la même chose — il restait trois
+                    // pixels et demi d'écart, mesurés.
+                    ui.text_style_height(&egui::TextStyle::Body)
+                        + ui.spacing().button_padding.y * 2.0,
+                ),
+                egui::Layout::left_to_right(egui::Align::Center),
+                |ui| {
+                    ui.label(s.disassembly_engine);
+                },
+            );
             ui.selectable_value(
                 &mut self.disassembler,
                 PSEUDO_ID.to_owned(),
@@ -293,13 +331,40 @@ impl NamsdecApp {
                 NASM_ID.to_owned(),
                 s.disassembly_nasm,
             );
-            ui.selectable_value(
-                &mut self.disassembler,
-                SYSTEM_ID.to_owned(),
-                s.disassembly_system,
-            )
-            .on_hover_text(s.disassembly_system_hint);
+            // TROIS MOTEURS AU NIVEAU DÉBUTANT : pseudo-code, NASM, et
+            // objdump en syntaxe Intel.
+            //
+            // Les autres supposent qu'on sache déjà ce qu'on cherche —
+            // la syntaxe du système est celle de gdb et d'as, et les
+            // désassembleurs extérieurs se choisissent quand on sait ce
+            // qu'ils font de différent. Six façons de lire le même code
+            // devant quelqu'un qui n'en connaît aucune ne sont pas un
+            // choix, c'est une question de plus.
+            //
+            // CE QU'ON REGARDE RESTE LISTÉ, toujours : un moteur choisi
+            // au niveau avancé puis retrouvé au niveau débutant garde sa
+            // place, sans quoi la rangée n'aurait plus rien de
+            // sélectionné et l'on ne saurait plus d'où vient ce qu'on
+            // lit. C'est la règle des vues et de la colonne d'analyse.
+            // Le moteur en cours est relevé AVANT la rangée : la
+            // fonction qui décide de ce qu'on montre ne peut pas
+            // emprunter `self.disassembler` pendant que les boutons
+            // l'écrivent.
+            let avancé = niveau >= namsdec_re::Niveau::Avancé;
+            let montrer =
+                |id: &str, débutant_le_garde: bool| débutant_le_garde || avancé || en_cours == id;
+            if montrer(SYSTEM_ID, false) {
+                ui.selectable_value(
+                    &mut self.disassembler,
+                    SYSTEM_ID.to_owned(),
+                    s.disassembly_system,
+                )
+                .on_hover_text(s.disassembly_system_hint);
+            }
             for plugin in &self.disassembler_plugins {
+                if !montrer(&plugin.id, plugin.id == OBJDUMP_ID) {
+                    continue;
+                }
                 ui.selectable_value(&mut self.disassembler, plugin.id.clone(), &plugin.name)
                     .on_hover_text(format!("{} {}", s.disassembly_external, plugin.command));
             }

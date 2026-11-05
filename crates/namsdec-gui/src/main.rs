@@ -1979,6 +1979,14 @@ const NASM_ID: &str = "nasm";
 /// session gdb, un tutoriel trouvé en ligne —, tout est écrit ainsi, et
 /// la traduction de tête est la marche où l'on abandonne.
 const SYSTEM_ID: &str = "system";
+/// Le désassembleur extérieur que le niveau débutant garde : `objdump`
+/// en syntaxe Intel.
+///
+/// C'est celui qu'on a sous la main sur toute machine — il vient avec
+/// `binutils` —, et sa syntaxe Intel est celle qu'on vient d'apprendre
+/// en écrivant du nasm. Les autres moteurs extérieurs se choisissent
+/// quand on sait ce qu'ils font de différent.
+const OBJDUMP_ID: &str = "objdump";
 
 /// Le programme que « Nouveau » pose dans l'éditeur.
 ///

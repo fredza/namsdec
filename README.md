@@ -549,6 +549,14 @@ La syntaxe **Système** est une vue, non une écriture : nasm ne la lit
 pas. Elle est là parce que tout ce qu'on trouve hors de namsdec est
 écrit dans celle-là.
 
+**En mode débutant, la rangée n'en propose que trois** : le pseudo-code,
+NASM, et `objdump` en syntaxe Intel — celui qu'on a sur toute machine,
+et dont la syntaxe est celle qu'on vient d'apprendre en écrivant du
+nasm. Six façons de lire le même code devant quelqu'un qui n'en connaît
+aucune ne sont pas un choix, c'est une question de plus. Un moteur
+choisi au niveau avancé garde sa place si l'on revient au niveau
+débutant : on ne retire pas ce qu'on est en train de lire.
+
 ### Ajouter un désassembleur
 
 Le panneau de désassemblage propose deux moteurs livrés — le pseudo-code

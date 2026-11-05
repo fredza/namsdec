@@ -6,6 +6,16 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Le choix du moteur de désassemblage**
+- La rangée **« Moteur : »** est alignée : l'étiquette se posait cinq
+  pixels au-dessus de ses choix.
+- **En mode débutant, trois moteurs** au lieu de six : le pseudo-code,
+  NASM et `objdump` en syntaxe Intel — celui qu'on a sur toute machine,
+  et dont la syntaxe est celle qu'on vient d'apprendre en écrivant du
+  nasm. Un moteur choisi au niveau avancé **garde sa place** si l'on
+  revient au niveau débutant : on ne retire pas ce qu'on est en train de
+  lire.
+
 **La console rend sa place à la sortie**
 - Les **arguments** et les **variables d'environnement** quittent la
   console : ils ne se tapent pas pendant qu'un programme tourne — ils

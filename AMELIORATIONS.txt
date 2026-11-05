@@ -10454,3 +10454,54 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      RESTE DE CETTE CONSIGNE, et ce sont les plus gros morceaux : une
      barre d'icônes de panneau (relancer, arrêter, effacer), et les
      barres latérales à icônes qui montrent et cachent les panneaux.
+
+9.71 [FAIT] LA RANGÉE « MOTEUR : » : ALIGNÉE, ET TROIS CHOIX AU DÉBUTANT
+     (5 novembre 2026 — deux consignes écrites sur une capture)
+
+     « ÇA DOIT ÊTRE ALIGNÉ », trait souligné sous la rangée. La mesure
+     donne le défaut exact : l'étiquette « Moteur : » à y = 132, ses
+     choix à y = 137. Cinq pixels, et l'œil les voyait sans pouvoir les
+     nommer.
+
+     LA CAUSE EST UNE RÈGLE D'egui QU'IL FAUT CONNAÎTRE : dans une
+     rangée, chaque élément est centré sur la hauteur que la rangée a À
+     CET INSTANT. « Moteur : » arrive le premier, sur une rangée haute
+     de quinze pixels ; les choix qui suivent sont des boutons de
+     vingt-trois, et la rangée grandit SOUS eux. Le premier élément
+     reste donc posé trop haut — et c'est vrai de toute rangée qui
+     commence par une étiquette et continue par des boutons.
+
+     On alloue à l'étiquette la hauteur d'un choix, et elle se centre
+     sur la même chose. DEUX ESSAIS, ET LE PREMIER ÉTAIT FAUX :
+     `interact_size.y` laissait trois pixels et demi — un
+     `selectable_value` fait la hauteur de son TEXTE plus deux fois le
+     rembourrage d'un bouton, ce qui n'est pas `interact_size`. Mesuré,
+     corrigé, remesuré : 137 contre 137.
+
+     ET L'ÉCART HORIZONTAL QUE J'AI CRU VOIR N'EN ÉTAIT PAS UN. Le
+     relevé donnait trois abscisses dans la même colonne — 10, 12, 14 —
+     et j'allais les « corriger ». C'est l'encart du texte DANS sa
+     boîte : un champ de saisie pose son texte à quatre pixels de son
+     bord, un onglet à deux. Les widgets, eux, commencent tous à 10. Un
+     relevé qui compare des positions de TEXTE ne dit rien des bords.
+
+     « COMME MOTEUR DE DÉCOMPIL EN MODE DÉBUTANT, LE CHOIX DOIT ÊTRE
+     PSEUDO-CODE, NASM ET OBJDUMP (INTEL) » — seconde consigne, et elle
+     se tient d'elle-même : objdump vient avec binutils, donc il est là
+     sur toute machine, et sa syntaxe Intel est celle qu'on vient
+     d'apprendre en écrivant du nasm. La syntaxe du système est celle de
+     gdb et d'as ; les autres désassembleurs se choisissent quand on
+     sait ce qu'ils font de différent. Six façons de lire le même code
+     devant quelqu'un qui n'en connaît aucune ne sont pas un choix,
+     c'est une question de plus.
+
+     CE QU'ON REGARDE RESTE LISTÉ, et c'est la même règle que les vues
+     et la colonne d'analyse : un moteur choisi au niveau avancé puis
+     retrouvé au niveau débutant garde sa place. Sans elle, la rangée
+     n'aurait plus rien de sélectionné et l'on ne saurait plus d'où
+     vient ce qu'on lit.
+
+     LA SCÈNE MANQUAIT AUSSI — aucune ne montrait cette rangée au niveau
+     débutant. Ajoutée ; c'est la troisième fois de la semaine qu'une
+     consigne venue d'une capture désigne un écran que le banc ne
+     regardait pas.
