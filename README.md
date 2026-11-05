@@ -201,6 +201,16 @@ d'après, en bouclant. Il ne paraît que s'il y a quelque chose à compter
 — un compteur à zéro en permanence est un endroit de l'écran qu'on
 apprend à ne plus regarder.
 
+**La rangée des vues tient sur une ligne.** Ce qui ne rentre pas passe
+derrière un bouton qui dit combien — `+5` — et la vue qu'on regarde
+reste toujours visible. La rangée passait à la ligne : à 800×520, les
+dix vues prenaient trois lignes, quatre-vingt-seize pixels, de quoi
+peindre six lignes de code — pour montrer dix onglets dont on en regarde
+un. Il restait quatre lignes de programme à l'écran. Les rangées posées
+au-dessus d'un panneau haut — le panneau latéral, la calculatrice —
+passent à la ligne comme avant : vingt-six pixels n'y coûtent presque
+rien.
+
 **Plusieurs fichiers ouverts à la fois.** Une barre d'onglets au-dessus
 de l'éditeur, le nom raccourci par le milieu quand il est long — pour que
 `boucle_i…ee.asm` et `boucle_i…e_2.asm` restent deux fichiers
@@ -215,7 +225,9 @@ d'après.
 par quoi on recommence — nouveau fichier, ouvrir, palette de commandes,
 exercices — et les fichiers récents, qu'un clic rouvre. Chaque raccourci
 montré est celui du tableau des raccourcis, lu et non recopié. Il se
-**demande**, par un geste : fermer. Il ne se déduit pas du tampon vide,
+**demande**, par un geste : fermer. Il tient dans l'écran — le blanc du
+haut se mesure sur la place, et ce qui ne tient pas encore se rejoint en
+descendant. Il ne se déduit pas du tampon vide,
 sans quoi il paraîtrait au milieu d'une frappe — on sélectionne tout, on
 efface pour recommencer, et l'éditeur disparaîtrait sous les doigts.
 

@@ -10745,3 +10745,107 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      parce que je sais compter, mais parce que le contrôle qui les
      exécute le dit : la réponse déclarée est celle que la machine
      donne, ou l'exercice ne passe pas.
+
+9.77 [FAIT] UNE RANGÉE D'ONGLETS TIENT SUR UNE LIGNE
+     (5 novembre 2026 — revue d'ergonomie, trouvée en REGARDANT)
+
+     LE BANC DESSINE SUR 1600x1100, un écran confortable où presque
+     rien ne manque de place. J'ai rendu les cent vingt scènes au plus
+     petit écran que l'application accepte — 800x520 — et regardé.
+
+     LES DIX VUES PRENAIENT TROIS LIGNES. Quatre-vingt-seize pixels, de
+     quoi peindre six lignes de code, pour montrer dix onglets dont on
+     en regarde UN. Il restait QUATRE LIGNES DE PROGRAMME à l'écran, la
+     console et le panneau latéral prenant le reste.
+
+     LE REPLI N'ÉTAIT PAS UN DÉFAUT D'IMPLÉMENTATION : il était voulu,
+     écrit dans le manuel, et un contrôle veillait même à ce que les
+     onglets repliés ne recouvrent rien. Ce que personne n'avait
+     mesuré, c'est CE QU'IL COÛTE. Un invariant qui dit « rien ne se
+     recouvre » est content d'un écran où il ne reste rien à lire.
+
+     Ce qui ne tient pas passe derrière un bouton qui dit combien :
+     « +5 ». Un clic les liste. C'est ce que font tous les éditeurs, et
+     pour une deuxième raison qui ne saute pas aux yeux : la hauteur
+     d'une barre d'onglets doit être CONSTANTE, sans quoi le contenu
+     qu'elle surmonte saute d'une hauteur à l'autre selon le nombre
+     d'onglets — on perd la ligne qu'on lisait en ouvrant un fichier.
+
+     CE QU'ON REGARDE RESTE VISIBLE, et c'est le piège d'une fenêtre
+     d'onglets qui commencerait toujours au premier : si l'onglet actif
+     tombe dehors, la fenêtre glisse jusqu'à le contenir. Une barre qui
+     cache l'onglet en cours ne dit plus où l'on est. L'invariant le
+     vérifie en regardant la DERNIÈRE vue sur le plus petit écran.
+
+     « +5 » PLUTÔT QUE « … » : le nombre se lit dans toutes les langues
+     — pas d'infobulle à traduire —, et il dit ce que trois points
+     taisent, combien il en reste. Trois points sur une barre d'onglets
+     peuvent en outre passer pour un menu de commandes.
+
+     ET LE CONTRÔLE COMPTAIT LES NEUF VUES DU TABLEAU là où la rangée
+     n'en porte que huit : les modules éteints et le niveau en retirent.
+     Il annonçait six cachées quand le bouton en disait cinq, et c'est
+     le bouton qui avait raison. Un contrôle qui recompte ce que le code
+     calcule doit recompter DE LA MÊME FAÇON.
+
+     Gagné : soixante-quatre pixels, quatre lignes de code — mesuré, le
+     listing commence à y = 128 au lieu de 192.
+
+     ET LA RÈGLE N'EST PAS GÉNÉRALE, c'est le banc qui l'a dit. Appliquée
+     partout, elle cachait l'onglet RE du panneau latéral derrière
+     « +1 » — on allume le module, et rien ne change à l'écran. La
+     distinction se mesure : au-dessus d'un contenu COURT (la rangée des
+     vues, qui surmonte l'éditeur) une ligne de plus coûte l'écran ;
+     au-dessus d'un panneau HAUT (le panneau latéral, la calculatrice)
+     vingt-six pixels ne coûtent presque rien, et tout reste sous les
+     yeux. Le repli est donc un paramètre, et chaque rangée dit lequel
+     elle veut.
+
+     ET UN DÉFAUT QUE LA CAPTURE A MONTRÉ ET QUE LE BANC NE POUVAIT PAS
+     VOIR : le disque rouge du compteur de problèmes tombait à DEUX
+     PIXELS ET DEMI du chiffre de « +6 ». Rien ne se peignait sur rien —
+     la règle « deux textes ne se recouvrent jamais » n'avait rien à
+     dire, et pour cause : elle compare des textes à des textes, et
+     ici un DESSIN frôlait un mot. À l'échelle 1, les deux se lisaient
+     comme un seul objet cassé, le disque paraissant avaler le chiffre.
+     Le compteur, posé de droite à gauche, collait son bord gauche à ce
+     qui le précédait ; il a maintenant sa gouttière des deux côtés.
+
+     J'AI D'ABORD ÉCRIT LE MAUVAIS INVARIANT — « aucun dessin ne se
+     peint sur un texte de la rangée ». Il passait, et il passait encore
+     en remettant le défaut, puis en supprimant la réserve du bouton :
+     une rangée alloue ses objets l'un après l'autre, et le
+     recouvrement y est IMPOSSIBLE. Un invariant qui ne peut pas échouer
+     ne prouve rien. Ce qu'il fallait mesurer, c'est l'ÉCART — il tombe
+     à 2,2 px dès qu'on retire la gouttière, et le contrôle le dit.
+
+     TROIS CONTRÔLES SONT TOMBÉS, et les trois avaient raison : « chaque
+     vue est peinte à 800x520 » (devenu « chaque vue PEINTE l'est en
+     entier, et les autres sont au menu »), « l'onglet RE paraît quand
+     on l'allume », et « hors d'un menu, un bouton se montre encadré » —
+     `menu_button` pose un bouton au style d'egui, plat au repos, et le
+     banc refuse les boutons plats depuis des mois.
+
+9.78 [FAIT] L'ACCUEIL TIENT DANS L'ÉCRAN
+     (5 novembre 2026 — même revue, même capture)
+
+     À 800x520, LA LISTE S'ARRÊTAIT À « PALETTE DE COMMANDES ». La
+     rubrique des RÉCENTS tombait sous le bord, et rien ne permettait
+     d'y descendre : l'accueil n'avait pas de zone qui défile, son blanc
+     du haut étant posé à soixante-quatre pixels quelle que soit la
+     hauteur.
+
+     Un accueil qui cache la moitié de ce qu'il propose est pire qu'un
+     éditeur vide : il montre qu'il y a quelque chose et ne le donne
+     pas. C'est le contraire exact de ce pour quoi il a été écrit (9.72).
+
+     DEUX GESTES, ET LE PREMIER SUFFIT PRESQUE TOUJOURS. Le blanc du
+     haut se mesure sur la hauteur disponible — sur un écran haut il ne
+     change rien, sur un écran court il rend la place aux lignes. La
+     zone qui défile est le FILET, pour les cas qu'on n'a pas prévus :
+     dix fichiers récents, une police grossie, les exercices allumés.
+
+     Le contrôle descend à la molette et vérifie que les récents
+     paraissent — et il mesure CE QUI SE VOIT, non ce qui est peint :
+     une ligne sortie d'une zone qui défile est dans la liste des
+     formes, rognée à néant.

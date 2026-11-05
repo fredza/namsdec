@@ -42,18 +42,35 @@ impl NamsdecApp {
 
     /// L'accueil, à la place de l'éditeur.
     pub(crate) fn accueil_ui(&mut self, ui: &mut egui::Ui) {
+        // CE QU'ON NE PEUT PAS ATTEINDRE N'EST PAS OFFERT.
+        //
+        // Vu à 800x520, le plus petit écran que l'application accepte :
+        // la liste s'arrêtait à « Palette de commandes », et la rubrique
+        // des RÉCENTS tombait sous le bord sans rien pour y descendre.
+        // Un accueil qui cache la moitié de ce qu'il propose est pire
+        // qu'un éditeur vide : il montre qu'il y a quelque chose et ne
+        // le donne pas.
+        //
+        // Deux gestes, et le premier suffit presque toujours : le blanc
+        // du haut se mesure sur la hauteur disponible au lieu d'être
+        // posé à soixante-quatre pixels — sur un écran haut il ne change
+        // rien, sur un écran court il rend la place aux lignes. La zone
+        // qui défile est le filet, pour les cas qu'on n'a pas prévus :
+        // dix fichiers récents, une police grossie.
+        egui::ScrollArea::vertical().show(ui, |ui| self.accueil_contenu_ui(ui));
+    }
+
+    fn accueil_contenu_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
         let fr = self.lang == Lang::Fr;
         let ctx = ui.ctx().clone();
-        // Ce qu'un clic demande, exécuté APRÈS la mise en page : agir
-        // au milieu du dessin changerait sous nos pieds ce qu'on est en
-        // train de peindre.
         let mut action = None;
         let mut ouvrir = None;
+        let haut = (ui.available_height() * 0.12).min(64.0);
 
         ui.vertical_centered(|ui| {
-            ui.add_space(64.0);
+            ui.add_space(haut);
             ui.label(
                 egui::RichText::new(APP_NAME)
                     .size(28.0)
@@ -61,7 +78,7 @@ impl NamsdecApp {
                     .strong(),
             );
             ui.label(egui::RichText::new(s.accueil_sous_titre).color(theme.dim));
-            ui.add_space(28.0);
+            ui.add_space(haut.min(28.0));
         });
 
         // UNE COLONNE CENTRÉE, et bornée : une liste de quatre lignes

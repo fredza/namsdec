@@ -6,6 +6,17 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3, 4 et 5 novembre 2026
 
+**L'accueil tient dans l'écran**
+- Le blanc du haut se mesure sur la place disponible, et ce qui ne tient
+  pas encore se rejoint en descendant. À 800×520, les récents tombaient
+  sous le bord sans rien pour y aller.
+
+**Les rangées d'onglets tiennent sur une ligne**
+- Ce qui ne rentre pas passe derrière un bouton qui dit combien (`+5`),
+  et **la vue qu'on regarde reste toujours visible**.
+- À 800×520, les dix vues prenaient trois lignes — quatre-vingt-seize
+  pixels — et il restait quatre lignes de programme à l'écran.
+
 **Trois questions de lecture de plus** (cent dix-sept étapes)
 - **L'appel système** : ce que `write` rend dans RAX — et le numéro
   qu'on y avait mis n'y est plus.

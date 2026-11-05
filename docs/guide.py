@@ -500,6 +500,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "module est allumé — et la liste des fichiers <b>récents</b>, qu'un clic rouvre. "
          "Chaque raccourci montré est celui du tableau des raccourcis, et non une "
          "indication recopiée&nbsp;: réglé autrement, il se lit ici autrement."),
+        ("p",
+         "Il <b>tient dans l'écran</b>&nbsp;: le blanc du haut se mesure sur la place "
+         "disponible plutôt que d'être posé une fois pour toutes, et ce qui ne tient "
+         "pas encore se rejoint en descendant. À 800 x 520, la liste s'arrêtait à "
+         "« Palette de commandes » et les récents tombaient sous le bord, sans rien "
+         "pour y aller&nbsp;: un accueil qui cache la moitié de ce qu'il propose est "
+         "pire qu'un éditeur vide, il montre qu'il y a quelque chose et ne le donne "
+         "pas."),
         ("note",
          "L'accueil se <b>demande</b>, par un geste&nbsp;: fermer. Il ne se déduit pas du "
          "tampon vide, sans quoi il paraîtrait au milieu d'une frappe — on sélectionne "
@@ -601,10 +609,23 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "perdue, elle est quelque part. La <b>source</b>, elle, ne se détache pas : "
          "c'est la vue qui reste quand les autres partent."),
         ("p",
-         "Sur un écran étroit, la rangée <b>passe à la ligne</b> plutôt que de raboter "
-         "ses onglets : à 800 x 520, le plus petit affichage que namsdec accepte, les "
-         "neuf noms tiennent sur trois lignes, et aucun n'est coupé. Un onglet à moitié "
-         "peint est pire qu'un onglet absent, parce qu'on croit l'avoir lu."),
+         "Sur un écran étroit, la rangée des vues <b>tient sur une ligne</b> et range ce qui ne "
+         "rentre pas derrière un bouton qui dit combien&nbsp;: <b>+5</b>. Un clic "
+         "dessus les liste, et <b>la vue qu'on regarde reste toujours visible</b> — "
+         "une barre qui cache l'onglet en cours ne dit plus où l'on est. Aucun nom "
+         "n'est raboté : un onglet à moitié peint est pire qu'un onglet absent, parce "
+         "qu'on croit l'avoir lu."),
+        ("note",
+         "Elle passait à la ligne, et c'était voulu. Ce que personne n'avait mesuré, "
+         "c'est ce que ce repli COÛTE&nbsp;: à 800 x 520, les dix vues prenaient trois "
+         "lignes — quatre-vingt-seize pixels, de quoi peindre six lignes de code — pour "
+         "montrer dix onglets dont on en regarde un. Il restait quatre lignes de "
+         "programme à l'écran. Une barre d'onglets doit en outre garder une hauteur "
+         "<b>constante</b>, sans quoi le contenu qu'elle surmonte saute d'une hauteur à "
+         "l'autre selon le nombre d'onglets, et l'on perd la ligne qu'on lisait en "
+         "ouvrant un fichier. Les rangées posées au-dessus d'un panneau <b>haut</b> — "
+         "le panneau latéral, la calculatrice — passent à la ligne comme avant&nbsp;: "
+         "vingt-six pixels n'y coûtent presque rien, et tout reste sous les yeux."),
         ("note",
          "Ces huit vues vivaient en fenêtres flottantes, et l'on pouvait les agrandir "
          "jusqu'à occuper tout l'établi : c'était un onglet qui s'ignorait, en moins "

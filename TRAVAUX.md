@@ -979,6 +979,52 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 unquadragies. L'accueil tient dans l'écran (A 9.78)
+
+- [x] **Le blanc du haut se mesure sur la place** — posé à
+      soixante-quatre pixels, il repoussait les récents sous le bord à
+      800×520.
+- [x] **Et une zone qui défile en filet**, pour les cas qu'on n'a pas
+      prévus : dix récents, une police grossie.
+
+Un accueil qui cache la moitié de ce qu'il propose est pire qu'un
+éditeur vide : il montre qu'il y a quelque chose et ne le donne pas.
+
+---
+
+## 0 quadragies. Une rangée d'onglets tient sur une ligne (A 9.77)
+
+Revue d'ergonomie : les cent vingt scènes rendues au plus petit écran
+que l'application accepte (800×520), et regardées.
+
+- [x] **Une seule ligne, et ce qui ne tient pas derrière « +5 »** — les
+      dix vues prenaient trois lignes, quatre-vingt-seize pixels, et il
+      restait quatre lignes de programme à l'écran.
+- [x] **Ce qu'on regarde reste visible** : la fenêtre d'onglets glisse
+      jusqu'à contenir l'actif.
+- [x] **Le banc rend aussi le petit écran** (`captures_du_petit_ecran`)
+      — c'est là que vivent les défauts d'ergonomie.
+- [x] **Et la règle n'est pas générale** : au-dessus d'un contenu court
+      (la rangée des vues) une ligne de plus coûte l'écran ; au-dessus
+      d'un panneau haut (le panneau latéral) vingt-six pixels ne coûtent
+      presque rien. Appliquée partout, elle cachait l'onglet RE derrière
+      « +1 » — on allume le module, et rien ne change.
+
+- [x] **Et un écart de 2,2 px** entre « +6 » et le disque du compteur,
+      vu à la capture : rien ne se recouvrait, mais les deux se lisaient
+      comme un seul objet cassé. **J'ai d'abord écrit le mauvais
+      invariant** — « aucun dessin ne se peint sur un texte » —, qui
+      passait même en remettant le défaut : une rangée alloue ses objets
+      l'un après l'autre, le recouvrement y est impossible. C'est
+      l'ÉCART qu'il fallait mesurer.
+
+**Le repli était voulu, et un contrôle veillait à ce qu'il ne recouvre
+rien.** Ce que personne n'avait mesuré, c'est ce qu'il coûte : un
+invariant qui dit « rien ne se recouvre » est content d'un écran où il
+ne reste rien à lire.
+
+---
+
 ## 0 nonatricies. La barre d'icônes de la console (A 9.75)
 
 Dernière des consignes du 4 novembre.

@@ -246,12 +246,14 @@ impl NamsdecApp {
 
         let mut détacher = false;
         let mut problèmes = None;
-        let cliqué = rangée_d_onglets(
+        let cliqué = rangée_d_onglets_repliée(
             ui,
             theme,
             &étiquettes,
             actif,
             largeur_bouton + largeur_compteur,
+            // UNE SEULE LIGNE : c'est ici que le repli coûtait l'écran.
+            Repli::UneLigne,
             // PETIT, et c'est une question de rang : un bouton de pleine
             // taille fait vingt-sept pixels dans une rangée qui en fait
             // vingt-six — il la remplit d'un bord à l'autre et pèse plus

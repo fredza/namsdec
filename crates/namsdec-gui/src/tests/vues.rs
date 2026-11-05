@@ -291,11 +291,22 @@ fn la_rangee_des_vues_tient_dans_le_plus_petit_ecran() {
             .filter(|(v, _)| *v == vue)
             .map(|(_, r)| *r)
             .collect();
+        // PEINTE DANS LA RANGÉE, OU RANGÉE DERRIÈRE « +N », jamais
+        // perdue. La rangée tenait sur trois lignes pour montrer tous
+        // ses onglets ; elle tient sur une et range le reste derrière
+        // un bouton qui les liste (voir A 9.77). Ce qu'on vérifie ici
+        // n'est donc plus « chaque onglet est peint » mais « chaque
+        // onglet peint l'est en entier » — les absents sont contrôlés
+        // par `une_rangee_d_onglets_tient_sur_une_ligne`, qui ouvre le
+        // bouton et compte.
+        if posées.is_empty() {
+            continue;
+        }
         assert_eq!(
             posées.len(),
             1,
-            "l'onglet « {étiquette} » doit être peint une fois à {} x {} : \
-             une vue sans onglet n'existe plus pour qui regarde l'écran",
+            "l'onglet « {étiquette} » ne doit pas être peint deux fois à \
+             {} x {}",
             MIN_SCREEN[0],
             MIN_SCREEN[1]
         );
@@ -303,8 +314,8 @@ fn la_rangee_des_vues_tient_dans_le_plus_petit_ecran() {
         assert!(
             rect.width() >= au_large.width() - 0.5,
             "l'onglet « {étiquette} » est rogné à l'étroit : {:.0} px \
-             d'encre contre {:.0} au large. La rangée doit passer à la \
-             ligne, non raboter ses onglets",
+             d'encre contre {:.0} au large. Un onglet montré l'est en \
+             ENTIER ; ce qui ne tient pas se range derrière « +N »",
             rect.width(),
             au_large.width()
         );
@@ -1386,5 +1397,104 @@ fn la_barre_de_la_console_efface_sans_rien_remettre_a_zero() {
         app.emulator.as_ref().map(|e| e.cpu().regs.rip),
         rip_avant,
         "et ne remet rien à zéro : le processeur est où on l'a laissé"
+    );
+}
+
+/// L'accueil tient dans le plus petit écran, ou s'y atteint.
+///
+/// **Vu à la capture, à 800x520** (5 novembre 2026) : la liste
+/// s'arrêtait à « Palette de commandes », et la rubrique des RÉCENTS
+/// tombait sous le bord sans rien pour y descendre. Un accueil qui
+/// cache la moitié de ce qu'il propose est pire qu'un éditeur vide : il
+/// montre qu'il y a quelque chose et ne le donne pas.
+#[test]
+fn l_accueil_tient_dans_le_plus_petit_ecran() {
+    let s = strings(Lang::Fr);
+    let peindre = |largeur: f32, hauteur: f32, descendre: f32| -> Vec<(String, f32)> {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: "mov rax, 1\n".to_owned(),
+            recent_files: vec![
+                std::path::PathBuf::from("/tmp/boucle.asm"),
+                std::path::PathBuf::from("/tmp/drapeaux.asm"),
+            ],
+            ..Default::default()
+        };
+        app.close_tab_now(app.active_tab_index);
+        app.apply_theme(&ctx);
+        let mut vus = Vec::new();
+        for image in 0..4 {
+            // La molette au milieu de l'écran, après la première image :
+            // une zone qui défile ne défile que si le pointeur est
+            // dessus.
+            let events = if image > 0 && descendre != 0.0 {
+                vec![
+                    egui::Event::PointerMoved(egui::pos2(largeur * 0.4, hauteur * 0.6)),
+                    egui::Event::MouseWheel {
+                        unit: egui::MouseWheelUnit::Point,
+                        delta: egui::vec2(0.0, -descendre),
+                        modifiers: egui::Modifiers::NONE,
+                        phase: egui::TouchPhase::Move,
+                    },
+                ]
+            } else {
+                Vec::new()
+            };
+            let entrée = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(largeur, hauteur),
+                )),
+                events,
+                focused: true,
+                ..Default::default()
+            };
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    let cadre = egui::Rect::from_min_size(texte.pos, texte.galley.size());
+                    // CE QUI SE VOIT, et non ce qui est peint : une
+                    // ligne sortie de la zone qui défile est dans la
+                    // liste des formes, rognée à néant.
+                    let vu = cadre.intersect(clipped.clip_rect);
+                    if vu.height() > 4.0 {
+                        vus.push((texte.galley.text().to_owned(), texte.pos.y));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    // 1. LE BLANC DU HAUT SE MESURE SUR LA PLACE. Sur un écran haut il
+    //    ne change rien ; sur un écran court il rend la place aux
+    //    lignes.
+    let haut = peindre(1600.0, 1100.0, 0.0);
+    let petit = peindre(MIN_SCREEN[0], MIN_SCREEN[1], 0.0);
+    let titre = |vus: &[(String, f32)]| -> f32 {
+        vus.iter()
+            .find(|(texte, _)| texte == APP_NAME)
+            .map(|(_, y)| *y)
+            .expect("le nom de l'atelier est peint")
+    };
+    assert!(
+        titre(&petit) < titre(&haut) - 10.0,
+        "le blanc du haut doit céder sur un écran court : {:.0} contre \
+         {:.0}",
+        titre(&petit),
+        titre(&haut)
+    );
+
+    // 2. ET CE QUI NE TIENT PAS S'ATTEINT. On descend, et les récents
+    //    paraissent.
+    let descendu = peindre(MIN_SCREEN[0], MIN_SCREEN[1], 400.0);
+    assert!(
+        descendu.iter().any(|(texte, _)| texte == s.accueil_recents)
+            && descendu.iter().any(|(texte, _)| texte == "boucle.asm"),
+        "les récents doivent s'atteindre à {} x {} : {descendu:?}",
+        MIN_SCREEN[0],
+        MIN_SCREEN[1]
     );
 }

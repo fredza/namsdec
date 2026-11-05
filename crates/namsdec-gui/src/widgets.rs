@@ -792,6 +792,10 @@ pub(crate) const ONGLET_HAUTEUR: f32 = 26.0;
 /// garde au bord.
 pub(crate) const ONGLET_MARGE: f32 = 12.0;
 
+/// La place retenue pour le bouton « … » des onglets qui ne tiennent
+/// pas.
+pub(crate) const DÉBORDEMENT_LARGEUR: f32 = 34.0;
+
 /// Une rangée d'onglets PLATS, qui passe à la ligne quand la place
 /// manque.
 ///
@@ -829,6 +833,36 @@ pub(crate) fn rangée_d_onglets(
     réserve: f32,
     commande: impl FnOnce(&mut egui::Ui),
 ) -> Option<usize> {
+    rangée_d_onglets_repliée(ui, theme, onglets, actif, réserve, Repli::Lignes, commande)
+}
+
+/// Ce que fait une rangée d'onglets quand ils ne tiennent pas.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Repli {
+    /// Elle passe à la ligne. C'est le bon choix au-dessus d'un panneau
+    /// HAUT — le panneau latéral, la calculatrice —, où vingt-six
+    /// pixels de plus ne coûtent presque rien et où tout reste sous les
+    /// yeux.
+    Lignes,
+    /// Elle tient sur une ligne, et range le reste derrière « +N ».
+    ///
+    /// C'est le bon choix au-dessus d'un contenu COURT, et la rangée
+    /// des vues en est le cas : mesuré à 800x520, ses dix onglets
+    /// prenaient trois lignes — quatre-vingt-seize pixels, six lignes
+    /// de code — et il restait quatre lignes de programme à l'écran.
+    UneLigne,
+}
+
+/// La même, en disant ce qu'elle fait de ce qui ne tient pas.
+pub(crate) fn rangée_d_onglets_repliée(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    onglets: &[(&str, Option<&str>)],
+    actif: usize,
+    réserve: f32,
+    repli: Repli,
+    commande: impl FnOnce(&mut egui::Ui),
+) -> Option<usize> {
     let police = egui::TextStyle::Body.resolve(ui.style());
     let galettes: Vec<std::sync::Arc<egui::Galley>> = onglets
         .iter()
@@ -842,17 +876,67 @@ pub(crate) fn rangée_d_onglets(
         .collect();
 
     let dispo = (ui.available_width() - réserve).max(0.0);
-    let mut lignes: Vec<Vec<usize>> = vec![Vec::new()];
-    let mut large = 0.0_f32;
-    for (rang, galette) in galettes.iter().enumerate() {
-        let onglet = galette.size().x + ONGLET_MARGE * 2.0;
-        if !lignes.last().is_some_and(|l| l.is_empty()) && large + onglet > dispo {
-            lignes.push(Vec::new());
-            large = 0.0;
+    let largeurs: Vec<f32> = galettes
+        .iter()
+        .map(|g| g.size().x + ONGLET_MARGE * 2.0)
+        .collect();
+    let total: f32 = largeurs.iter().sum();
+
+    // UNE SEULE LIGNE, ET CE QUI NE TIENT PAS PASSE DERRIÈRE « … ».
+    //
+    // La rangée se repliait sur autant de lignes qu'il fallait. Mesuré
+    // à 800x520, le plus petit écran que l'application accepte : les
+    // dix vues prenaient TROIS lignes, quatre-vingt-seize pixels — de
+    // quoi peindre six lignes de code, pour montrer dix onglets dont on
+    // en regarde un. Il restait quatre lignes de programme à l'écran.
+    //
+    // C'est ce que font tous les éditeurs, et pour cette raison : la
+    // place d'une barre d'onglets doit être CONSTANTE, sinon le contenu
+    // qu'elle surmonte saute d'une hauteur à l'autre selon le nombre
+    // d'onglets — on perd la ligne qu'on lisait en ouvrant un fichier.
+    //
+    // CE QU'ON REGARDE RESTE VISIBLE : si l'onglet actif tombe hors de
+    // la fenêtre, celle-ci glisse jusqu'à le contenir. Une barre qui
+    // cache l'onglet en cours ne dit plus où l'on est.
+    let débordement = total > dispo && repli == Repli::UneLigne;
+    let (début, fin) = if !débordement {
+        (0, onglets.len())
+    } else {
+        let place = (dispo - DÉBORDEMENT_LARGEUR).max(0.0);
+        let mut début = 0;
+        loop {
+            let mut large = 0.0;
+            let mut fin = début;
+            while fin < onglets.len() && large + largeurs[fin] <= place {
+                large += largeurs[fin];
+                fin += 1;
+            }
+            // Au moins un onglet, même s'il déborde : une rangée vide
+            // serait pire que serrée.
+            let fin = fin.max(début + 1).min(onglets.len());
+            if actif < fin || début >= actif {
+                break (début, fin);
+            }
+            début += 1;
         }
-        lignes.last_mut().expect("une ligne au moins").push(rang);
-        large += onglet;
-    }
+    };
+    // Hors débordement, la rangée garde son repli d'origine : autant de
+    // lignes qu'il faut, et aucun onglet caché.
+    let lignes: Vec<Vec<usize>> = if débordement {
+        vec![(début..fin).collect()]
+    } else {
+        let mut lignes: Vec<Vec<usize>> = vec![Vec::new()];
+        let mut large = 0.0_f32;
+        for (rang, onglet) in largeurs.iter().enumerate() {
+            if !lignes.last().is_some_and(|l| l.is_empty()) && large + onglet > dispo {
+                lignes.push(Vec::new());
+                large = 0.0;
+            }
+            lignes.last_mut().expect("une ligne au moins").push(rang);
+            large += onglet;
+        }
+        lignes
+    };
 
     let mut choisi = None;
     let mut commande = Some(commande);
@@ -898,6 +982,42 @@ pub(crate) fn rangée_d_onglets(
                 if let Some(infobulle) = onglets[*rang].1 {
                     réponse.on_hover_text(infobulle);
                 }
+            }
+            // LE BOUTON DU DÉBORDEMENT, juste après le dernier onglet
+            // montré : c'est là que l'œil arrive en lisant la rangée,
+            // et c'est là que les éditeurs le mettent.
+            if débordement {
+                let cachés: Vec<usize> = (0..onglets.len())
+                    .filter(|rang| *rang < début || *rang >= fin)
+                    .collect();
+                // « +3 » PLUTÔT QUE « … » : le nombre se lit dans
+                // toutes les langues, il n'a pas besoin d'infobulle, et
+                // il dit ce que trois points taisent — combien il en
+                // reste. Trois points sur une barre d'onglets peuvent
+                // aussi passer pour un menu de commandes.
+                let étiquette = format!("+{}", cachés.len());
+                // ENCADRÉ, comme tous les boutons hors d'un menu : un
+                // bouton plat au repos ne se distingue pas d'une
+                // étiquette, et le banc le refuse depuis des mois.
+                // `menu_button` pose un bouton au style d'egui ; on lui
+                // passe donc le nôtre.
+                let bouton = egui::Button::new(étiquette)
+                    .small()
+                    .stroke(egui::Stroke::new(1.0, theme.dim))
+                    .corner_radius(egui::CornerRadius::from(6));
+                // SA GOUTTIÈRE APRÈS LUI : sans elle, le compteur de
+                // problèmes — posé de droite à gauche — venait toucher
+                // son chiffre. Vu à 800x520 : le « 6 » de « +6 »
+                // disparaissait sous le disque rouge des erreurs.
+                egui::containers::menu::MenuButton::from_button(bouton).ui(ui, |ui| {
+                    for rang in cachés {
+                        if ui.button(onglets[rang].0).clicked() {
+                            choisi = Some(rang);
+                            ui.close();
+                        }
+                    }
+                });
+                ui.add_space(ONGLET_MARGE);
             }
             // La commande, au bord droit de la première ligne : sa
             // gouttière d'abord, puisqu'on part du bord.
@@ -993,6 +1113,7 @@ pub(crate) fn compteur_de_problemes(
         egui::Layout::left_to_right(egui::Align::Center),
         |ui| {
             ui.spacing_mut().item_spacing.x = 2.0;
+            ui.add_space(8.0);
             let (rect, réponse) =
                 ui.allocate_exact_size(egui::vec2(largeur, hauteur), egui::Sense::click());
             if réponse.hovered() {

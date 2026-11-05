@@ -1341,7 +1341,19 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
                         .lines()
                         .nth(n.saturating_sub(1))
                         .is_some_and(|d| d.trim_end().ends_with("ui")));
-            if plat && !matches!(fonction, "menu_bar_ui" | "toolbar_ui") {
+            // DANS UN MENU, UN BOUTON PLAT EST LA RÈGLE, et c'est à la
+            // fonction qu'on reconnaît le menu — le relevé lit du
+            // texte, il ne sait pas qu'une ligne est dans la fermeture
+            // d'un `MenuButton`. Les trois nommées ici n'ouvrent que
+            // des menus : la barre de menus, la barre d'outils (son
+            // menu de débordement), et la rangée d'onglets (le « +N »
+            // qui liste les onglets cachés).
+            if plat
+                && !matches!(
+                    fonction,
+                    "menu_bar_ui" | "toolbar_ui" | "rangée_d_onglets_repliée"
+                )
+            {
                 plats.push((
                     format!("{fichier}:{}", n + 1),
                     fonction,
@@ -3944,6 +3956,54 @@ fn captures_de_toutes_les_scenes() {
     assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
 }
 
+/// Les mêmes scènes, au plus petit écran que l'application accepte.
+///
+/// LE BANC DESSINE SUR 1600x1100, et c'est un écran confortable où
+/// presque rien ne manque de place. Les défauts d'ergonomie vivent à
+/// l'autre bout : à 800x520, soixante-dix pixels pris par des barres
+/// d'icônes ne sont plus un détail, une rangée d'onglets se replie, et
+/// un panneau latéral qui garde sa largeur mange la moitié de
+/// l'éditeur.
+///
+/// Les mesures du banc couvrent déjà ce format — elles y ont trouvé
+/// des textes superposés et des fenêtres hors de l'écran. Ce qu'elles
+/// ne donnent pas, c'est le COUP D'ŒIL : la place qui reste pour
+/// travailler, et si l'écran a encore l'air d'un atelier.
+#[test]
+#[ignore = "écrit des images ; se demande explicitement"]
+fn captures_du_petit_ecran() {
+    use egui_kittest::Harness;
+
+    let dossier =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/captures-petit");
+    std::fs::create_dir_all(&dossier).expect("le dossier des captures se crée");
+    let taille = egui::vec2(MIN_SCREEN[0], MIN_SCREEN[1]);
+
+    let mut écrites = 0;
+    for (nom, _, prépare) in scènes() {
+        let mut app = NamsdecApp::default();
+        prépare(&mut app);
+        app.values_changed_at = None;
+        let mut harness = Harness::builder()
+            .with_size(taille)
+            .wgpu()
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        for _ in 0..6 {
+            harness.step();
+        }
+        if let Ok(image) = harness.render() {
+            let fichier = dossier.join(format!("{}.png", nom.replace(['/', ' '], "_")));
+            image.save(&fichier).expect("l'image s'écrit");
+            écrites += 1;
+        }
+    }
+    eprintln!("{écrites} image(s) dans {}", dossier.display());
+    assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
+}
+
 /// Aucun texte peint ne dit « 1 » suivi d'un pluriel.
 ///
 /// Trouvé en REGARDANT les captures : « 1 fonctions retrouvées » dans
@@ -5130,4 +5190,265 @@ fn une_fenetre_restauree_retrouve_sa_taille() {
         "des fenêtres ne reviennent pas de leur agrandissement :\n  {}",
         fautifs.join("\n  ")
     );
+}
+
+/// Une rangée d'onglets tient sur UNE ligne, quelle que soit la place.
+///
+/// **Trouvé en regardant l'écran le plus petit que l'application
+/// accepte** (800x520, 5 novembre 2026) : les dix vues prenaient TROIS
+/// lignes — quatre-vingt-seize pixels, de quoi peindre six lignes de
+/// code — pour montrer dix onglets dont on en regarde un. Il restait
+/// quatre lignes de programme à l'écran.
+///
+/// Le repli n'était pas un défaut d'implémentation : il était voulu, et
+/// un contrôle veillait même à ce que les onglets repliés ne
+/// recouvrent rien. Ce que personne n'avait mesuré, c'est CE QU'IL
+/// COÛTE — et il coûte l'écran.
+///
+/// Trois choses à tenir, et la deuxième est celle qu'on oublie en
+/// rangeant des onglets derrière un bouton.
+#[test]
+fn une_rangee_d_onglets_tient_sur_une_ligne() {
+    let s = strings(Lang::Fr);
+    let peindre = |largeur: f32, hauteur: f32, vue: VueCentrale| -> Vec<(String, f32)> {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: PROGRAMME_DU_BANC.to_owned(),
+            vue_centrale: vue,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, hauteur),
+            )),
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        for _ in 0..3 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    vus.push((texte.galley.text().to_owned(), texte.pos.y));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    // 1. UNE SEULE LIGNE. Les étiquettes de vues qui sont peintes le
+    //    sont toutes à la même hauteur.
+    let noms: Vec<&str> = VueCentrale::ALL.iter().map(|v| v.label(s)).collect();
+    for (largeur, hauteur) in [(MIN_SCREEN[0], MIN_SCREEN[1]), (1600.0, 1100.0)] {
+        let vus = peindre(largeur, hauteur, VueCentrale::Source);
+        let mut hauteurs: Vec<f32> = vus
+            .iter()
+            .filter(|(texte, _)| noms.contains(&texte.as_str()))
+            .map(|(_, y)| *y)
+            .collect();
+        hauteurs.sort_by(f32::total_cmp);
+        hauteurs.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+        assert_eq!(
+            hauteurs.len(),
+            1,
+            "à {largeur:.0}x{hauteur:.0}, la rangée des vues s'étale sur \
+             {} lignes : {hauteurs:?}",
+            hauteurs.len()
+        );
+    }
+
+    // 2. CE QU'ON REGARDE RESTE VISIBLE. Une barre qui cache l'onglet
+    //    en cours ne dit plus où l'on est — et c'est le piège exact
+    //    d'une fenêtre d'onglets qui commence toujours au premier.
+    let dernière = *VueCentrale::ALL.last().expect("au moins une vue");
+    let vus = peindre(MIN_SCREEN[0], MIN_SCREEN[1], dernière);
+    assert!(
+        vus.iter().any(|(texte, _)| texte == dernière.label(s)),
+        "la vue regardée doit rester dans la rangée : {vus:?}"
+    );
+
+    // 3. ET LE COMPTE DIT COMBIEN IL EN RESTE. « +5 » plutôt que trois
+    //    points : le nombre se lit dans toutes les langues, et il dit
+    //    ce que des points taisent.
+    //
+    //    LES VUES PRÉSENTES, et non les neuf du tableau : la rangée ne
+    //    porte que celles que les modules allumés et le niveau
+    //    laissent. Compter les neuf annonçait six cachées là où le
+    //    bouton en disait cinq — et c'est le bouton qui avait raison.
+    let app = NamsdecApp::default();
+    let présentes = VueCentrale::ALL
+        .into_iter()
+        .filter(|vue| app.vue_dans_la_rangée(*vue) && app.vue_au_niveau(*vue))
+        .count();
+    let vus = peindre(MIN_SCREEN[0], MIN_SCREEN[1], VueCentrale::Source);
+    let montrées = vus
+        .iter()
+        .filter(|(texte, _)| noms.contains(&texte.as_str()))
+        .count();
+    let cachées = présentes - montrées;
+    assert!(cachées > 0, "à cette taille, tout ne tient pas : {vus:?}");
+    assert!(
+        vus.iter().any(|(texte, _)| texte == &format!("+{cachées}")),
+        "le bouton annonce les {cachées} vues cachées : {vus:?}"
+    );
+
+    // 4. ET RIEN N'EST PERDU : le bouton s'ouvre, et les vues qui ne
+    //    tenaient pas y sont toutes, nommées. C'est ce qui autorise la
+    //    rangée à en cacher — sans cette liste, une vue sans onglet
+    //    n'existerait plus pour qui regarde l'écran.
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    let écran =
+        egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(MIN_SCREEN[0], MIN_SCREEN[1]));
+    let image = |app: &mut NamsdecApp, events: Vec<egui::Event>| -> Vec<String> {
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events,
+            focused: true,
+            ..Default::default()
+        };
+        let mut textes = Vec::new();
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                textes.push(texte.galley.text().to_owned());
+            }
+        }
+        sortie.textures_delta.clear();
+        textes
+    };
+    // Le bouton se repère à son étiquette : on relève son rectangle à
+    // la troisième image, la rangée étant alors posée.
+    let mut bouton = None;
+    for _ in 0..3 {
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            focused: true,
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape
+                && texte.galley.text() == format!("+{cachées}")
+            {
+                bouton = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()).center());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let bouton = bouton.expect("le bouton du débordement est peint");
+    // L'APPUI ET LE RELÂCHEMENT SONT DEUX IMAGES : egui décide d'un
+    // clic au relâchement, sur un widget qu'il a vu appuyé à l'image
+    // d'avant.
+    image(
+        &mut app,
+        vec![
+            egui::Event::PointerMoved(bouton),
+            egui::Event::PointerButton {
+                pos: bouton,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    let ouvert = image(
+        &mut app,
+        vec![egui::Event::PointerButton {
+            pos: bouton,
+            button: egui::PointerButton::Primary,
+            pressed: false,
+            modifiers: egui::Modifiers::NONE,
+        }],
+    );
+    let ouvert = if ouvert.iter().filter(|t| noms.contains(&t.as_str())).count() > montrées {
+        ouvert
+    } else {
+        image(&mut app, Vec::new())
+    };
+    let listées = ouvert.iter().filter(|t| noms.contains(&t.as_str())).count();
+    assert!(
+        listées >= présentes,
+        "les {cachées} vues cachées doivent toutes être au menu : \
+         {listées} nommées sur {présentes} : {ouvert:?}"
+    );
+
+    // 5. ET CE QU'ELLE ÉCRIT GARDE SON AIR.
+    //
+    // **Trouvé à la capture, et ce n'était PAS un recouvrement** : à
+    // 800x520, le disque rouge du compteur de problèmes tombait à DEUX
+    // PIXELS ET DEMI du chiffre de « +6 ». Rien ne se peignait sur rien
+    // — la règle « deux textes ne se recouvrent jamais » n'avait rien à
+    // dire, et pour cause —, mais à l'échelle 1 les deux se lisaient
+    // comme un seul objet cassé, le disque paraissant avaler le
+    // chiffre.
+    //
+    // C'est la règle des cadres qui se touchent, déjà écrite pour
+    // « Détacher ». On mesure donc l'ÉCART, et non le recouvrement :
+    // un invariant qui ne peut pas échouer ne prouve rien, et celui du
+    // recouvrement ne le pouvait pas ici — la rangée alloue ses objets
+    // l'un après l'autre.
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_FAUTIF.to_owned(),
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.apply_theme(&ctx);
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    let (mut mots, mut dessins): (Vec<(String, egui::Rect)>, Vec<egui::Rect>) =
+        (Vec::new(), Vec::new());
+    for _ in 0..3 {
+        mots.clear();
+        dessins.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            match &clipped.shape {
+                egui::epaint::Shape::Text(texte) => {
+                    mots.push((
+                        texte.galley.text().to_owned(),
+                        egui::Rect::from_min_size(texte.pos, texte.galley.size()),
+                    ));
+                }
+                egui::epaint::Shape::Circle(c) => dessins.push(egui::Rect::from_center_size(
+                    c.center,
+                    egui::vec2(c.radius, c.radius) * 2.0,
+                )),
+                egui::epaint::Shape::Path(p) => dessins.push(p.visual_bounding_rect()),
+                _ => {}
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let bouton = mots
+        .iter()
+        .find(|(texte, _)| texte.starts_with('+') && texte[1..].parse::<usize>().is_ok())
+        .map(|(_, r)| *r)
+        .expect("le bouton du débordement est peint");
+    let voisin = dessins
+        .iter()
+        .filter(|d| {
+            (d.center().y - bouton.center().y).abs() < 10.0 && d.left() >= bouton.right() - 1.0
+        })
+        .map(|d| d.left())
+        .min_by(f32::total_cmp);
+    if let Some(gauche) = voisin {
+        let écart = gauche - bouton.right();
+        assert!(
+            écart >= 6.0,
+            "le compte des onglets cachés est collé à ce qui le suit : \
+             {écart:.1} px. Deux objets voisins qui ne respirent pas se \
+             lisent comme un seul"
+        );
+    }
 }
