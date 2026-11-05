@@ -4,7 +4,15 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## Non publié
+## 0.3.0-beta.1 — 4 et 5 novembre 2026
+
+Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :
+**l'établi a changé de forme**. Des barres d'icônes montrent et cachent
+les panneaux sur les quatre bords, un accueil remplace l'éditeur quand
+on a tout fermé, le compte des problèmes se lit sans ouvrir la liste, et
+l'analyse se lance **sans fenêtre du tout** — `namsdec-cli` compare deux
+versions d'un binaire rubrique par rubrique. Le parcours, lui, demande
+maintenant de **prévoir** avant d'avancer.
 
 **L'éditeur du débutant n'a pas de modes**
 - On clique dans le programme, on tape, ça s'écrit. L'application
@@ -15,15 +23,6 @@ entrée par version, et ce qui change pour qui s'en sert.
 - **Au niveau avancé, rien ne change** — les modes sont une habitude de
   vim, et une bonne pour qui l'a déjà.
 
-## 0.3.0-beta.1 — 4 et 5 novembre 2026
-
-Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :
-**l'établi a changé de forme**. Des barres d'icônes montrent et cachent
-les panneaux sur les quatre bords, un accueil remplace l'éditeur quand
-on a tout fermé, le compte des problèmes se lit sans ouvrir la liste, et
-l'analyse se lance **sans fenêtre du tout** — `namsdec-cli` compare deux
-versions d'un binaire rubrique par rubrique. Le parcours, lui, demande
-maintenant de **prévoir** avant d'avancer.
 
 **L'accueil tient dans l'écran**
 - Le blanc du haut se mesure sur la place disponible, et ce qui ne tient
