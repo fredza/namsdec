@@ -963,6 +963,24 @@
    "answer": "al == 0x33"
   },
   {
+   "id": "prevoir_appel_systeme",
+   "title": {
+    "fr": "Ce que l'appel système rend",
+    "en": "What the system call gives back"
+   },
+   "description": {
+    "fr": "On met un numéro dans RAX pour demander un service au noyau — et le noyau répond DANS RAX. Le numéro qu'on y avait mis n'y est plus. Beaucoup de programmes de débutant se perdent là : ils relancent un deuxième appel en croyant que RAX contient encore le numéro du premier. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez — la machine tranchera.",
+    "en": "You put a number in RAX to ask the kernel for a service — and the kernel answers IN RAX. The number you put there is gone. Many beginners get lost here: they fire a second call believing RAX still holds the first one's number. Do not change the program: it is complete. Read it, answer, then run it — the machine will settle it."
+   },
+   "code": "; Ce que l'appel système rend.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : write rend le nombre d'octets qu'il a écrits. Combien\n; d'octets lui demande-t-on d'écrire, ligne par ligne ?\n\nglobal _start\n\nsection .data\nmessage db \"salut\", 10\n\nsection .text\n_start:\n    mov rax, 1              ; write\n    mov rdi, 1              ; sur la sortie standard\n    mov rsi, message\n    mov rdx, 5              ; cinq octets, sans le saut de ligne\n    syscall\n    hlt\n",
+   "level": "practice",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 5"
+  },
+  {
    "code": "; Parcourir une chaîne.\n;\n; But : à l'arrêt, RCX doit contenir la longueur de `message`, soit 5.\n;\n; Une chaîne en mémoire n'est qu'une suite d'octets ; ce qui en marque\n; la fin est une convention. Ici, un zéro final — celui que le C\n; appelle « terminateur ».\n;\n; `movzx` lit un octet et l'élargit avec des zéros : sans lui, écrire\n; dans `al` laisserait intact le reste de RAX, et la comparaison\n; porterait sur une valeur qu'on n'a pas lue.\n\nglobal _start\n\nsection .data\nmessage: db \"salut\", 0\n\nsection .text\n_start:\n    mov rsi, message        ; où l'on en est de la lecture\n    xor rcx, rcx            ; combien d'octets lus\n\nparcours:\n    movzx eax, byte [rsi]   ; l'octet courant, élargi par des zéros\n    test al, al             ; est-il nul ?\n    jz fini\n    inc rsi                 ; l'octet suivant\n    inc rcx\n    jmp parcours\n\nfini:\n    hlt\n",
    "description": {
     "en": "A string is just a run of bytes; what marks its end is a convention — here a trailing zero. `movzx` reads a byte widening it with zeroes, so the comparison is about what was actually read.",
@@ -1576,6 +1594,24 @@
    "answer": "rbx == 2"
   },
   {
+   "id": "prevoir_convention",
+   "title": {
+    "fr": "Par où entrent les arguments",
+    "en": "Where the arguments come in"
+   },
+   "description": {
+    "fr": "Une fonction ne reçoit pas ses arguments n'importe comment : le premier arrive par RDI, le deuxième par RSI, le troisième par RDX. C'est une convention, pas une règle du processeur — mais tout le monde la suit, et c'est elle qui permet d'appeler du code qu'on n'a pas écrit. Ne touchez pas au programme : il est complet. Lisez-le, répondez, puis exécutez.",
+    "en": "A function does not get its arguments any old way: the first comes in RDI, the second in RSI, the third in RDX. It is a convention, not a rule of the processor — but everyone follows it, and that is what lets you call code you did not write. Do not change the program: it is complete. Read it, answer, then run it."
+   },
+   "code": "; Par où entrent les arguments.\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RAX à l'arrêt ?\n;\n; Indice : la fonction calcule premier - deuxieme + troisieme.\n; Reste à savoir lequel des trois nombres est le premier.\n\nglobal _start\n\nsection .text\ncalcul:\n    mov rax, rdi\n    sub rax, rsi\n    add rax, rdx\n    ret\n\n_start:\n    mov rdi, 10\n    mov rsi, 3\n    mov rdx, 5\n    call calcul\n    hlt\n",
+   "level": "structures",
+   "question": {
+    "fr": "Que vaut RAX à l'arrêt ?",
+    "en": "What is RAX at halt?"
+   },
+   "answer": "rax == 12"
+  },
+  {
    "code": "; Parler au système.\n;\n; But : la console doit afficher le message, et le programme se terminer\n; avec le code 0.\n;\n; Un appel système : le numéro dans RAX, les arguments dans RDI, RSI,\n; RDX — la même convention que pour un appel ordinaire, à ceci près que\n; c'est le noyau qui répond. namsdec en simule quatre : read (0),\n; write (1), brk (12) et exit (60).\n\nglobal _start\n\nsection .data\n    message  db \"Je parle au processeur !\", 10\n    longueur equ $ - message\n\nsection .text\n_start:\n    mov rax, 1              ; write\n    mov rdi, 1              ; sortie standard\n    mov rsi, message        ; quoi\n    mov rdx, longueur       ; combien\n    syscall\n\n    ; À faire : terminer proprement avec exit (60) et le code 0,\n    ; au lieu du `hlt` ci-dessous.\n    hlt\n",
    "description": {
     "en": "`write` to print, `exit` to finish: the number in RAX, the arguments in RDI, RSI, RDX. The program stops on a `hlt` for now — replace it with a real exit(0).",
@@ -1780,6 +1816,24 @@
    ],
    "par": 11,
    "level": "mastery"
+  },
+  {
+   "id": "prevoir_canari",
+   "title": {
+    "fr": "Le canari est-il intact ?",
+    "en": "Is the canary intact?"
+   },
+   "description": {
+    "fr": "Un canari est une valeur posée sur la pile avant la place des variables, et relue avant de revenir : si elle a changé, c'est qu'une écriture a débordé. Les compilateurs en posent un dans presque toutes les fonctions, et le reconnaître est la première chose à faire quand on lit du code compilé. Ici, l'écriture reste dans la place prévue. Ne touchez pas au programme : lisez-le, répondez, puis exécutez.",
+    "en": "A canary is a value placed on the stack before the variables, and read back before returning: if it changed, a write overflowed. Compilers put one in nearly every function, and recognising it is the first thing to do when reading compiled code. Here the write stays inside the room it was given. Do not change the program: read it, answer, then run it."
+   },
+   "code": "; Le canari est-il intact ?\n;\n; But : répondre à la question du panneau, puis exécuter pour voir.\n; À LIRE, pas à écrire. Que vaut RBX à l'arrêt ?\n;\n; Indice : le ou-exclusif de deux valeurs égales vaut zéro. On\n; relit le canari, on le compare à celui qu'on avait posé.\n\nglobal _start\n\nsection .text\n_start:\n    mov rax, 0x1234\n    push rax                ; le canari, sous les variables\n    sub rsp, 16             ; la place des variables\n    mov qword [rsp], 1      ; une écriture, dans la place prévue\n    mov qword [rsp + 8], 2  ; une autre, toujours dedans\n    add rsp, 16             ; on rend la place\n    pop rbx                 ; on relit le canari\n    xor rbx, rax            ; zéro s'il est intact\n    hlt\n",
+   "level": "mastery",
+   "question": {
+    "fr": "Que vaut RBX à l'arrêt ?",
+    "en": "What is RBX at halt?"
+   },
+   "answer": "rbx == 0"
   },
   {
    "id": "flottants_masque",

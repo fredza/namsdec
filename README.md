@@ -443,7 +443,7 @@ que la machine donne** : un contrôle assemble chacun de ces programmes,
 l'exécute et vérifie — une réponse écrite à la main dans un fichier JSON
 est une affirmation, passée à l'épreuve de l'émulateur c'est un fait.
 
-Cent un des cent quatorze exercices portent un **but vérifiable** (`rax == 0xf`) :
+Cent un des cent dix-sept exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -460,7 +460,7 @@ n'atteint serait pire que de n'en pas donner. Une série installée peut en port
 aussi — champ `goal` du fichier JSON, et `question` + `answer` pour un
 exercice de lecture.
 
-Un parcours de cent quatorze exercices est livré avec le
+Un parcours de cent dix-sept exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
 - **Découverte** (22) — registres, échange, mise à zéro, boucles,
@@ -468,7 +468,7 @@ programme, rangé en quatre paliers de difficulté croissante :
   écritures d'un nombre, `inc` contre `add`, `test`, `xchg`/`bswap`,
   masques de bits, constantes calculées à l'assemblage, rotations,
   `setcc`, `not` et `neg`, division signée, coût d'un immédiat.
-- **Pratique** (32) — décalages, compte de bits, multiplication,
+- **Pratique** (33) — décalages, compte de bits, multiplication,
   division, mémoire, tailles d'opérande, ordre des octets, données
   déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et
   maximum, parité, occurrences, retournement sur place, bornage sans
@@ -481,7 +481,7 @@ programme, rangé en quatre paliers de difficulté croissante :
   adresse en mémoire. Et trois exercices de **prévision** : multiplier
   par un décalage, ce qu'une boucle a accumulé, lequel des quatre octets
   `[rsi + rcx]` désigne.
-- **Structures** (35) — chaînes, instructions de chaîne, comparaison de
+- **Structures** (36) — chaînes, instructions de chaîne, comparaison de
   chaînes, texte vers nombre, macros, enregistrements et champs, table
   de saut, choix sans branchement, pile, appels, convention d'appel,
   récursion, Fibonacci, cadre de pile, tableau local, tri, `strlen` par
@@ -493,7 +493,7 @@ programme, rangé en quatre paliers de difficulté croissante :
   que l'exécuter, un aiguillage vu du désassemblage. Deux de
   **prévision** : ce que la pile rend d'abord, et `ja` qui n'est pas
   `jg`.
-- **Maîtrise** (25) — sortie, entrée, tas, flottants, SIMD, affichage
+- **Maîtrise** (26) — sortie, entrée, tas, flottants, SIMD, affichage
   décimal et hexadécimal, majuscules, débordement, protections,
   chiffrement XOR, somme de contrôle, canari posé à la main, choix
   vectoriel par masque, somme vectorielle, troncature contre arrondi,

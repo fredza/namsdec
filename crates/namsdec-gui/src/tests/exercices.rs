@@ -465,6 +465,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "prevoir_decalage",
             "prevoir_somme",
             "prevoir_octet_choisi",
+            "prevoir_appel_systeme",
             "chaine",
             "chaines",
             "comparer_chaines",
@@ -502,6 +503,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "re_table_sauts",
             "prevoir_pile",
             "prevoir_signe",
+            "prevoir_convention",
             "sortie",
             "entree",
             "tas",
@@ -515,6 +517,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "xor_chiffrement",
             "somme_controle",
             "canari",
+            "prevoir_canari",
             "flottants_masque",
             "simd_somme",
             "flottants_conversion",
@@ -642,7 +645,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("cent quatorze exercices"), "{painted}");
+    assert!(painted.contains("cent dix-sept exercices"), "{painted}");
 }
 
 /// Le programme d'accueil annonce le bon nombre d'exercices.
@@ -801,12 +804,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // trente et unième des cent quatorze étapes.
-    assert!(painted.contains("31/114"), "{painted}");
+    // trente et unième des cent dix-sept étapes.
+    assert!(painted.contains("31/117"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de cent quatorze.
+/// retrouver son rang dans une liste de cent dix-sept.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -854,7 +857,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/114"),
+        painted.contains("1/117"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -1199,7 +1202,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/114 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/117 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }

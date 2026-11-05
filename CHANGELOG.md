@@ -4,7 +4,13 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.2.9-beta.3 — 3 et 4 novembre 2026
+## 0.2.9-beta.3 — 3, 4 et 5 novembre 2026
+
+**Trois questions de lecture de plus** (cent dix-sept étapes)
+- **L'appel système** : ce que `write` rend dans RAX — et le numéro
+  qu'on y avait mis n'y est plus.
+- **La convention d'appel** : RDI, RSI, RDX.
+- **Le canari**, rangé à côté du canari qu'on écrit.
 
 **La console a ses trois commandes**
 - **Relancer**, **arrêter**, **effacer** au bout de sa rangée d'onglets,

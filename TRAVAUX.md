@@ -1114,10 +1114,12 @@ sont pas adaptés → inutilisable, s'inspirer des outils jetbrains ».
       condition que l'utilisateur ne peut pas voir n'est pas une
       économie, c'est une disparition ». Le contrôle le vérifie, pour
       qu'un lot suivant ne la retire pas par distraction.
-- [ ] **Une barre d'icônes de panneau** — relancer, arrêter, effacer,
-      comme la fenêtre « Run » des captures.
-- [ ] **Les barres latérales à icônes** qui montrent et cachent les
-      panneaux (« Afficher l'explorateur »).
+- [x] **Une barre d'icônes de panneau** — relancer, arrêter, effacer :
+      faite le 5 novembre, voir « 0 nonatricies » (A 9.75). Dans la
+      rangée d'onglets et non en colonne à gauche : la console garde ses
+      quatre-vingts colonnes.
+- [x] **Les barres latérales à icônes** qui montrent et cachent les
+      panneaux : faites le 5 novembre, voir « 0 octotricies » (A 9.74).
 
 ---
 
@@ -1289,10 +1291,15 @@ programme livré — rien ne vérifiait qu'on avait lu.
       sans réponse resterait posée pour toujours ; une réponse sans
       question n'a rien à trancher. Retenu au niveau du **format**, donc
       pour toute série qu'on écrit soi-même.
-- [ ] **Les autres questions qui mériteraient d'être posées** — les
-      appels système, la convention d'appel, une table de sauts, un
-      canari. Le format est là et les réponses sont vérifiées : en
-      ajouter se résume à écrire un programme et une question.
+- [x] **Trois des quatre questions annoncées** (5 novembre) — l'appel
+      système (ce que `write` rend dans RAX, qui n'est plus le numéro
+      qu'on y avait mis), la convention d'appel (RDI, RSI, RDX), le
+      canari (rangé à côté du canari qu'on écrit). Neuf questions de
+      lecture au total, cent dix-sept étapes.
+- [ ] **La table de sauts** reste à poser : `re_table_sauts` la MONTRE
+      déjà au désassemblage, et une question de lecture sur un saut
+      indirect demande d'abord de vérifier ce que l'émulateur fait d'un
+      `jmp [table + rbx*8]`.
 
 **Trois contrôles ont fait tomber leur première version**, chaque fois
 pour la même raison — ils trouvaient ce qu'ils cherchaient au mauvais

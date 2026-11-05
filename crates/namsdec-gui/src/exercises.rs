@@ -207,7 +207,7 @@ impl NamsdecApp {
     /// L'exercice en cours est-il une DÉMONSTRATION ?
     ///
     /// C'est-à-dire : un programme à regarder tourner, sans but à
-    /// atteindre. Sept des cent quatorze en sont, et le tout
+    /// atteindre. Neuf des cent dix-sept en sont, et le tout
     /// premier du parcours aussi — « Registres et largeurs » montre ce
     /// qu'une écriture 32 bits fait à la moitié haute, et il n'y a rien
     /// à y réussir.

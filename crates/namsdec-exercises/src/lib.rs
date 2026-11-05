@@ -244,9 +244,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : cent quatorze étapes, et
+        // Un parcours, pas une poignée : cent dix-sept étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 114);
+        assert_eq!(pack.exercises.len(), 117);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());

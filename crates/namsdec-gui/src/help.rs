@@ -14,7 +14,7 @@ use crate::exercises::exercises_dir;
 ///
 /// Un chiffre — « 8/10 » — se LIT ; une barre se VOIT, et c'est toute
 /// la différence quand on hésite à rouvrir un parcours de
-/// cent quatorze étapes. Elle ne récompense rien et ne compte pas
+/// cent dix-sept étapes. Elle ne récompense rien et ne compte pas
 /// les jours : elle montre l'avancée, ce qu'un parcours doit à qui le
 /// suit, et pas un gramme de plus. Le seul mérite de namsdec reste
 /// l'anneau du budget, qui se gagne en réécrivant.
@@ -30,7 +30,7 @@ fn barre_progression(ui: &mut egui::Ui, theme: &Theme, faits: usize, total: usiz
     }
     let part = (faits as f32 / total as f32).clamp(0.0, 1.0);
     // Au moins la hauteur de la barre : une avancée d'un sur
-    // cent quatorze donne six dixièmes de pixel, c'est-à-dire
+    // cent dix-sept donne six dixièmes de pixel, c'est-à-dire
     // rien — et « rien » est exactement ce qu'on vient de ne pas
     // mériter.
     let plein = (rect.width() * part).max(rect.height());
@@ -175,7 +175,7 @@ impl NamsdecApp {
                     return;
                 }
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : cent quatorze exercices ne tiennent
+                // L'étape en cours, en tête : cent dix-sept exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -237,7 +237,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses cent quatorze exercices,
+                    // contenu est aussi haute que ses cent dix-sept exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])

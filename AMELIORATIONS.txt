@@ -10702,3 +10702,46 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      Les icônes sont dessinées, comme toutes les autres : une flèche qui
      tourne avec une pointe pleine (on repart, on ne remet pas à zéro),
      le carré de l'arrêt, une corbeille.
+
+9.76 [FAIT] TROIS QUESTIONS DE LECTURE DE PLUS
+     (5 novembre 2026 — item resté ouvert de 9.67)
+
+     « Les autres questions qui mériteraient d'être posées : les appels
+     système, la convention d'appel, une table de sauts, un canari. »
+     Trois des quatre sont posées ; la quatrième attend une
+     vérification.
+
+     L'APPEL SYSTÈME REND DANS RAX — et le numéro qu'on y avait mis n'y
+     est plus. Beaucoup de programmes de débutant se perdent là : ils
+     lancent un deuxième appel en croyant que RAX contient encore le
+     numéro du premier. `write` de cinq octets rend cinq.
+
+     LA CONVENTION D'APPEL : RDI, RSI, RDX. Ce n'est pas une règle du
+     processeur, c'est un accord — et c'est lui qui permet d'appeler du
+     code qu'on n'a pas écrit. La fonction calcule premier moins
+     deuxième plus troisième ; il reste à savoir lequel est le premier.
+
+     LE CANARI, rangé À CÔTÉ du canari qu'on écrit. Un exercice de
+     lecture qui atterrissait en fin de parcours aurait déplacé la
+     dernière marche — `re_un_octet`, que deux contrôles nomment. Le
+     parcours a un ordre, et un exercice ne se range pas où il tombe.
+
+     LA TABLE DE SAUTS ATTEND, et c'est une décision : une question de
+     lecture sur `jmp [table + rbx*8]` demande d'abord de vérifier ce
+     que l'émulateur fait d'un saut indirect par la mémoire. Poser une
+     question dont la réponse n'est pas vérifiée serait exactement ce
+     que ce format interdit.
+
+     SEPT CONTRÔLES SONT TOMBÉS, tous sur des COMPTES : « cent quatorze »
+     est écrit dans le programme d'accueil, dans le README (trois fois,
+     plus le compte de chaque palier), dans trois commentaires, dans la
+     liste ordonnée du parcours et dans trois rangs affichés
+     (« 31/114 »). Le contrôle qui veille à ce que le README dise vrai
+     porte le nombre EN DUR, lui aussi. Le manuel, lui, compte tout seul en
+     lisant la série — c'est la bonne façon, et les autres endroits
+     gagneraient à faire pareil.
+
+     Et la réponse des trois questions était juste du premier coup, non
+     parce que je sais compter, mais parce que le contrôle qui les
+     exécute le dit : la réponse déclarée est celle que la machine
+     donne, ou l'exercice ne passe pas.

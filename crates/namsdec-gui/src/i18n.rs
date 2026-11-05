@@ -111,7 +111,7 @@ pub struct Strings {
     pub goal_reached: &'static str,
     /// Ce que dit le panneau pour un exercice SANS but.
     ///
-    /// Sept des cent quatorze sont des programmes à regarder
+    /// Neuf des cent dix-sept sont des programmes à regarder
     /// tourner. Le panneau se taisait pour eux : rien ne disait ce
     /// qu'on attendait, et la pastille du parcours restait creuse quoi
     /// qu'on fasse.
