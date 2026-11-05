@@ -10891,3 +10891,61 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      ordinaire » (F5, F10, F11) marcherait pendant la frappe. Changer le
      défaut d'une installation neuve touche à l'identité de l'outil :
      c'est une décision à prendre, pas à glisser dans un lot.
+
+9.80 [FAIT] AUCUN SURVOL NE DÉPLACE CE QUI L'ENTOURE
+     (5 novembre 2026 — quatre captures : « des glitchs quand le
+     curseur se positionne sur un bouton »)
+
+     MESURÉ : au survol d'un bouton de la page des Outils, la page
+     entière descendait de VINGT-QUATRE PIXELS. Les quatre captures
+     montrent le même saut sous quatre boutons différents.
+
+     LA CHAÎNE EST DE CELLES QU'ON NE DEVINE PAS, et aucune relecture du
+     code ne l'aurait donnée — j'ai d'abord accusé l'« expansion » des
+     widgets d'egui (nulle partout), puis le trait du bouton (le cadre
+     fait la même largeur au repos et au survol : mesuré, 159,7 px dans
+     les deux cas).
+
+     La voici. Le contenu de cette page tient à TROIS PIXELS PRÈS dans
+     sa fenêtre ; la barre de défilement paraît donc d'une image à
+     l'autre, et la largeur offerte change d'autant. Trois pixels
+     suffisent pour qu'une rangée qui se replie — « La décompilation est
+     éteinte » et son bouton — ne tienne plus sur une ligne : le bouton
+     bascule à la suivante, la page grandit d'une ligne, et tout ce qui
+     suit descend de vingt-quatre pixels.
+     LE POINTEUR N'Y EST POUR RIEN ; il ne fait que déclencher l'image
+     où la bascule se produit.
+
+     On impose donc la largeur du contenu AVANT d'entrer dans la zone
+     qui défile, barre comprise : elle ne dépend plus de ce que la barre
+     décide. C'est la règle du banc — une boucle de mesure se coupe en
+     imposant une dimension —, et c'est la troisième fois qu'elle sert.
+
+     ET UN PIXEL DE PLUS VENAIT DU BOUTON LUI-MÊME. Son cadre n'a pas de
+     trait au repos — c'est voulu, « boutons plats au repos » — et en
+     reçoit un au survol, ce qu'egui compte dans la TAILLE.
+
+     DEUX ESSAIS, ET LE PREMIER A DÉPLACÉ UN AUTRE PIXEL. Donner au
+     repos la largeur du survol a aussitôt décalé l'entrée SÉLECTIONNÉE
+     de la colonne d'analyse : un bouton choisi est peint dans un
+     cinquième état, qui n'a pas de trait du tout. Un état redressé en
+     désaligne un autre, et c'est le banc qui l'a dit — la mesure de la
+     colonne d'analyse veille sur ce bord gauche depuis des mois.
+
+     Ce sont donc les QUATRE états qui passent à zéro. Les cadres que
+     namsdec montre ne viennent pas de là : ils sont demandés bouton par
+     bouton (`framed`), et un trait demandé vaut dans tous les états. Ce
+     qui disparaît est le seul trait que le survol ajoutait tout seul —
+     précisément celui qui faisait grandir le bouton sous le pointeur.
+     Le survol garde sa couleur de fond, qui est ce qui le signale ici.
+
+     DEUX CORRECTIONS, DEUX PREUVES SÉPARÉES : remettre la première fait
+     tomber le contrôle sur 24 px, remettre la seconde sur 1 px.
+
+     LA LISTE DES OUTILS EST SEMÉE, et non lue sur la machine : sans
+     cela le contrôle passerait tout seul là où aucun outil n'est
+     installé, et c'est précisément la page longue qui l'intéresse.
+
+     CE QUE LE BANC NE VOYAIT PAS : il mesure des images SANS POINTEUR.
+     Tout ce qui ne se produit que sous le curseur lui échappait — et
+     c'est la moitié de ce qu'une interface fait.

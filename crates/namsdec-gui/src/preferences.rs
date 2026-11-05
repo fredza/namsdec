@@ -160,16 +160,47 @@ impl NamsdecApp {
                 // que soit la page. La boucle de mesure que cela
                 // formait est coupée plus haut, en bornant la fenêtre —
                 // voir `hauteur_maximale`.
+                // LA PLACE DE LA BARRE EST RETENUE, QU'ELLE PARAISSE OU
+                // NON — et c'est ce qui coupe le saut au survol.
+                //
+                // Signalé sur capture le 5 novembre 2026 : « des glitchs
+                // quand le curseur se positionne sur un bouton ». Mesuré
+                // : au survol, la page entière descendait de
+                // VINGT-QUATRE pixels.
+                //
+                // La chaîne est de celles qu'on ne devine pas. Le
+                // contenu de cette page tient à trois pixels près dans
+                // sa fenêtre ; la barre de défilement paraît alors d'une
+                // image à l'autre, et la largeur offerte change d'autant.
+                // Trois pixels suffisent pour qu'une rangée qui se
+                // replie — « La décompilation est éteinte » et son
+                // bouton — ne tienne plus sur une ligne : le bouton
+                // bascule à la suivante, la page grandit d'une ligne, et
+                // tout ce qui suit descend. Le pointeur n'y est pour
+                // rien ; il ne fait que déclencher l'image où la bascule
+                // se produit.
+                //
+                // On impose donc la largeur du contenu AVANT d'entrer
+                // dans la zone, barre comprise : elle ne dépend plus de
+                // ce que la barre décide. C'est la règle du banc — une
+                // boucle de mesure se coupe en imposant une dimension.
+                let barre = ui.spacing().scroll.bar_width
+                    + ui.spacing().scroll.bar_inner_margin
+                    + ui.spacing().scroll.bar_outer_margin;
+                let largeur_du_contenu = (ui.available_width() - barre).max(160.0);
                 egui::ScrollArea::vertical()
                     .id_salt("preferences_page")
                     .auto_shrink([false, true])
                     .max_height((ui.available_height() - 44.0).max(160.0))
-                    .show(ui, |ui| match self.preferences_tab {
-                        PreferencesTab::General => self.preferences_general_ui(ui),
-                        PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
-                        PreferencesTab::Modules => self.preferences_modules_ui(ui),
-                        PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
-                        PreferencesTab::Tools => self.preferences_tools_ui(ui),
+                    .show(ui, |ui| {
+                        ui.set_max_width(largeur_du_contenu);
+                        match self.preferences_tab {
+                            PreferencesTab::General => self.preferences_general_ui(ui),
+                            PreferencesTab::Shortcuts => self.preferences_shortcuts_ui(ui),
+                            PreferencesTab::Modules => self.preferences_modules_ui(ui),
+                            PreferencesTab::Plugins => self.preferences_plugins_ui(ui),
+                            PreferencesTab::Tools => self.preferences_tools_ui(ui),
+                        }
                     });
                 ui.separator();
                 // « ANNULER », et non « Quitter ». Ce bouton s'est

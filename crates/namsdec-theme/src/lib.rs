@@ -104,6 +104,40 @@ impl Theme {
         ] {
             widget.corner_radius = radius;
         }
+        // LES QUATRE ÉTATS D'UN WIDGET RÉSERVENT LE MÊME TRAIT, et seule
+        // sa COULEUR change.
+        //
+        // egui compte le trait du cadre dans la TAILLE. Au repos le
+        // nôtre n'en avait pas, au survol il en recevait un : le bouton
+        // grandissait d'un pixel quand le pointeur arrivait, et une
+        // rangée qui se replie pouvait basculer à la ligne sous le
+        // curseur. C'est la moitié du « glitch au survol » signalé sur
+        // capture le 5 novembre 2026.
+        //
+        // ZÉRO POUR TOUS, et non un pour tous : un bouton SÉLECTIONNÉ
+        // est peint dans un cinquième état, qui n'a pas de trait du
+        // tout. Égaliser les quatre autres sur un pixel décalait
+        // aussitôt l'entrée choisie de la colonne d'analyse — un état
+        // redressé en désaligne un autre.
+        //
+        // Les cadres que namsdec montre ne viennent pas d'ici : ils
+        // sont demandés bouton par bouton (`framed`), et un trait
+        // demandé vaut dans tous les états. Ce qui disparaît est le
+        // seul trait que l'état de SURVOL ajoutait tout seul — et c'est
+        // précisément lui qui faisait grandir le bouton sous le
+        // pointeur. Le survol garde sa couleur de fond, qui est ce qui
+        // le signale ici.
+        //
+        // `noninteractive` reste dehors : son trait est celui des
+        // séparateurs et du bord des fenêtres, et il ne mesure rien.
+        for widget in [
+            &mut visuals.widgets.inactive,
+            &mut visuals.widgets.hovered,
+            &mut visuals.widgets.active,
+            &mut visuals.widgets.open,
+        ] {
+            widget.bg_stroke.width = 0.0;
+        }
 
         // Boutons plats au repos : seul le survol colore le fond, sinon la
         // barre de menus et la barre d'outils se ressemblent trop.

@@ -5452,3 +5452,117 @@ fn une_rangee_d_onglets_tient_sur_une_ligne() {
         );
     }
 }
+
+/// Aucun survol ne déplace ce qui l'entoure.
+///
+/// **Signalé sur capture le 5 novembre 2026** : « des glitchs quand le
+/// curseur se positionne sur un bouton ». Mesuré : au survol, la page
+/// des Outils descendait de VINGT-QUATRE pixels.
+///
+/// La chaîne est de celles qu'on ne devine pas, et aucune relecture du
+/// code ne l'aurait donnée. Le contenu de cette page tient à trois
+/// pixels près dans sa fenêtre ; la barre de défilement paraît alors
+/// d'une image à l'autre, et la largeur offerte change d'autant. Trois
+/// pixels suffisent pour qu'une rangée qui se replie — un avertissement
+/// et son bouton — ne tienne plus sur une ligne : le bouton bascule à la
+/// suivante, la page grandit d'une ligne, et tout ce qui suit descend.
+/// **Le pointeur n'y est pour rien** ; il ne fait que déclencher l'image
+/// où la bascule se produit.
+///
+/// Et un pixel de plus venait du bouton lui-même : son cadre n'a pas de
+/// trait au repos et en reçoit un au survol, ce qu'egui compte dans la
+/// taille. Le trait garde donc sa largeur au repos, et n'y perd que sa
+/// couleur.
+///
+/// LA LISTE DES OUTILS EST SEMÉE, et non lue sur la machine : ce
+/// contrôle passerait tout seul là où aucun outil n'est installé, et
+/// c'est précisément la page longue qui l'intéresse.
+#[test]
+fn aucun_survol_ne_deplace_ce_qui_l_entoure() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        show_preferences: true,
+        preferences_tab: PreferencesTab::Tools,
+        ..Default::default()
+    };
+    // Tous les outils connus, donnés pour présents : la page est alors
+    // la plus longue qu'elle sache être, celle où la barre de
+    // défilement se décide à trois pixels près.
+    app.tools_ready = namsdec_disasm::known::all()
+        .into_iter()
+        .map(|outil| {
+            (
+                outil.plugin.id.clone(),
+                namsdec_disasm::known::Availability::Ready,
+            )
+        })
+        .collect();
+    app.apply_theme(&ctx);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1300.0, 1000.0));
+    let relever =
+        |app: &mut NamsdecApp, pointeur: Option<egui::Pos2>| -> Vec<(String, egui::Rect)> {
+            let mut vus = Vec::new();
+            for _ in 0..4 {
+                let events = match pointeur {
+                    Some(pos) => vec![egui::Event::PointerMoved(pos)],
+                    None => Vec::new(),
+                };
+                let entrée = egui::RawInput {
+                    screen_rect: Some(écran),
+                    events,
+                    focused: true,
+                    ..Default::default()
+                };
+                vus.clear();
+                let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+                for clipped in &sortie.shapes {
+                    if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                        vus.push((
+                            t.galley.text().to_owned(),
+                            egui::Rect::from_min_size(t.pos, t.galley.size()),
+                        ));
+                    }
+                }
+                sortie.textures_delta.clear();
+            }
+            vus
+        };
+
+    let au_repos = relever(&mut app, None);
+    // Les boutons de la page, repérés à leur libellé : on les survole
+    // un par un, et rien ne doit bouger.
+    let s = strings(Lang::Fr);
+    let cibles: Vec<egui::Pos2> = au_repos
+        .iter()
+        .filter(|(texte, _)| {
+            texte == s.tools_recheck
+                || texte == s.tools_enable_decompilation
+                || texte.starts_with("Ajouter")
+                || texte.starts_with("Retirer")
+        })
+        .map(|(_, r)| r.center())
+        .collect();
+    assert!(
+        cibles.len() >= 2,
+        "la page doit porter des boutons à survoler : {cibles:?}"
+    );
+
+    for cible in cibles {
+        let survolé = relever(&mut app, Some(cible));
+        assert_eq!(
+            survolé.len(),
+            au_repos.len(),
+            "le survol de {cible:?} ajoute ou retire du texte"
+        );
+        for ((texte, avant), (_, après)) in au_repos.iter().zip(survolé.iter()) {
+            let écart = (avant.min - après.min).abs();
+            assert!(
+                écart.x < 0.5 && écart.y < 0.5,
+                "le survol de {cible:?} déplace « {} » de {:.1} x {:.1} px",
+                texte.chars().take(30).collect::<String>(),
+                écart.x,
+                écart.y
+            );
+        }
+    }
+}

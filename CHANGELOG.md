@@ -14,6 +14,12 @@ l'analyse se lance **sans fenêtre du tout** — `namsdec-cli` compare deux
 versions d'un binaire rubrique par rubrique. Le parcours, lui, demande
 maintenant de **prévoir** avant d'avancer.
 
+**Plus de saut sous le curseur**
+- Au survol d'un bouton des Préférences, la page descendait de
+  vingt-quatre pixels : le contenu tient à trois pixels près, la barre
+  de défilement paraissait, une rangée basculait à la ligne.
+- Un bouton ne bouge plus d'un pixel quand le pointeur arrive.
+
 **L'éditeur du débutant n'a pas de modes**
 - On clique dans le programme, on tape, ça s'écrit. L'application
   s'ouvrait en mode NORMAL, où le champ de texte n'est pas interactif :

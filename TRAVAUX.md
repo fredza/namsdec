@@ -979,6 +979,31 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 trequadragies. Aucun survol ne déplace ce qui l'entoure (A 9.80)
+
+Quatre captures : « des glitchs quand le curseur se positionne sur un
+bouton ». Mesuré : la page des Outils descendait de **vingt-quatre
+pixels** au survol.
+
+- [x] **La largeur du contenu est imposée** avant la zone qui défile,
+      barre comprise : elle ne dépend plus de ce que la barre décide.
+- [x] **Aucun état n'ajoute de trait tout seul** — egui compte le trait
+      dans la taille, et le survol en ajoutait un. Deux essais : donner
+      au repos la largeur du survol a décalé l'entrée **sélectionnée**
+      de la colonne d'analyse, peinte dans un cinquième état sans trait.
+      Les quatre passent donc à zéro ; les cadres de namsdec sont
+      demandés bouton par bouton et valent dans tous les états.
+- [x] **Un contrôle qui survole**, et c'est ce qui manquait au banc : il
+      ne mesurait que des images sans pointeur, c'est-à-dire la moitié
+      de ce qu'une interface fait.
+
+**J'ai accusé deux innocents avant de mesurer** : l'« expansion » des
+widgets (nulle partout) et le cadre du bouton (159,7 px dans les deux
+états). La cause était une boucle — contenu qui tient à trois pixels
+près, barre qui paraît, rangée qui bascule, page qui grandit.
+
+---
+
 ## 0 duoquadragies. L'éditeur du débutant n'a pas de modes (A 9.79)
 
 - [x] **Taper écrit**, sans avoir à connaître `i`. L'application
