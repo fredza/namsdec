@@ -817,6 +817,8 @@ impl NamsdecApp {
                     .on_hover_text(s.beginner_hint);
                 ui.separator();
                 ui.checkbox(&mut self.show_toolbar, s.view_toolbar);
+                ui.checkbox(&mut self.show_rails, s.view_rails)
+                    .on_hover_text(s.view_rails_hint);
                 ui.add(egui::Checkbox::new(
                     &mut self.show_sidebar,
                     (

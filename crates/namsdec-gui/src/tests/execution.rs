@@ -3285,8 +3285,11 @@ fn the_gutter_shows_what_a_click_would_do() {
         .map(|(_, r)| *r)
         .expect("le numéro de la cinquième ligne est peint dans la gouttière");
     // Le point se pose à huit pixels du bord gauche de la gouttière,
-    // laquelle commence au bord du panneau.
-    let visée = egui::pos2(8.0, numéro.center().y);
+    // laquelle commence au bord de la ZONE DE TRAVAIL — et non du
+    // panneau : la barre d'icônes de gauche en occupe désormais le
+    // premier bord, et viser « huit pixels » dans l'absolu visait une
+    // icône.
+    let visée = egui::pos2(app.zone_de_travail.left() + 8.0, numéro.center().y);
 
     /// Les ronds pleins d'un rayon de point d'arrêt peints sur cette ligne.
     fn points(sortie: &egui::FullOutput, y: f32) -> Vec<egui::Color32> {
@@ -3295,7 +3298,8 @@ fn the_gutter_shows_what_a_click_would_do() {
             if let egui::epaint::Shape::Circle(c) = &clipped.shape
                 && (c.radius - 4.0).abs() < 0.5
                 && (c.center.y - y).abs() < 4.0
-                && c.center.x < 40.0
+                // Dans la gouttière, que la barre d'icônes décale.
+                && c.center.x < crate::barres::BARRE_LARGEUR + 40.0
             {
                 trouvés.push(c.fill);
             }
@@ -3372,8 +3376,11 @@ fn the_line_where_the_cpu_stopped_wears_a_band() {
     fn bandes(sortie: &egui::FullOutput) -> Vec<egui::Rect> {
         let mut vues = Vec::new();
         for clipped in &sortie.shapes {
+            // La bande part du bord de la zone de travail, que la
+            // barre d'icônes de gauche décale : on la reconnaît à sa
+            // largeur et à sa pâleur, non à une abscisse absolue.
             if let egui::epaint::Shape::Rect(r) = &clipped.shape
-                && r.rect.left() < 4.0
+                && r.rect.left() < crate::barres::BARRE_LARGEUR + 4.0
                 && r.rect.width() > 400.0
                 && (10.0..24.0).contains(&r.rect.height())
                 && r.fill.a() > 0

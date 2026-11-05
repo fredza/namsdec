@@ -179,6 +179,17 @@ en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
 add rax, rcx ». Le chercher à la main veut dire relire son programme à
 l'envers, et se tromper une fois sur deux dès qu'il y a une boucle.
 
+**Des barres d'icônes aux bords.** À gauche l'explorateur et les
+exercices, en bas à gauche la console, à droite le panneau du
+processeur — chaque icône du côté et à la hauteur où son panneau
+s'ouvre. Survolée, elle dit ce qu'un clic fera : « Afficher
+l'explorateur », « Cacher l'explorateur », avec le raccourci tel qu'il
+est réglé. Elles ne commandent rien que le menu Affichage ne commande
+déjà ; ce qu'elles ajoutent est de rendre visible ce qui existe — un
+panneau fermé ne laissait aucune trace à l'écran, et l'on ne ferme pas
+ce qu'on ne sait pas rouvrir. Chaque panneau porte aussi un tiret au
+bout de sa rangée d'onglets, qui le range.
+
 **Le compte des problèmes, sans ouvrir la liste.** Au bord droit de la
 rangée des vues : un disque rouge et le nombre d'erreurs, un triangle
 orange et le nombre d'avertissements. Un clic ouvre la liste sur le bon

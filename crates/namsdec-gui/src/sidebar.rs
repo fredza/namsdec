@@ -323,10 +323,23 @@ impl NamsdecApp {
                     .iter()
                     .position(|tab| *tab == self.active_tab)
                     .unwrap_or(0);
-                if let Some(rang) =
-                    rangée_d_onglets(ui, self.theme, &étiquettes, actif, 0.0, |_| {})
-                {
+                // La réserve du bouton « cacher » : sa case et sa
+                // gouttière, retenues sur la première ligne.
+                let mut cacher = false;
+                if let Some(rang) = rangée_d_onglets(
+                    ui,
+                    self.theme,
+                    &étiquettes,
+                    actif,
+                    ONGLET_HAUTEUR + 4.0,
+                    |ui| {
+                        cacher = bouton_cacher(ui, self.theme, s.rail_sidebar_hide);
+                    },
+                ) {
                     self.active_tab = onglets[rang];
+                }
+                if cacher {
+                    self.show_sidebar = false;
                 }
                 ui.add_space(2.0);
                 // LE CONTENU EST BORNÉ À LA PLACE DU PANNEAU, et ce

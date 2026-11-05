@@ -1046,3 +1046,36 @@ pub(crate) fn compteur_de_problemes(
     );
     demande
 }
+
+/// Le bouton « cacher ce panneau », au bout de sa rangée d'onglets.
+///
+/// **Demandé à l'écran** (4 novembre 2026) : la flèche « cacher
+/// l'explorateur » désignait le tiret du coin d'un panneau de CLion.
+/// Un panneau qui s'ouvre d'une icône se ferme de là où il est — aller
+/// rechercher l'icône qui l'a ouvert, à l'autre bout de l'écran, pour
+/// le refermer est un aller-retour que rien ne justifie.
+///
+/// Un TIRET et non une croix : une croix dit « fermer pour de bon »,
+/// et c'est ce que fait le bouton d'un onglet de fichier. Ici le
+/// panneau ne perd rien — il se range, et l'icône de la barre le
+/// rappelle.
+pub(crate) fn bouton_cacher(ui: &mut egui::Ui, theme: &'static Theme, infobulle: &str) -> bool {
+    let côté = ONGLET_HAUTEUR - 8.0;
+    let (rect, réponse) =
+        ui.allocate_exact_size(egui::vec2(côté + 6.0, ONGLET_HAUTEUR), egui::Sense::click());
+    let case = egui::Rect::from_center_size(rect.center(), egui::vec2(côté, côté));
+    if réponse.hovered() {
+        ui.painter()
+            .rect_filled(case, 3.0, mélange(theme.panel, theme.text, 0.08));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    let demi = côté * 0.3;
+    ui.painter().line_segment(
+        [
+            egui::pos2(case.center().x - demi, case.center().y),
+            egui::pos2(case.center().x + demi, case.center().y),
+        ],
+        egui::Stroke::new(1.4, theme.dim),
+    );
+    réponse.on_hover_text(infobulle).clicked()
+}

@@ -1064,3 +1064,196 @@ fn le_compteur_de_problemes_compte_et_mene_au_probleme() {
         "sur les problèmes"
     );
 }
+
+/// Les barres d'icônes des bords : elles montrent, elles cachent, et
+/// elles disent ce qu'un clic fera.
+///
+/// **Demandé à l'écran, capture annotée** (4 novembre 2026) : trois
+/// rectangles jaunes autour des barres d'icônes de CLion, et deux
+/// flèches — « Afficher l'explorateur » sur l'icône du coin, « cacher
+/// l'explorateur » sur le tiret du panneau.
+#[test]
+fn les_barres_d_icones_montrent_et_cachent() {
+    let s = strings(Lang::Fr);
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    // L'HORLOGE AVANCE D'UNE IMAGE À L'AUTRE, et c'est ce qui fait
+    // paraître les infobulles : elles ont un délai, que le temps figé
+    // d'un banc n'atteint jamais.
+    let mut horloge = 0.0_f64;
+    // Une frappe de souris : on pose le pointeur, on appuie, on
+    // relâche. Plusieurs images, parce qu'une infobulle attend son
+    // délai et qu'un clic se lit au relâchement.
+    // L'APPUI ET LE RELÂCHEMENT SONT DEUX IMAGES. egui décide d'un clic
+    // au relâchement, sur un widget qu'il a vu appuyé à l'image d'avant :
+    // les deux dans la même image ne font rien, et le contrôle croyait
+    // que la case ne répondait pas.
+    let mut sortir = |app: &mut NamsdecApp,
+                      ctx: &egui::Context,
+                      pointeur: Option<egui::Pos2>,
+                      cliquer: bool|
+     -> Vec<String> {
+        let mut événements = Vec::new();
+        if let Some(pos) = pointeur {
+            événements.push(egui::Event::PointerMoved(pos));
+            if cliquer {
+                événements.push(egui::Event::PointerButton {
+                    pos,
+                    button: egui::PointerButton::Primary,
+                    pressed: true,
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+        }
+        horloge += 0.5;
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events: événements,
+            time: Some(horloge),
+            focused: true,
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                vus.push(texte.galley.text().to_owned());
+            }
+        }
+        sortie.textures_delta.clear();
+        vus
+    };
+
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    sortir(&mut app, &ctx, None, false);
+    sortir(&mut app, &ctx, None, false);
+
+    // 1. LES ICÔNES SONT DU CÔTÉ DE LEUR PANNEAU. On les repère à
+    //    leurs tracés : une icône de barre est un dessin, jamais un
+    //    mot — c'est tout l'intérêt d'une barre de trente-quatre
+    //    pixels.
+    let mut icônes: Vec<egui::Pos2> = Vec::new();
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    for clipped in &sortie.shapes {
+        let cadre = match &clipped.shape {
+            egui::epaint::Shape::Path(tracé) => tracé.visual_bounding_rect(),
+            egui::epaint::Shape::LineSegment { points, .. } => {
+                egui::Rect::from_two_pos(points[0], points[1])
+            }
+            _ => continue,
+        };
+        // LA CASE, ET NON LA BARRE ENTIÈRE : le trait qui sépare la
+        // barre de l'éditeur tombe à son bord droit, à mi-hauteur de
+        // l'écran — relevé à x = 33,5, y = 565 —, et il se faisait
+        // compter pour une icône. Le contrôle croyait alors que
+        // l'icône de la console était en bas alors qu'elle était en
+        // haut : c'est le trait qu'il mesurait.
+        if cadre.center().x < crate::barres::BARRE_LARGEUR - 6.0 {
+            icônes.push(cadre.center());
+        }
+    }
+    sortie.textures_delta.clear();
+    assert!(
+        !icônes.is_empty(),
+        "la barre de gauche porte ses icônes : {icônes:?}"
+    );
+    let dossier = icônes
+        .iter()
+        .copied()
+        .min_by(|a, b| a.y.total_cmp(&b.y))
+        .expect("au moins une icône");
+    let console = icônes
+        .iter()
+        .copied()
+        .max_by(|a, b| a.y.total_cmp(&b.y))
+        .expect("au moins une icône");
+    assert!(
+        console.y > écran.height() * 0.5,
+        "l'icône de la console est EN BAS de la barre, comme le panneau \
+         qu'elle ouvre : {console:?}"
+    );
+
+    // 2. L'INFOBULLE DIT LE GESTE, et change avec l'état. On ne survole
+    //    pas une icône pour apprendre son nom, mais pour savoir ce
+    //    qu'un clic fera.
+    //
+    //    MESURÉE À SA SOURCE, et non peinte : une infobulle d'egui ne
+    //    paraît pas dans un banc sans écran — huit images, le pointeur
+    //    immobile sur la case, le délai largement dépassé, et rien.
+    //    Aucun contrôle du projet n'en a jamais relevé une. Ce qui peut
+    //    se tromper ici n'est pas le dessin de la bulle mais le CHOIX
+    //    de la phrase.
+    let dit = app.phrase_de_l_explorateur(&ctx);
+    assert!(
+        dit.starts_with(s.rail_explorer_show),
+        "fermé, l'icône annonce « {} » et non « {dit} »",
+        s.rail_explorer_show
+    );
+
+    // 3. ET LE CLIC OUVRE.
+    assert!(!app.show_explorer, "l'explorateur est fermé au départ");
+    let mut cliquer = |app: &mut NamsdecApp| {
+        sortir(app, &ctx, Some(dossier), true);
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events: vec![egui::Event::PointerButton {
+                pos: dossier,
+                button: egui::PointerButton::Primary,
+                pressed: false,
+                modifiers: egui::Modifiers::NONE,
+            }],
+            focused: true,
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    };
+    cliquer(&mut app);
+    assert!(app.show_explorer, "un clic sur l'icône ouvre l'explorateur");
+    let dit = app.phrase_de_l_explorateur(&ctx);
+    assert!(
+        dit.starts_with(s.rail_explorer_hide),
+        "ouvert, elle annonce « {} » et non « {dit} »",
+        s.rail_explorer_hide
+    );
+    // ET LE RACCOURCI EST LU, NON RECOPIÉ, comme à l'accueil.
+    app.keybindings.map.insert(
+        Action::ToggleExplorer,
+        crate::keybindings::Chord::Simple(egui::KeyboardShortcut::new(
+            egui::Modifiers::CTRL | egui::Modifiers::ALT,
+            egui::Key::J,
+        )),
+    );
+    let dit = app.phrase_de_l_explorateur(&ctx);
+    assert!(
+        dit.contains('J') && dit.contains("Alt"),
+        "le raccourci réglé se lit à l'infobulle : {dit}"
+    );
+    cliquer(&mut app);
+    assert!(!app.show_explorer, "et un autre le referme");
+
+    // 4. ÉTEINTES AU MENU, AUCUNE TRACE : on retrouve l'écran d'avant.
+    app.show_rails = false;
+    sortir(&mut app, &ctx, None, false);
+    let entrée = egui::RawInput {
+        screen_rect: Some(écran),
+        ..Default::default()
+    };
+    let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+    let reste = sortie.shapes.iter().any(|clipped| match &clipped.shape {
+        egui::epaint::Shape::Path(tracé) => {
+            tracé.visual_bounding_rect().center().x < crate::barres::BARRE_LARGEUR
+        }
+        _ => false,
+    });
+    sortie.textures_delta.clear();
+    assert!(!reste, "éteintes, les barres ne laissent rien");
+}

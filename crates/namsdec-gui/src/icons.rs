@@ -289,3 +289,124 @@ pub(crate) fn icon_chevron(
         egui::Stroke::new(1.4, color),
     ));
 }
+
+/// Un dossier : une chemise à onglet.
+///
+/// UN SEUL CONTOUR, et non un rectangle plus un trait : les deux
+/// dessins séparés laissaient l'onglet flotter au-dessus de la boîte,
+/// et l'on voyait un couvercle mal posé. La silhouette entière se suit
+/// d'un trait, comme on la dessinerait à la main.
+pub(crate) fn icon_folder(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let largeur = rect.width() * 0.84;
+    let hauteur = rect.height() * 0.64;
+    let g = rect.center().x - largeur / 2.0;
+    let h = rect.center().y - hauteur / 2.0;
+    let épaule = h + hauteur * 0.24;
+    painter.add(egui::Shape::closed_line(
+        vec![
+            egui::pos2(g, h + hauteur),
+            egui::pos2(g, épaule),
+            egui::pos2(g + largeur * 0.36, épaule),
+            egui::pos2(g + largeur * 0.46, h),
+            egui::pos2(g + largeur, h),
+            egui::pos2(g + largeur, h + hauteur),
+        ],
+        trait_,
+    ));
+}
+
+/// Un terminal : un cadre, une invite et un curseur.
+pub(crate) fn icon_terminal(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let côté = rect.width() * 0.82;
+    let cadre = egui::Rect::from_center_size(rect.center(), egui::vec2(côté, côté * 0.82));
+    painter.rect_stroke(cadre, 1.5, trait_, egui::StrokeKind::Inside);
+    // Le chevron de l'invite, puis le trait de la ligne tapée.
+    let g = cadre.left() + côté * 0.2;
+    let y = cadre.center().y;
+    painter.add(egui::Shape::line(
+        vec![
+            egui::pos2(g, y - côté * 0.16),
+            egui::pos2(g + côté * 0.16, y),
+            egui::pos2(g, y + côté * 0.16),
+        ],
+        trait_,
+    ));
+    painter.line_segment(
+        [
+            egui::pos2(g + côté * 0.26, y + côté * 0.16),
+            egui::pos2(cadre.right() - côté * 0.18, y + côté * 0.16),
+        ],
+        trait_,
+    );
+}
+
+/// Un processeur : un carré et ses broches.
+pub(crate) fn icon_chip(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let côté = rect.width() * 0.56;
+    let corps = egui::Rect::from_center_size(rect.center(), egui::vec2(côté, côté));
+    painter.rect_stroke(corps, 1.0, trait_, egui::StrokeKind::Inside);
+    let broche = rect.width() * 0.14;
+    for part in 0..3 {
+        let t = -0.3 + part as f32 * 0.3;
+        // Les quatre côtés, deux broches chacun : moins ne se
+        // reconnaîtrait pas, plus se brouillerait à cette taille.
+        painter.line_segment(
+            [
+                egui::pos2(corps.left() + côté * (t + 0.5), corps.top()),
+                egui::pos2(corps.left() + côté * (t + 0.5), corps.top() - broche),
+            ],
+            trait_,
+        );
+        painter.line_segment(
+            [
+                egui::pos2(corps.left() + côté * (t + 0.5), corps.bottom()),
+                egui::pos2(corps.left() + côté * (t + 0.5), corps.bottom() + broche),
+            ],
+            trait_,
+        );
+        painter.line_segment(
+            [
+                egui::pos2(corps.left(), corps.top() + côté * (t + 0.5)),
+                egui::pos2(corps.left() - broche, corps.top() + côté * (t + 0.5)),
+            ],
+            trait_,
+        );
+        painter.line_segment(
+            [
+                egui::pos2(corps.right(), corps.top() + côté * (t + 0.5)),
+                egui::pos2(corps.right() + broche, corps.top() + côté * (t + 0.5)),
+            ],
+            trait_,
+        );
+    }
+}
+
+/// Les exercices : un livre ouvert.
+pub(crate) fn icon_book(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let largeur = rect.width() * 0.86;
+    let hauteur = rect.height() * 0.64;
+    let centre = rect.center();
+    for sens in [-1.0_f32, 1.0] {
+        painter.add(egui::Shape::line(
+            vec![
+                egui::pos2(centre.x, centre.y - hauteur * 0.36),
+                egui::pos2(centre.x + sens * largeur * 0.42, centre.y - hauteur * 0.5),
+                egui::pos2(centre.x + sens * largeur * 0.42, centre.y + hauteur * 0.36),
+                egui::pos2(centre.x, centre.y + hauteur * 0.5),
+            ],
+            trait_,
+        ));
+    }
+    // La reliure, qui fait les deux pages plutôt qu'un losange.
+    painter.line_segment(
+        [
+            egui::pos2(centre.x, centre.y - hauteur * 0.36),
+            egui::pos2(centre.x, centre.y + hauteur * 0.5),
+        ],
+        trait_,
+    );
+}

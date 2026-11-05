@@ -979,6 +979,32 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 octotricies. Les barres d'icônes des bords (A 9.74)
+
+Capture annotée : trois rectangles sur les barres de CLion, « Afficher
+l'explorateur », « cacher l'explorateur ».
+
+- [x] **Barre de gauche** — l'explorateur et les exercices en haut, la
+      console en bas, du côté et à la hauteur où le panneau s'ouvre.
+- [x] **Barre de droite** — le panneau du processeur.
+- [x] **L'infobulle dit le geste**, et le raccourci est lu dans le
+      tableau.
+- [x] **Un tiret au bout de chaque rangée d'onglets** : le panneau se
+      range de là où il est.
+- [x] **Affichage › Barres d'icônes** les éteint ; le réglage est gardé.
+
+**Le défaut que seul le contrôle pouvait trouver** : l'icône de
+l'explorateur ne pouvait pas le refermer. L'appui tombe hors de la
+fenêtre flottante, qui se ferme ; le relâchement arrive sur l'icône d'un
+panneau devenu fermé, et la rouvre. Un clic sur la barre n'est pas un
+clic « ailleurs ».
+
+**Et une mesure qui mesurait un trait** : le séparateur de la barre
+tombe à son bord droit, à mi-hauteur, et se faisait compter pour une
+icône. Quatrième fois cette semaine qu'un contrôle vert ne prouve rien.
+
+---
+
 ## 0 septentricies. Le compte des problèmes (A 9.73)
 
 Consigne annotée « Erreurs et warning », flèche sur le badge de CLion.

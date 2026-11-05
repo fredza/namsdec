@@ -48,7 +48,16 @@ fn the_two_column_banner_fits_the_panel_it_is_given() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    let screen = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
+    // L'ÉCRAN COMPTE LES BARRES D'ICÔNES EN PLUS : le panneau latéral
+    // ne peut pas dépasser la moitié de la place de travail, et les
+    // barres en prennent trente-quatre de chaque côté. Sans ces
+    // soixante-huit pixels, un panneau réglé à 620 se faisait rogner à
+    // 606 — ce que le contrôle a vu, et il avait raison de le voir.
+    let largeur_des_barres = crate::barres::BARRE_LARGEUR * 2.0;
+    let screen = egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1280.0 + largeur_des_barres, 1400.0),
+    );
     let wide = 620.0;
     let mut app = NamsdecApp::default();
     app.do_assemble();
@@ -583,8 +592,11 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
                     "RIP" => trouvés.push(("RIP", text.pos)),
                     // L'onglet dans le PANNEAU : la rangée n'est plus
                     // dans la barre d'outils, et c'est elle le repère.
+                    // La barre d'icônes de droite décale le panneau
+                    // vers la gauche : le repère se prend sur la
+                    // largeur du panneau, barre comprise.
                     t if t == SidebarTab::Cpu.label(strings(Lang::Fr))
-                        && text.pos.x > 1280.0 - SIDEBAR_WIDTH =>
+                        && text.pos.x > 1280.0 - SIDEBAR_WIDTH - crate::barres::BARRE_LARGEUR =>
                     {
                         rangée_y = rangée_y.min(text.pos.y);
                     }
@@ -619,16 +631,20 @@ fn the_cpu_state_fills_the_panel_without_a_scroll_bar() {
     );
     // La seconde colonne s'appuie sur le bord droit du panneau, à
     // quelques pixels près : la grille ne se tasse pas à gauche.
+    // Le bord droit du panneau n'est plus celui de l'écran : la barre
+    // d'icônes de droite est posée dehors, et le panneau commence
+    // trente-quatre pixels plus à gauche.
+    let bord = 1280.0 - crate::barres::BARRE_LARGEUR;
     let droite = *colonnes.iter().next_back().unwrap() as f32;
     assert!(
-        droite > 1280.0 - SIDEBAR_WIDTH / 2.0,
+        droite > bord - SIDEBAR_WIDTH / 2.0,
         "la seconde colonne doit occuper la moitié droite du panneau : {colonnes:?}"
     );
     // Et aucune barre de défilement SOUS la rangée, là où vit l'état du
     // processeur.
     let fautives: Vec<_> = barres
         .iter()
-        .filter(|r| r.min.x > 1280.0 - SIDEBAR_WIDTH && r.min.y > rangée_y)
+        .filter(|r| r.min.x > bord - SIDEBAR_WIDTH && r.min.y > rangée_y)
         .collect();
     assert!(
         fautives.is_empty(),

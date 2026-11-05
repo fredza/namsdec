@@ -913,6 +913,27 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "sous les doigts de quelqu'un qui vient de le fermer. "
          "<b>Affichage › Console</b> l'ouvre et la ferme à la demande, et le réglage "
          "est gardé d'une session à l'autre."),
+        ("h2", "Les barres d'icônes des bords"),
+        ("p",
+         "Le long du bord gauche et du bord droit, une <b>barre d'icônes</b> montre et "
+         "cache les panneaux&nbsp;: l'explorateur et les exercices en haut à gauche, la "
+         "console en bas à gauche — du côté et à la hauteur où le panneau s'ouvre —, et "
+         "le panneau du processeur à droite. L'icône reste là, <b>allumée ou "
+         "éteinte</b>&nbsp;; survolée, elle dit ce qu'un clic fera&nbsp;: « Afficher "
+         "l'explorateur », « Cacher l'explorateur », avec le raccourci tel qu'il est "
+         "réglé."),
+        ("note",
+         "Elles ne commandent rien que le menu Affichage ne commande déjà. Ce qu'elles "
+         "ajoutent est de <b>rendre visible ce qui existe</b>&nbsp;: un panneau fermé ne "
+         "laissait aucune trace à l'écran, et l'on ne ferme pas ce qu'on ne sait pas "
+         "rouvrir. <b>Affichage › Barres d'icônes</b> les éteint, et l'on retrouve "
+         "l'écran d'avant."),
+        ("p",
+         "Chaque panneau porte en outre un <b>tiret</b> au bout de sa rangée "
+         "d'onglets&nbsp;: il le range. Un tiret et non une croix — le panneau ne perd "
+         "rien, et l'icône de la barre le rappelle. Un panneau qui s'ouvre d'une icône "
+         "se ferme de là où il est&nbsp;; aller rechercher l'icône à l'autre bout de "
+         "l'écran serait un aller-retour que rien ne justifie."),
         ("p",
          "<b>Les arguments et l'environnement ne sont plus dans la console</b>, et c'est "
          "ce qui lui rend sa place&nbsp;: ils ne se tapent pas pendant qu'un programme "

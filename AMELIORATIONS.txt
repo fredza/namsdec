@@ -10597,3 +10597,76 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
 
      Troisième leçon du même ordre que les captures : un contrôle qui ne
      tombe pas quand on remet le défaut ne contrôle rien.
+
+9.74 [FAIT] LES BARRES D'ICÔNES DES BORDS
+     (5 novembre 2026 — capture annotée, trois rectangles et deux
+     flèches)
+
+     TROIS RECTANGLES JAUNES autour des barres d'icônes de CLion — celle
+     de gauche, celle de droite, celle du bas — et deux flèches :
+     « Afficher l'explorateur » sur l'icône du coin, « cacher
+     l'explorateur » sur le tiret du panneau.
+
+     CE QU'ELLES APPORTENT N'EST PAS UNE COMMANDE DE PLUS. Tout ce
+     qu'elles font était déjà au menu Affichage et dans les raccourcis.
+     Ce qu'elles ajoutent est de RENDRE VISIBLE CE QUI EXISTE : un
+     panneau fermé ne laissait aucune trace à l'écran, et l'on ne ferme
+     pas ce qu'on ne sait pas rouvrir. L'icône reste là, allumée ou
+     éteinte, et dit à la fois que la chose existe et où elle est
+     rangée.
+
+     CHAQUE ICÔNE EST DU CÔTÉ OÙ SON PANNEAU S'OUVRE, et à sa hauteur :
+     l'explorateur et les exercices en haut à gauche, la console en BAS
+     à gauche — comme dans JetBrains, où le groupe du bas tient les
+     panneaux du bas —, le processeur à droite. Une icône qui ouvre un
+     panneau à l'autre bout de l'écran apprend à ne plus la croire.
+
+     L'INFOBULLE DIT LE GESTE, ET NON LE NOM. « Afficher l'explorateur »
+     quand il est fermé, « Cacher l'explorateur » quand il est ouvert —
+     ce sont les mots de la consigne, et ce sont ceux qu'on cherche : on
+     ne survole pas une icône pour apprendre son nom, mais pour savoir
+     ce qu'un clic fera. Le raccourci est lu dans le tableau, comme à
+     l'accueil.
+
+     UN DÉFAUT QUE SEUL LE CONTRÔLE POUVAIT TROUVER, et il est beau :
+     l'icône de l'explorateur ne pouvait pas le refermer. L'APPUI tombe
+     hors de la fenêtre flottante, qui se ferme toute seule — c'est sa
+     règle, un clic ailleurs la range ; le RELÂCHEMENT arrive alors sur
+     l'icône d'un panneau devenu fermé, et la rouvre. L'explorateur
+     restait ouvert, clignotait, et ne se fermait que par le menu. Un
+     clic sur la barre d'icônes n'est pas un clic « ailleurs ».
+
+     Le contrôle l'a trouvé parce qu'il SÉPARE L'APPUI DU RELÂCHEMENT,
+     ce qu'il a bien fallu faire pour qu'egui voie un clic. Les deux
+     dans la même image ne font rien.
+
+     ET UNE MESURE QUI MESURAIT LE MAUVAIS OBJET : le trait qui sépare
+     la barre de l'éditeur tombe à son bord droit, à mi-hauteur de
+     l'écran, et se faisait compter pour une icône. Le contrôle de « la
+     console est en bas » passait donc en mesurant un trait. Quatrième
+     fois cette semaine qu'un contrôle vert ne prouve rien.
+
+     SIX CONTRÔLES SONT TOMBÉS, et tous avaient raison : soixante-huit
+     pixels pris sur la largeur, ce n'est pas rien. La console ne prend
+     plus « toute la largeur » mais toute celle que les barres laissent
+     ; la gouttière ne commence plus au bord de l'écran, et viser « huit
+     pixels » dans l'absolu visait une icône ; le panneau latéral ne
+     peut plus dépasser la moitié d'une place de travail rétrécie, si
+     bien qu'un panneau réglé à 620 se faisait rogner à 606. Chacun a
+     été corrigé en disant POURQUOI le repère a bougé, jamais en
+     relâchant la mesure.
+
+     Et un septième, d'une autre espèce : l'icône des exercices les fait
+     BASCULER, alors que l'interface ne savait jusque-là que les OUVRIR.
+     Le contrôle qui veille à ce qu'aucune bascule ne se perde l'a
+     réclamée dans settings.json. Elle y est déjà — sous `open_windows`,
+     comme toutes les fenêtres —, et lui donner un champ à elle l'aurait
+     fait rouvrir deux fois par deux chemins qui peuvent diverger. C'est
+     exactement le cas de la calculatrice, entrée dans la même liste
+     d'exceptions le jour où un raccourci l'a fait basculer.
+
+     Les infobulles, elles, ne se mesurent pas : une bulle d'egui ne se
+     peint pas dans un banc sans écran — huit images, pointeur immobile,
+     délai largement dépassé, et rien. On mesure donc la PHRASE à sa
+     source, là où le choix se fait, puisque c'est le choix qui peut se
+     tromper et non le dessin de la bulle.

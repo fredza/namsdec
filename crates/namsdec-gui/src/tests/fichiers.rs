@@ -348,6 +348,7 @@ fn every_setting_survives_a_round_trip() {
     let mut app = NamsdecApp {
         lang: Lang::En,
         show_toolbar: false,
+        show_rails: false,
         show_sidebar: false,
         show_statusbar: false,
         show_console: false,
@@ -972,6 +973,7 @@ fn every_setting_that_is_written_is_read_back() {
         theme: namsdec_theme::TOKYO_NIGHT.id.to_owned(),
         language: "en".to_owned(),
         show_toolbar: false,
+        show_rails: false,
         show_sidebar: false,
         show_statusbar: false,
         show_console: false,
@@ -1211,16 +1213,28 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
 
     // Les bascules qui ne SONT pas des réglages : à inscrire ici avec la
     // raison, plutôt que d'élargir les motifs jusqu'à ne plus rien voir.
-    const EPHEMERES: [(&str, &str); 1] = [(
-        "show_calculator",
-        "gardée, mais pas sous son nom : c'est une FENÊTRE, et les \
+    const EPHEMERES: [(&str, &str); 2] = [
+        (
+            "show_exercises",
+            "même cas que la calculatrice, et entrée ici le même jour que \
+             la barre d'icônes de gauche : jusque-là l'interface ne savait \
+             qu'OUVRIR les exercices — le menu, la palette —, et l'icône \
+             de la barre les fait BASCULER. C'est une FENÊTRE, reprise par \
+             `FENÊTRES_REPRISES` sous `open_windows` ; un champ à elle la \
+             ferait rouvrir deux fois, par deux chemins qui peuvent \
+             diverger.",
+        ),
+        (
+            "show_calculator",
+            "gardée, mais pas sous son nom : c'est une FENÊTRE, et les \
          fenêtres se reprennent toutes par la même table — \
          `FENÊTRES_REPRISES` dans main.rs, qu'un instantané écrit sous \
          `open_windows`. Lui donner en plus un champ à elle la ferait \
          rouvrir deux fois, par deux chemins qui peuvent diverger. Elle \
          est entrée ici le jour où `Espace c a` l'a fait BASCULER : \
          jusque-là l'interface ne savait que l'ouvrir.",
-    )];
+        ),
+    ];
 
     let mut bascules: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
     // `src/` est le dépôt lui-même : illisible, c'est une anomalie, non

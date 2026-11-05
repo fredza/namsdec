@@ -45,6 +45,7 @@ impl NamsdecApp {
             keymap_preset: keybindings::Preset::default(),
             keymap_mtime: None,
             show_toolbar: settings.show_toolbar,
+            show_rails: settings.show_rails,
             show_sidebar: settings.show_sidebar,
             show_statusbar: settings.show_statusbar,
             show_console: settings.show_console,
@@ -521,6 +522,7 @@ impl NamsdecApp {
                 .map(|(nom, _, _)| (*nom).to_owned())
                 .collect(),
             show_toolbar: self.show_toolbar,
+            show_rails: self.show_rails,
             show_sidebar: self.show_sidebar,
             show_statusbar: self.show_statusbar,
             show_console: self.show_console,

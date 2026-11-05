@@ -5,6 +5,7 @@
 
 mod accueil;
 mod ansi;
+mod barres;
 mod bugreport;
 mod calc;
 mod calc_ui;
@@ -1499,6 +1500,14 @@ struct NamsdecApp {
     /// l'endroit où l'état courant se range quand on en change.
     active_tab_index: usize,
     show_toolbar: bool,
+    /// Les barres d'icônes des bords (voir `barres.rs`).
+    ///
+    /// Elles ne commandent rien que le menu Affichage ne commande
+    /// déjà ; ce qu'elles font est de RENDRE VISIBLE CE QUI EXISTE. On
+    /// peut les éteindre — le menu les a —, et il n'y a alors plus
+    /// aucune trace à l'écran d'un panneau fermé, ce qui était l'état
+    /// d'avant.
+    show_rails: bool,
     show_sidebar: bool,
     show_statusbar: bool,
     /// Panneau bas : la console du programme et les diagnostics de nasm.
@@ -2269,6 +2278,7 @@ impl Default for NamsdecApp {
             restoring_session: false,
             active_tab_index: 0,
             show_toolbar: true,
+            show_rails: true,
             show_sidebar: true,
             show_statusbar: true,
             show_console: true,
@@ -2542,8 +2552,24 @@ impl NamsdecApp {
             }
             ExplorerAction::PickRoot => self.do_open_folder(),
             ExplorerAction::Close => {
-                self.show_explorer = false;
-                self.explorer_focused = false;
+                // UN CLIC SUR LA BARRE D'ICÔNES N'EST PAS UN CLIC
+                // « AILLEURS », et sans cette exception l'icône de
+                // l'explorateur ne pouvait pas le refermer.
+                //
+                // Mesuré : l'APPUI tombe hors de la fenêtre, qui se
+                // ferme ; le RELÂCHEMENT arrive sur une icône devenue
+                // celle d'un panneau fermé, qui le rouvre. L'explorateur
+                // restait ouvert et clignotait, et l'on ne pouvait le
+                // fermer que par le menu ou en cliquant ailleurs — ce
+                // qui est précisément ce que la barre devait éviter.
+                let sur_la_barre = self.show_rails
+                    && ctx
+                        .pointer_interact_pos()
+                        .is_some_and(|pos| pos.x < barres::BARRE_LARGEUR);
+                if !sur_la_barre {
+                    self.show_explorer = false;
+                    self.explorer_focused = false;
+                }
             }
             ExplorerAction::Renamed { from, to } => {
                 // Si c'est le fichier ouvert qui vient d'être renommé, le
@@ -3522,6 +3548,32 @@ impl NamsdecApp {
             egui::Panel::bottom("statusbar")
                 .frame(statusbar_frame)
                 .show(ui, |ui| self.statusbar_ui(ui));
+        }
+        // LES BARRES D'ICÔNES DES BORDS, posées avant les panneaux
+        // qu'elles commandent.
+        //
+        // L'ordre est tout : un panneau egui prend la place qui reste au
+        // moment où il est posé. Les barres passant les premières, elles
+        // tiennent toute la hauteur — de sous la barre d'outils jusqu'à
+        // la barre d'état — et la console s'ouvre ENTRE elles, comme
+        // chez JetBrains. Posées après, elles s'arrêteraient au-dessus
+        // de la console et l'icône qui l'ouvre serait séparée d'elle.
+        if self.show_rails {
+            timed(&mut spans, "barres d'icônes", || {
+                let cadre = egui::Frame::new()
+                    .fill(self.theme.panel)
+                    .inner_margin(egui::Margin::symmetric(4, 6));
+                egui::Panel::left("barre_gauche")
+                    .resizable(false)
+                    .exact_size(barres::BARRE_LARGEUR)
+                    .frame(cadre)
+                    .show(ui, |ui| self.barre_gauche_ui(ui));
+                egui::Panel::right("barre_droite")
+                    .resizable(false)
+                    .exact_size(barres::BARRE_LARGEUR)
+                    .frame(cadre)
+                    .show(ui, |ui| self.barre_droite_ui(ui));
+            });
         }
         // Au-dessus de la barre de statut, sous l'éditeur, et sur toute
         // la largeur : la console garde ainsi les 80 colonnes qu'un

@@ -207,10 +207,26 @@ fn the_console_panel_spans_the_window_and_keeps_its_input_at_the_bottom() {
         .expect("la saisie de la console est affichée")
         .outer_rect;
 
+    // TOUTE LA LARGEUR QUE LES BARRES LAISSENT, panneau latéral
+    // compris.
+    //
+    // C'était « toute la largeur » tout court, et la raison tient
+    // toujours : un programme qui écrit suppose quatre-vingts colonnes,
+    // et le panneau latéral ne doit pas les lui prendre. Les barres
+    // d'icônes des bords, elles, encadrent la console comme elles
+    // encadrent l'éditeur — c'est ainsi chez JetBrains, d'où vient la
+    // consigne, et trente-quatre pixels de chaque côté ne coûtent
+    // aucune colonne.
+    let barres = if app.show_rails {
+        crate::barres::BARRE_LARGEUR * 2.0
+    } else {
+        0.0
+    };
     assert_eq!(
         console.width(),
-        screen.width(),
-        "la console prend toute la largeur, panneau latéral compris"
+        screen.width() - barres,
+        "la console prend toute la largeur que les barres laissent, \
+         panneau latéral compris"
     );
     assert!(
         console.height() <= screen.height() * CONSOLE_MAX_FRACTION,

@@ -6,6 +6,18 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Des barres d'icônes aux bords**
+- À gauche l'explorateur et les exercices, en bas à gauche la console, à
+  droite le panneau du processeur — chaque icône du côté et à la hauteur
+  où son panneau s'ouvre.
+- Survolée, elle dit **ce qu'un clic fera** : « Afficher l'explorateur »,
+  « Cacher l'explorateur », avec le raccourci tel qu'il est réglé.
+- Chaque panneau porte un **tiret** au bout de sa rangée d'onglets, qui
+  le range.
+- **Affichage › Barres d'icônes** les éteint ; le réglage est gardé.
+- **L'icône de l'explorateur le referme** : l'appui le fermait et le
+  relâchement le rouvrait aussitôt.
+
 **Le compte des problèmes, sans ouvrir la liste**
 - Au bord droit de la rangée des vues : un disque rouge et le nombre
   d'erreurs, un triangle orange et le nombre d'avertissements.

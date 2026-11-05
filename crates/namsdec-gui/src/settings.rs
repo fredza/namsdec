@@ -52,6 +52,15 @@ pub struct Settings {
     pub theme: String,
     pub language: String,
     pub show_toolbar: bool,
+    /// Les barres d'icônes des bords, qui montrent et cachent les
+    /// panneaux.
+    ///
+    /// Vraies sur une installation neuve : un panneau fermé ne laissait
+    /// aucune trace à l'écran, et l'on ne ferme pas ce qu'on ne sait pas
+    /// rouvrir. Qui les trouve encombrantes les éteint au menu
+    /// Affichage, et retrouve l'écran d'avant.
+    #[serde(default = "vrai")]
+    pub show_rails: bool,
     pub show_sidebar: bool,
     pub show_statusbar: bool,
     /// Panneau bas — la console du programme et les diagnostics de nasm.
@@ -419,6 +428,7 @@ impl Default for Settings {
             theme: namsdec_theme::VSCODE_DARK.id.to_owned(),
             language: "fr".to_owned(),
             show_toolbar: true,
+            show_rails: true,
             show_sidebar: true,
             show_statusbar: true,
             // Faux : voir le champ. Elle s'ouvre dès qu'elle a quelque

@@ -92,6 +92,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
     ("accueil.rs", include_str!("accueil.rs")),
     ("ansi.rs", include_str!("ansi.rs")),
+    ("barres.rs", include_str!("barres.rs")),
     ("bugreport.rs", include_str!("bugreport.rs")),
     ("calc.rs", include_str!("calc.rs")),
     ("calc_ui.rs", include_str!("calc_ui.rs")),

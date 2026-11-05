@@ -364,8 +364,19 @@ impl NamsdecApp {
             0.0
         };
         let mut bascule_arguments = false;
-        if let Some(rang) =
-            rangée_d_onglets(ui, self.theme, &étiquettes, actif, largeur_bouton, |ui| {
+        let mut cacher = false;
+        if let Some(rang) = rangée_d_onglets(
+            ui,
+            self.theme,
+            &étiquettes,
+            actif,
+            largeur_bouton + ONGLET_HAUTEUR + 4.0,
+            |ui| {
+                // Le tiret d'abord : on part du bord droit, et c'est au
+                // bord que se tient ce qui range le panneau — comme
+                // dans la fenêtre Run de JetBrains, d'où vient la
+                // consigne.
+                cacher = bouton_cacher(ui, self.theme, s.rail_console_hide);
                 if avec_arguments
                     && small_framed_button(ui, self.theme, s.console_args_toggle)
                         .on_hover_text(s.console_args_toggle_hint)
@@ -373,12 +384,15 @@ impl NamsdecApp {
                 {
                     bascule_arguments = true;
                 }
-            })
-        {
+            },
+        ) {
             self.console_tab = ConsoleTab::ALL[rang];
         }
         if bascule_arguments {
             self.console_args_open = !self.console_args_open;
+        }
+        if cacher {
+            self.show_console = false;
         }
         ui.separator();
         match self.console_tab {
