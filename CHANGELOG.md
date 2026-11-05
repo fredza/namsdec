@@ -6,6 +6,15 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**L'accueil, quand on a fermé le dernier fichier**
+- Le nom de l'atelier, puis ce par quoi on recommence — nouveau fichier,
+  ouvrir, palette de commandes, exercices — et les **récents**, qu'un
+  clic rouvre.
+- Chaque raccourci montré est **celui du tableau des raccourcis**, lu et
+  non recopié.
+- L'accueil se **demande**, par un geste : fermer. Il ne paraît jamais
+  parce qu'on a effacé son texte.
+
 **Le choix du moteur de désassemblage**
 - La rangée **« Moteur : »** est alignée : l'étiquette se posait cinq
   pixels au-dessus de ses choix.

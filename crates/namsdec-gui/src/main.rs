@@ -3,6 +3,7 @@
 //! (vérification pédagogique) et exécute pas à pas via `namsdec-emu`,
 //! en affichant les panneaux des modules `ReModule` enregistrés.
 
+mod accueil;
 mod ansi;
 mod bugreport;
 mod calc;
@@ -1462,6 +1463,19 @@ struct NamsdecApp {
     ///
     /// L'onglet actif n'y est pas : c'est l'état de travail lui-même.
     tabs: Vec<OpenTab>,
+    /// On a fermé le dernier fichier : l'accueil prend la place de
+    /// l'éditeur (voir `accueil.rs`).
+    ///
+    /// UN DRAPEAU, ET NON LA SEULE VUE DU TAMPON VIDE. Déduire l'accueil
+    /// de « le texte est vide et aucun fichier n'est ouvert » le ferait
+    /// apparaître au milieu d'une frappe — on sélectionne tout, on
+    /// efface pour recommencer, et l'éditeur disparaîtrait sous les
+    /// doigts. L'accueil se demande, par un geste : fermer.
+    ///
+    /// Il ne se retient pas d'une séance à l'autre : au démarrage, le
+    /// programme d'accueil est chargé, et un éditeur qui a du texte
+    /// n'est pas un accueil.
+    montrer_accueil: bool,
     /// La date du fichier ouvert, telle qu'on l'a lue ou écrite.
     ///
     /// Un fichier qu'on édite aussi ailleurs — un autre éditeur, un
@@ -2248,6 +2262,7 @@ impl Default for NamsdecApp {
             explorer_focused: false,
             current_file: None,
             tabs: Vec::new(),
+            montrer_accueil: false,
             file_mtime: None,
             disk_changed: false,
             had_focus: true,

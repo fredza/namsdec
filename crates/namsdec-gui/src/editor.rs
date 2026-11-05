@@ -613,6 +613,16 @@ impl NamsdecApp {
         // Avant de dessiner : la barre d'état, peinte plus tôt dans la
         // frame, lit ce qu'on calcule ici.
         self.refresh_fix();
+        // PLUS RIEN D'OUVERT : l'accueil, et non un éditeur vide.
+        //
+        // Il est posé ici, avant tout le reste : la recherche, le
+        // renommage et les modes n'ont rien à faire sur un texte qui
+        // n'existe pas, et la barre des fichiers modifiés sur disque
+        // parle d'un fichier qu'on n'a plus.
+        if self.rien_n_est_ouvert() {
+            self.accueil_ui(ui);
+            return;
+        }
         // Et avant les deux vues : l'une et l'autre en ont besoin (voir
         // `relever_alt`).
         self.relever_alt(ui);

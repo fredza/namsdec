@@ -679,6 +679,14 @@ impl NamsdecApp {
             self.diagnostics.clear();
             self.breakpoint_lines.clear();
             self.status = Status::Idle;
+            // ET L'ACCUEIL PREND LA PLACE DE L'ÉDITEUR.
+            //
+            // Demandé à l'écran, capture à l'appui : « quand je quitte,
+            // j'aimerais que tout soit fermé, et une fenêtre comme la
+            // suivante apparaisse ». Un éditeur vide qui ne dit rien est
+            // le pire état d'une application : elle marche, elle n'a
+            // rien fait de mal, et elle n'offre rien.
+            self.montrer_accueil = true;
             return;
         }
         if index == self.active_tab_index {
@@ -787,12 +795,22 @@ impl NamsdecApp {
         // se passait RIEN de visible, le tampon d'accueil étant remplacé
         // par un autre qui lui ressemble. Un geste sans effet visible
         // est un geste cassé, quelle que soit la logique derrière.
-        let courant = self.take_tab();
-        let insertion = self.active_tab_index.min(self.tabs.len());
-        self.tabs.insert(insertion, courant);
-        self.active_tab_index = insertion + 1;
+        // SAUF DEPUIS L'ACCUEIL, où il n'y a rien à garder À CÔTÉ.
+        //
+        // On vient de fermer, l'écran dit « plus rien n'est ouvert », et
+        // empiler le tampon fermé comme un onglet de plus rouvrirait ce
+        // qu'on vient de refermer : « sans titre » reviendrait seul dans
+        // la barre. Ici le geste se voit de reste — l'accueil s'efface
+        // et le programme neuf prend sa place.
+        if !self.montrer_accueil {
+            let courant = self.take_tab();
+            let insertion = self.active_tab_index.min(self.tabs.len());
+            self.tabs.insert(insertion, courant);
+            self.active_tab_index = insertion + 1;
+        }
         self.untitled_no = self.next_untitled;
         self.next_untitled += 1;
+        self.montrer_accueil = false;
         self.set_source(NEW_PROGRAM.to_owned());
         self.saved_source = NEW_PROGRAM.to_owned();
         self.current_file = None;
@@ -809,6 +827,8 @@ impl NamsdecApp {
     /// remplacé, il attend dans son onglet avec ses modifications, son
     /// curseur et ses points d'arrêt.
     pub(crate) fn open_file(&mut self, path: PathBuf) {
+        // Un fichier s'ouvre : il n'y a plus d'accueil à montrer.
+        self.montrer_accueil = false;
         self.open_in_new_tab(path);
     }
 

@@ -772,3 +772,125 @@ fn la_rangee_du_moteur_est_alignee_et_le_debutant_en_a_trois() {
         "le moteur en cours reste listé, même au-dessus du niveau : {textes:?}"
     );
 }
+
+/// L'accueil : ce qu'on voit quand on a fermé le dernier fichier.
+///
+/// **Demandé à l'écran, capture à l'appui** (4 novembre 2026) : « quand
+/// je quitte, j'aimerais que tout soit fermé, et une fenêtre comme la
+/// suivante apparaisse — celle comme Zed ».
+///
+/// Quatre choses à retenir, et la deuxième est celle qui fait mal si on
+/// l'oublie : l'accueil ne doit PAS se déduire du tampon vide, sans quoi
+/// il apparaîtrait au milieu d'une frappe — on sélectionne tout, on
+/// efface pour recommencer, et l'éditeur disparaîtrait sous les doigts.
+#[test]
+fn l_accueil_parait_quand_on_a_ferme_et_jamais_sous_les_doigts() {
+    let s = strings(Lang::Fr);
+    let peindre = |app: &mut NamsdecApp| -> Vec<String> {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        for _ in 0..3 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    vus.push(texte.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    // 1. ON FERME LE DERNIER FICHIER : l'accueil prend la place.
+    let mut app = NamsdecApp {
+        source: "mov rax, 1\n".to_owned(),
+        recent_files: vec![std::path::PathBuf::from("/tmp/boucle.asm")],
+        ..Default::default()
+    };
+    app.close_tab_now(app.active_tab_index);
+    assert!(
+        app.rien_n_est_ouvert(),
+        "fermer le dernier mène à l'accueil"
+    );
+    let vus = peindre(&mut app);
+    for attendu in [
+        s.accueil_commencer,
+        s.accueil_nouveau,
+        s.accueil_ouvrir,
+        s.accueil_palette,
+        s.accueil_recents,
+    ] {
+        assert!(
+            vus.iter().any(|t| t == attendu),
+            "« {attendu} » doit être à l'accueil : {vus:?}"
+        );
+    }
+    assert!(
+        vus.iter().any(|t| t == "boucle.asm"),
+        "le fichier récent est offert : {vus:?}"
+    );
+
+    // 2. ET JAMAIS SOUS LES DOIGTS. Effacer tout son texte n'est pas
+    //    fermer : l'éditeur reste, sans quoi on perdrait l'endroit où
+    //    l'on est en train d'écrire.
+    let mut app = NamsdecApp {
+        source: String::new(),
+        ..Default::default()
+    };
+    assert!(
+        !app.rien_n_est_ouvert(),
+        "un tampon vidé n'est pas un fichier fermé"
+    );
+    let vus = peindre(&mut app);
+    assert!(
+        !vus.iter().any(|t| t == s.accueil_commencer),
+        "l'accueil ne paraît pas sous les doigts de qui efface tout"
+    );
+
+    // 3. CE QUI EST MONTRÉ EST CE QUI MARCHE : « Nouveau fichier »
+    //    rend un éditeur, et sans laisser l'onglet qu'on vient de
+    //    fermer revenir tout seul dans la barre.
+    let mut app = NamsdecApp {
+        source: "mov rax, 1\n".to_owned(),
+        ..Default::default()
+    };
+    app.close_tab_now(app.active_tab_index);
+    app.new_program();
+    assert!(
+        !app.rien_n_est_ouvert() && !app.source.trim().is_empty(),
+        "« Nouveau fichier » rend un éditeur"
+    );
+    assert!(
+        app.tabs.is_empty(),
+        "et un seul : le tampon fermé ne revient pas comme onglet"
+    );
+
+    // 4. LES RACCOURCIS AFFICHÉS SONT CEUX DU TABLEAU, lus et non
+    //    recopiés : réglé autrement, l'accueil le dit autrement.
+    let mut app = NamsdecApp {
+        source: "mov rax, 1\n".to_owned(),
+        ..Default::default()
+    };
+    app.keybindings.map.insert(
+        Action::New,
+        crate::keybindings::Chord::Simple(egui::KeyboardShortcut::new(
+            egui::Modifiers::CTRL | egui::Modifiers::ALT,
+            egui::Key::K,
+        )),
+    );
+    app.close_tab_now(app.active_tab_index);
+    let vus = peindre(&mut app);
+    assert!(
+        vus.iter().any(|t| t.contains('K') && t.contains("Alt")),
+        "le raccourci réglé se lit à l'accueil : {vus:?}"
+    );
+}

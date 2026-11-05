@@ -979,6 +979,29 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 sextricies. L'accueil (A 9.72)
+
+« Quand je quitte, j'aimerais que tout soit fermé, et une fenêtre comme
+la suivante apparaisse — celle comme Zed. »
+
+- [x] **L'accueil à la place de l'éditeur** quand on a fermé le dernier
+      fichier : le nom, ce par quoi on recommence, les récents.
+- [x] **Un drapeau, et non la seule vue du tampon vide** — déduire
+      l'accueil de « vide et sans fichier » le ferait paraître au milieu
+      d'une frappe. L'accueil se demande, par un geste : fermer.
+- [x] **Les raccourcis lus, non recopiés** : Ctrl+N réglé sur Ctrl+Alt+K
+      se lit Ctrl+Alt+K. Les récents n'en affichent aucun — Zed leur en
+      donne, mais il faudrait inventer cinq touches globales.
+- [x] **Pas d'onglet fantôme** : « Nouveau fichier » depuis l'accueil
+      n'empile pas le tampon qu'on vient de fermer.
+
+**Et la même règle d'egui que ce matin** : un `Ui` hérite de la mise en
+page de son parent. Les quatre entrées se peignaient les unes sur les
+autres, côte à côte. Il faut dire `top_down` même quand « de haut en
+bas » va de soi.
+
+---
+
 ## 0 quintricies. La rangée « Moteur : » (A 9.71)
 
 Deux consignes écrites sur une capture du 4 novembre.

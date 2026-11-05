@@ -90,6 +90,7 @@ mod vues;
 /// les `mod` de `main.rs`.
 const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("main.rs", include_str!("main.rs")),
+    ("accueil.rs", include_str!("accueil.rs")),
     ("ansi.rs", include_str!("ansi.rs")),
     ("bugreport.rs", include_str!("bugreport.rs")),
     ("calc.rs", include_str!("calc.rs")),
@@ -1337,6 +1338,18 @@ fn scènes() -> Vec<Scène> {
             }),
         ));
     }
+    // L'ACCUEIL : ce qu'on voit quand on a fermé le dernier fichier.
+    scènes.push((
+        "application / accueil, plus rien d'ouvert".to_owned(),
+        None,
+        Box::new(|app| {
+            app.recent_files = vec![
+                std::path::PathBuf::from("/home/fred/asm/boucle.asm"),
+                std::path::PathBuf::from("/home/fred/asm/exercices/drapeaux.asm"),
+            ];
+            app.close_tab_now(app.active_tab_index);
+        }),
+    ));
     // LE MODE DÉBUTANT, VU DE L'ÉCRAN PRINCIPAL : c'est la barre
     // d'outils qu'on vient y regarder — cinq commandes au lieu de
     // sept, et le pas nommé par ce qu'il fait plutôt qu'en anglais de

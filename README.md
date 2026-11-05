@@ -189,6 +189,14 @@ d'arrêt, et l'exécution arrêtée au pas où on l'avait laissée. Ctrl+Tab
 passe au suivant, Ctrl+W ferme, et les fichiers reviennent au lancement
 d'après.
 
+**L'accueil, quand on a fermé le dernier.** Le nom de l'atelier, puis ce
+par quoi on recommence — nouveau fichier, ouvrir, palette de commandes,
+exercices — et les fichiers récents, qu'un clic rouvre. Chaque raccourci
+montré est celui du tableau des raccourcis, lu et non recopié. Il se
+**demande**, par un geste : fermer. Il ne se déduit pas du tampon vide,
+sans quoi il paraîtrait au milieu d'une frappe — on sélectionne tout, on
+efface pour recommencer, et l'éditeur disparaîtrait sous les doigts.
+
 **La forme du programme, pas sa suite d'instructions.** `Espace g` ouvre
 le **déroulement** : chaque boîte est un bloc qu'on ne peut qu'entrer par
 le haut et quitter par le bas, les flèches disent le saut pris (vert), le

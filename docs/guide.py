@@ -490,9 +490,20 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "colonne le dit elle-même."),
         ("p",
          "<b>Fichier > Fermer le fichier</b> (Ctrl+W) ferme celui qu'on regarde, y compris "
-         "quand c'est le seul ouvert : on revient alors à un éditeur vide. L'entrée "
+         "quand c'est le seul ouvert. L'entrée "
          "disparaissait autrefois du menu dès qu'il ne restait qu'un fichier, c'est-à-dire "
          "au moment où on la cherchait."),
+        ("p",
+         "Le dernier fermé, <b>l'accueil</b> prend la place de l'éditeur&nbsp;: le nom de "
+         "l'atelier, puis ce par quoi on recommence — <b>Nouveau fichier</b>, <b>Ouvrir "
+         "un fichier…</b>, la <b>palette de commandes</b>, les <b>exercices</b> si le "
+         "module est allumé — et la liste des fichiers <b>récents</b>, qu'un clic rouvre. "
+         "Chaque raccourci montré est celui du tableau des raccourcis, et non une "
+         "indication recopiée&nbsp;: réglé autrement, il se lit ici autrement."),
+        ("note",
+         "L'accueil se <b>demande</b>, par un geste&nbsp;: fermer. Il ne se déduit pas du "
+         "tampon vide, sans quoi il paraîtrait au milieu d'une frappe — on sélectionne "
+         "tout, on efface pour recommencer, et l'éditeur disparaîtrait sous les doigts."),
         ("p",
          "Plusieurs fichiers peuvent être ouverts à la fois : une barre d'onglets apparaît "
          "au-dessus de l'éditeur <b>dès le premier écran</b>, chacun gardant son "

@@ -10505,3 +10505,48 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      débutant. Ajoutée ; c'est la troisième fois de la semaine qu'une
      consigne venue d'une capture désigne un écran que le banc ne
      regardait pas.
+
+9.72 [FAIT] L'ACCUEIL : CE QU'ON VOIT QUAND ON A FERMÉ LE DERNIER
+     (5 novembre 2026 — consigne écrite sur une capture, « celle comme
+     Zed »)
+
+     « QUAND JE QUITTE, J'AIMERAIS QUE TOUT SOIT FERMÉ, ET UNE FENÊTRE
+     COMME LA SUIVANTE APPARAISSE. » La capture jointe était l'accueil
+     de Zed : le nom de l'outil, une liste « pour commencer » avec les
+     raccourcis en regard, et les projets récents.
+
+     Fermer le dernier fichier vidait déjà le tampon — c'était écrit et
+     voulu : « fermer, ici, c'est revenir à un tampon vierge ». Restait
+     ce qu'on voyait ensuite : un éditeur vide, sans rien qui dise quoi
+     faire. C'est le pire état d'une application — elle marche, elle n'a
+     rien fait de mal, et elle n'offre rien.
+
+     UN DRAPEAU, ET NON LA SEULE VUE DU TAMPON VIDE. C'est la décision
+     qui compte, et la seule qui pouvait coûter cher : déduire l'accueil
+     de « le texte est vide et aucun fichier n'est ouvert » le ferait
+     apparaître AU MILIEU D'UNE FRAPPE — on sélectionne tout, on efface
+     pour recommencer, et l'éditeur disparaîtrait sous les doigts.
+     L'accueil se demande, par un geste : fermer. Le contrôle le prouve
+     dans les deux sens.
+
+     ET LES RACCOURCIS SONT LUS, NON RECOPIÉS. Chaque ligne montre ce
+     que le tableau des raccourcis porte à cet instant : Ctrl+N réglé
+     sur Ctrl+Alt+K se lit Ctrl+Alt+K. Un écran d'accueil qui annonce un
+     raccourci faux est pire que muet — c'est le premier chiffre qu'on
+     apprend de l'outil. Les récents, eux, n'en affichent aucun : Zed
+     leur en donne (Ctrl-1 à Ctrl-5), mais il faudrait inventer cinq
+     touches GLOBALES qui ouvriraient un fichier au milieu d'une frappe
+     ailleurs. On ne montre que ce qui marche.
+
+     DEUX DÉFAUTS VUS À LA CAPTURE, ET LE PREMIER EST UNE RÈGLE D'egui
+     DÉJÀ RENCONTRÉE CE MATIN : un `Ui` hérite de la mise en page de son
+     parent. Posées dans une rangée, les quatre entrées se peignaient
+     les unes SUR les autres, côte à côte sur une seule ligne. Il faut
+     dire `Layout::top_down` même quand « de haut en bas » va de soi.
+
+     Le second : « Nouveau fichier » depuis l'accueil empilait le tampon
+     qu'on venait de fermer comme un onglet de plus — « sans titre »
+     revenait seul dans la barre, et l'on avait rouvert ce qu'on venait
+     de refermer. La règle « TOUJOURS un onglet de plus » existe pour
+     que le geste SE VOIE ; depuis l'accueil il se voit de reste, l'écran
+     entier changeant.
