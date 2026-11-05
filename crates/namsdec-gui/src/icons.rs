@@ -410,3 +410,66 @@ pub(crate) fn icon_book(painter: &egui::Painter, rect: egui::Rect, color: egui::
         trait_,
     );
 }
+
+/// Relancer : la flèche circulaire de la réinitialisation, mais qui
+/// porte une pointe pleine — on repart, on ne remet pas à zéro.
+pub(crate) fn icon_rerun(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.4, color);
+    let centre = rect.center();
+    let rayon = rect.width() * 0.34;
+    // Un arc ouvert en haut à droite, par où la pointe entre.
+    let points: Vec<egui::Pos2> = (0..=22)
+        .map(|i| {
+            let t = -0.42 + i as f32 * (1.76 / 22.0);
+            let a = t * std::f32::consts::TAU;
+            egui::pos2(centre.x + rayon * a.sin(), centre.y - rayon * a.cos())
+        })
+        .collect();
+    painter.add(egui::Shape::line(points, trait_));
+    // La pointe, pleine : c'est elle qui dit « ça repart ».
+    let pointe = egui::pos2(centre.x + rayon * 0.72, centre.y - rayon * 0.72);
+    let c = rect.width() * 0.13;
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(pointe.x + c, pointe.y + c * 0.2),
+            egui::pos2(pointe.x - c * 0.6, pointe.y + c * 1.3),
+            egui::pos2(pointe.x - c * 0.2, pointe.y - c * 1.1),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
+}
+
+/// Effacer : une corbeille — un couvercle, un corps.
+pub(crate) fn icon_trash(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let trait_ = egui::Stroke::new(1.3, color);
+    let largeur = rect.width() * 0.56;
+    let centre = rect.center();
+    let haut = centre.y - rect.height() * 0.26;
+    // Le couvercle, et sa petite anse.
+    painter.line_segment(
+        [
+            egui::pos2(centre.x - largeur * 0.7, haut),
+            egui::pos2(centre.x + largeur * 0.7, haut),
+        ],
+        trait_,
+    );
+    painter.line_segment(
+        [
+            egui::pos2(centre.x - largeur * 0.24, haut - rect.height() * 0.1),
+            egui::pos2(centre.x + largeur * 0.24, haut - rect.height() * 0.1),
+        ],
+        trait_,
+    );
+    // Le corps, légèrement évasé vers le haut : une corbeille, et non
+    // une boîte.
+    painter.add(egui::Shape::line(
+        vec![
+            egui::pos2(centre.x - largeur * 0.52, haut + 2.0),
+            egui::pos2(centre.x - largeur * 0.4, centre.y + rect.height() * 0.3),
+            egui::pos2(centre.x + largeur * 0.4, centre.y + rect.height() * 0.3),
+            egui::pos2(centre.x + largeur * 0.52, haut + 2.0),
+        ],
+        trait_,
+    ));
+}

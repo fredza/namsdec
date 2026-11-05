@@ -262,6 +262,10 @@ pub struct Strings {
     pub diagnostic_goto: &'static str,
     /// Le compteur de problèmes, au bord droit de la rangée des vues.
     /// Les barres d'icônes des bords : le GESTE, et non le nom.
+    /// La barre d'icônes de la console.
+    pub console_rerun: &'static str,
+    pub console_clear: &'static str,
+    pub console_nothing_to_clear: &'static str,
     pub view_rails: &'static str,
     pub view_rails_hint: &'static str,
     pub rail_explorer_show: &'static str,
@@ -1471,6 +1475,9 @@ const FR: Strings = Strings {
     profile_copied: "Profil copié : collez-le où vous voulez (Ctrl+V).",
     profile_over_budget: "au-dessus du budget de l'exercice — la ligne en tête de liste est celle à reprendre.",
     diagnostic_goto: "Aller à cette ligne",
+    console_rerun: "Relancer le programme depuis le début",
+    console_clear: "Effacer ce que le programme a écrit",
+    console_nothing_to_clear: "Le programme n'a encore rien écrit",
     view_rails: "Barres d'icônes",
     view_rails_hint: "Les icônes des bords, qui montrent et cachent les panneaux",
     rail_explorer_show: "Afficher l'explorateur",
@@ -2427,6 +2434,9 @@ const EN: Strings = Strings {
     profile_copied: "Profile copied: paste it wherever you like (Ctrl+V).",
     profile_over_budget: "over the exercise budget — the line at the top of the list is the one to rework.",
     diagnostic_goto: "Go to that line",
+    console_rerun: "Run the program again from the start",
+    console_clear: "Clear what the program has written",
+    console_nothing_to_clear: "The program has not written anything yet",
     view_rails: "Icon bars",
     view_rails_hint: "The icons along the edges, which show and hide the panels",
     rail_explorer_show: "Show the file explorer",

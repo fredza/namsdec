@@ -1257,3 +1257,134 @@ fn les_barres_d_icones_montrent_et_cachent() {
     sortie.textures_delta.clear();
     assert!(!reste, "éteintes, les barres ne laissent rien");
 }
+
+/// La barre d'icônes de la console : relancer, arrêter, effacer.
+///
+/// **Demandé à l'écran, capture à l'appui** (4 novembre 2026) : les
+/// trois commandes de la fenêtre Run de JetBrains, dans le panneau
+/// lui-même.
+///
+/// Le clic est simulé pour de vrai — pointeur, appui, relâchement —,
+/// parce que c'est le CÂBLAGE qui peut se tromper : une icône qui
+/// dessine bien et ne fait rien se relit vingt fois sans qu'on voie
+/// l'erreur.
+#[test]
+fn la_barre_de_la_console_efface_sans_rien_remettre_a_zero() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        show_console: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    for _ in 0..20 {
+        app.do_step();
+    }
+    assert!(
+        app.emulator
+            .as_ref()
+            .is_some_and(|e| !e.output().is_empty()),
+        "le programme du banc écrit : c'est ce qu'on va effacer"
+    );
+    let rip_avant = app.emulator.as_ref().map(|e| e.cpu().regs.rip);
+
+    let image = |app: &mut NamsdecApp, events: Vec<egui::Event>| -> Vec<egui::Rect> {
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events,
+            focused: true,
+            ..Default::default()
+        };
+        let mut dessins = Vec::new();
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            // La rangée d'onglets de la console : ses icônes sont des
+            // traits et des tracés, au bord droit.
+            let cadre = match &clipped.shape {
+                egui::epaint::Shape::Path(t) => t.visual_bounding_rect(),
+                egui::epaint::Shape::LineSegment { points, .. } => {
+                    egui::Rect::from_two_pos(points[0], points[1])
+                }
+                _ => continue,
+            };
+            if cadre.center().y > écran.height() * 0.6 && cadre.center().x > écran.width() * 0.7 {
+                dessins.push(cadre);
+            }
+        }
+        sortie.textures_delta.clear();
+        dessins
+    };
+    let dessins = image(&mut app, Vec::new());
+    image(&mut app, Vec::new());
+    let dessins = if dessins.is_empty() {
+        image(&mut app, Vec::new())
+    } else {
+        dessins
+    };
+    assert!(
+        !dessins.is_empty(),
+        "la rangée de la console porte ses icônes"
+    );
+    // LA CORBEILLE EST LA PLUS À DROITE DES TROIS, le tiret et le
+    // bouton des arguments mis à part : on la repère à sa place, qui
+    // est justement ce que la consigne réglait.
+    let bande: Vec<&egui::Rect> = dessins
+        .iter()
+        .filter(|r| r.height() < 20.0 && r.width() < 20.0)
+        .collect();
+    assert!(
+        bande.len() >= 3,
+        "trois commandes au moins : relancer, arrêter, effacer — {bande:?}"
+    );
+
+    // Le clic sur la corbeille : elle est à gauche du bouton des
+    // arguments, donc parmi les icônes, la troisième en partant de la
+    // gauche de ce groupe.
+    let mut xs: Vec<f32> = bande.iter().map(|r| r.center().x).collect();
+    xs.sort_by(f32::total_cmp);
+    let corbeille = bande
+        .iter()
+        .map(|r| r.center())
+        .rfind(|p| (p.x - xs[2]).abs() < 12.0)
+        .expect("la corbeille est repérée");
+    let clic = |app: &mut NamsdecApp, pressé: bool| {
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            events: vec![
+                egui::Event::PointerMoved(corbeille),
+                egui::Event::PointerButton {
+                    pos: corbeille,
+                    button: egui::PointerButton::Primary,
+                    pressed: pressé,
+                    modifiers: egui::Modifiers::NONE,
+                },
+            ],
+            focused: true,
+            ..Default::default()
+        };
+        let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    };
+    clic(&mut app, true);
+    clic(&mut app, false);
+
+    // EFFACER N'EST PAS RÉINITIALISER. C'est l'écran de la console
+    // qu'on vide ; le processeur n'a pas bougé d'une instruction, et
+    // c'est la seule chose qui pouvait être mal câblée ici — « effacer »
+    // qui remettrait le programme à zéro ferait perdre une exécution
+    // qu'on vient peut-être de passer dix minutes à mener.
+    assert!(
+        app.emulator.as_ref().is_some_and(|e| e.output().is_empty()),
+        "la corbeille efface ce que le programme a écrit"
+    );
+    assert_eq!(
+        app.emulator.as_ref().map(|e| e.cpu().regs.rip),
+        rip_avant,
+        "et ne remet rien à zéro : le processeur est où on l'a laissé"
+    );
+}

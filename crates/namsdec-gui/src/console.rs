@@ -365,12 +365,33 @@ impl NamsdecApp {
         };
         let mut bascule_arguments = false;
         let mut cacher = false;
+        // LA BARRE D'ICÔNES DU PANNEAU : relancer, arrêter, effacer.
+        //
+        // Demandé à l'écran, capture à l'appui : les trois commandes de
+        // la fenêtre Run de JetBrains. Elles sont déjà dans la barre
+        // d'outils, en haut ; ce qu'elles font ici est d'être À CÔTÉ DE
+        // CE QU'ELLES CHANGENT — on relit la sortie, on relance, on
+        // relit, sans quitter des yeux le bas de l'écran.
+        //
+        // DANS LA RANGÉE D'ONGLETS, et non en colonne à gauche de la
+        // sortie comme chez JetBrains : la console garde les
+        // quatre-vingts colonnes qu'un programme suppose quand il
+        // écrit, et une colonne d'icônes les lui prendrait.
+        let peut_relancer = self.assemble_state.is_some();
+        let tourne = self.running || self.assembling();
+        let a_écrit = self
+            .emulator
+            .as_ref()
+            .is_some_and(|e| !e.output().is_empty());
+        let mut relancer = false;
+        let mut arrêter = false;
+        let mut effacer = false;
         if let Some(rang) = rangée_d_onglets(
             ui,
             self.theme,
             &étiquettes,
             actif,
-            largeur_bouton + ONGLET_HAUTEUR + 4.0,
+            largeur_bouton + (ONGLET_HAUTEUR + 4.0) * 4.0,
             |ui| {
                 // Le tiret d'abord : on part du bord droit, et c'est au
                 // bord que se tient ce qui range le panneau — comme
@@ -384,6 +405,30 @@ impl NamsdecApp {
                 {
                     bascule_arguments = true;
                 }
+                // De droite à gauche : la corbeille, le carré, la
+                // flèche. On les lit donc dans l'ordre où on les
+                // emploie — relancer, arrêter, effacer.
+                effacer = bouton_d_icone(
+                    ui,
+                    self.theme,
+                    icon_trash,
+                    s.console_clear,
+                    (!a_écrit).then_some(s.console_nothing_to_clear),
+                );
+                arrêter = bouton_d_icone(
+                    ui,
+                    self.theme,
+                    icon_stop,
+                    s.action_stop,
+                    (!tourne).then_some(s.why_nothing_running),
+                );
+                relancer = bouton_d_icone(
+                    ui,
+                    self.theme,
+                    icon_rerun,
+                    s.console_rerun,
+                    (!peut_relancer).then_some(s.why_no_program),
+                );
             },
         ) {
             self.console_tab = ConsoleTab::ALL[rang];
@@ -393,6 +438,19 @@ impl NamsdecApp {
         }
         if cacher {
             self.show_console = false;
+        }
+        if relancer {
+            // Depuis le début : on remet le processeur à zéro, puis on
+            // lance. Un « relancer » qui reprendrait là où l'on en est
+            // serait « Exécuter », qui existe déjà.
+            self.do_reset();
+            self.dispatch(Action::Run);
+        }
+        if arrêter {
+            self.dispatch(Action::Stop);
+        }
+        if effacer && let Some(emulator) = self.emulator.as_mut() {
+            emulator.clear_output();
         }
         ui.separator();
         match self.console_tab {

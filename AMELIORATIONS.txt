@@ -10670,3 +10670,35 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      délai largement dépassé, et rien. On mesure donc la PHRASE à sa
      source, là où le choix se fait, puisque c'est le choix qui peut se
      tromper et non le dessin de la bulle.
+
+9.75 [FAIT] LA BARRE D'ICÔNES DE LA CONSOLE
+     (5 novembre 2026 — dernière des consignes du 4 novembre)
+
+     LES TROIS COMMANDES DE LA FENÊTRE RUN : relancer, arrêter, effacer.
+     Elles sont déjà dans la barre d'outils, en haut ; ce qu'elles font
+     ici est d'être À CÔTÉ DE CE QU'ELLES CHANGENT — on relit la sortie,
+     on relance, on relit, sans quitter des yeux le bas de l'écran.
+
+     DANS LA RANGÉE D'ONGLETS, et non en colonne à gauche de la sortie
+     comme chez JetBrains. La console garde les quatre-vingts colonnes
+     qu'un programme suppose quand il écrit, et une colonne d'icônes les
+     lui prendrait. C'est la seule place où la consigne et une règle du
+     projet se contredisaient, et c'est la règle du projet qui gagne :
+     elle a une raison, la ressemblance n'en est pas une.
+
+     EFFACER N'EST PAS RÉINITIALISER, et c'est tout ce qui pouvait être
+     mal câblé ici. On vide l'écran de la console ; le processeur ne
+     bouge pas d'une instruction. « Effacer » qui remettrait le
+     programme à zéro ferait perdre une exécution qu'on vient peut-être
+     de mener pas à pas pendant dix minutes. Le contrôle clique pour de
+     vrai sur la corbeille et vérifie les deux : la sortie est vide, RIP
+     est où on l'avait laissé.
+
+     Il a fallu une méthode de plus au moteur — `clear_output` —, et
+     c'est la première qui ne change RIEN à l'exécution : elle est dans
+     le trait pour que l'interface n'aille pas fouiller dans le tampon
+     d'un moteur particulier.
+
+     Les icônes sont dessinées, comme toutes les autres : une flèche qui
+     tourne avec une pointe pleine (on repart, on ne remet pas à zéro),
+     le carré de l'arrêt, une corbeille.

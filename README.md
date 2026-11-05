@@ -188,7 +188,10 @@ est réglé. Elles ne commandent rien que le menu Affichage ne commande
 déjà ; ce qu'elles ajoutent est de rendre visible ce qui existe — un
 panneau fermé ne laissait aucune trace à l'écran, et l'on ne ferme pas
 ce qu'on ne sait pas rouvrir. Chaque panneau porte aussi un tiret au
-bout de sa rangée d'onglets, qui le range.
+bout de sa rangée d'onglets, qui le range. La console y porte ses trois
+commandes — relancer, arrêter, effacer —, à côté de ce qu'elles
+changent. Effacer n'est pas réinitialiser : c'est l'écran qu'on vide, et
+le processeur ne bouge pas d'une instruction.
 
 **Le compte des problèmes, sans ouvrir la liste.** Au bord droit de la
 rangée des vues : un disque rouge et le nombre d'erreurs, un triangle

@@ -588,6 +588,14 @@ pub trait Backend {
     /// démarrage.
     fn output(&self) -> &[u8];
 
+    /// Oublie ce que le programme a écrit jusqu'ici.
+    ///
+    /// N'ARRÊTE NI NE REMET RIEN À ZÉRO : le programme continue, les
+    /// registres et la mémoire ne bougent pas. C'est l'écran de la
+    /// console qu'on vide, et rien d'autre — ce que fait « effacer »
+    /// dans un terminal.
+    fn clear_output(&mut self);
+
     /// Ajoute des octets à l'entrée standard du programme.
     fn provide_input(&mut self, bytes: &[u8]);
 
@@ -991,6 +999,10 @@ impl Backend for Emulator {
 
     fn output(&self) -> &[u8] {
         &self.output
+    }
+
+    fn clear_output(&mut self) {
+        self.output.clear();
     }
 
     fn provide_input(&mut self, bytes: &[u8]) {

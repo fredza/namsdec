@@ -6,6 +6,12 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**La console a ses trois commandes**
+- **Relancer**, **arrêter**, **effacer** au bout de sa rangée d'onglets,
+  à côté de ce qu'elles changent. Éteinte, chacune dit pourquoi.
+- **Effacer n'est pas réinitialiser** : l'écran se vide, le processeur
+  ne bouge pas d'une instruction.
+
 **Des barres d'icônes aux bords**
 - À gauche l'explorateur et les exercices, en bas à gauche la console, à
   droite le panneau du processeur — chaque icône du côté et à la hauteur

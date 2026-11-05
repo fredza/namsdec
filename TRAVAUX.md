@@ -979,6 +979,25 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 nonatricies. La barre d'icônes de la console (A 9.75)
+
+Dernière des consignes du 4 novembre.
+
+- [x] **Relancer, arrêter, effacer** au bout de la rangée d'onglets de
+      la console — à côté de ce qu'elles changent.
+- [x] **Effacer n'est pas réinitialiser** : l'écran se vide, le
+      processeur ne bouge pas. Le contrôle clique pour de vrai.
+- [x] **Éteinte, chacune dit pourquoi** — règle de la barre d'outils.
+- [x] `clear_output` au moteur : la première méthode du trait qui ne
+      change rien à l'exécution.
+
+**Dans la rangée, et non en colonne à gauche** comme chez JetBrains : la
+console garde ses quatre-vingts colonnes. Seul endroit où la consigne et
+une règle du projet se contredisaient — la règle a une raison, la
+ressemblance n'en est pas une.
+
+---
+
 ## 0 octotricies. Les barres d'icônes des bords (A 9.74)
 
 Capture annotée : trois rectangles sur les barres de CLion, « Afficher

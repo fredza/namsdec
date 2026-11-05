@@ -1079,3 +1079,51 @@ pub(crate) fn bouton_cacher(ui: &mut egui::Ui, theme: &'static Theme, infobulle:
     );
     réponse.on_hover_text(infobulle).clicked()
 }
+
+/// Un bouton d'icône seule, pour la barre d'un panneau.
+///
+/// **Demandé à l'écran** (4 novembre 2026) : les petites barres
+/// d'icônes des panneaux de CLion — la fenêtre Run et ses trois
+/// commandes, le panneau Problems et les siennes.
+///
+/// Sans libellé, et c'est tout l'intérêt : une rangée d'onglets n'a pas
+/// la place de trois boutons écrits, et ces commandes-là se reconnaissent
+/// à leur forme — la flèche qui tourne, le carré, la corbeille. Chacune
+/// dit son nom au survol.
+///
+/// ÉTEINTE, ELLE DIT POURQUOI. Une commande grisée qui se tait passe
+/// pour cassée ; c'est la règle de la barre d'outils, et elle vaut ici.
+pub(crate) fn bouton_d_icone(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    dessin: impl FnOnce(&egui::Painter, egui::Rect, egui::Color32),
+    infobulle: &str,
+    pourquoi_pas: Option<&str>,
+) -> bool {
+    let côté = ONGLET_HAUTEUR - 8.0;
+    let (rect, réponse) =
+        ui.allocate_exact_size(egui::vec2(côté + 4.0, ONGLET_HAUTEUR), egui::Sense::click());
+    let case = egui::Rect::from_center_size(rect.center(), egui::vec2(côté, côté));
+    let éteint = pourquoi_pas.is_some();
+    if réponse.hovered() && !éteint {
+        ui.painter()
+            .rect_filled(case, 3.0, mélange(theme.panel, theme.text, 0.08));
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    dessin(
+        ui.painter(),
+        case,
+        if éteint {
+            mélange(theme.panel, theme.dim, 0.45)
+        } else {
+            theme.dim
+        },
+    );
+    match pourquoi_pas {
+        Some(raison) => {
+            réponse.on_hover_text(raison);
+            false
+        }
+        None => réponse.on_hover_text(infobulle).clicked(),
+    }
+}

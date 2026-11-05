@@ -929,6 +929,18 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "rouvrir. <b>Affichage › Barres d'icônes</b> les éteint, et l'on retrouve "
          "l'écran d'avant."),
         ("p",
+         "La console porte en outre ses <b>trois commandes</b> au bout de sa rangée "
+         "d'onglets&nbsp;: <b>relancer</b> le programme depuis le début, <b>arrêter</b> "
+         "ce qui tourne, <b>effacer</b> ce qu'il a écrit. Elles sont déjà dans la barre "
+         "d'outils&nbsp;; ce qu'elles font ici est d'être <b>à côté de ce qu'elles "
+         "changent</b> — on relit la sortie, on relance, on relit, sans quitter des yeux "
+         "le bas de l'écran. Éteinte, chacune dit pourquoi."),
+        ("note",
+         "<b>Effacer n'est pas réinitialiser</b>&nbsp;: c'est l'écran de la console qu'on "
+         "vide, et le processeur ne bouge pas d'une instruction. On ne perd pas une "
+         "exécution qu'on vient de mener pas à pas pour se débarrasser de trois lignes "
+         "de sortie."),
+        ("p",
          "Chaque panneau porte en outre un <b>tiret</b> au bout de sa rangée "
          "d'onglets&nbsp;: il le range. Un tiret et non une croix — le panneau ne perd "
          "rien, et l'icône de la barre le rappelle. Un panneau qui s'ouvre d'une icône "
