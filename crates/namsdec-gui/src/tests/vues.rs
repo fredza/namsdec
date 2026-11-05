@@ -894,3 +894,173 @@ fn l_accueil_parait_quand_on_a_ferme_et_jamais_sous_les_doigts() {
         "le raccourci réglé se lit à l'accueil : {vus:?}"
     );
 }
+
+/// Le compteur de problèmes : ce qu'il compte, et où il mène.
+///
+/// **Demandé à l'écran, capture à l'appui** (4 novembre 2026) : le
+/// badge de CLion, « erreurs et warning », en haut à droite de
+/// l'éditeur — un disque rouge et son nombre, un triangle orange et le
+/// sien, et deux chevrons pour sauter au problème suivant.
+#[test]
+fn le_compteur_de_problemes_compte_et_mene_au_probleme() {
+    let diagnostic = |ligne: u32, erreur: bool| namsdec_asm::Diagnostic {
+        line: ligne,
+        severity: if erreur {
+            namsdec_asm::Severity::Error
+        } else {
+            namsdec_asm::Severity::Warning
+        },
+        message: "pour la mesure".to_owned(),
+        kind: None,
+    };
+    // Les chevrons sont des TRACÉS : c'est à eux qu'on reconnaît le
+    // compteur quand il n'a aucun nombre à écrire.
+    let chevrons_de_la_rangée = |app: &mut NamsdecApp| -> usize {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let mut combien = 0;
+        for _ in 0..3 {
+            combien = 0;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Path(tracé) = &clipped.shape {
+                    // Les chevrons sont de simples traits : le triangle
+                    // de l'avertissement est un tracé lui aussi, mais
+                    // rempli.
+                    if tracé.fill != egui::Color32::TRANSPARENT {
+                        continue;
+                    }
+                    let haut = tracé.visual_bounding_rect();
+                    if haut.center().y > 90.0 && haut.center().y < 125.0 && haut.center().x > 700.0
+                    {
+                        combien += 1;
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        combien
+    };
+    let nombres_de_la_rangée = |app: &mut NamsdecApp| -> Vec<String> {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let mut vus = Vec::new();
+        for _ in 0..3 {
+            vus.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    // La rangée des vues, et elle seule : un « 2 » dans
+                    // le listing ou dans un registre ne dit rien du
+                    // compteur.
+                    if texte.pos.y > 90.0 && texte.pos.y < 125.0 && texte.pos.x > 700.0 {
+                        vus.push(texte.galley.text().to_owned());
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        vus
+    };
+
+    // 1. LES DEUX NOMBRES, chacun le sien.
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        diagnostics: vec![
+            diagnostic(3, true),
+            diagnostic(7, true),
+            diagnostic(5, false),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(app.compte_des_problemes(), (2, 1));
+    let vus = nombres_de_la_rangée(&mut app);
+    assert!(
+        vus.iter().any(|t| t == "2") && vus.iter().any(|t| t == "1"),
+        "deux erreurs et un avertissement se lisent au compteur : {vus:?}"
+    );
+    assert_eq!(
+        chevrons_de_la_rangée(&mut app),
+        2,
+        "et deux chevrons, pour aller d'un problème à l'autre"
+    );
+
+    // 2. RIEN À COMPTER, RIEN À L'ÉCRAN. Un compteur à zéro en
+    //    permanence est un endroit de l'écran qu'on apprend à ne plus
+    //    regarder, et c'est celui qu'il faut voir le jour où il n'est
+    //    plus à zéro.
+    // SUR UNE VUE DÉTACHABLE, et c'est ce qui donne sa force à la
+    // mesure : la rangée n'appelle ses commandes que lorsqu'elle leur a
+    // réservé de la place, et sans problème à compter c'est « Détacher »
+    // qui la retient. Sur la vue Source, qui ne se détache pas, la
+    // rangée n'appellerait rien et l'on prouverait seulement qu'on n'a
+    // rien demandé.
+    let mut app = NamsdecApp {
+        source: PROGRAMME_DU_BANC.to_owned(),
+        vue_centrale: VueCentrale::Disassembly,
+        ..Default::default()
+    };
+    assert_eq!(app.compte_des_problemes(), (0, 0));
+    assert_eq!(
+        chevrons_de_la_rangée(&mut app),
+        0,
+        "sans problème, pas de compteur du tout — pas même ses chevrons"
+    );
+
+    // 3. LES CHEVRONS MÈNENT AU PROBLÈME, ET BOUCLENT.
+    let mut app = NamsdecApp {
+        diagnostics: vec![
+            diagnostic(3, true),
+            diagnostic(7, true),
+            diagnostic(3, false),
+        ],
+        ..Default::default()
+    };
+    app.cursor_pos = (1, 1);
+    app.aller_au_probleme(Problèmes::Suivant);
+    assert_eq!(
+        app.goto_line,
+        Some(3),
+        "le premier problème après la ligne 1"
+    );
+    app.cursor_pos = (3, 1);
+    app.aller_au_probleme(Problèmes::Suivant);
+    assert_eq!(
+        app.goto_line,
+        Some(7),
+        "la ligne d'après, et non la suivante dans la liste"
+    );
+    app.cursor_pos = (7, 1);
+    app.aller_au_probleme(Problèmes::Suivant);
+    assert_eq!(app.goto_line, Some(3), "le dernier mène au premier");
+    app.cursor_pos = (3, 1);
+    app.aller_au_probleme(Problèmes::Précédent);
+    assert_eq!(app.goto_line, Some(7), "et le premier au dernier");
+
+    // 4. ET LE COMPTE MÈNE À LA LISTE, sur le bon onglet : ouvrir la
+    //    console sans en changer montrerait la sortie du programme à
+    //    qui vient de cliquer sur un compte d'erreurs.
+    app.show_console = false;
+    app.console_tab = ConsoleTab::Output;
+    app.aller_au_probleme(Problèmes::Liste);
+    assert!(app.show_console, "la liste s'ouvre");
+    assert_eq!(
+        app.console_tab,
+        ConsoleTab::Diagnostics,
+        "sur les problèmes"
+    );
+}

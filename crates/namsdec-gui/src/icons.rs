@@ -215,3 +215,77 @@ pub(crate) fn icon_step_over(painter: &egui::Painter, rect: egui::Rect, color: e
         egui::Stroke::NONE,
     ));
 }
+
+/// Une erreur : un disque plein, avec une barre couchée.
+///
+/// Le disque plutôt qu'un cercle vide : à quatorze pixels, un contour
+/// d'un pixel et demi disparaît sur un fond sombre, et c'est le signe
+/// qu'on doit voir du coin de l'œil.
+pub(crate) fn icon_error(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let rayon = rect.width() * 0.46;
+    painter.circle_filled(rect.center(), rayon, color);
+    // La barre est creusée dans le disque : du fond, et non une
+    // couleur — l'icône se pose sur le panneau comme sur le survol.
+    let demi = egui::vec2(rayon * 0.52, rayon * 0.16);
+    painter.rect_filled(
+        egui::Rect::from_center_size(rect.center(), demi * 2.0),
+        0.0,
+        egui::Color32::from_black_alpha(190),
+    );
+}
+
+/// Un avertissement : un triangle plein, pointe en haut.
+pub(crate) fn icon_warning(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let demi = rect.width() * 0.5;
+    let centre = rect.center();
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            egui::pos2(centre.x, centre.y - demi),
+            egui::pos2(centre.x + demi, centre.y + demi * 0.78),
+            egui::pos2(centre.x - demi, centre.y + demi * 0.78),
+        ],
+        color,
+        egui::Stroke::NONE,
+    ));
+    // Le point d'exclamation, creusé lui aussi.
+    let sombre = egui::Color32::from_black_alpha(190);
+    painter.rect_filled(
+        egui::Rect::from_center_size(
+            egui::pos2(centre.x, centre.y + demi * 0.02),
+            egui::vec2(demi * 0.22, demi * 0.62),
+        ),
+        0.0,
+        sombre,
+    );
+    painter.circle_filled(
+        egui::pos2(centre.x, centre.y + demi * 0.56),
+        demi * 0.13,
+        sombre,
+    );
+}
+
+/// Un chevron : deux segments, pointe en haut ou en bas.
+///
+/// DESSINÉ, ET NON ÉCRIT. « ↑ » et « ↓ » se sont peints en carrés vides
+/// sur le compteur de problèmes — la police de l'interface ne les porte
+/// pas, et un caractère absent ne se voit qu'à la capture. Les icônes
+/// de la barre d'outils sont dessinées pour la même raison.
+pub(crate) fn icon_chevron(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    color: egui::Color32,
+    vers_le_bas: bool,
+) {
+    let demi = rect.width() * 0.3;
+    let centre = rect.center();
+    let sens = if vers_le_bas { 1.0 } else { -1.0 };
+    let hauteur = demi * 0.62;
+    painter.add(egui::Shape::line(
+        vec![
+            egui::pos2(centre.x - demi, centre.y - sens * hauteur),
+            egui::pos2(centre.x, centre.y + sens * hauteur),
+            egui::pos2(centre.x + demi, centre.y - sens * hauteur),
+        ],
+        egui::Stroke::new(1.4, color),
+    ));
+}

@@ -935,6 +935,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "tronqué — on cliquait « 60&nbsp;749 », qui est pourtant la réponse à « où "
          "ça&nbsp;? », et le classement passait pour mort.",
         ]),
+        ("p",
+         "<b>Le compte des problèmes</b> se lit sans ouvrir la liste&nbsp;: au bord droit "
+         "de la rangée des vues, un disque rouge et le nombre d'erreurs, un triangle "
+         "orange et le nombre d'avertissements. Un clic dessus ouvre la liste sur le bon "
+         "onglet&nbsp;; les deux <b>chevrons</b> mènent au problème d'avant et à celui "
+         "d'après, en bouclant — le dernier ramène au premier."),
+        ("note",
+         "Il ne paraît que s'il y a quelque chose à compter. Un compteur à zéro en "
+         "permanence est un endroit de l'écran qu'on apprend à ne plus regarder, et c'est "
+         "précisément celui qu'il faut voir le jour où il n'est plus à zéro."),
 
         ("p",
          "La console lit cette sortie <b>comme un terminal la lirait</b>. Un programme "

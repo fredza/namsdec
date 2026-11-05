@@ -10550,3 +10550,50 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      de refermer. La règle « TOUJOURS un onglet de plus » existe pour
      que le geste SE VOIE ; depuis l'accueil il se voit de reste, l'écran
      entier changeant.
+
+9.73 [FAIT] LE COMPTE DES PROBLÈMES, AU BORD DE LA RANGÉE
+     (5 novembre 2026 — consigne annotée « Erreurs et warning »)
+
+     LA CAPTURE MONTRAIT LE BADGE DE CLION, en haut à droite de
+     l'éditeur : un disque rouge et son nombre, un triangle orange et le
+     sien, deux chevrons. La flèche jaune le désignait, et c'est tout ce
+     qu'il y avait à dire — l'information existait déjà chez nous, dans
+     l'onglet Diagnostics, mais il fallait l'ouvrir pour savoir s'il y
+     avait quelque chose dedans.
+
+     IL NE PARAÎT QUE S'IL Y A QUELQUE CHOSE À COMPTER. Un compteur à
+     zéro en permanence est un endroit de l'écran qu'on apprend à ne
+     plus regarder, et c'est précisément celui qu'il faut voir le jour
+     où il n'est plus à zéro.
+
+     SA PLACE EST À GAUCHE DE « DÉTACHER », et non à sa place. Le coin
+     droit est déjà pris par un bouton qu'on sait trouver là ; on ne
+     range pas ailleurs ce que la main connaît.
+
+     TROIS DÉFAUTS, ET DEUX SONT LA MÊME RÈGLE D'egui — la troisième
+     fois de la journée. Un `Ui` hérite de la mise en page de son
+     parent : la rangée des vues se pose de droite à gauche, et
+     `ui.horizontal` a gardé ce sens — les chevrons se peignaient AVANT
+     le nombre qu'ils commandent. Puis `with_layout` prend TOUT le reste
+     de la rangée : le compteur se collait au dernier onglet, à six
+     cents pixels du bouton qu'il accompagne. Une boîte de la taille de
+     ce qu'elle contient se range au bord, là où la disposition la met.
+
+     Le troisième : « ↑ » et « ↓ » se sont peints en CARRÉS VIDES. La
+     police de l'interface ne les porte pas — et un caractère absent ne
+     se voit qu'à la capture, jamais à la relecture du code. Les
+     chevrons sont dessinés, comme les icônes de la barre d'outils, qui
+     le sont pour la même raison.
+
+     ET DEUX CONTRÔLES FAIBLES, DÉCOUVERTS EN LES ATTAQUANT. Le premier
+     vérifiait qu'aucun « 0 » ne s'affiche quand il n'y a rien à
+     compter : ce zéro ne s'écrit jamais, puisque le compteur filtre les
+     nombres nuls — il fallait compter les CHEVRONS, qui sont des
+     tracés. Le second mesurait l'absence du compteur sur la vue Source,
+     qui ne se détache pas : la rangée n'appelle ses commandes que
+     lorsqu'elle leur a réservé de la place, et l'on prouvait seulement
+     qu'on n'avait rien demandé. Sur une vue détachable, « Détacher »
+     retient la place et la mesure mord.
+
+     Troisième leçon du même ordre que les captures : un contrôle qui ne
+     tombe pas quand on remet le défaut ne contrôle rien.

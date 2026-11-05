@@ -223,13 +223,35 @@ impl NamsdecApp {
             0.0
         };
 
+        // LE COMPTEUR DE PROBLÈMES, à gauche de « Détacher ».
+        //
+        // Demandé à l'écran, capture à l'appui : le badge de CLion,
+        // « erreurs et warning », en haut à droite de l'éditeur. Ici la
+        // rangée des vues EST le haut de l'éditeur, et le coin droit
+        // est déjà pris par « Détacher » — un bouton qu'on sait trouver
+        // là. Le compteur se pose à sa gauche plutôt que de le
+        // déplacer : on ne range pas ailleurs ce que la main connaît.
+        let (erreurs, avertissements) = self.compte_des_problemes();
+        let largeur_compteur = if erreurs + avertissements > 0 {
+            // Trois chiffres au plus par nombre, deux chevrons, les
+            // marges : une réserve large plutôt que juste, le trop-plein
+            // d'une rangée d'onglets se payant d'une deuxième ligne.
+            let chiffres = ONGLET_HAUTEUR * 0.68 + 3.0 + 18.0 + 6.0;
+            chiffres * (usize::from(erreurs > 0) + usize::from(avertissements > 0)) as f32
+                + ONGLET_HAUTEUR * 1.8
+                + 10.0
+        } else {
+            0.0
+        };
+
         let mut détacher = false;
+        let mut problèmes = None;
         let cliqué = rangée_d_onglets(
             ui,
             theme,
             &étiquettes,
             actif,
-            largeur_bouton,
+            largeur_bouton + largeur_compteur,
             // PETIT, et c'est une question de rang : un bouton de pleine
             // taille fait vingt-sept pixels dans une rangée qui en fait
             // vingt-six — il la remplit d'un bord à l'autre et pèse plus
@@ -242,6 +264,13 @@ impl NamsdecApp {
                 {
                     détacher = true;
                 }
+                problèmes = compteur_de_problemes(
+                    ui,
+                    theme,
+                    erreurs,
+                    avertissements,
+                    (s.problems_list, s.problems_prev, s.problems_next),
+                );
             },
         );
         let choisie = cliqué.map(|rang| présentes[rang]);
@@ -250,6 +279,9 @@ impl NamsdecApp {
         }
         if détacher {
             self.détacher_vue(active);
+        }
+        if let Some(quoi) = problèmes {
+            self.aller_au_probleme(quoi);
         }
     }
 
@@ -324,5 +356,69 @@ impl NamsdecApp {
         if vue == VueCentrale::Analysis {
             self.apply_re_requests();
         }
+    }
+}
+
+impl NamsdecApp {
+    /// Ce que l'assembleur a relevé : les erreurs, les avertissements.
+    ///
+    /// Comptés et non devinés : le panneau Diagnostics montre les mêmes
+    /// lignes, et deux comptes différents à l'écran pour la même chose
+    /// seraient pires qu'aucun.
+    pub(crate) fn compte_des_problemes(&self) -> (usize, usize) {
+        let erreurs = self
+            .diagnostics
+            .iter()
+            .filter(|d| d.severity == namsdec_asm::Severity::Error)
+            .count();
+        (erreurs, self.diagnostics.len() - erreurs)
+    }
+
+    /// Le compteur a été cliqué : montrer la liste, ou sauter d'un
+    /// problème au suivant.
+    pub(crate) fn aller_au_probleme(&mut self, quoi: Problèmes) {
+        if quoi == Problèmes::Liste {
+            // La liste est un onglet de la console : on l'ouvre, et on
+            // s'y installe. Ouvrir la console sans changer d'onglet
+            // montrerait la sortie du programme à qui vient de cliquer
+            // sur un compte d'erreurs.
+            self.show_console = true;
+            self.console_tab = ConsoleTab::Diagnostics;
+            return;
+        }
+        // DES LIGNES, ET NON DES DIAGNOSTICS : on saute d'un endroit du
+        // texte à un autre, et deux diagnostics sur la même ligne
+        // désignent le même endroit. Triées pour que « d'après » ait un
+        // sens, dédoublonnées pour que la liste dise des endroits.
+        let mut lignes: Vec<u32> = self
+            .diagnostics
+            .iter()
+            .map(|d| d.line)
+            .filter(|ligne| *ligne > 0)
+            .collect();
+        lignes.sort_unstable();
+        lignes.dedup();
+        if lignes.is_empty() {
+            return;
+        }
+        let ici = self.cursor_pos.0 as u32;
+        // ON BOUCLE, plutôt que de buter : le dernier problème mène au
+        // premier. C'est la règle des onglets, et pour la même raison —
+        // on parcourt trois erreurs avec la même flèche, sans avoir à
+        // se demander où l'on est dans la file.
+        let cible = match quoi {
+            Problèmes::Suivant => lignes
+                .iter()
+                .find(|ligne| **ligne > ici)
+                .copied()
+                .unwrap_or(lignes[0]),
+            _ => lignes
+                .iter()
+                .rev()
+                .find(|ligne| **ligne < ici)
+                .copied()
+                .unwrap_or_else(|| *lignes.last().expect("non vide")),
+        };
+        self.goto_line = Some(cible);
     }
 }

@@ -914,3 +914,135 @@ pub(crate) fn rangée_d_onglets(
     }
     choisi
 }
+
+/// Ce qu'on vient de demander au compteur de problèmes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Problèmes {
+    /// Le compte lui-même : on veut la liste.
+    Liste,
+    /// Le problème d'avant, celui d'après.
+    Précédent,
+    Suivant,
+}
+
+/// Le compteur de problèmes, au bord droit de la rangée des vues.
+///
+/// **Demandé à l'écran, capture à l'appui** (4 novembre 2026) : le
+/// badge de CLion, « erreurs et warning », en haut à droite de
+/// l'éditeur — un disque rouge et son nombre, un triangle orange et le
+/// sien, et deux chevrons pour sauter au problème suivant.
+///
+/// Il ne paraît que s'il y a quelque chose à compter. Un compteur à
+/// zéro en permanence est un endroit de l'écran qu'on apprend à ne plus
+/// regarder, et c'est précisément celui qu'il faut voir le jour où il
+/// n'est plus à zéro.
+pub(crate) fn compteur_de_problemes(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    erreurs: usize,
+    avertissements: usize,
+    infobulles: (&str, &str, &str),
+) -> Option<Problèmes> {
+    if erreurs + avertissements == 0 {
+        return None;
+    }
+    let police = egui::TextStyle::Small.resolve(ui.style());
+    let hauteur = ONGLET_HAUTEUR - 8.0;
+    let mut demande = None;
+
+    // LE COMPTE D'ABORD, LES CHEVRONS ENSUITE, et la rangée dite
+    // EXPRESSÉMENT de gauche à droite.
+    //
+    // `ui.horizontal` ne suffit pas : il garde le sens de son parent,
+    // qui va de droite à gauche puisqu'on se pose au bord droit. Les
+    // chevrons se peignaient donc AVANT le nombre qu'ils commandent —
+    // vu à la capture, et c'est la troisième fois de la journée qu'un
+    // `Ui` hérite d'une mise en page dont on ne voulait pas.
+    // Les deux nombres, dans une seule cible : on clique sur « ce qui
+    // ne va pas », et non sur « les erreurs » puis « les
+    // avertissements ». La liste les montre ensemble de toute façon.
+    let mut largeur = 6.0;
+    let galettes: Vec<(std::sync::Arc<egui::Galley>, bool)> =
+        [(erreurs, true), (avertissements, false)]
+            .into_iter()
+            .filter(|(combien, _)| *combien > 0)
+            .map(|(combien, erreur)| {
+                let galette = ui.painter().layout_no_wrap(
+                    combien.to_string(),
+                    police.clone(),
+                    egui::Color32::PLACEHOLDER,
+                );
+                largeur += hauteur * 0.68 + 3.0 + galette.size().x + 6.0;
+                (galette, erreur)
+            })
+            .collect();
+    // SA LARGEUR EXACTE, ET NON « toute la place qui reste ».
+    //
+    // `with_layout` prend tout le reste de la rangée : le compteur se
+    // collait alors au dernier onglet, à six cents pixels du bouton
+    // qu'il accompagne — vu à la capture. Une boîte de la taille de ce
+    // qu'elle contient se range au bord, là où la disposition la met.
+    // SA GOUTTIÈRE EST COMPTÉE AVEC LUI : la rangée d'onglets met son
+    // écart d'objets à zéro — c'est ce qui colle les onglets les uns
+    // aux autres —, et sans ces huit pixels le chevron du bas touchait
+    // le liseré de « Détacher ». Deux cadres qui se touchent se lisent
+    // comme un seul.
+    let large = largeur + (hauteur * 0.9 + 2.0) * 2.0 + 8.0;
+    ui.allocate_ui_with_layout(
+        egui::vec2(large, hauteur),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.spacing_mut().item_spacing.x = 2.0;
+            let (rect, réponse) =
+                ui.allocate_exact_size(egui::vec2(largeur, hauteur), egui::Sense::click());
+            if réponse.hovered() {
+                ui.painter()
+                    .rect_filled(rect, 3.0, mélange(theme.panel, theme.text, 0.08));
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+            let mut x = rect.left() + 3.0;
+            for (galette, erreur) in galettes {
+                let côté = hauteur * 0.68;
+                let case = egui::Rect::from_center_size(
+                    egui::pos2(x + côté / 2.0, rect.center().y),
+                    egui::vec2(côté, côté),
+                );
+                if erreur {
+                    crate::icons::icon_error(ui.painter(), case, theme.bad);
+                } else {
+                    crate::icons::icon_warning(ui.painter(), case, theme.warn);
+                }
+                x += côté + 3.0;
+                ui.painter().galley(
+                    egui::pos2(x, rect.center().y - galette.size().y / 2.0),
+                    galette.clone(),
+                    theme.text,
+                );
+                x += galette.size().x + 6.0;
+            }
+            if réponse.on_hover_text(infobulles.0).clicked() {
+                demande = Some(Problèmes::Liste);
+            }
+            // Les chevrons, DESSINÉS et non écrits : « ↑ » et « ↓ » se sont
+            // peints en carrés vides — la police de l'interface ne les
+            // porte pas, et un caractère absent ne se voit qu'à la capture.
+            for (bas, quoi, infobulle) in [
+                (false, Problèmes::Précédent, infobulles.1),
+                (true, Problèmes::Suivant, infobulles.2),
+            ] {
+                let (rect, réponse) = ui
+                    .allocate_exact_size(egui::vec2(hauteur * 0.9, hauteur), egui::Sense::click());
+                if réponse.hovered() {
+                    ui.painter()
+                        .rect_filled(rect, 3.0, mélange(theme.panel, theme.text, 0.08));
+                    ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+                }
+                crate::icons::icon_chevron(ui.painter(), rect, theme.dim, bas);
+                if réponse.on_hover_text(infobulle).clicked() {
+                    demande = Some(quoi);
+                }
+            }
+        },
+    );
+    demande
+}

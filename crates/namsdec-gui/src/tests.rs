@@ -956,6 +956,24 @@ boucle:
 /// Quatre et non une, parce que c'est la rubrique DÉPLIÉE qu'on veut
 /// regarder : une ligne tient partout, quatre titres suivis de quatre
 /// explications repliées sont ce qui déborde.
+/// Un programme que nasm refuse, pour le compteur de problèmes.
+///
+/// Deux fautes franches — un registre qui n'existe pas, un mnémonique
+/// inventé — et le `global` manquant, dont l'éditeur de liens se plaint
+/// sans arrêter l'assemblage : de quoi avoir à la fois une erreur et un
+/// avertissement, qui est le seul état où le compteur montre ses deux
+/// nombres.
+const PROGRAMME_FAUTIF: &str = "\
+section .text
+global _start
+_start:
+    mov rax, rbx
+    mov rzx, 1
+    bougetoi rax, rbx
+    mov rdi, 0
+    syscall
+";
+
 const PROGRAMME_QUI_SIMPLIFIE: &str = "\
 section .data
 angle  dq 1.0
@@ -1069,6 +1087,19 @@ fn scènes() -> Vec<Scène> {
                     }
                     app.show_console = true;
                     app.console_tab = onglet;
+                }),
+            ));
+        }
+        // LE COMPTEUR DE PROBLÈMES, au bord droit de la rangée des
+        // vues : il ne paraît que lorsqu'il y a quelque chose à
+        // compter, et aucune scène n'assemblait un programme fautif.
+        if marche {
+            scènes.push((
+                "application / des problèmes à compter".to_owned(),
+                None,
+                Box::new(|app| {
+                    app.source = PROGRAMME_FAUTIF.to_owned();
+                    app.do_assemble();
                 }),
             ));
         }

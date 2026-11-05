@@ -979,6 +979,26 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 septentricies. Le compte des problèmes (A 9.73)
+
+Consigne annotée « Erreurs et warning », flèche sur le badge de CLion.
+
+- [x] **Le compteur au bord droit de la rangée des vues** : disque rouge
+      et nombre d'erreurs, triangle orange et nombre d'avertissements.
+- [x] **Un clic mène à la liste**, sur le bon onglet ; les **chevrons**
+      mènent au problème d'avant et à celui d'après, en bouclant.
+- [x] **Rien à compter, rien à l'écran** — un compteur à zéro en
+      permanence est un endroit qu'on apprend à ne plus regarder.
+- [x] **Les chevrons sont dessinés** : « ↑ » et « ↓ » se peignaient en
+      carrés vides, la police ne les portant pas.
+
+**Et deux contrôles faibles, trouvés en les attaquant** : vérifier
+l'absence d'un « 0 » qui ne s'écrit jamais, et mesurer sur une vue qui
+n'appelle pas ses commandes. Un contrôle qui ne tombe pas quand on remet
+le défaut ne contrôle rien.
+
+---
+
 ## 0 sextricies. L'accueil (A 9.72)
 
 « Quand je quitte, j'aimerais que tout soit fermé, et une fenêtre comme

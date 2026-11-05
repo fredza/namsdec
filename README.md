@@ -179,6 +179,14 @@ en dernier, son rang et sa ligne : « écrit au pas -12, ligne 7 :
 add rax, rcx ». Le chercher à la main veut dire relire son programme à
 l'envers, et se tromper une fois sur deux dès qu'il y a une boucle.
 
+**Le compte des problèmes, sans ouvrir la liste.** Au bord droit de la
+rangée des vues : un disque rouge et le nombre d'erreurs, un triangle
+orange et le nombre d'avertissements. Un clic ouvre la liste sur le bon
+onglet ; les deux chevrons mènent au problème d'avant et à celui
+d'après, en bouclant. Il ne paraît que s'il y a quelque chose à compter
+— un compteur à zéro en permanence est un endroit de l'écran qu'on
+apprend à ne plus regarder.
+
 **Plusieurs fichiers ouverts à la fois.** Une barre d'onglets au-dessus
 de l'éditeur, le nom raccourci par le milieu quand il est long — pour que
 `boucle_i…ee.asm` et `boucle_i…e_2.asm` restent deux fichiers

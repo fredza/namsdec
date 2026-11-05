@@ -6,6 +6,13 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.2.9-beta.3 — 3 et 4 novembre 2026
 
+**Le compte des problèmes, sans ouvrir la liste**
+- Au bord droit de la rangée des vues : un disque rouge et le nombre
+  d'erreurs, un triangle orange et le nombre d'avertissements.
+- Un clic ouvre la liste sur le bon onglet ; les deux **chevrons**
+  mènent au problème d'avant et à celui d'après, en bouclant.
+- Il ne paraît que s'il y a quelque chose à compter.
+
 **L'accueil, quand on a fermé le dernier fichier**
 - Le nom de l'atelier, puis ce par quoi on recommence — nouveau fichier,
   ouvrir, palette de commandes, exercices — et les **récents**, qu'un

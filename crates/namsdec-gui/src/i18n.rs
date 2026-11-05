@@ -260,6 +260,10 @@ pub struct Strings {
     pub profile_over_budget: &'static str,
     /// L'infobulle d'un diagnostic cliquable.
     pub diagnostic_goto: &'static str,
+    /// Le compteur de problèmes, au bord droit de la rangée des vues.
+    pub problems_list: &'static str,
+    pub problems_prev: &'static str,
+    pub problems_next: &'static str,
     /// La fenêtre d'aide, et ce qu'elle dit.
     pub help_title: &'static str,
     pub help_empty: &'static str,
@@ -1456,6 +1460,9 @@ const FR: Strings = Strings {
     profile_copied: "Profil copié : collez-le où vous voulez (Ctrl+V).",
     profile_over_budget: "au-dessus du budget de l'exercice — la ligne en tête de liste est celle à reprendre.",
     diagnostic_goto: "Aller à cette ligne",
+    problems_list: "Ce que l'assembleur a relevé : voir la liste",
+    problems_prev: "Le problème d'avant",
+    problems_next: "Le problème d'après",
     help_title: "Aide sur l'instruction",
     help_empty: "Placez le curseur sur une instruction et appuyez sur F1.",
     help_unknown: "Pas de fiche pour",
@@ -2399,6 +2406,9 @@ const EN: Strings = Strings {
     profile_copied: "Profile copied: paste it wherever you like (Ctrl+V).",
     profile_over_budget: "over the exercise budget — the line at the top of the list is the one to rework.",
     diagnostic_goto: "Go to that line",
+    problems_list: "What the assembler reported: see the list",
+    problems_prev: "Previous problem",
+    problems_next: "Next problem",
     help_title: "Instruction help",
     help_empty: "Put the cursor on an instruction and press F1.",
     help_unknown: "No entry for",
