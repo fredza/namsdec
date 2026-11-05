@@ -463,9 +463,21 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
 
         ("h2", "L'éditeur"),
         ("p",
-         "L'éditeur a deux modes, comme vim : <b>NORMAL</b> pour lire et se déplacer, "
-         "<b>INSERTION</b> (touche i) pour écrire, Échap pour revenir. Le mode se lit dans "
-         "la barre d'état."),
+         "<b>Au niveau débutant, l'éditeur n'a pas de modes</b>&nbsp;: on clique dans le "
+         "programme, on tape, ça s'écrit — comme dans tous les éditeurs qu'on a déjà "
+         "employés. La barre d'état ne porte alors aucune pastille de mode, qui "
+         "nommerait une chose qui n'existe pas."),
+        ("note",
+         "C'était le premier piège de namsdec, et il se refermait dans les dix premières "
+         "secondes&nbsp;: l'application s'ouvrait en mode NORMAL, où le champ de texte "
+         "n'est pas interactif. On cliquait dans le programme, on tapait, et <b>rien</b> "
+         "ne se passait — il fallait savoir appuyer sur <font face='Courier'>i</font> "
+         "d'abord, ce que le premier écran ne disait pas."),
+        ("p",
+         "<b>Au niveau avancé, l'éditeur a deux modes, comme vim</b>&nbsp;: <b>NORMAL</b> "
+         "pour lire et se déplacer, <b>INSERTION</b> (touche i) pour écrire, Échap pour "
+         "revenir. Le mode se lit dans la barre d'état. Tout ce qui suit — les "
+         "déplacements, le mode VISUEL, les compteurs — appartient à ce niveau-là."),
         ("p",
          "La gouttière, à gauche, porte trois choses : le numéro de ligne, le point d'arrêt "
          "qu'un clic pose ou retire, et une <b>bande de chaleur</b> qui dit combien de fois "

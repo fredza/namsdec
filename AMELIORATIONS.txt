@@ -10849,3 +10849,45 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      paraissent — et il mesure CE QUI SE VOIT, non ce qui est peint :
      une ligne sortie d'une zone qui défile est dans la liste des
      formes, rognée à néant.
+
+9.79 [FAIT] AU NIVEAU DÉBUTANT, L'ÉDITEUR N'A PAS DE MODES
+     (5 novembre 2026 — le premier piège, et il se refermait en dix
+     secondes)
+
+     L'APPLICATION S'OUVRAIT EN MODE NORMAL. Le champ de texte n'y est
+     pas interactif : on clique dans le programme, on tape, et RIEN ne
+     se passe. Il faut savoir appuyer sur `i` d'abord — ce que personne
+     ne devine, et que le premier écran ne dit pas.
+
+     C'est le pire défaut qu'une application puisse avoir devant
+     quelqu'un qui l'ouvre pour la première fois : elle ne répond pas,
+     et rien ne dit pourquoi. On en conclut qu'elle est cassée, et l'on
+     referme.
+
+     Les modes sont une habitude de vim, et une bonne pour qui l'a déjà.
+     C'est exactement ce que le niveau avancé garde — et le contrôle le
+     vérifie aussi : retirer les modes PARTOUT serait retirer à l'outil
+     une de ses raisons d'être. Au niveau débutant, l'éditeur se
+     comporte comme tous les éditeurs que la personne a déjà employés.
+
+     LA PASTILLE DISPARAÎT AVEC EUX. « NORMAL » nommerait une chose qui
+     n'existe plus, et ce serait le premier mot qu'un débutant lit de
+     son éditeur.
+
+     LA TOUCHE LEADER N'Y PERD RIEN — elle ne s'arme que lorsque
+     l'éditeur n'a PAS le focus, et c'était déjà la règle : sans elle,
+     « Espace » taperait un espace en armant une séquence.
+
+     LE CONTRÔLE TAPE POUR DE VRAI : un clic dans le code, une lettre,
+     et le programme doit avoir changé. C'est la seule façon de le
+     prouver — lire `editor_mode` ne dit pas si le champ accepte une
+     frappe.
+
+     RESTE UNE QUESTION QUI N'EST PAS LA MIENNE : le jeu de touches par
+     défaut. Au niveau débutant, « Exécuter » et « Pas à pas » sont des
+     séquences `Espace p r` et `Espace s i`, qui ne s'arment que hors de
+     l'éditeur — un débutant qui vient de taper ne les atteint pas au
+     clavier, et doit passer par la barre d'outils. Le jeu « Éditeur
+     ordinaire » (F5, F10, F11) marcherait pendant la frappe. Changer le
+     défaut d'une installation neuve touche à l'identité de l'outil :
+     c'est une décision à prendre, pas à glisser dans un lot.

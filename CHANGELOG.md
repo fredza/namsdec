@@ -4,6 +4,17 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## Non publié
+
+**L'éditeur du débutant n'a pas de modes**
+- On clique dans le programme, on tape, ça s'écrit. L'application
+  s'ouvrait en mode NORMAL, où le champ de texte n'est pas interactif :
+  il fallait savoir appuyer sur `i` d'abord.
+- La **pastille de mode** disparaît avec eux : « NORMAL » nommerait une
+  chose qui n'existe plus.
+- **Au niveau avancé, rien ne change** — les modes sont une habitude de
+  vim, et une bonne pour qui l'a déjà.
+
 ## 0.3.0-beta.1 — 4 et 5 novembre 2026
 
 Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :

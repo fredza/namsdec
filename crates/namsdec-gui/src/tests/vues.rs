@@ -1498,3 +1498,103 @@ fn l_accueil_tient_dans_le_plus_petit_ecran() {
         MIN_SCREEN[1]
     );
 }
+
+/// Au niveau débutant, taper écrit — sans avoir à connaître `i`.
+///
+/// **C'est le premier piège de namsdec**, et il se referme dans les dix
+/// premières secondes : l'application s'ouvrait en mode Normal, où le
+/// champ de texte n'est pas interactif. On clique dans le programme, on
+/// tape, et RIEN ne se passe. Il faut savoir appuyer sur `i` d'abord,
+/// ce que personne ne devine et que le premier écran ne dit pas.
+///
+/// Les modes sont une habitude de vim, et une bonne pour qui l'a déjà.
+/// C'est ce que le niveau avancé garde — et le contrôle le vérifie
+/// aussi, car retirer les modes partout serait retirer à l'outil une
+/// de ses raisons d'être.
+#[test]
+fn au_niveau_debutant_taper_ecrit() {
+    let frappe = |debutant: bool| -> (String, Vec<String>) {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            source: "mov rax, 1\n".to_owned(),
+            debutant,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1600.0, 1100.0));
+        let mut textes = Vec::new();
+        for image in 0..6 {
+            // On clique dans le programme, puis on tape une lettre.
+            // Le clic est posé sur la première ligne, loin de la
+            // gouttière : c'est le geste de quelqu'un qui veut écrire.
+            let events = match image {
+                1 => vec![
+                    egui::Event::PointerMoved(egui::pos2(300.0, 200.0)),
+                    egui::Event::PointerButton {
+                        pos: egui::pos2(300.0, 200.0),
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: egui::Modifiers::NONE,
+                    },
+                ],
+                2 => vec![egui::Event::PointerButton {
+                    pos: egui::pos2(300.0, 200.0),
+                    button: egui::PointerButton::Primary,
+                    pressed: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+                4 => vec![egui::Event::Text("x".to_owned())],
+                _ => Vec::new(),
+            };
+            let entrée = egui::RawInput {
+                screen_rect: Some(écran),
+                events,
+                focused: true,
+                time: Some(image as f64 * 0.1),
+                ..Default::default()
+            };
+            textes.clear();
+            let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    textes.push(texte.galley.text().to_owned());
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        (app.source.clone(), textes)
+    };
+
+    // 1. DÉBUTANT : la lettre arrive dans le programme.
+    let (source, textes) = frappe(true);
+    assert_ne!(
+        source, "mov rax, 1\n",
+        "au niveau débutant, taper doit écrire : le programme n'a pas bougé"
+    );
+    assert!(
+        source.contains('x'),
+        "la lettre tapée doit se retrouver dans le programme : {source:?}"
+    );
+
+    // 2. ET LA PASTILLE DE MODE N'EST PLUS LÀ : elle nommerait une
+    //    chose qui n'existe plus.
+    for mot in ["NORMAL", "INSERTION", "INSERT"] {
+        assert!(
+            !textes.iter().any(|t| t == mot),
+            "« {mot} » ne se peint pas au niveau débutant : {textes:?}"
+        );
+    }
+
+    // 3. AU NIVEAU AVANCÉ, RIEN NE CHANGE. Les modes sont une raison
+    //    d'être de l'outil pour qui vient de vim : taper sans avoir
+    //    demandé l'insertion n'écrit pas, et la pastille le dit.
+    let (source, textes) = frappe(false);
+    assert_eq!(
+        source, "mov rax, 1\n",
+        "au niveau avancé, le mode Normal n'écrit pas"
+    );
+    assert!(
+        textes.iter().any(|t| t == "NORMAL"),
+        "et la pastille dit où l'on est : {textes:?}"
+    );
+}

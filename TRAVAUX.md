@@ -979,6 +979,25 @@ défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
 
 ---
 
+## 0 duoquadragies. L'éditeur du débutant n'a pas de modes (A 9.79)
+
+- [x] **Taper écrit**, sans avoir à connaître `i`. L'application
+      s'ouvrait en mode Normal, où le champ n'est pas interactif : on
+      cliquait, on tapait, et rien ne se passait.
+- [x] **La pastille de mode disparaît avec eux** — « NORMAL »
+      nommerait une chose qui n'existe plus.
+- [x] **Le niveau avancé garde ses modes**, et le contrôle le vérifie
+      aussi : les retirer partout serait retirer à l'outil une de ses
+      raisons d'être.
+- [ ] **Le jeu de touches par défaut** — « Exécuter » et « Pas à pas »
+      sont des séquences qui ne s'arment que hors de l'éditeur. Un
+      débutant qui vient de taper ne les atteint pas au clavier. Le jeu
+      « Éditeur ordinaire » (F5, F10, F11) marcherait pendant la frappe,
+      mais changer le défaut d'une installation neuve touche à
+      l'identité de l'outil : **à décider**, pas à glisser dans un lot.
+
+---
+
 ## 0 unquadragies. L'accueil tient dans l'écran (A 9.78)
 
 - [x] **Le blanc du haut se mesure sur la place** — posé à

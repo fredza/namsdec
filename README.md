@@ -424,7 +424,9 @@ Pour lancer sans installer : `cargo run -p namsdec-gui`.
    rangé par famille : `p` pour ce qui fait tourner le **programme**,
    `/` pour chercher, `m` pour **marquer**, `v` pour les **vues**, `u`
    pour courir **jusqu'à** quelque chose.
-3. L'éditeur a trois modes, comme vim : **NORMAL** (les mouvements
+3. **Au niveau débutant, l'éditeur n'a pas de modes** : on clique, on
+   tape, ça s'écrit, et la barre d'état ne porte aucune pastille. Au
+   niveau avancé, l'éditeur a trois modes, comme vim : **NORMAL** (les mouvements
    `hjkl w b e gg G`, et le compteur `5j`), **INSERT** (`i`, et Échap
    pour sortir) et **VISUEL** (`v` : les mouvements étendent une
    sélection, `y` copie, `d` coupe, Échap renonce).

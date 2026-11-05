@@ -69,7 +69,13 @@ impl NamsdecApp {
             // mode, séparateur, message de statut, séparateur, statut nasm
             // (version raccourcie — "NASM 3.02", pas la ligne complète de
             // `nasm -v` avec sa date de compilation, hors de propos ici).
-            mode_pill_ui(ui, theme, self.editor_mode);
+            // LA PASTILLE DE MODE DISPARAÎT AU NIVEAU DÉBUTANT, où il
+            // n'y a plus de mode : « NORMAL » y nommerait une chose qui
+            // n'existe pas, et le premier mot qu'un débutant lit de son
+            // éditeur serait un mot qui ne veut rien dire pour lui.
+            if !self.debutant {
+                mode_pill_ui(ui, theme, self.editor_mode);
+            }
             // LE COMPTEUR EN ATTENTE SE VOIT. Taper `5` puis hésiter
             // laisse l'éditeur dans un état qui change ce que la touche
             // suivante va faire : le cacher serait cacher la moitié du

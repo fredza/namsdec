@@ -637,12 +637,37 @@ impl NamsdecApp {
         self.find_ui(ui);
         self.rename_ui(ui);
         self.note_ui(ui);
+        // AU NIVEAU DÉBUTANT, L'ÉDITEUR N'A PAS DE MODES.
+        //
+        // C'est le premier piège de namsdec, et il se referme dans les
+        // dix premières secondes : l'application s'ouvre en mode Normal,
+        // où le champ de texte n'est pas interactif. On clique dans le
+        // programme, on tape — et RIEN ne se passe. Il faut savoir
+        // appuyer sur `i` d'abord, ce que personne ne devine et que le
+        // premier écran ne dit pas.
+        //
+        // Les modes sont une habitude de vim, et une bonne pour qui l'a
+        // déjà ; c'est exactement ce que le niveau avancé garde. Au
+        // niveau débutant, l'éditeur se comporte comme tous les
+        // éditeurs que la personne a déjà employés : il écrit ce qu'on
+        // tape.
+        //
+        // LA TOUCHE LEADER N'Y PERD RIEN : elle ne s'arme que lorsque
+        // l'éditeur n'a PAS le focus — c'est déjà la règle, pour que
+        // « Espace » ne tape pas un espace en armant une séquence.
+        if self.debutant {
+            self.editor_mode = EditorMode::Insert;
+        }
         // Modes façon (n)vim : `i`/`I` pour passer en Insertion, `Échap`
         // pour revenir en Normal — désactivé pendant qu'une autre capture
         // de texte est active (palette de commandes, rebind de raccourci)
         // pour ne pas leur voler leurs propres touches.
         let mut just_entered_insert = false;
-        if self.command_palette.is_none() && self.rebinding.is_none() && !self.explorer_focused {
+        if !self.debutant
+            && self.command_palette.is_none()
+            && self.rebinding.is_none()
+            && !self.explorer_focused
+        {
             // Les touches déjà prises par un raccourci ne sont plus
             // disponibles ici : le `i` qui termine `Espace s i` a servi à
             // demander un pas, pas à ouvrir la saisie.
