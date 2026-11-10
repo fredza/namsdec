@@ -369,7 +369,7 @@ fn the_banner_keeps_no_empty_space_above_the_tab() {
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         for clipped in &output.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let rect = cadre_du_texte(t);
                 let vu = rect.intersect(clipped.clip_rect);
                 if !vu.is_positive() {
                     continue;
@@ -1497,7 +1497,7 @@ fn the_cpu_state_never_scrolls_at_any_window_size() {
                 let Some((nom, _)) = REGISTERS.iter().find(|(n, _)| *n == t.galley.text()) else {
                     continue;
                 };
-                let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let posé = cadre_du_texte(t);
                 // Ce qui se voit : l'intersection avec le découpage. Un
                 // demi-pixel de tolérance pour les arrondis.
                 let vu = posé.intersect(clipped.clip_rect);
@@ -1897,8 +1897,14 @@ hlt
         peint.contains(s.foresee_said) && peint.contains(&annoncé),
         "ce que le pas précédent disait se relit : {peint}"
     );
+    // EN DÉCIMAL, et c'est voulu depuis le 10 novembre 2026 (A 9.87) :
+    // sous le million, un nombre s'écrit au niveau débutant comme le
+    // programme qu'on vient de taper l'écrivait. Ce contrôle attendait
+    // « RAX 0x0 -> 0x1 » et c'est LUI qui a dit que la règle avait
+    // changé de place — on le met à jour plutôt que de l'assouplir,
+    // sans quoi il ne distinguerait plus les deux écritures.
     assert!(
-        peint.contains("RAX 0x0 -> 0x1"),
+        peint.contains("RAX 0 -> 1"),
         "et ce qui a vraiment changé est juste à côté : {peint}"
     );
 
@@ -2057,5 +2063,285 @@ hlt
     assert!(
         peint.contains(s.foresee_question) && !peint.contains("EAX = 1"),
         "et la question est reposée : {peint}"
+    );
+}
+
+/// CE QUI A CHANGÉ SE DIT EN TOUTES LETTRES, AU NIVEAU DÉBUTANT.
+///
+/// La bande qui explique le dernier pas est l'endroit où l'on apprend
+/// — « lire, prévoir, avancer, CONSTATER ». Elle ne constatait rien de
+/// lisible à qui débute : « RCX 0x3 -> 0x2 » demande de savoir lire
+/// l'hexadécimal, et « ZF 0 -> 1 » de savoir ce qu'est ZF. Deux choses
+/// qu'on vient précisément apprendre.
+///
+/// Deux changements, et ils ne valent QUE sous ce niveau : au-dessus,
+/// l'hexadécimal est la langue du métier et une phrase par indicateur
+/// à chaque pas serait du bruit. Le contrôle mesure donc les deux
+/// niveaux, sans quoi il ne prouverait pas que la règle s'arrête.
+///
+/// L'ÉTAT EST SEMÉ À LA MAIN. Faire tourner un vrai programme jusqu'à
+/// ce qu'un indicateur bascule demanderait nasm, et ce qu'on vérifie
+/// ici est une PHRASE, pas une exécution. Ce qui invalide ce semis :
+/// le jour où `last_step_ui` lira autre chose que `regs_before`,
+/// `flags_before` et `last_step`.
+#[test]
+fn au_niveau_debutant_le_dernier_pas_se_dit_en_toutes_lettres() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    for débutant in [true, false] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.debutant = débutant;
+
+        // L'AVANT : RCX à 3, aucun indicateur posé.
+        let mut avant = namsdec_core::Registers::default();
+        avant.set64(Reg64::Rcx, 3);
+        app.regs_before = Some(avant);
+        app.flags_before = Some(RFlags::empty());
+
+        // L'APRÈS : RCX à 2, et le zéro posé. Les deux ensemble, parce
+        // qu'un `dec` écrit bien l'un et l'autre.
+        let mut mem = Memory::new(BASE, 0x1000);
+        mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        cpu.regs.set64(Reg64::Rcx, 2);
+        cpu.flags = RFlags::ZF;
+        app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+        app.last_step = Some(DernierPas {
+            addr: BASE,
+            texte: "dec rcx".to_owned(),
+            annonce: None,
+        });
+
+        let mut peints = String::new();
+        for _ in 0..3 {
+            peints.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    peints.push_str(t.galley.text());
+                    peints.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        let (_, rôle_du_zéro) = crate::sidebar::flag_words("ZF", app.lang);
+        if débutant {
+            assert!(
+                peints.contains("RCX 3 -> 2"),
+                "au niveau débutant, un petit nombre s'écrit en décimal — \
+                 le programme disait `mov rcx, 3`, pas `mov rcx, 0x3`"
+            );
+            assert!(
+                peints.contains(rôle_du_zéro),
+                "et l'indicateur qui vient d'être posé se dit en toutes lettres : \
+                 « {rôle_du_zéro} » n'est pas peint"
+            );
+        } else {
+            assert!(
+                peints.contains("RCX 0x3 -> 0x2"),
+                "au-dessus du niveau débutant, rien ne change : l'hexadécimal est la \
+                 langue du métier"
+            );
+            assert!(
+                !peints.contains(rôle_du_zéro),
+                "et une phrase par indicateur à chaque pas y serait du bruit"
+            );
+        }
+    }
+}
+
+/// LE VOLET DE LA MACHINE DIT CE QU'IL MONTRE, AU MODE SIMPLE.
+///
+/// La pile portait sa légende depuis toujours — « en grisé, au-dessus
+/// de RSP : déjà dépilé ». Les registres et les indicateurs n'en
+/// avaient aucune : dix-sept noms de trois lettres, sept sigles de
+/// deux, et pas un mot pour dire ce que c'est. Dans le mode dont la
+/// règle est que chaque bande se présente elle-même et que rien ne se
+/// survole pour savoir ce que c'est, c'était le seul endroit qui
+/// montrait de l'état brut sans le nommer.
+///
+/// ET LA PLACE COMPTE AUTANT QUE LE TEXTE : celle des registres doit
+/// précéder la liste. La première capture la posait sous les dix-sept
+/// lignes, c'est-à-dire qu'on lisait dix-sept lignes incompréhensibles
+/// PUIS ce qu'elles étaient.
+///
+/// Au mode avancé, rien : le panneau latéral y est déjà serré, et ces
+/// phrases seraient du bruit devant quelqu'un qui sait.
+#[test]
+fn au_mode_simple_le_volet_de_la_machine_se_presente() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    for simple in [true, false] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.debutant = simple;
+        let mut mem = Memory::new(BASE, 0x1000);
+        mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+        let s = strings(app.lang);
+        let mut légende: Option<egui::Rect> = None;
+        let mut premier_registre: Option<egui::Rect> = None;
+        let mut indicateurs = false;
+        let début = s.etabli_regs_legend.chars().take(30).collect::<String>();
+        for _ in 0..3 {
+            légende = None;
+            premier_registre = None;
+            indicateurs = false;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                let texte = t.galley.text();
+                if texte.starts_with(&début) {
+                    légende = Some(cadre_du_texte(t));
+                }
+                if texte == "RAX" {
+                    premier_registre = Some(cadre_du_texte(t));
+                }
+                if texte.starts_with(&s.etabli_flags_legend.chars().take(30).collect::<String>()) {
+                    indicateurs = true;
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        if !simple {
+            assert!(
+                légende.is_none() && !indicateurs,
+                "au mode avancé, le panneau latéral ne porte aucune de ces deux phrases"
+            );
+            continue;
+        }
+        let légende = légende.expect("au mode simple, les registres disent ce qu'ils sont");
+        let rax = premier_registre.expect("et RAX se peint toujours");
+        assert!(
+            indicateurs,
+            "les sept indicateurs aussi disent ce qu'ils sont"
+        );
+        assert!(
+            légende.bottom() <= rax.top() + 0.5,
+            "une légende se lit AVANT ce qu'elle explique : elle est à y = {:.0}, \
+             et RAX — la première des dix-sept lignes — à y = {:.0}",
+            légende.top(),
+            rax.top()
+        );
+    }
+}
+
+/// « MONTRER » SE DÉFAIT : LA RÉPONSE SE RECACHE.
+///
+/// Demandé à l'écran le 10 novembre 2026, capture à l'appui : « mets
+/// un btn de cacher/afficher ». « Montrer » donnait la réponse et il
+/// n'y avait plus de retour — elle restait jusqu'au pas suivant, et
+/// l'on ne pouvait plus se reposer la question. Un geste qui ne se
+/// défait pas se prend avec hésitation, et l'hésitation est exactement
+/// ce que ce mode cherche à lever.
+///
+/// LE CYCLE ENTIER EST MESURÉ — caché, montré, caché — parce que c'est
+/// lui qu'on a demandé. Vérifier que le bouton existe ne dirait pas
+/// qu'il rend la question.
+#[test]
+fn la_reponse_montree_se_recache() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        debutant: true,
+        prevoir: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    // Un `mov` à l'arrêt : le pseudo-code en dit plus que
+    // l'instruction, donc il y a bien une réponse à retenir.
+    let mut mem = Memory::new(BASE, 0x1000);
+    mem.load(BASE, &[0xb8, 0x05, 0x00, 0x00, 0x00])
+        .expect("mov eax, 5 se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+    let s = strings(app.lang);
+    let peints = |app: &mut NamsdecApp| {
+        let mut tout = String::new();
+        for _ in 0..3 {
+            tout.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    tout.push_str(t.galley.text());
+                    tout.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        tout
+    };
+
+    // 1. LA QUESTION EST POSÉE : « Montrer », pas « Cacher ».
+    let vu = peints(&mut app);
+    assert!(
+        vu.contains(s.foresee_reveal),
+        "la question attend : « {} » doit être là",
+        s.foresee_reveal
+    );
+    assert!(
+        !vu.contains(s.foresee_hide),
+        "et rien n'est encore montré : « {} » n'a rien à faire là",
+        s.foresee_hide
+    );
+
+    // 2. ON MONTRE : la réponse paraît, et « Cacher » avec elle.
+    app.prevision_révélée = Some(BASE);
+    let vu = peints(&mut app);
+    assert!(
+        vu.contains(s.foresee_hide),
+        "la réponse montrée, le retour doit être offert : « {} »",
+        s.foresee_hide
+    );
+    assert!(
+        !vu.contains(s.foresee_reveal),
+        "et « {} » n'a plus de sens : c'est déjà fait",
+        s.foresee_reveal
+    );
+
+    // 3. ON RECACHE : on retrouve la question.
+    app.prevision_révélée = None;
+    let vu = peints(&mut app);
+    assert!(
+        vu.contains(s.foresee_reveal) && !vu.contains(s.foresee_hide),
+        "et la question se repose, telle qu'elle était"
     );
 }

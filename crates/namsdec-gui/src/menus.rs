@@ -707,6 +707,17 @@ impl NamsdecApp {
                     self.montrer_vue(VueCentrale::Vectors);
                     ui.close();
                 }
+                // LA SCÈNE : la machine en grand, pour regarder un pas
+                // se faire — ou le montrer. Elle existe aux deux
+                // niveaux ; au mode simple, c'est la frise qui l'ouvre.
+                if ui
+                    .button(s.scene_open)
+                    .on_hover_text(s.scene_hint)
+                    .clicked()
+                {
+                    self.show_scene = true;
+                    ui.close();
+                }
                 if ui
                     .button(shortcut_hint(
                         &self.keybindings,
@@ -1347,6 +1358,7 @@ pub(crate) fn palette_commands(
             PaletteCommand::ShowDisassembly,
         ),
         (s.cyclic_open.to_string(), PaletteCommand::ShowCyclic),
+        (s.scene_open.to_string(), PaletteCommand::ShowScene),
         (
             format!("{}: Français", s.preferences_language),
             PaletteCommand::SetLang(Lang::Fr),

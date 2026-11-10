@@ -300,6 +300,23 @@ impl NamsdecApp {
         }
     }
 
+    /// Les conditions du but, telles que l'exercice les a écrites,
+    /// SANS les éprouver.
+    ///
+    /// C'est ce qu'on montre tant que rien n'a tourné : la cible se
+    /// lit avant de commencer, et c'est elle qui dirige ce qu'on
+    /// écrit. [`Self::exercise_goal`], lui, demande une machine à
+    /// interroger et rend un verdict.
+    ///
+    /// `None` quand l'exercice n'a pas de but — une démonstration, une
+    /// étape de lecture : il n'y a alors rien à viser, et le dire
+    /// autrement serait inventer un devoir.
+    pub(crate) fn exercise_targets(&self) -> Option<Vec<String>> {
+        let id = self.current_exercise.as_deref()?;
+        let exercise = namsdec_exercises::find(&self.exercise_packs, id)?;
+        (!exercise.goal.is_empty()).then(|| exercise.goal.clone())
+    }
+
     /// Où en est le but de l'exercice en cours.
     ///
     /// `None` quand aucun exercice n'est chargé, qu'il n'a pas de but

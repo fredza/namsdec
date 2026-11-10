@@ -125,6 +125,15 @@ pub struct Strings {
     pub exercises_search: &'static str,
     pub exercises_search_hint: &'static str,
     pub goal_not_yet: &'static str,
+    /// LE BUT SE LIT AVANT DE COMMENCER.
+    ///
+    /// Tant que rien n'a tourné, namsdec ne disait RIEN du but — pour
+    /// ne pas annoncer « pas atteint » à qui n'a encore rien lancé, ce
+    /// qui est juste. Mais se taire fait qu'on écrit sans savoir où
+    /// l'on va : la cible se lisait seulement après le premier essai.
+    /// Les conditions sont donc montrées d'emblée, en gris, avec ce
+    /// qui les départagera.
+    pub goal_ahead: &'static str,
     /// Entre une expression et ce qu'elle vaut : « rax vaut 0xc ».
     pub goal_is: &'static str,
     /// Ce que le programme a fait À LA PLACE, quand un but manque.
@@ -1150,6 +1159,58 @@ pub struct Strings {
     /// qu'une entrée de menu se parcourt du regard.
     pub beginner_toggle: &'static str,
     pub beginner_hint: &'static str,
+    /// L'ÉTABLI — la disposition du mode simple.
+    ///
+    /// Quatre bandes fixes, et chacune porte son titre : au mode simple
+    /// rien ne se survole pour savoir ce que c'est. Les titres sont
+    /// écrits à la première personne (« ce que j'ai écrit ») parce que
+    /// c'est le programme de celui qui lit, et non un document qu'on
+    /// lui présente.
+    pub etabli_code: &'static str,
+    pub etabli_machine: &'static str,
+    pub etabli_stack: &'static str,
+    pub etabli_result: &'static str,
+    /// Le retour à l'interface complète, et ce qu'on y retrouve.
+    pub etabli_advanced: &'static str,
+    pub etabli_advanced_hint: &'static str,
+    /// Ce que fait le bouton qui sort une bande de l'Établi.
+    pub etabli_detach_hint: &'static str,
+    /// LA BANDE DE L'EXERCICE : son titre, et les deux gestes qu'elle
+    /// porte.
+    ///
+    /// Elle n'existe qu'au mode simple. Au mode avancé, l'énoncé et le
+    /// but vivent dans le panneau latéral, qui est toujours là ; ici,
+    /// il n'y a pas de panneau latéral, et l'exercice n'était visible
+    /// que dans la fenêtre qu'on venait de fermer.
+    pub etabli_exercise: &'static str,
+    pub etabli_exercise_pick: &'static str,
+    pub etabli_exercise_statement: &'static str,
+    /// CE QUE LE VOLET DE LA MACHINE MONTRE, DIT EN MOTS.
+    ///
+    /// La pile portait déjà sa légende ; les registres et les
+    /// indicateurs n'en avaient aucune. Dix-sept noms de trois lettres,
+    /// sept sigles de deux, et pas un mot pour dire ce que c'est —
+    /// dans le mode dont la règle est que chaque bande se présente
+    /// elle-même, sans qu'on ait à survoler quoi que ce soit.
+    pub etabli_regs_legend: &'static str,
+    pub etabli_flags_legend: &'static str,
+    /// LA LIGNE OÙ EST LE CURSEUR, EXPLIQUÉE.
+    ///
+    /// Avant d'assembler, l'écran du débutant ne dit RIEN du programme
+    /// qu'il porte : six instructions qu'il ne connaît pas, et la
+    /// seule porte vers les cent quatre-vingt-neuf fiches est une
+    /// touche dont rien ne parle. La bande qui dit « ce que fait cette
+    /// ligne » attendait l'assemblage pour servir à quelque chose.
+    pub etabli_cursor_line: &'static str,
+    pub etabli_cursor_sheet: &'static str,
+    pub etabli_cursor_hint: &'static str,
+    /// LA SCÈNE : la machine en grand (voir `scene.rs`).
+    pub scene_title: &'static str,
+    pub scene_open: &'static str,
+    pub scene_hint: &'static str,
+    pub scene_empty: &'static str,
+    pub scene_changed: &'static str,
+    pub scene_nothing_changed: &'static str,
     /// « Prévoir avant d'avancer » : la case, ce qu'elle retient, et
     /// pourquoi elle se grise hors du niveau débutant.
     pub foresee_checkbox: &'static str,
@@ -1162,6 +1223,14 @@ pub struct Strings {
     /// Le bouton qui donne la réponse sans attendre le pas, et ce qu'il
     /// promet au survol.
     pub foresee_reveal: &'static str,
+    /// REFERMER CE QU'ON VIENT D'OUVRIR.
+    ///
+    /// « Montrer » n'avait pas de retour : la réponse donnée, elle
+    /// restait jusqu'au pas suivant, et l'on ne pouvait plus se
+    /// reposer la question. Un geste qui ne se défait pas se prend
+    /// avec hésitation.
+    pub foresee_hide: &'static str,
+    pub foresee_hide_hint: &'static str,
     pub foresee_reveal_hint: &'static str,
     /// « Ce que ça disait » — l'annonce de l'instruction exécutée,
     /// relue à côté de ce qui a changé.
@@ -1371,6 +1440,7 @@ const FR: Strings = Strings {
     exercises_search: "Chercher :",
     exercises_search_hint: "un titre, ou ce qu'on y faisait",
     goal_not_yet: "pas encore",
+    goal_ahead: "Ce qu'il faudra obtenir — on le saura en exécutant :",
     goal_is: "vaut",
     goal_what_ran: "Ce que le programme a fait :",
     goal_loop_ran: "la boucle de la ligne {ligne} a tourné {tours} fois",
@@ -1488,7 +1558,7 @@ const FR: Strings = Strings {
     rail_console_hide: "Cacher la console",
     rail_sidebar_show: "Afficher le panneau latéral",
     rail_sidebar_hide: "Cacher le panneau latéral",
-    problems_list: "Ce que l'assembleur a relevé : voir la liste",
+    problems_list: "Ce que l'assembleur a relevé : voir la liste — un deuxième clic la referme",
     problems_prev: "Le problème d'avant",
     problems_next: "Le problème d'après",
     help_title: "Aide sur l'instruction",
@@ -2142,6 +2212,37 @@ déclenchera jamais.",
                     panneau d'analyse ne montre que les neuf rubriques qui se lisent sans rien \
                     savoir d'avance — où est le code, ce qu'il dit, ce qu'il emprunte, les \
                     octets. Rien n'est désinstallé : décocher rend les vingt-cinq.",
+    etabli_code: "Ce que j'ai écrit",
+    etabli_machine: "Ce que fait la machine",
+    etabli_stack: "La pile",
+    etabli_result: "Résultat",
+    etabli_advanced: "Mode avancé",
+    etabli_advanced_hint: "Retrouver l'interface complète : les panneaux, les outils et les \
+                           menus. On revient au mode simple par le menu Affichage.",
+    etabli_detach_hint: "Sortir cette bande dans une fenêtre, pour la lire en entier. \
+                         La pile d'un vrai binaire et les explications de namsdec ne \
+                         tiennent pas toujours dans la place qu'on leur a donnée. Fermer \
+                         la fenêtre la ramène à sa place.",
+    etabli_exercise: "L'exercice",
+    etabli_exercise_pick: "Choisir…",
+    etabli_exercise_statement: "Ce qu'on demande :",
+    etabli_cursor_line: "La ligne où est le curseur",
+    etabli_cursor_sheet: "La fiche entière",
+    etabli_cursor_hint: "Placez le curseur sur une instruction : cette bande dit ce \
+                         qu'elle fait.",
+    etabli_regs_legend: "Ce que le processeur garde, en hexadécimal. Ce qui vient de \
+                         changer s'éclaire.",
+    etabli_flags_legend: "Sept oui/non du dernier calcul, que lit un saut conditionnel. \
+                          ZF veut dire « c'était zéro ».",
+    scene_title: "Regarder tourner",
+    scene_open: "Regarder tourner…",
+    scene_hint: "La machine en grand : ce que l'instruction qui vient va faire, et ce que la \
+                 précédente a changé. De quoi suivre un pas de loin, ou le montrer.",
+    scene_empty: "Aucun programme à regarder. Assemblez le vôtre, puis revenez : \
+                  cette fenêtre montre un pas à la fois, en grand.",
+    scene_changed: "Ce que le dernier pas a changé",
+    scene_nothing_changed: "Le dernier pas n'a changé aucun registre — voici ceux qu'on \
+                            regarde le plus souvent.",
     foresee_checkbox: "Prévoir avant d'avancer",
     foresee_hint: "Devant une instruction pas encore exécutée, namsdec dit déjà tout : ce \
                    qu'elle fait en clair, ses opérandes résolus, et si un saut sera pris. On \
@@ -2154,6 +2255,9 @@ déclenchera jamais.",
                             annonçait et ce qui a changé. Pour ne plus attendre : Préférences \
                             › Modules › « Prévoir avant d'avancer ».",
     foresee_reveal: "Montrer",
+    foresee_hide: "Cacher",
+    foresee_hide_hint: "Reposer la question : la réponse se recache, et l'on peut \
+                        essayer de la retrouver avant d'avancer.",
     foresee_reveal_hint: "La réponse, sans attendre le pas.",
     foresee_said: "Ce que ça disait",
     modules_features_hint: "Ce qu'on allume ou éteint soi-même. Rien ici n'est obligatoire : namsdec tourne sans.",
@@ -2330,6 +2434,7 @@ const EN: Strings = Strings {
     exercises_search: "Search:",
     exercises_search_hint: "a title, or what it was about",
     goal_not_yet: "not yet",
+    goal_ahead: "What has to come out — running will tell:",
     goal_is: "is",
     goal_what_ran: "What the program did:",
     goal_loop_ran: "the loop on line {ligne} ran {tours} times",
@@ -2447,7 +2552,7 @@ const EN: Strings = Strings {
     rail_console_hide: "Hide the console",
     rail_sidebar_show: "Show the side panel",
     rail_sidebar_hide: "Hide the side panel",
-    problems_list: "What the assembler reported: see the list",
+    problems_list: "What the assembler reported: see the list — a second click closes it",
     problems_prev: "Previous problem",
     problems_next: "Next problem",
     help_title: "Instruction help",
@@ -3100,6 +3205,34 @@ other is there to compare — that is how gaps and clashes become visible.",
                     the analysis panel shows only the nine sections that read without prior \
                     knowledge — where the code is, what it says, what it borrows, the bytes. \
                     Nothing is uninstalled: unchecking brings back all twenty-five.",
+    etabli_code: "What I wrote",
+    etabli_machine: "What the machine is doing",
+    etabli_stack: "The stack",
+    etabli_result: "Result",
+    etabli_advanced: "Advanced mode",
+    etabli_advanced_hint: "Back to the full interface: the panels, the tools and the menus. \
+                           The View menu brings the simple mode back.",
+    etabli_detach_hint: "Move this band into a window of its own, to read it whole. The \
+                         stack of a real binary, and namsdec's explanations, do not always \
+                         fit the room they were given. Closing the window brings it back.",
+    etabli_exercise: "The exercise",
+    etabli_exercise_pick: "Pick one…",
+    etabli_exercise_statement: "What is asked:",
+    etabli_cursor_line: "The line the cursor is on",
+    etabli_cursor_sheet: "The whole sheet",
+    etabli_cursor_hint: "Put the cursor on an instruction: this band says what it does.",
+    etabli_regs_legend: "What the processor keeps, in hex. Whatever just changed lights up.",
+    etabli_flags_legend: "Seven yes/no answers from the last computation, read by a \
+                          conditional jump. ZF means \"it was zero\".",
+    scene_title: "Watch it run",
+    scene_open: "Watch it run…",
+    scene_hint: "The machine, large: what the next instruction will do, and what the \
+                 previous one changed. To follow a step from afar, or to show it.",
+    scene_empty: "No program to watch. Assemble yours, then come back: this window shows \
+                  one step at a time, large.",
+    scene_changed: "What the last step changed",
+    scene_nothing_changed: "The last step changed no register — here are the ones most \
+                            often watched.",
     foresee_checkbox: "Predict before stepping",
     foresee_hint: "Before an instruction has run, namsdec already says everything: what it \
                    does in plain words, its resolved operands, and whether a jump will be \
@@ -3113,6 +3246,9 @@ other is there to compare — that is how gaps and clashes become visible.",
                             announced and what changed. To stop waiting: Preferences › \
                             Modules › \"Predict before stepping\".",
     foresee_reveal: "Show",
+    foresee_hide: "Hide",
+    foresee_hide_hint: "Ask again: the answer is hidden back, and you can try to find \
+                        it before stepping.",
     foresee_reveal_hint: "The answer, without waiting for the step.",
     foresee_said: "What it said",
     modules_features_hint: "What you turn on or off yourself. Nothing here is required: namsdec runs without them.",

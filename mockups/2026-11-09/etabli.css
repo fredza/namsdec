@@ -1,0 +1,397 @@
+/* L'Établi : quatre bandes, rien à ouvrir.
+ *
+ * Le pari : au mode simple, tout ce dont on a besoin tient à l'écran en
+ * même temps. Pas d'onglet, pas de rail, pas de menu déroulant — donc
+ * rien à trouver avant de pouvoir travailler. Ce que ça coûte : la
+ * place est répartie d'avance, et on ne peut pas la redistribuer.
+ */
+@import url('base.css');
+
+body {
+  --bg: var(--sombre-bg);
+  --panel: var(--sombre-panel);
+  --surface: var(--sombre-surface);
+  --text: var(--sombre-text);
+  --dim: var(--sombre-dim);
+  --accent: var(--sombre-accent);
+  --good: var(--sombre-good);
+  --warn: var(--sombre-warn);
+  --bad: var(--sombre-bad);
+  --changed: var(--sombre-changed);
+  --mnemonic: var(--sombre-mnemonic);
+  --number: var(--sombre-number);
+  --label: var(--sombre-label);
+  --comment: var(--sombre-comment);
+  --register: var(--sombre-register);
+  --directive: var(--sombre-directive);
+  --border: var(--sombre-border);
+  --selection: var(--sombre-selection);
+
+  background: var(--bg);
+  color: var(--text);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto auto;
+  min-height: 100vh;
+}
+
+/* ── 1. La barre : le nom du fichier, et ce qu'on peut faire ───────── */
+.barre {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.marque {
+  font-weight: 650;
+  letter-spacing: -.3px;
+  font-size: 15px;
+}
+.marque b { color: var(--accent); font-weight: 650; }
+.fichier {
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.fichier .etoile { color: var(--warn); }
+
+.commandes { display: flex; gap: 8px; margin-left: auto; }
+.commandes button {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 15px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  /* La bordure et le fond changent au survol, jamais la taille ni la
+   * graisse : rien ne doit se déplacer sous le curseur. */
+  transition: background .12s, border-color .12s;
+}
+.commandes button:hover:not(:disabled) { background: #37373d; border-color: #555; }
+.commandes button.premier {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+.commandes button.premier:hover:not(:disabled) { background: #2b86f0; border-color: #2b86f0; }
+.commandes .glyphe { font-size: 11px; }
+
+.secondaires { display: flex; gap: 2px; padding-left: 14px; border-left: 1px solid var(--border); }
+.secondaires button {
+  padding: 8px 11px;
+  border-radius: 5px;
+  color: var(--dim);
+  font-size: 12.5px;
+}
+.secondaires button:hover { background: var(--surface); color: var(--text); }
+
+/* ── 2. Où l'on en est ────────────────────────────────────────────── */
+.frise {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 18px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--dim);
+}
+.frise .jauge {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.frise .jauge i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width .18s;
+}
+.frise .compte { font-family: var(--mono); color: var(--text); }
+.frise .etat { font-weight: 550; }
+.frise .etat.marche { color: var(--good); }
+.frise .etat.fini { color: var(--good); }
+.frise .etat.cassee { color: var(--bad); }
+
+/* ── 3. Le code, et la machine ────────────────────────────────────── */
+main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 330px;
+  min-height: 0;
+}
+.volet { display: flex; flex-direction: column; min-height: 0; }
+.volet > h2 {
+  margin: 0;
+  padding: 9px 18px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+}
+
+.code { border-right: 1px solid var(--border); }
+.lignes {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 10px 0 18px;
+  font-family: var(--mono);
+  font-size: 14px;
+  line-height: 1.75;
+}
+.ligne {
+  display: grid;
+  grid-template-columns: 24px 34px minmax(0, 52ch) auto;
+  align-items: baseline;
+  gap: 0 6px;
+  padding: 0 18px 0 0;
+  border-left: 3px solid transparent;
+  white-space: pre;
+}
+.ligne .arret {
+  text-align: center;
+  color: transparent;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ligne:hover .arret { color: #5a5a5a; }
+.ligne .arret.pose, .ligne:hover .arret.pose { color: var(--bad); }
+.ligne .no { color: #555; text-align: right; font-size: 12.5px; }
+.ligne .octets {
+  color: #4f4f4f;
+  text-align: left;
+  font-size: 11.5px;
+  letter-spacing: .4px;
+  padding-left: 18px;
+}
+.ligne.ici {
+  background: rgba(55, 148, 255, .13);
+  border-left-color: var(--accent);
+}
+.ligne.ici .no { color: var(--accent); }
+.ligne.ici .octets { color: #7c7c7c; }
+.ligne.fautive {
+  background: rgba(244, 135, 113, .14);
+  border-left-color: var(--bad);
+}
+.ligne.fautive .no { color: var(--bad); }
+.fleche { color: var(--accent); }
+
+/* La machine : trois choses, toute la largeur du volet, aucune barre de
+ * défilement. Un registre dont le dernier chiffre manque ne vaut rien,
+ * et un registre qu'il faut aller chercher en faisant défiler non plus. */
+.machine { background: var(--panel); }
+.machine .dedans { padding: 12px 16px 16px; display: grid; gap: 16px; }
+.regs { display: grid; gap: 5px; }
+.reg {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  background: var(--surface);
+  border-left: 3px solid transparent;
+  font-family: var(--mono);
+  font-size: 13.5px;
+}
+.reg.bouge {
+  border-left-color: var(--changed);
+  background: #332f1f;
+}
+.reg .nom { color: var(--register); font-weight: 600; }
+.reg .val { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
+.reg .hx { color: var(--dim); font-size: 11.5px; }
+.reg .role {
+  grid-column: 1 / -1;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--dim);
+  margin-top: -2px;
+}
+
+.drapeau {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-size: 12.5px;
+}
+.drapeau .pastille {
+  font-family: var(--mono);
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #3a3a3a;
+  color: var(--dim);
+}
+.drapeau .pastille.vrai { background: #2c4a2a; color: var(--good); }
+.drapeau .dit { color: var(--dim); }
+
+.titre-bloc {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  margin-bottom: 7px;
+}
+.pile { display: grid; gap: 4px; }
+.case-pile {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 9px;
+  border-radius: 5px;
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  border-left: 3px solid var(--label);
+}
+.case-pile .ad { color: var(--dim); font-size: 11.5px; }
+.case-pile .vl { text-align: right; color: var(--number); }
+.case-pile .quoi {
+  grid-column: 1 / -1;
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--dim);
+}
+.pile-vide {
+  padding: 10px;
+  border-radius: 5px;
+  border: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+/* ── 4. Ce que fait la ligne où l'on est ──────────────────────────── */
+.explication {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  padding: 13px 18px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.explication h3 { margin: 0 0 3px; font-size: 15px; font-weight: 600; }
+.explication p { margin: 0; font-size: 13px; color: #bdbdbd; max-width: 92ch; line-height: 1.5; }
+.calcul {
+  font-family: var(--mono);
+  font-size: 14px;
+  padding: 9px 14px;
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--number);
+  white-space: nowrap;
+}
+.lien-fiche {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--accent);
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* La fiche : elle pousse la page, elle ne recouvre rien. Un panneau
+ * qui flotte au-dessus du code cache précisément ce qu'on lisait. */
+.fiche {
+  padding: 14px 18px;
+  background: #22282e;
+  border-bottom: 1px solid var(--border);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+.fiche[hidden] { display: none; }
+.fiche .mot { font-family: var(--mono); font-size: 16px; color: var(--mnemonic); font-weight: 600; }
+.fiche .sens { font-size: 13px; font-weight: 600; margin: 2px 0 5px; }
+.fiche p { margin: 0; font-size: 12.5px; color: #b4b4b4; line-height: 1.55; max-width: 100ch; }
+.fiche .fermer { color: var(--dim); font-size: 18px; line-height: 1; padding: 2px 8px; border-radius: 4px; }
+.fiche .fermer:hover { background: var(--surface); color: var(--text); }
+
+/* ── 5. Le résultat : la sortie, le code de retour, et les fautes ─── */
+.resultat {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  padding: 12px 18px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  min-height: 74px;
+}
+.resultat .quoi {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--dim);
+  padding-top: 3px;
+}
+.resultat .dit { font-family: var(--mono); font-size: 13px; line-height: 1.65; }
+.resultat .attente { color: var(--dim); font-family: var(--sans); font-size: 12.5px; }
+.resultat .fini { color: var(--good); }
+.resultat .faute { color: var(--bad); }
+.resultat .aide { color: #bdbdbd; font-family: var(--sans); font-size: 12.5px; margin-top: 4px; }
+.resultat .corriger {
+  margin-top: 7px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  padding: 6px 11px;
+  border-radius: 5px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--good);
+}
+.resultat .corriger:hover { background: #37373d; }
+
+.aveu {
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  color: var(--dim);
+}
+.aveu button {
+  font-size: 11px;
+  color: var(--dim);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.aveu button:hover { color: var(--text); }
+.aveu .touches { font-family: var(--mono); }
+
+@media (max-width: 1020px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .machine { border-top: 1px solid var(--border); }
+  .code { border-right: 0; }
+  .explication { grid-template-columns: minmax(0, 1fr); }
+  .commandes button span.mot { display: none; }
+}
+
+/* Éteint, le bouton principal perd son fond d'accent : à 45 %
+ * d'opacité seulement, un bleu plein a encore l'air cliquable. */
+.commandes button.premier:disabled {
+  opacity: 1;
+  background: var(--surface);
+  border-color: var(--border);
+  color: var(--dim);
+}

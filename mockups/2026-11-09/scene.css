@@ -1,0 +1,459 @@
+/* La Scène : deux temps, jamais les deux à la fois.
+ *
+ * Le pari : au mode simple, écrire et regarder sont deux moments
+ * différents, et les mêler est ce qui rend un atelier d'assembleur
+ * illisible. Donc deux temps, un seul à l'écran : « Écrire », où il n'y
+ * a QUE le texte, et « Regarder », où le code n'est plus qu'un ruban et
+ * où la machine prend toute la place.
+ *
+ * Ce que ça coûte : corriger une ligne qu'on voit passer demande de
+ * revenir au premier temps. En échange, chaque écran n'a qu'un sujet.
+ */
+@import url('base.css');
+
+body {
+  --bg: #17181c;
+  --panel: #1f2026;
+  --surface: #282a31;
+  --text: #e7e7ea;
+  --dim: #8d8f99;
+  --accent: #3794ff;
+  --good: #89d185;
+  --warn: #dcdcaa;
+  --bad: #f48771;
+  --changed: #ffd700;
+  --mnemonic: #569cd6;
+  --number: #b5cea8;
+  --label: #4ec9b0;
+  --comment: #6a9955;
+  --register: #9cdcfe;
+  --directive: #c586c0;
+  --border: #33353d;
+
+  background: var(--bg);
+  color: var(--text);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 100vh;
+}
+
+/* Les deux temps, en haut, de la taille qu'ils méritent. */
+.temps {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 22px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.temps .marque { font-weight: 650; letter-spacing: -.3px; margin-right: 10px; }
+.temps .marque b { color: var(--accent); }
+.bascule { display: flex; gap: 6px; background: var(--bg); padding: 4px; border-radius: 10px; }
+.bascule button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 22px;
+  border-radius: 7px;
+  font-size: 14px;
+  font-weight: 550;
+  color: var(--dim);
+}
+.bascule button:hover { color: var(--text); }
+.bascule button[aria-selected="true"] { background: var(--surface); color: var(--text); }
+.bascule button[aria-selected="true"].jouer { background: var(--accent); color: #fff; }
+.temps .fichier {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--dim);
+  margin-left: auto;
+}
+.temps .mini { display: flex; gap: 2px; }
+.temps .mini button { padding: 8px 12px; border-radius: 6px; font-size: 12.5px; color: var(--dim); }
+.temps .mini button:hover { background: var(--surface); color: var(--text); }
+
+.scene { display: none; min-height: 0; }
+.scene.vue { display: grid; }
+
+/* ── Temps 1 : écrire. Il n'y a que le texte. ──────────────────────── */
+#ecrire { grid-template-rows: minmax(0, 1fr) auto; }
+.papier {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  min-height: 0;
+  background: var(--bg);
+}
+.numeros {
+  padding: 26px 12px 0 0;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.95;
+  color: #4b4d56;
+  user-select: none;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+}
+.papier textarea {
+  border: 0;
+  outline: 0;
+  resize: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 15px;
+  line-height: 1.95;
+  padding: 26px 24px;
+  tab-size: 4;
+  caret-color: var(--accent);
+}
+.conseil {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 24px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--dim);
+}
+.conseil .ok { color: var(--good); }
+.conseil .ko { color: var(--bad); font-family: var(--mono); font-size: 12.5px; }
+.conseil .prochain {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 22px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+.conseil .prochain:hover { background: #2b86f0; }
+
+/* ── Temps 2 : regarder. ───────────────────────────────────────────── */
+#regarder { grid-template-rows: auto minmax(0, 1fr); }
+
+/* La fiche de l'instruction en cours, sous les cartes : c'est ce que
+ * namsdec-doc dit de ce mot-là, et la Scène a justement la place de le
+ * dire en entier plutôt qu'en infobulle. */
+.fiche {
+  margin-top: 20px;
+  padding: 15px 18px;
+  border-radius: 12px;
+  background: #1b2630;
+  border: 1px solid #2c3b47;
+  max-width: 760px;
+}
+.fiche .tete { display: flex; align-items: baseline; gap: 12px; }
+.fiche .mot { font-family: var(--mono); font-size: 17px; color: var(--mnemonic); font-weight: 650; }
+.fiche .sens { font-size: 13.5px; font-weight: 600; }
+.fiche p { margin: 7px 0 0; font-size: 13.5px; line-height: 1.6; color: #a9abb4; }
+.fiche .octets {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #2c3b47;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+}
+.fiche .octets b { color: var(--number); font-weight: 500; }
+
+/* Le ruban : le programme à plat, la ligne courante au centre. */
+.ruban {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 14px 0;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  overflow: hidden;
+  position: relative;
+}
+.ruban::before, .ruban::after {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 90px;
+  pointer-events: none;
+  z-index: 2;
+}
+.ruban::before { left: 0; background: linear-gradient(90deg, var(--panel), transparent); }
+.ruban::after { right: 0; background: linear-gradient(270deg, var(--panel), transparent); }
+.bande {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: transform .22s ease;
+  will-change: transform;
+  padding-left: 50%;
+}
+.vignette {
+  flex: 0 0 auto;
+  min-width: 142px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: #9a9ca6;
+  text-align: center;
+  opacity: .55;
+}
+.vignette .ad { display: block; font-size: 10.5px; color: #65676f; margin-bottom: 3px; }
+.vignette.ici {
+  opacity: 1;
+  background: #1d3147;
+  border-color: var(--accent);
+  color: var(--text);
+  font-size: 15px;
+  box-shadow: 0 0 0 1px rgba(55, 148, 255, .35);
+}
+.vignette.vue { opacity: .78; border-color: #45484f; }
+.vignette.jamais { opacity: .38; }
+
+/* Le plateau : les registres en grand, la pile à droite. */
+.plateau {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 290px;
+  gap: 0;
+  min-height: 0;
+}
+.devant {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+  padding: 22px 26px 0;
+}
+
+/* Ce qui vient de se passer : une phrase, en grand. */
+.dire { max-width: 46ch; }
+.dire .quand {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 600;
+}
+.dire h1 {
+  margin: 7px 0 8px;
+  font-size: 27px;
+  line-height: 1.2;
+  letter-spacing: -.6px;
+  font-weight: 600;
+}
+.dire p { margin: 0; color: #a9abb4; font-size: 14px; line-height: 1.55; }
+
+.cartes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+  padding: 20px 0 0;
+}
+.carte {
+  padding: 16px 18px 15px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  min-height: 128px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+.carte .nom {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--register);
+  font-weight: 650;
+  letter-spacing: .5px;
+}
+.carte .role { font-size: 11.5px; color: var(--dim); margin-top: 2px; }
+.carte .chiffre {
+  font-family: var(--mono);
+  font-size: 40px;
+  line-height: 1;
+  letter-spacing: -1.5px;
+  font-variant-numeric: tabular-nums;
+  margin-top: 12px;
+}
+.carte .chiffre.long { font-size: 19px; letter-spacing: -.4px; }
+.carte .depuis {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--dim);
+  margin-top: 6px;
+  min-height: 16px;
+}
+.carte .depuis b { color: var(--changed); font-weight: 600; }
+.carte.bouge { border-color: #6b5a1d; background: #26231a; }
+.carte.bouge .chiffre { color: var(--changed); }
+
+.ligne-drapeaux { display: flex; gap: 10px; align-items: center; padding: 0 0 18px; }
+.drapeau {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 15px;
+  border-radius: 9px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+.drapeau .code { font-family: var(--mono); font-weight: 700; color: var(--dim); }
+.drapeau.vrai { border-color: #37562f; background: #1e2a1c; }
+.drapeau.vrai .code { color: var(--good); }
+.drapeau .dit { color: var(--dim); font-size: 12.5px; }
+
+/* La pile, dessinée : des blocs qu'on empile, pas une liste. */
+.coulisse {
+  background: var(--panel);
+  border-left: 1px solid var(--border);
+  padding: 20px 20px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.coulisse h2 {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 1.3px;
+  text-transform: uppercase;
+  color: var(--dim);
+  font-weight: 600;
+}
+.coulisse .sous { font-size: 12px; color: var(--dim); margin: 0 0 14px; line-height: 1.5; }
+.blocs { display: flex; flex-direction: column; gap: 7px; }
+.bloc {
+  padding: 11px 13px;
+  border-radius: 8px;
+  background: #22312c;
+  border: 1px solid #35564b;
+  font-family: var(--mono);
+  font-size: 13px;
+}
+.bloc .haut { display: flex; justify-content: space-between; gap: 10px; color: var(--label); }
+.bloc .ad { color: var(--dim); font-size: 11px; }
+.bloc .quoi { font-family: var(--sans); font-size: 11.5px; color: var(--dim); margin-top: 4px; }
+.sol {
+  margin-top: 7px;
+  padding: 13px;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  font-size: 12px;
+  color: var(--dim);
+  text-align: center;
+}
+.rsp {
+  margin-top: 14px;
+  padding-top: 13px;
+  border-top: 1px solid var(--border);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.rsp b { color: var(--register); }
+
+/* La sortie, quand il y en a une. */
+.sortie-scene {
+  margin-top: auto;
+  padding: 14px 0 18px;
+  border-top: 1px solid var(--border);
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #a9abb4;
+}
+.sortie-scene .fini { color: var(--good); font-weight: 600; }
+.sortie-scene .faute { color: var(--bad); font-family: var(--mono); font-size: 12.5px; }
+.sortie-scene .corriger {
+  margin-top: 8px;
+  font-size: 13px;
+  padding: 7px 14px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--good);
+}
+
+/* Le pied : un seul grand geste. */
+.pied {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 24px;
+  background: var(--panel);
+  border-top: 1px solid var(--border);
+}
+.geste {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 30px;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+.geste:hover:not(:disabled) { background: #2b86f0; }
+.geste .touche {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, .22);
+}
+.pied .autre {
+  padding: 12px 18px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13.5px;
+}
+.pied .autre:hover:not(:disabled) { background: #33353d; }
+.pied .avancee {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--dim);
+}
+.pied .jauge { width: 190px; height: 5px; border-radius: 3px; background: var(--surface); overflow: hidden; }
+.pied .jauge i { display: block; height: 100%; background: var(--accent); transition: width .18s; }
+.pied .compte { font-family: var(--mono); color: var(--text); }
+
+.aveu {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  color: var(--dim);
+}
+.aveu button { font-size: 11px; color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
+.aveu button:hover { color: var(--text); }
+.aveu .touches { font-family: var(--mono); }
+
+@media (max-width: 1040px) {
+  .plateau { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) auto; }
+  .coulisse { border-left: 0; border-top: 1px solid var(--border); }
+  .cartes { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .carte .chiffre { font-size: 32px; }
+}
+
+/* Qui demande moins de mouvement n'en reçoit aucun : le ruban se place
+ * alors d'un coup. C'est aussi ce qui rend une capture reproductible —
+ * une image prise pendant un glissement ne se compare à rien. */
+@media (prefers-reduced-motion: reduce) {
+  .bande, .pied .jauge i { transition: none; }
+}
+
+/* Même règle que partout : éteint, le grand geste perd son fond. */
+.geste:disabled {
+  opacity: 1;
+  background: var(--surface);
+  color: var(--dim);
+  border: 1px solid var(--border);
+}

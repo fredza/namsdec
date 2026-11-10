@@ -260,9 +260,22 @@ impl NamsdecApp {
             // que les onglets qu'il accompagne. La rangée dit ce qu'on
             // regarde ; « Détacher » n'est qu'un déménagement.
             |ui| {
-                if small_framed_button(ui, theme, s.view_detach)
-                    .on_hover_text(s.view_detach_hint)
-                    .clicked()
+                // ET SEULEMENT S'IL Y A QUELQUE CHOSE À DÉTACHER.
+                //
+                // La place du bouton était déjà mise à zéro dans ce
+                // cas (`largeur_bouton` ci-dessus) ; il se peignait
+                // quand même, et `détacher_vue` refusait en silence.
+                // Relevé à l'écran le 10 novembre 2026, sur l'Établi,
+                // la source active : « ne sert à rien ». Un bouton
+                // qu'on clique sans rien obtenir est pire qu'absent —
+                // on le reclique, puis on se demande ce qu'on a mal
+                // fait. La source ne se détache pas (voir
+                // `VueCentrale::détachable`) : elle est ce qui reste
+                // quand une autre part.
+                if active.détachable()
+                    && small_framed_button(ui, theme, s.view_detach)
+                        .on_hover_text(s.view_detach_hint)
+                        .clicked()
                 {
                     détacher = true;
                 }
@@ -384,6 +397,23 @@ impl NamsdecApp {
             // s'y installe. Ouvrir la console sans changer d'onglet
             // montrerait la sortie du programme à qui vient de cliquer
             // sur un compte d'erreurs.
+            //
+            // ET C'EST UNE BASCULE, demandé à l'écran le 10 novembre
+            // 2026, une flèche rouge sur le compteur : « ça devrait
+            // être une bascule ». Le compte ouvrait la console et rien
+            // ne la refermait par là — on cliquait une deuxième fois,
+            // il ne se passait rien, et il fallait aller chercher
+            // ailleurs ce qu'on venait d'ouvrir ici.
+            //
+            // REFERMER NE VAUT QUE SI L'ON EST DÉJÀ SUR LA LISTE : la
+            // console ouverte sur la sortie du programme, un clic sur
+            // le compte doit montrer les problèmes, pas tout fermer.
+            // C'est le même geste dans les deux cas — « montre-moi les
+            // problèmes » —, et il ne se renverse qu'une fois rendu.
+            if self.show_console && self.console_tab == ConsoleTab::Diagnostics {
+                self.show_console = false;
+                return;
+            }
             self.show_console = true;
             self.console_tab = ConsoleTab::Diagnostics;
             return;

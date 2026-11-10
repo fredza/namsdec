@@ -103,6 +103,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("editor.rs", include_str!("editor.rs")),
     ("editing.rs", include_str!("editing.rs")),
     ("enums.rs", include_str!("enums.rs")),
+    ("etabli.rs", include_str!("etabli.rs")),
     ("errors.rs", include_str!("errors.rs")),
     ("exercises.rs", include_str!("exercises.rs")),
     ("exports.rs", include_str!("exports.rs")),
@@ -134,6 +135,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("roles.rs", include_str!("roles.rs")),
     ("run.rs", include_str!("run.rs")),
     ("settings.rs", include_str!("settings.rs")),
+    ("scene.rs", include_str!("scene.rs")),
     ("session.rs", include_str!("session.rs")),
     ("sidebar.rs", include_str!("sidebar.rs")),
     ("statusbar.rs", include_str!("statusbar.rs")),
@@ -365,6 +367,34 @@ fn la_liste_des_sources_ne_rate_aucun_module() {
         oubliés.len(),
         oubliés
     );
+}
+
+/// LE VRAI CADRE D'UN TEXTE PEINT.
+///
+/// `Rect::from_min_size(t.pos, t.galley.size())` est faux, et il l'est
+/// EN SILENCE : `TextShape::pos` n'est le coin haut-gauche que pour une
+/// galley alignée à gauche. Alignée à droite — tout ce qu'une rangée
+/// `right_to_left` pose, et egui en met partout —, `pos` est le bord
+/// DROIT, et la galley porte son décalage dans son propre rectangle :
+/// `galley.rect` vaut alors `[-86, 0] - [0, 14]`.
+///
+/// Mesuré le 10 novembre 2026 sur « RIP 0x400000 », dans la frise de
+/// l'Établi : rect alloué `[1499.8 - 1586.0]`, mesure naïve
+/// `[1586.0 - 1672.2]`. Quatre-vingt-six pixels d'erreur, soit la
+/// largeur du texte, et toujours vers la droite — c'est-à-dire vers le
+/// bord où un recouvrement se produit.
+///
+/// Un relevé qui emploie la forme naïve ne ment donc pas au hasard :
+/// il déplace chaque étiquette alignée à droite hors du cadre où elle
+/// est vraiment, ce qui RATE les recouvrements de ce côté-là et en
+/// invente ailleurs.
+///
+/// `galley.rect` porte déjà le décalage ; il suffit de le translater.
+/// Les relevés qui parcourent `galley.rows` étaient justes depuis
+/// toujours, pour la même raison : les lignes sont dans l'espace de la
+/// galley, décalage compris.
+fn cadre_du_texte(t: &egui::epaint::TextShape) -> egui::Rect {
+    t.galley.rect.translate(t.pos.to_vec2())
 }
 
 /// La série livrée, lue dans le dépôt.
@@ -862,6 +892,12 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
         ("chronologie", "timeline_window", |app| {
             app.show_timeline = true;
         }),
+        // LA SCÈNE : la machine en grand. Elle passe par le banc
+        // comme les quatorze autres fenêtres — ses grands chiffres se
+        // recouvrent aussi bien que le reste si on ne les mesure pas.
+        ("scène", "scene_window", |app| {
+            app.show_scene = true;
+        }),
         ("motif cyclique", "cyclic_window", |app| {
             app.show_cyclic = true
         }),
@@ -1099,6 +1135,171 @@ fn scènes() -> Vec<Scène> {
                 "application / des problèmes à compter".to_owned(),
                 None,
                 Box::new(|app| {
+                    app.source = PROGRAMME_FAUTIF.to_owned();
+                    app.do_assemble();
+                }),
+            ));
+        }
+        // L'ÉTABLI : la disposition du mode simple, qui n'est pas la
+        // même interface avec des morceaux en moins mais une mise en
+        // page à elle (voir `etabli.rs`). Elle passe donc par TOUS les
+        // invariants du banc, comme n'importe quelle autre scène : ses
+        // quatre bandes se recouvrent aussi bien que les autres si on
+        // ne les mesure pas.
+        scènes.push((
+            format!("établi{suffixe}"),
+            None,
+            Box::new(move |app| {
+                if marche {
+                    démarre(app);
+                }
+                app.debutant = true;
+            }),
+        ));
+        // LES DEUX BANDES DE L'ÉTABLI SORTIES DANS LEUR FENÊTRE.
+        //
+        // Seulement en marche, et c'est le sujet : on détache une bande
+        // parce que ce qu'elle porte n'y tient pas — la pile d'un vrai
+        // binaire, une explication de cinq lignes. Sans programme, la
+        // bande du résultat n'a qu'une phrase à dire.
+        if marche {
+            scènes.push((
+                "établi / la machine détachée".to_owned(),
+                Some("etabli_machine_window"),
+                Box::new(|app| {
+                    app.debutant = true;
+                    démarre(app);
+                    app.etabli_machine_detachee = true;
+                }),
+            ));
+            scènes.push((
+                "établi / le résultat détaché".to_owned(),
+                Some("etabli_resultat_window"),
+                Box::new(|app| {
+                    app.debutant = true;
+                    démarre(app);
+                    app.etabli_resultat_detache = true;
+                }),
+            ));
+        }
+        // L'ÉTABLI AVEC UN EXERCICE EN COURS, dans les deux formes
+        // qu'un exercice prend.
+        //
+        // La bande de l'exercice n'existait pas jusqu'au 10 novembre
+        // 2026, et aucune scène ne la montrait donc. Les deux sont
+        // nécessaires parce qu'elle ne porte PAS la même chose : un
+        // exercice d'écriture montre le but, condition par condition,
+        // avec le constat de ce qui manque et le budget ; un exercice
+        // de lecture montre une question et un champ de réponse. Ce
+        // sont deux mises en page, et la seconde ne serait jamais
+        // mesurée si l'on ne regardait que la première.
+        //
+        // « En marche » seulement : sans programme assemblé, le but
+        // n'a rien à évaluer et la bande se réduit à son énoncé — ce
+        // qui est exactement l'état qu'on ne veut PAS mesurer seul.
+        if marche {
+            for (nom, id) in [
+                ("d'écriture", "namsdec/echange"),
+                ("de lecture", "namsdec/prevoir_somme"),
+            ] {
+                scènes.push((
+                    format!("établi / un exercice {nom}"),
+                    None,
+                    Box::new(move |app: &mut NamsdecApp| {
+                        app.debutant = true;
+                        app.exercises = true;
+                        app.exercise_packs = vec![builtin_pack()];
+                        app.load_exercise_now(id);
+                        // Le programme de l'exercice, assemblé et
+                        // mené jusqu'au bout : c'est l'état où le but
+                        // s'allume et où la réponse se vérifie.
+                        app.do_assemble();
+                        for _ in 0..200 {
+                            app.do_step();
+                        }
+                    }),
+                ));
+            }
+        }
+        // L'ÉTABLI, LE CURSEUR SUR UNE INSTRUCTION, RIEN QUI TOURNE.
+        //
+        // C'est l'état où l'on LIT un programme avant de l'exécuter,
+        // c'est-à-dire la première moitié de l'apprentissage, et
+        // aucune scène ne le montrait : toutes assemblaient d'abord.
+        // La bande du bas y porte la fiche de la ligne où est le
+        // curseur — un titre, deux ou trois phrases, un bouton —, ce
+        // qui est une mise en page de plus et qui doit donc passer par
+        // les invariants comme les autres.
+        //
+        // Pas « en marche » : le propre de cet état est que rien ne
+        // tourne.
+        if !marche {
+            scènes.push((
+                "établi / le curseur sur une instruction".to_owned(),
+                None,
+                Box::new(|app| {
+                    app.debutant = true;
+                    // La ligne du `add` du programme d'accueil : on la
+                    // cherche plutôt que d'écrire un décalage, qui
+                    // serait faux au premier mot changé.
+                    app.cursor_byte = app.source.find("add ").unwrap_or(0);
+                }),
+            ));
+        }
+        // L'ÉTABLI DEVANT UN BINAIRE OUVERT.
+        //
+        // C'est l'écran de la capture du 10 novembre 2026, et il porte
+        // PLUS de rangées que les autres : les notes du chargement, la
+        // sortie, les arguments, l'environnement, et le champ où l'on
+        // répond au programme. Aucune scène ne le montrait — toutes
+        // assemblaient un source —, et c'est là que la rangée de
+        // saisie passait sous le bord de la fenêtre.
+        if let Some(octets) = binaire_fabriqué() {
+            scènes.push((
+                "établi / un binaire ouvert".to_owned(),
+                None,
+                Box::new(move |app| {
+                    app.debutant = true;
+                    app.load_elf(&octets, NOM_FABRIQUÉ);
+                    // LES ARGUMENTS DÉPLIÉS : c'est l'état de la
+                    // capture, et le plus haut que la bande ait à
+                    // porter — la rangée des arguments et l'en-tête de
+                    // l'environnement s'ajoutent au champ de saisie.
+                    app.console_args_open = true;
+                }),
+            ));
+        }
+        // L'ÉTABLI AVEC UNE NOTE LONGUE DANS SA FRISE.
+        //
+        // Toutes les scènes de l'Établi portaient un état court —
+        // « Assemblé », « Arrêté » —, et la frise du haut n'avait donc
+        // jamais à se serrer. Celle du 10 novembre 2026 le demandait :
+        // la note d'un binaire lié dynamiquement fait quatre lignes, et
+        // elle passait PAR DESSUS le bouton de la Scène et par dessus
+        // RIP, jusqu'à mille deux cents pixels hors de l'écran. Une
+        // rangée d'egui laisse ses étiquettes s'allonger ; il faut le
+        // lui interdire, et le mesurer.
+        if marche {
+            scènes.push((
+                "établi / une note longue".to_owned(),
+                None,
+                Box::new(|app| {
+                    app.debutant = true;
+                    démarre(app);
+                    app.status = Status::Note(|s| s.binary_dynamic);
+                }),
+            ));
+        }
+        // Et l'Établi devant un programme que nasm refuse : la bande du
+        // résultat est le seul endroit du mode simple où une erreur se
+        // lit, et c'est l'état qu'il faut regarder — un écran se juge
+        // aussi à ce qu'il fait quand ça rate.
+        if marche {
+            scènes.push((
+                "établi / l'assemblage a échoué".to_owned(),
+                None,
+                Box::new(|app| {
+                    app.debutant = true;
                     app.source = PROGRAMME_FAUTIF.to_owned();
                     app.do_assemble();
                 }),

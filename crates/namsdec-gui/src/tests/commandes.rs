@@ -1304,7 +1304,7 @@ fn les_frappes_du_menu_affichage_s_alignent_sans_elargir_le_menu() {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 vus.push((
                     t.galley.text().to_owned(),
-                    egui::Rect::from_min_size(t.pos, t.galley.size()).intersect(clipped.clip_rect),
+                    cadre_du_texte(t).intersect(clipped.clip_rect),
                 ));
             }
         }
@@ -1816,7 +1816,7 @@ fn la_legende_de_chaleur_accorde_son_unite() {
 /// tait.
 #[test]
 fn la_barre_d_outils_se_gradue() {
-    let relevé = |debutant: bool| -> Vec<String> {
+    let relevé = |debutant: bool, en_marche: bool| -> Vec<String> {
         let ctx = egui::Context::default();
         let mut app = NamsdecApp {
             debutant,
@@ -1828,12 +1828,15 @@ fn la_barre_d_outils_se_gradue() {
         // grisées — elles sont peintes tout de même, mais on veut
         // l'écran vrai.
         app.do_assemble();
+        if en_marche {
+            app.status = Status::Running;
+        }
         let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
         textes.into_iter().map(|(t, _)| t).collect()
     };
 
-    let avancée = relevé(false);
-    let débutante = relevé(true);
+    let avancée = relevé(false, false);
+    let débutante = relevé(true, false);
     let dit = |où: &[String], quoi: &str| où.iter().any(|t| t == quoi);
     let s = strings(Lang::Fr);
 
@@ -1856,17 +1859,39 @@ fn la_barre_d_outils_se_gradue() {
     // La débutante garde ce qui se comprend sans rien savoir d'avance —
     // « Step Back » compris, décidé le 3 novembre : revenir d'un pas
     // s'explique en une phrase et s'essaie sans risque.
-    for attendu in [
-        s.action_assemble,
-        s.action_run,
-        s.action_stop,
-        s.action_reset,
-    ] {
+    for attendu in [s.action_assemble, s.action_run, s.action_reset] {
         assert!(
             dit(&débutante, attendu),
             "« {attendu} » se comprend sans rien savoir : {débutante:?}"
         );
     }
+    // ARRÊTER N'EST PAS UN BOUTON DE PLUS, C'EST LE MÊME.
+    //
+    // Depuis que le mode simple a sa propre barre (l'Établi, 9 novembre
+    // 2026), « Exécuter » devient « Arrêter » pendant que le programme
+    // tourne : le programme court ou il ne court pas, et deux boutons
+    // dont l'un est toujours éteint prennent la place pour ne rien
+    // dire. Ce qu'on vérifie n'a pas changé — on doit pouvoir arrêter —,
+    // seulement l'endroit où la commande se trouve.
+    let débutante_en_marche = relevé(true, true);
+    assert!(
+        dit(&débutante_en_marche, s.action_stop),
+        "« {} » doit paraître pendant que le programme tourne : {débutante_en_marche:?}",
+        s.action_stop
+    );
+    assert!(
+        !dit(&débutante_en_marche, s.action_run),
+        "et prendre la place d'« {} », qui n'a plus rien à proposer : \
+         {débutante_en_marche:?}",
+        s.action_run
+    );
+    // Au mode avancé, les deux restent côte à côte : c'est une barre
+    // d'outils de débogueur, et l'on y lit l'état à la grisaille.
+    assert!(
+        dit(&avancée, s.action_stop),
+        "« {} » reste dans la barre avancée",
+        s.action_stop
+    );
     // ET LES DEUX PAS S'Y APPELLENT PAR CE QU'ILS FONT. « Step Back »
     // reste au débutant (décidé le 3 novembre : revenir d'un pas
     // s'explique en une phrase et s'essaie sans risque) — il ne peut
@@ -1987,25 +2012,27 @@ fn les_rangees_d_onglets_se_graduent() {
     assert_eq!(avec.len(), 6, "{avec:?}");
 }
 
-/// LES MENUS SE GRADUENT COMME LE RESTE, ET SANS SE CONTREDIRE.
+/// LE MENU OUTILS MONTRE TOUT, ET LE MODE SIMPLE NE PERD RIEN.
 ///
-/// Un menu qui propose ce que la rangée d'onglets ne montre pas envoie
-/// le débutant dans un endroit qu'il ne saura plus retrouver ; un menu
-/// qui cache ce que la barre d'outils offre lui fait croire qu'il a
-/// rêvé. Les deux sont des contradictions, et c'est elles que ce
-/// contrôle attrape — en ouvrant vraiment le menu et en relevant ce
-/// qu'il PEINT.
+/// Ce contrôle avait un autre sujet jusqu'au 9 novembre 2026 : il
+/// ouvrait le menu Outils aux DEUX niveaux et vérifiait qu'il se
+/// graduait comme la barre et les rangées d'onglets. **Le mode simple
+/// n'a plus de barre de menus du tout** (voir `etabli.rs`), si bien que
+/// la moitié débutante de ce relevé ne mesurait plus rien.
+///
+/// Ce qu'il protège désormais, et qui est le vrai risque d'une
+/// disposition à part : **avoir amputé le mode simple en le
+/// simplifiant.** Tout ce que le menu Outils offrait au niveau
+/// débutant doit rester atteignable sans lui — par la rangée des vues,
+/// par la barre, ou par un bouton nommé.
 #[test]
 fn les_menus_se_graduent_sans_se_contredire() {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
 
     let s = strings(Lang::Fr);
-    let entrées = |debutant: bool| -> Vec<String> {
-        let mut app = NamsdecApp {
-            debutant,
-            ..Default::default()
-        };
+    let menu_outils_avancé = || -> Vec<String> {
+        let mut app = NamsdecApp::default();
         let mut harness = Harness::builder()
             .with_size(egui::Vec2::new(1400.0, 900.0))
             .build_ui(move |ui| {
@@ -2026,55 +2053,104 @@ fn les_menus_se_graduent_sans_se_contredire() {
             .collect()
     };
 
-    let avancé = entrées(false);
-    let débutant = entrées(true);
+    let avancé = menu_outils_avancé();
     let dit = |où: &[String], quoi: &str| où.iter().any(|t| t == quoi);
-
+    // Les entrées de menu portent leur raccourci — « Jusqu'au prochain
+    // appel (Espace u c) » —, donc on les reconnaît à leur début.
+    let commence = |où: &[String], quoi: &str| où.iter().any(|t| t.starts_with(quoi));
     // Ce contrôle ne vaut que si le menu s'est VRAIMENT ouvert : sans
-    // cela il comparerait deux listes sans l'entrée cherchée et
-    // passerait au vert en ne regardant rien.
+    // cela il relèverait une liste vide et passerait au vert en ne
+    // regardant rien.
     assert!(
         dit(&avancé, s.cyclic_open),
         "le menu Outils doit être ouvert et relevé : {avancé:?}"
     );
-    for avancée in [
+    for attendue in [
         s.cyclic_open,
         s.vectors_open,
         s.timeline_open,
         s.action_run_to_call,
         s.action_step_over,
+        s.action_step_into,
     ] {
         assert!(
-            !dit(&débutant, avancée),
-            "« {avancée} » demande de savoir ce qu'on cherche : {débutant:?}"
-        );
-    }
-    // Les entrées qui portent leur raccourci — « Déroulement du
-    // programme… (Espace v g) » — se reconnaissent par leur début.
-    let commence = |où: &[String], quoi: &str| où.iter().any(|t| t.starts_with(quoi));
-    for restée in [
-        s.analysis_open,
-        s.flow_open,
-        s.calculator_open,
-        s.action_assemble,
-        s.breakpoints_open,
-    ] {
-        assert!(
-            commence(&débutant, restée),
-            "« {restée} » se comprend sans rien savoir : {débutant:?}"
+            commence(&avancé, attendue),
+            "« {attendue} » reste dans le menu Outils du mode avancé : {avancé:?}"
         );
     }
 
-    // ET LE PAS PORTE LE MÊME NOM PARTOUT. La barre d'outils disait
-    // « Pas à pas » pendant que le menu disait encore « Step Into » :
-    // deux noms pour un geste, dans la même image.
+    // CE QUE LE MODE SIMPLE GARDE, et par quel chemin.
+    //
+    // Les cinq façons de regarder qui sont de niveau débutant ont leur
+    // onglet dans la rangée des vues, que l'Établi garde — c'est
+    // précisément pour elles qu'il la garde.
+    let simple = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    for vue in [
+        VueCentrale::Source,
+        VueCentrale::Disassembly,
+        VueCentrale::Flow,
+        VueCentrale::Analysis,
+        VueCentrale::Breakpoints,
+    ] {
+        assert!(
+            simple.vue_dans_la_rangée(vue) && simple.vue_au_niveau(vue),
+            "{vue:?} se comprend sans rien savoir : elle garde son onglet au mode simple"
+        );
+    }
+    // Et ce qui demande de savoir ce qu'on cherche n'est pas dans la
+    // rangée : le mode simple montre MOINS, pas autre chose.
+    for vue in [
+        VueCentrale::Timeline,
+        VueCentrale::Vectors,
+        VueCentrale::Patches,
+    ] {
+        assert!(
+            !simple.vue_au_niveau(vue),
+            "{vue:?} demande de savoir ce qu'on cherche : pas dans la rangée du mode simple"
+        );
+    }
+
+    // Les quatre portes de la barre de l'Établi : ouvrir, enregistrer,
+    // l'aide, et le parcours d'exercices — qui est la raison d'être du
+    // projet, et qui n'aurait plus eu de porte du tout sans elle.
+    let écrit_au_mode_simple = || -> Vec<String> {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            debutant: true,
+            exercises: true,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let (_, textes) = ce_qui_est_écrit(&ctx, &mut app, None, 3);
+        textes.into_iter().map(|(t, _)| t).collect()
+    };
+    let établi = écrit_au_mode_simple();
+    for porte in [
+        s.file_open_file,
+        s.action_save,
+        s.menu_help,
+        s.exercises_open,
+        s.action_assemble,
+    ] {
+        assert!(
+            dit(&établi, porte),
+            "« {porte} » doit avoir sa porte au mode simple : {établi:?}"
+        );
+    }
+
+    // ET LE PAS PORTE LE MÊME NOM PARTOUT. La barre disait « Pas à
+    // pas » pendant que le menu disait encore « Step Into » : deux noms
+    // pour un geste, dans la même image.
     assert!(
-        dit(&débutant, s.action_step_simple),
-        "le menu nomme le pas comme la barre : {débutant:?}"
+        dit(&établi, s.action_step_simple),
+        "le mode simple nomme le pas par ce qu'il fait : {établi:?}"
     );
     assert!(
-        !dit(&débutant, s.action_step_into),
-        "et ne garde pas l'ancien nom à côté : {débutant:?}"
+        !dit(&établi, s.action_step_into),
+        "et ne garde pas l'ancien nom à côté : {établi:?}"
     );
     assert!(
         dit(&avancé, s.action_step_into),
@@ -2098,24 +2174,34 @@ fn les_menus_se_graduent_sans_se_contredire() {
     assert!(palette(false).contains(&s.action_step_into.to_string()));
 }
 
-/// LA BASCULE ENTRE LES NIVEAUX SE TROUVE SANS LA CHERCHER.
+/// ON PEUT TOUJOURS CHANGER DE NIVEAU, ET SANS LE CHERCHER.
 ///
-/// Signalé à l'écran le 3 novembre 2026, et c'est le genre de défaut
-/// qu'aucune mesure ne pose d'elle-même : « je ne sais pas basculer
-/// entre les modes débutant et avancé ». Le réglage n'avait de chemin
-/// que par Fichier › Préférences › Modules — trois gestes, et au seul
-/// endroit où quelqu'un qui débute n'ira pas chercher.
+/// Le défaut d'origine est un retour d'écran du 3 novembre 2026 :
+/// *« je ne sais pas basculer entre les modes débutant et avancé. »*
+/// Le réglage n'avait de chemin que par Fichier › Préférences ›
+/// Modules — trois gestes, et au seul endroit où quelqu'un qui débute
+/// n'ira pas chercher.
 ///
-/// Il est maintenant dans le menu **Affichage**, qui ne contient que
-/// des bascules décidant de ce qu'on VOIT, et en tête parce qu'il
-/// gouverne les autres. Le contrôle ouvre vraiment le menu et le lit.
+/// LA RÉPONSE N'EST PLUS LA MÊME DES DEUX CÔTÉS depuis que le mode
+/// simple a sa propre disposition (l'Établi, 9 novembre 2026) :
+///
+/// * au mode avancé, la bascule est en tête du menu Affichage, qui ne
+///   contient que des bascules décidant de ce qu'on VOIT, et celle-ci
+///   les gouverne toutes ;
+/// * au mode simple, il n'y a plus de barre de menus du tout — la
+///   sortie est un BOUTON de la barre, nommé par où il mène.
+///
+/// Ce que le contrôle protège n'a pas changé d'un mot : d'où que l'on
+/// parte, on doit voir comment aller à l'autre niveau. Il ouvre donc
+/// vraiment le menu d'un côté, et cherche vraiment le bouton de
+/// l'autre.
 #[test]
-fn la_bascule_des_niveaux_est_dans_le_menu_affichage() {
+fn on_peut_toujours_changer_de_niveau() {
     use egui_kittest::Harness;
     use egui_kittest::kittest::Queryable;
 
     let s = strings(Lang::Fr);
-    let lu = |debutant: bool| -> Vec<String> {
+    let écran = |debutant: bool, ouvrir_le_menu: bool| -> Vec<String> {
         let mut app = NamsdecApp {
             debutant,
             ..Default::default()
@@ -2127,8 +2213,10 @@ fn la_bascule_des_niveaux_est_dans_le_menu_affichage() {
                 app.draw(ui)
             });
         harness.run();
-        harness.get_by_label(s.menu_view).click();
-        harness.run();
+        if ouvrir_le_menu {
+            harness.get_by_label(s.menu_view).click();
+            harness.run();
+        }
         harness
             .output()
             .shapes
@@ -2140,18 +2228,30 @@ fn la_bascule_des_niveaux_est_dans_le_menu_affichage() {
             .collect()
     };
 
-    for debutant in [false, true] {
-        let textes = lu(debutant);
-        // Le menu s'est bien ouvert : sans cette vérification, le
-        // contrôle passerait au vert en ne regardant rien.
+    // AU MODE AVANCÉ : en tête du menu Affichage.
+    let menu = écran(false, true);
+    // Le menu s'est bien ouvert : sans cette vérification, le contrôle
+    // passerait au vert en ne regardant rien.
+    assert!(
+        menu.iter().any(|t| t == s.view_toolbar),
+        "le menu Affichage doit être ouvert : {menu:?}"
+    );
+    assert!(
+        menu.iter().any(|t| t == s.beginner_toggle),
+        "la bascule des niveaux se lit dans le menu Affichage : {menu:?}"
+    );
+
+    // AU MODE SIMPLE : un bouton de la barre, et pas de menu du tout.
+    let établi = écran(true, false);
+    assert!(
+        établi.iter().any(|t| t == s.etabli_advanced),
+        "le mode simple montre par où l'on en sort : {établi:?}"
+    );
+    for menu_disparu in [s.menu_file, s.menu_view, s.menu_tools] {
         assert!(
-            textes.iter().any(|t| t == s.view_toolbar),
-            "le menu Affichage doit être ouvert : {textes:?}"
-        );
-        assert!(
-            textes.iter().any(|t| t == s.beginner_toggle),
-            "la bascule des niveaux s'y lit, qu'on soit débutant ou non ({debutant}) : \
-             {textes:?}"
+            !établi.iter().any(|t| t == menu_disparu),
+            "le mode simple n'a pas de barre de menus — « {menu_disparu} » n'y est pas : \
+             {établi:?}"
         );
     }
 }

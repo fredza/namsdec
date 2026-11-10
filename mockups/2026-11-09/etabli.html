@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>namsdec — L’Établi (mode simple)</title>
+<link rel="stylesheet" href="etabli.css">
+</head>
+<body>
+
+<header class="barre">
+  <span class="marque">namsdec<b>.</b></span>
+  <span class="fichier">somme.asm<span class="etoile" id="modifie"> •</span></span>
+  <div class="commandes">
+    <button id="b-lancer" class="premier"><span class="glyphe">▶</span> <span class="mot">Lancer</span></button>
+    <button id="b-pas"><span class="glyphe">⏭</span> <span class="mot">Un pas</span></button>
+    <button id="b-recul"><span class="glyphe">⏮</span> <span class="mot">Revenir</span></button>
+    <button id="b-reprendre"><span class="glyphe">↺</span> <span class="mot">Reprendre</span></button>
+  </div>
+  <div class="secondaires">
+    <button>Ouvrir</button>
+    <button>Enregistrer</button>
+    <button>Aide</button>
+    <button>Mode avancé ▸</button>
+  </div>
+</header>
+
+<div class="frise">
+  <span class="etat" id="etat">Prêt</span>
+  <span class="jauge"><i id="jauge" style="width:0%"></i></span>
+  <span class="compte" id="compte">pas 0 / 22</span>
+</div>
+
+<main>
+  <section class="volet code">
+    <h2>Ce que j’ai écrit</h2>
+    <div class="lignes" id="lignes"></div>
+  </section>
+  <aside class="volet machine">
+    <h2>Ce que fait la machine</h2>
+    <div class="dedans">
+      <div class="regs" id="regs"></div>
+      <div class="drapeau">
+        <span class="pastille" id="zf">ZF 0</span>
+        <span class="dit" id="zf-dit">le dernier calcul n’a pas donné zéro</span>
+      </div>
+      <div>
+        <div class="titre-bloc">La pile</div>
+        <div class="pile" id="pile"></div>
+      </div>
+    </div>
+  </aside>
+</main>
+
+<section class="fiche" id="fiche" hidden>
+  <div>
+    <div class="mot" id="fiche-mot"></div>
+    <div class="sens" id="fiche-sens"></div>
+    <p id="fiche-txt"></p>
+  </div>
+  <button class="fermer" id="fiche-fermer" aria-label="Fermer la fiche">×</button>
+</section>
+
+<section class="explication">
+  <div>
+    <h3 id="ex-titre">Prêt à commencer</h3>
+    <p id="ex-texte">Le programme est assemblé. Appuyez sur « Un pas » pour exécuter la première ligne, ou sur « Lancer » pour le voir aller jusqu’au bout.</p>
+    <button class="lien-fiche" id="b-fiche" hidden>Qu’est-ce que cette instruction ? ▸</button>
+  </div>
+  <div class="calcul" id="ex-calcul">—</div>
+</section>
+
+<footer class="resultat" id="resultat">
+  <span class="quoi">Résultat</span>
+  <div class="dit" id="sortie"></div>
+</footer>
+
+<div class="aveu">
+  <span>Maquette · scénario fixe · aucun assembleur ni émulateur n’est lancé</span>
+  <span class="touches">F10 un pas · Maj+F10 revenir · Espace lancer · Début reprendre</span>
+  <span><button id="b-erreur">Montrer ce que donne une faute de frappe</button> · <a href="index.html">Galerie</a></span>
+</div>
+
+<script src="model.js"></script>
+<script src="commun.js"></script>
+<script src="etabli.js"></script>
+</body>
+</html>

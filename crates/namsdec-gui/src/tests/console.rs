@@ -1265,7 +1265,7 @@ fn the_input_row_is_visible_at_every_console_height() {
                         // le haut dépassait dans le panneau passait pour
                         // visible — alors qu'à l'écran elle était coupée en
                         // deux, champ et boutons sous le bord.
-                        let boîte = egui::Rect::from_min_size(texte.pos, texte.galley.size());
+                        let boîte = cadre_du_texte(texte);
                         vus.insert(rangée, (boîte, clipped.clip_rect));
                     }
                 }
@@ -1808,7 +1808,7 @@ fn nothing_of_the_input_area_is_ever_cut_off_or_covered() {
                             // aux fonds pleins : le liseré de l'attente
                             // et les survols sont translucides, et ils
                             // ont le droit de passer dessus.
-                            let encre_du_texte = egui::Rect::from_min_size(t.pos, t.galley.size());
+                            let encre_du_texte = cadre_du_texte(t);
                             for dessus in output.shapes.iter().skip(rang + 1) {
                                 let egui::epaint::Shape::Rect(r) = &dessus.shape else {
                                     continue;
@@ -2118,5 +2118,113 @@ fn les_arguments_ne_prennent_plus_la_place_de_la_sortie() {
     assert!(
         peint.contains(s.console_args) && peint.contains(s.console_args_apply),
         "demandée, la rangée est là : {peint}"
+    );
+}
+
+/// UNE NOTE QUI NE SE CLIQUE PAS NE SE SOULIGNE PAS.
+///
+/// `cliquable` pose un trait sous le texte, visible au repos : c'est le
+/// signe qu'un clic mène quelque part. Tous les diagnostics y
+/// passaient, y compris ceux qui ne portent AUCUNE ligne — les notes
+/// sur le binaire chargé, qui parlent du programme entier. Le trait y
+/// promettait un clic que la ligne d'en dessous refusait.
+///
+/// Relevé à l'écran le 10 novembre 2026, deux flèches rouges sur ces
+/// traits : « pourquoi ces lignes ».
+///
+/// ON MESURE LE TRAIT, et non le comportement : c'est le trait qu'on a
+/// vu, et un contrôle qui vérifierait seulement que le clic ne fait
+/// rien laisserait la promesse en place. Les deux formes de diagnostic
+/// sont semées ensemble pour que le contrôle distingue — sans celle
+/// qui porte une ligne, il passerait aussi si plus rien ne se
+/// soulignait nulle part.
+#[test]
+fn une_note_sans_ligne_ne_promet_pas_de_clic() {
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1400.0, 1300.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.diagnostics = vec![
+        namsdec_asm::Diagnostic {
+            line: 0,
+            severity: namsdec_asm::Severity::Warning,
+            message: "NOTESANSLIGNE sur le programme entier".to_owned(),
+            kind: None,
+        },
+        namsdec_asm::Diagnostic {
+            line: 7,
+            severity: namsdec_asm::Severity::Error,
+            message: "AVECLIGNE quelque part".to_owned(),
+            kind: None,
+        },
+    ];
+
+    let mut sous_la_note = 0;
+    let mut sous_l_erreur = 0;
+    for _ in 0..5 {
+        sous_la_note = 0;
+        sous_l_erreur = 0;
+        // LA LISTE SEULE, et non tout l'écran : la liste des
+        // problèmes vit dans une zone défilante au bas d'un panneau
+        // dont la hauteur dépend de l'écran, et un contrôle qui
+        // dépendrait de cette hauteur mesurerait la console plutôt que
+        // le trait. C'est `problemes_ui` qui pose le trait ; c'est lui
+        // qu'on regarde.
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| {
+            app.problemes_ui(ui);
+        });
+        // Les deux textes d'abord : ce sont eux qui désignent la place
+        // où un trait aurait un sens.
+        let mut note = None;
+        let mut erreur = None;
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                if t.galley.text().contains("NOTESANSLIGNE") {
+                    note = Some(cadre_du_texte(t));
+                }
+                if t.galley.text().contains("AVECLIGNE") {
+                    erreur = Some(cadre_du_texte(t));
+                }
+            }
+        }
+        let note = note.expect("la note sans ligne se peint");
+        let erreur = erreur.expect("le diagnostic avec ligne aussi");
+        // Puis les traits horizontaux posés juste sous l'un ou l'autre.
+        for clipped in &sortie.shapes {
+            let egui::epaint::Shape::LineSegment { points, .. } = &clipped.shape else {
+                continue;
+            };
+            if (points[0].y - points[1].y).abs() > 0.5 {
+                continue;
+            }
+            let y = points[0].y;
+            for (cadre, compte) in [(note, &mut sous_la_note), (erreur, &mut sous_l_erreur)] {
+                if y >= cadre.bottom() - 3.0
+                    && y <= cadre.bottom() + 3.0
+                    && points[0].x <= cadre.left() + 2.0
+                    && points[1].x >= cadre.right() - 2.0
+                {
+                    *compte += 1;
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    assert_eq!(
+        sous_la_note, 0,
+        "une note qui parle du programme entier ne mène nulle part : \
+         elle ne doit pas porter le trait de ce qui se clique"
+    );
+    assert!(
+        sous_l_erreur > 0,
+        "et le diagnostic qui NOMME une ligne garde le sien — sans quoi ce contrôle \
+         passerait aussi en ne soulignant plus rien"
     );
 }

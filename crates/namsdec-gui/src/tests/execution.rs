@@ -2183,7 +2183,7 @@ boucle:
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 let texte = t.galley.text().trim().to_owned();
                 if texte.parse::<u32>().is_ok() && où.is_none() {
-                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let rect = cadre_du_texte(t);
                     let vu = rect.intersect(clipped.clip_rect);
                     if vu.is_positive() {
                         où = Some(vu.center());

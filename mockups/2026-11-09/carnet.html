@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>namsdec — Le Carnet (mode simple)</title>
+<link rel="stylesheet" href="carnet.css">
+</head>
+<body>
+
+<header class="entete">
+  <span class="marque">namsdec<b>.</b></span>
+  <span class="fichier">somme.asm</span>
+  <nav>
+    <button>Ouvrir</button>
+    <button>Enregistrer</button>
+    <button>Aide</button>
+    <button>Mode avancé ▸</button>
+  </nav>
+</header>
+
+<main class="feuille">
+  <div class="chapitre">
+    <div class="rang">Votre programme</div>
+    <h1>La somme des nombres de 1 à 5</h1>
+    <p>Dix instructions : une boucle qui additionne, une fonction qu’on appelle. À chaque pas, ce que fait la machine s’écrit dans la marge, en face de la ligne.</p>
+  </div>
+
+  <div class="programme" id="programme"></div>
+
+  <section class="prevision" id="prevision">
+    <div class="quand">Avant d’avancer</div>
+    <h2 id="question"></h2>
+    <div class="choix" id="choix"></div>
+    <p class="verdict" id="verdict" hidden></p>
+    <button class="passer" id="passer">Je préfère avancer sans répondre</button>
+  </section>
+
+  <p class="phrase-pile" id="phrase-pile"></p>
+
+  <section class="resultat">
+    <span class="quoi">Le résultat</span>
+    <div class="dit" id="sortie"></div>
+  </section>
+  <div class="pupitre">
+    <button id="b-recul">◀ Revenir</button>
+    <button class="avancer" id="b-pas">Avancer d’un pas</button>
+    <button id="b-lancer">▶ Tout dérouler</button>
+    <button id="b-reprendre" title="Reprendre au début">↺</button>
+    <span class="sep"></span>
+    <span class="machine" id="machine"></span>
+    <span class="sep"></span>
+    <span class="ou" id="ou">0 / 22</span>
+  </div>
+</main>
+
+<div class="aveu">
+  <span>Maquette · scénario fixe · aucun assembleur ni émulateur n’est lancé</span>
+  <span class="touches">F10 avancer · Maj+F10 revenir · Espace dérouler</span>
+  <span><button id="b-erreur">Montrer ce que donne une faute de frappe</button> · <a href="index.html">Galerie</a></span>
+</div>
+
+<script src="model.js"></script>
+<script src="commun.js"></script>
+<script src="carnet.js"></script>
+</body>
+</html>

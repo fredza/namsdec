@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **5 novembre
+Tenue à jour au fil des séances. Dernière mise à jour : **10 novembre
 2026**, version 0.3.0-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -5133,6 +5133,231 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       centre (5 sur 9) et du panneau (4 sur 6), les menus et la
       palette parlent le même niveau, et un seul endroit le dit
       (`NamsdecApp::niveau`).
+
+---
+
+## 8. Le mode simple, interface à part
+
+- `[~]` **Trois dispositions en maquette, à départager** — 9 novembre
+  2026 (A 9.81). Aujourd'hui, `Niveau::Débutant` FILTRE l'interface
+  complète : neuf rubriques d'analyse au lieu de vingt-cinq, cinq
+  onglets de vues sur neuf, un éditeur sans modes. Le squelette reste
+  celui du mode avancé — rails, onglets, menus, barre d'état. La
+  demande est une interface **à elle**, simplifiée au maximum mais
+  complète.
+
+  Trois directions sont posées dans `mockups/2026-11-09/`, jouables
+  depuis le disque, sur un scénario commun (somme de 1 à 5 dans une
+  fonction appelée par `call` : 10 lignes, 22 instructions,
+  `exit(15)`) :
+
+  * **L'Établi** — quatre bandes fixes : le code, la machine, ce que
+    fait la ligne courante, le résultat. Aucun onglet, aucun rail,
+    aucun menu déroulant. La plus proche de ce que l'application sait
+    déjà faire ; le travail serait surtout de RETIRER.
+  * **Le Carnet** — une colonne, le programme lu comme un texte, et
+    l'état de la machine écrit EN MARGE de la ligne courante. La
+    question « avant d'avancer » y est le sujet de la page, et le
+    verdict attend le pas (règle de `prevision.rs`).
+  * **La Scène** — deux temps exclusifs, « Écrire » et « Regarder ».
+    Dans le second, le code n'est plus qu'un ruban et la machine prend
+    toute la place : trois grands chiffres, la pile dessinée, la fiche
+    de l'instruction en cours. Le seul des trois qui se lise d'un
+    mètre.
+
+  **Tranché le 9 novembre 2026 : l'Établi, et la Scène gardée en
+  bouton.** Les deux sont faits — voir l'entrée suivante.
+
+  **Les trois tiennent la même charge** : écrire, assembler, exécuter,
+  lire ; l'écran d'une faute de frappe ; registres, pile, indicateurs,
+  octets de chaque ligne et adresse ; le retour au mode avancé à la
+  même place. Le mode simple montre MOINS, pas autre chose.
+
+  **Deux défauts trouvés par la mesure, pas par la relecture** — les
+  maquettes ont été capturées et comparées au pixel (`chromium-browser
+  --headless`, deux rendus identiques) : un bouton éteint qui gardait
+  son fond d'accent, et le pupitre du Carnet qui, flottant, mangeait la
+  dernière réponse de la question. Voir A 9.81 pour le détail, et pour
+  la raison qui a rendu ces captures reproductibles.
+
+- `[x]` **L'Établi est la disposition du mode simple** — 9 novembre
+  2026 (A 9.82), `crates/namsdec-gui/src/etabli.rs`. `Niveau::Débutant`
+  ne filtre plus l'interface complète : **il choisit une mise en page**.
+  Quatre bandes fixes — ce qu'on a écrit, ce que fait la machine, ce que
+  fait la ligne où l'on est, le résultat —, aucun menu, aucun rail,
+  aucune barre d'état. La rangée des vues reste (cinq façons de regarder
+  de niveau débutant), la barre des fichiers ne paraît qu'à partir de
+  deux fichiers ouverts.
+
+  Retenu par : les scènes `établi`, `établi (en marche)` et
+  `établi / l'assemblage a échoué` du banc, qui passent par **tous** ses
+  invariants ; `la_barre_d_outils_se_gradue`,
+  `on_peut_toujours_changer_de_niveau` et
+  `les_menus_se_graduent_sans_se_contredire`, réécrits pour mesurer la
+  nouvelle règle.
+
+  **Quatre défauts trouvés par la mesure, pas par la relecture** :
+  registres coupés à droite (largeur du volet), recouvrement de la barre
+  à 800 px, deux hauteurs de bouton côte à côte, et une phrase de la
+  bande du résultat tranchée par le milieu. Le détail est en A 9.82.
+
+- `[x]` **La Scène est gardée en bouton** — même jour,
+  `crates/namsdec-gui/src/scene.rs`. Une fenêtre, aux **deux** niveaux :
+  un ruban d'instructions, jusqu'à trois registres en gros chiffres —
+  ceux que le dernier pas a changés —, la fiche de l'instruction qui
+  vient, et les commandes. Trois portes : le bouton de la frise au mode
+  simple, Outils › Regarder tourner… au mode avancé, et la palette.
+
+  **Pourquoi une fenêtre et non une dixième vue** : elle s'ouvre
+  par-dessus sans rien déranger, elle existe aux deux niveaux, et elle
+  peut prendre tout l'écran — c'est la seule façon de montrer un pas à
+  quelqu'un qui n'est pas devant le clavier.
+
+- `[x]` **Ce qui ne tient pas dans une bande sort dans une fenêtre** —
+  10 novembre 2026 (A 9.83). « Ce que fait la machine » et
+  « Résultat » portent un bouton **Détacher**, comme la rangée des
+  vues. Trouvé à l'écran sur un ELF lié dynamiquement : la pile
+  défilait horizontalement, le résultat était tranché au milieu d'une
+  ligne, et la ligne d'état avait **avalé RIP et le bouton de la
+  Scène** — posés après le message, ils prenaient « ce qui reste », et
+  il ne restait rien.
+
+- `[ ]` **Une scène du banc devant un vrai binaire** — le trou que
+  A 9.83 a mis au jour : les trois scènes de l'Établi tournent sur le
+  programme du banc (quinze lignes, registres à zéro), donc **aucun
+  invariant ne peut voir un contenu long**. Une pile qui porte
+  l'environnement, une note de quatre lignes, un listing de mille
+  instructions : rien de tout cela n'est mesuré aujourd'hui.
+
+- `[x]` **Quatre manques de l'Établi, vus à l'écran** — 10 novembre
+  2026 (A 9.84). Les **trois pastilles** de fenêtre (il n'y avait plus
+  de quoi fermer l'application), l'**engrenage** des préférences, la
+  **calculatrice**, et une console enfin visible : plus haute, sur le
+  fond des bandes, et une pastille verte dans son titre dès que le
+  programme a écrit.
+
+  **La leçon dépasse ces quatre-là** : en retirant la barre de menus,
+  on a retiré ce qu'elle PORTAIT, sans en faire l'inventaire. Les
+  exercices avaient déjà été rattrapés ainsi. Reste à passer le menu
+  Outils et le menu Fichier en revue, entrée par entrée, pour voir ce
+  qui n'a plus de porte au mode simple.
+
+- `[x]` **Trois commandes qui mentent, sur une seule capture** — 10
+  novembre 2026 (A 9.85). Une flèche verte sur le bouton
+  « Détacher » de la rangée des vues, la source active : « ne sert à
+  rien ». Il se peignait alors que la source ne se détache pas, et
+  `détacher_vue` refusait en silence. Deux voisins du même tonneau
+  étaient sur la même image : le message d'état de l'Établi, qui
+  passait **par dessus** le bouton de la Scène et RIP jusqu'à
+  x = 2824 sur un écran de 1600 ; et la légende de la pile, peinte
+  **dans** la zone qui défile de côté, donc coupée au milieu d'un
+  mot.
+
+  **Chacun demandait une condition que le banc n'avait jamais
+  réunie** : un voisin pour que le bouton se peigne seulement, un
+  état LONG dans la frise, une pile LARGE sous la légende. C'est la
+  leçon : un contrôle ne voit un défaut de place que si la place
+  manque vraiment. Les trois contrôles neufs sèment donc ce qu'il
+  faut, et une scène de banc est ajoutée pour la frise.
+
+  **Un quatrième défaut est sorti en regardant l'image** : le code de
+  l'éditeur y était en charabia, et ce n'était pas l'application —
+  l'atlas de glyphes grandit à la dernière image, et le premier rendu
+  emploie encore l'ancienne texture. Les trois relevés d'images
+  rendent maintenant **deux fois**, et jettent la première.
+
+- `[x]` **Le parcours se consultait au lieu de se faire** — 10 novembre
+  2026 (A 9.86). « Les exercices devraient être interactifs ». Au mode
+  avancé, l'énoncé et le but vivent dans le panneau latéral, qui est
+  toujours là ; l'Établi n'en a pas. On chargeait une étape, on
+  refermait la fenêtre, et l'on se retrouvait seul devant un programme
+  à trous. **Une cinquième bande** porte maintenant le rang, l'énoncé
+  et le but — condition par condition, **qui s'allument pendant qu'on
+  avance** —, avec la barre du parcours, « Choisir… » et « Étape
+  suivante ». Rien n'est réécrit : `goal_ui` peignait déjà tout cela,
+  il manquait l'endroit.
+
+  **Et un défaut de mesure trouvé en chemin, qui vaut plus que la
+  bande** : `Rect::from_min_size(t.pos, t.galley.size())` est faux
+  pour toute galley alignée à droite — `pos` y est le bord droit.
+  L'erreur vaut la largeur du texte et va toujours vers la droite,
+  c'est-à-dire vers le bord où un recouvrement se produit. Dix-sept
+  relevés du banc l'employaient ; `cadre_du_texte` translate
+  `galley.rect`, qui porte déjà le décalage.
+
+  **Au plus petit écran, la bande prend la place du code** : mesuré en
+  lignes de programme entièrement visibles, six deviennent **zéro**.
+  Donner à la bande une part de ce qui reste plutôt que ses 190 pixels
+  en rend deux. **Deux reste peu**, et deux autres pistes ont été
+  mesurées puis retirées : rapetisser encore la bande ne donne rien
+  (le résultat reprend ce qu'elle rend), et borner la bande de la
+  ligne courante gagnait une troisième ligne mais faisait **se
+  recouvrir deux panneaux**. Le seul levier qui reste est la part du
+  résultat, qui vient d'une demande explicite (A 9.84) : arbitrage à
+  prendre avec Fred, pas sans lui.
+
+- `[x]` **L'interface montrait l'état sans le nommer** — 10 novembre
+  2026 (A 9.87). « L'interface n'est pas assez pédagogique ». Le volet
+  de la machine montrait dix-sept noms de trois lettres et sept sigles
+  de deux, sans un mot — dans le mode dont la règle est que chaque
+  bande se présente elle-même. La pile avait pourtant sa légende
+  depuis toujours.
+
+  Deux corrections, au niveau débutant seulement. **Le dernier pas se
+  dit en toutes lettres** : `RCX 3 → 2` au lieu de `RCX 0x3 → 0x2`
+  sous le million, et l'indicateur qui se pose dit ce qu'il raconte.
+  C'est le moment où l'on apprend, et il exigeait deux traductions.
+  **Le volet dit ce qu'il montre** : une phrase au-dessus des
+  registres, une sous les indicateurs — pas dans l'infobulle, qui
+  demande de savoir qu'il faut survoler.
+
+- `[x]` **Le programme qu'on lit n'était expliqué nulle part** — 10
+  novembre 2026 (A 9.88). Le premier écran porte quinze lignes et sept
+  mots qu'un débutant ne connaît pas ; la bande du bas répondait
+  « revenez quand vous aurez assemblé », et la seule porte vers les
+  189 fiches était F1, une touche dont rien ne parle. **La bande
+  explique maintenant la ligne où est le curseur**, tant que rien ne
+  tourne : le mot, ce qu'il veut dire, la fiche entière à un clic. On
+  lit un programme ligne à ligne avant de l'exécuter — le premier des
+  quatre verbes, et le seul qui n'avait aucun support.
+
+  **Et un défaut vieux de toujours en est sorti** : `prose` ne rendait
+  pas les `*emphases*` simples, que cinquante passages des fiches
+  emploient. La fenêtre d'aide montrait ses astérisques depuis le
+  début. L'invariant du balisage ne regardait que les doubles.
+
+  **Ce que la bande coûte, mesuré deux fois.** La fiche complète
+  ramenait de six à une les lignes de programme visibles à 800×520 :
+  on n'en garde que la première phrase. Puis le cas qu'on n'avait pas
+  regardé — un exercice chargé — faisait paraître **deux** bandes
+  d'explication et ne laissait **aucune** ligne. D'où la règle :
+  **une seule bande explique à la fois**, et pendant un exercice c'est
+  la sienne. Ce que cela coûte est dit : pendant un exercice, la ligne
+  du curseur ne s'explique plus toute seule.
+
+- `[x]` **Trois gestes qui ne se défaisaient pas** — 10 novembre 2026
+  (A 9.89). « Montrer » donnait la réponse sans retour possible, le
+  compteur de problèmes ouvrait la console sans la refermer, et un
+  trait de « ce qui se clique » soulignait des notes qui ne mènent
+  nulle part (« pourquoi ces lignes »). Les trois sont réparés, et la
+  troisième est la même famille que le bouton « Détacher » inerte du
+  matin : un signe qui annonce un geste que rien ne rend.
+
+  **Deux défauts vus sur les mêmes images** : l'énoncé de l'exercice
+  montrait ses accents graves, et le constat du but parlait encore en
+  hexadécimal pendant que la bande du bas disait « RCX 3 → 2 ».
+
+  **Et pour la convivialité** : la cible d'un exercice se lit
+  maintenant **avant** le premier essai — en gris, sans verdict. On
+  écrivait sans savoir où l'on allait.
+
+  **Deux remarques d'une quatrième capture, que j'avais manquée** :
+  le nom du fichier s'abrège par le milieu dans la barre du haut (en
+  gardant son extension), et la rangée où l'on répond au programme
+  n'est plus poussée sous le bord de la fenêtre — la bande et la zone
+  des problèmes réservent maintenant ce que les rangées du bas
+  réclament, par la mesure que la console du mode avancé se donnait
+  déjà.
 
 ---
 

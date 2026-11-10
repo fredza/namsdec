@@ -763,7 +763,7 @@ impl NamsdecApp {
     /// Ce que nasm a dit de la source, une ligne par diagnostic.
     pub(crate) fn diagnostics_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
-        let (lang, theme) = (self.lang, self.theme);
+        let theme = self.theme;
         let mut goto = None;
         // Les deux commandes réellement lancées. « Et si je veux le
         // faire sans namsdec ? » est la bonne question, et un atelier
@@ -810,68 +810,104 @@ impl NamsdecApp {
         // rien.
         egui::ScrollArea::vertical()
             .auto_shrink([false, false])
-            .show(ui, |ui| {
-                // Ce que l'exécution a simplifié, s'il y a lieu, et en
-                // TÊTE : c'est l'information que la barre d'état vient
-                // de nommer, et celui qui vient la lire ne doit pas
-                // avoir à défiler. Le compteur de l'onglet la compte
-                // avec les diagnostics de nasm, sans quoi il
-                // promettrait « (1) » et montrerait autre chose.
-                //
-                // Ici et non dans la sortie du programme : ce n'est pas
-                // le programme qui parle, c'est namsdec, et mélanger
-                // les deux voix dans un même flux est le plus sûr moyen
-                // de faire douter de ce qu'on lit.
-                self.simplifications_ui(ui);
-                if self.diagnostics.is_empty() {
-                    ui.colored_label(theme.dim, s.no_diagnostics);
-                }
-                for d in &self.diagnostics {
-                    let color = if d.severity == Severity::Error {
-                        theme.bad
-                    } else {
-                        theme.warn
-                    };
-                    // La phrase est reformée ici quand le diagnostic
-                    // porte son motif : c'est ce qui la fait suivre la
-                    // langue du moment. Sans cela, ceux qui étaient déjà
-                    // dans la liste gardaient celle où ils étaient nés,
-                    // et basculer de langue laissait du français dans une
-                    // interface anglaise — les retraduire aurait demandé
-                    // de réassembler.
-                    let phrase = match &d.kind {
-                        Some(kind) => kind.message(lang == Lang::Fr),
-                        None => d.message.clone(),
-                    };
-                    // Un diagnostic sans ligne — ceux de l'éditeur de
-                    // liens, qui parlent du programme entier — ne
-                    // s'annonce pas par « ligne 0 ».
-                    let text = match (d.line, lang) {
-                        (0, _) => phrase,
-                        (line, Lang::Fr) => format!("ligne {line} — {phrase}"),
-                        (line, _) => format!("line {line} — {phrase}"),
-                    };
-                    // Cliquable quand nasm a nommé une ligne : lire le
-                    // message et retrouver l'endroit sont deux gestes, et
-                    // le second n'a aucune raison d'être manuel.
-                    let response = cliquable(
-                        ui,
-                        egui::Label::new(egui::RichText::new(text).monospace().color(color)),
-                    );
-                    if d.line > 0 && response.on_hover_text(s.diagnostic_goto).clicked() {
-                        goto = Some(d.line);
-                    }
-                    // Le message brut reste — c'est lui qu'on colle dans
-                    // une recherche —, et l'explication vient dessous.
-                    if let Some(explication) = nasm_errors::explain(lang, &d.message) {
-                        ui.label(prose(ui, theme, explication));
-                        ui.add_space(6.0);
-                    }
-                }
-            });
+            .show(ui, |ui| goto = self.problemes_ui(ui));
         if let Some(line) = goto {
             self.goto_line = Some(line);
         }
+    }
+
+    /// Ce qui ne va pas : les simplifications de l'exécution, puis les
+    /// diagnostics de nasm et de l'éditeur de liens.
+    ///
+    /// À part de [`Self::diagnostics_ui`], qui l'enveloppe dans sa zone
+    /// défilante après avoir annoncé les deux commandes lancées.
+    /// L'Établi, lui, la montre SEULE et en tête de sa bande du
+    /// résultat : on vient d'échouer, on veut savoir pourquoi, et non
+    /// relire une ligne de commande qui n'a pas changé depuis le
+    /// dernier essai.
+    ///
+    /// Rend la ligne où aller, si l'on a cliqué sur un diagnostic qui
+    /// en nomme une.
+    pub(crate) fn problemes_ui(&mut self, ui: &mut egui::Ui) -> Option<u32> {
+        let s = strings(self.lang);
+        let (lang, theme) = (self.lang, self.theme);
+        let mut goto = None;
+
+        // Ce que l'exécution a simplifié, s'il y a lieu, et en
+        // TÊTE : c'est l'information que la barre d'état vient
+        // de nommer, et celui qui vient la lire ne doit pas
+        // avoir à défiler. Le compteur de l'onglet la compte
+        // avec les diagnostics de nasm, sans quoi il
+        // promettrait « (1) » et montrerait autre chose.
+        //
+        // Ici et non dans la sortie du programme : ce n'est pas
+        // le programme qui parle, c'est namsdec, et mélanger
+        // les deux voix dans un même flux est le plus sûr moyen
+        // de faire douter de ce qu'on lit.
+        self.simplifications_ui(ui);
+        if self.diagnostics.is_empty() {
+            ui.colored_label(theme.dim, s.no_diagnostics);
+        }
+        for d in &self.diagnostics {
+            let color = if d.severity == Severity::Error {
+                theme.bad
+            } else {
+                theme.warn
+            };
+            // La phrase est reformée ici quand le diagnostic
+            // porte son motif : c'est ce qui la fait suivre la
+            // langue du moment. Sans cela, ceux qui étaient déjà
+            // dans la liste gardaient celle où ils étaient nés,
+            // et basculer de langue laissait du français dans une
+            // interface anglaise — les retraduire aurait demandé
+            // de réassembler.
+            let phrase = match &d.kind {
+                Some(kind) => kind.message(lang == Lang::Fr),
+                None => d.message.clone(),
+            };
+            // Un diagnostic sans ligne — ceux de l'éditeur de
+            // liens, qui parlent du programme entier — ne
+            // s'annonce pas par « ligne 0 ».
+            let text = match (d.line, lang) {
+                (0, _) => phrase,
+                (line, Lang::Fr) => format!("ligne {line} — {phrase}"),
+                (line, _) => format!("line {line} — {phrase}"),
+            };
+            // Cliquable quand nasm a nommé une ligne : lire le
+            // message et retrouver l'endroit sont deux gestes, et
+            // le second n'a aucune raison d'être manuel.
+            //
+            // ET SEULEMENT DANS CE CAS-LÀ. `cliquable` pose un trait
+            // sous le texte, visible au repos : c'est le signe qu'un
+            // clic mène quelque part. Tous les diagnostics y passaient,
+            // y compris ceux qui ne portent AUCUNE ligne — les notes
+            // sur le binaire chargé, qui parlent du programme entier.
+            // Le trait y promettait un clic que la ligne d'en dessous
+            // refusait (`if d.line > 0`).
+            //
+            // Relevé à l'écran le 10 novembre 2026, deux flèches
+            // rouges sur ces traits : « pourquoi ces lignes ». C'est la
+            // même famille que le bouton « Détacher » devant la source,
+            // le même jour : un signe qui annonce un geste que rien ne
+            // rend. Un trait de moins vaut mieux qu'une promesse de
+            // plus.
+            let étiquette = egui::Label::new(egui::RichText::new(text).monospace().color(color));
+            if d.line == 0 {
+                ui.add(étiquette);
+            } else if cliquable(ui, étiquette)
+                .on_hover_text(s.diagnostic_goto)
+                .clicked()
+            {
+                goto = Some(d.line);
+            }
+            // Le message brut reste — c'est lui qu'on colle dans
+            // une recherche —, et l'explication vient dessous.
+            if let Some(explication) = nasm_errors::explain(lang, &d.message) {
+                ui.label(prose(ui, theme, explication));
+                ui.add_space(6.0);
+            }
+        }
+        goto
     }
 
     /// La console du programme : ce qu'il a écrit, et de quoi lui donner

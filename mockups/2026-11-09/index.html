@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>namsdec — Trois modes simples</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f4f2ed;color:#292d2a;font:14px/1.6 system-ui,"Segoe UI",sans-serif}
+a{color:inherit}
+header{padding:20px 5%;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #d9dbd3}
+.brand{font-size:22px;font-weight:700;letter-spacing:-1px;text-decoration:none}
+.brand span{color:#5e744c}
+.edition{font-size:12px;color:#6b7169}
+main{max-width:1480px;margin:auto;padding:46px 5%}
+.hero{display:flex;justify-content:space-between;align-items:flex-end;gap:36px;margin-bottom:34px}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:1.7px;color:#63745d;font-weight:600}
+h1{font:48px/1.08 Georgia,serif;letter-spacing:-1.8px;margin:14px 0 18px;max-width:720px}
+.hero p{max-width:640px;color:#697165;margin:0}
+.count{min-width:130px;padding-bottom:6px;text-align:right;color:#697165;font-size:11px}
+.count strong{display:block;font:60px/1 Georgia,serif;letter-spacing:-4px;color:#313c2c;margin-bottom:8px}
+.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:20px;border-bottom:1px solid #cfd3c8;padding-bottom:12px;margin-bottom:22px}
+.section-head h2{font-size:18px;margin:0;font-weight:550}
+.section-head span{font-size:12px;color:#6b7169}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:28px}
+.option{border:1px solid #d5d9cf;border-radius:10px;overflow:hidden;background:#fdfcf8}
+.option.large{grid-column:1/-1}
+.preview{display:block;overflow:hidden;position:relative;background:#e4e7df;border-bottom:1px solid #d5d9cf;text-decoration:none}
+.preview iframe{position:absolute;left:0;top:0;width:1280px;height:900px;transform-origin:top left;border:0;pointer-events:none}
+.preview::after{content:'Ouvrir ↗';position:absolute;right:14px;bottom:14px;color:#fff;background:#273529;padding:6px 12px;border-radius:5px;font-size:11px;box-shadow:0 3px 12px #0002}
+.content{padding:23px}
+.titleline{display:flex;align-items:baseline;justify-content:space-between;gap:20px}
+.titleline h3{margin:0;font-size:24px;letter-spacing:-.6px;font-weight:550}
+.tag{font-size:10px;text-transform:uppercase;letter-spacing:1.1px;color:#65745c}
+.content p{color:#697165;font-size:13px}
+.deux{display:grid;grid-template-columns:1fr 1fr;gap:18px;font-size:12px;border-top:1px solid #e0e3d9;padding-top:13px;color:#616a5c;margin-top:4px}
+.deux b{display:block;color:#3f4a3c;margin-bottom:3px;font-size:11px;text-transform:uppercase;letter-spacing:.8px}
+.open{display:flex;justify-content:space-between;align-items:center;margin-top:18px;font-size:13px;text-decoration:none;font-weight:600}
+.open:hover{text-decoration:underline}
+.commun{margin-top:46px;background:#eeeee7;border:1px solid #d7dbd1;border-radius:10px;padding:26px}
+.commun h2{margin:0 0 14px;font-size:17px;font-weight:600}
+.commun ul{margin:0;padding-left:19px;color:#5d655a;max-width:95ch}
+.commun li{margin-bottom:6px}
+.closing{margin-top:34px;padding-top:22px;border-top:1px solid #cfd3c8;display:grid;grid-template-columns:180px 1fr;gap:24px;font-size:13px}
+.closing p{margin:0 0 9px;color:#697165;max-width:860px}
+footer{display:flex;justify-content:space-between;gap:15px;flex-wrap:wrap;padding:20px 5%;border-top:1px solid #d9dbd3;color:#6b7169;font-size:11px}
+a:focus-visible{outline:3px solid #5b7348;outline-offset:4px}
+@media(max-width:980px){h1{font-size:36px}.grid{grid-template-columns:1fr}.count{display:none}.deux{grid-template-columns:1fr}.closing{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <a class="brand" href="../index.html">namsdec<span>.</span></a>
+  <div class="edition">Mode simple · trois directions · retenu : l’Établi + la Scène</div>
+</header>
+<main>
+  <div class="hero">
+    <div>
+      <div class="eyebrow">Une interface à part pour qui débute</div>
+      <h1>Trois façons de tout<br>montrer sans rien encombrer.</h1>
+      <p>Aujourd’hui, le mode débutant est l’interface complète avec des morceaux en moins. Ces trois propositions en font une interface <em>à elle</em> : même moteur, même thème, même vocabulaire — mais une disposition pensée pour quelqu’un qui ouvre namsdec pour apprendre, pas pour analyser un binaire.</p>
+    </div>
+    <div class="count"><strong>03</strong>directions<br>à départager</div>
+  </div>
+
+  <div class="section-head"><h2>Les trois propositions</h2><span>Tout fonctionne depuis le disque · scénario fixe · <code>?pas=N</code> ouvre n’importe quel instant</span></div>
+
+  <div class="grid">
+    <article class="option large">
+      <a class="preview" href="etabli.html" aria-label="Ouvrir l’Établi"><iframe src="etabli.html" title="Aperçu de l’Établi" tabindex="-1" loading="lazy" inert></iframe></a>
+      <div class="content">
+        <div class="titleline"><h3>L’Établi</h3><span class="tag">Tout à l’écran, rien à ouvrir</span></div>
+        <p>Quatre bandes fixes : le code, la machine, ce que fait la ligne courante, le résultat. Aucun onglet, aucun rail, aucun menu déroulant — donc rien à trouver avant de pouvoir travailler. C’est la proposition la plus proche de l’application actuelle, et la plus facile à atteindre.</p>
+        <div class="deux">
+          <span><b>Ce qu’on y gagne</b>On ne cherche jamais : ce qui est utile est déjà peint, au même endroit, à chaque pas.</span>
+          <span><b>Ce que ça coûte</b>La place est répartie d’avance. Le code n’aura jamais toute la largeur, et la machine jamais plus de 330 pixels.</span>
+        </div>
+        <a class="open" href="etabli.html">Ouvrir l’Établi <span>↗</span></a>
+      </div>
+    </article>
+
+    <article class="option">
+      <a class="preview" href="carnet.html" aria-label="Ouvrir le Carnet"><iframe src="carnet.html" title="Aperçu du Carnet" tabindex="-1" loading="lazy" inert></iframe></a>
+      <div class="content">
+        <div class="titleline"><h3>Le Carnet</h3><span class="tag">Une colonne, et des notes en marge</span></div>
+        <p>Le programme est posé comme un texte, et l’état de la machine s’écrit <em>en marge</em> de la ligne courante — là où un professeur écrirait au crayon. La question « avant d’avancer » est au cœur de l’écran, et le verdict n’arrive qu’après le pas.</p>
+        <div class="deux">
+          <span><b>Ce qu’on y gagne</b>Un seul fil de lecture, et la prévision n’est plus un bandeau de plus : c’est le sujet de la page.</span>
+          <span><b>Ce que ça coûte</b>On ne voit l’état que d’un pas à la fois. Comparer deux instants demande de revenir en arrière.</span>
+        </div>
+        <a class="open" href="carnet.html">Ouvrir le Carnet <span>↗</span></a>
+      </div>
+    </article>
+
+    <article class="option">
+      <a class="preview" href="scene.html" aria-label="Ouvrir la Scène"><iframe src="scene.html" title="Aperçu de la Scène" tabindex="-1" loading="lazy" inert></iframe></a>
+      <div class="content">
+        <div class="titleline"><h3>La Scène</h3><span class="tag">Deux temps : écrire, puis regarder</span></div>
+        <p>Écrire et regarder deviennent deux écrans. Dans le premier, il n’y a que le texte. Dans le second, le code n’est plus qu’un ruban qui défile et la machine prend toute la place : trois grands chiffres, la pile dessinée, la fiche de l’instruction en cours.</p>
+        <div class="deux">
+          <span><b>Ce qu’on y gagne</b>Chaque écran n’a qu’un sujet. C’est aussi le seul des trois qui se lit d’un mètre, en classe ou en vidéoprojection.</span>
+          <span><b>Ce que ça coûte</b>Corriger une ligne qu’on voit passer demande de revenir au premier temps.</span>
+        </div>
+        <a class="open" href="scene.html">Ouvrir la Scène <span>↗</span></a>
+      </div>
+    </article>
+  </div>
+
+  <section class="commun">
+    <h2>Ce que les trois tiennent, quelle que soit celle qu’on garde</h2>
+    <ul>
+      <li><strong>Écrire, assembler, exécuter, lire</strong> — les quatre gestes du mode simple, sans jamais passer par un menu.</li>
+      <li><strong>Une faute de frappe</strong> a son écran dans les trois (le lien en bas de chaque maquette) : la ligne marquée, l’erreur de nasm en clair, et un bouton qui corrige.</li>
+      <li><strong>Les registres, la pile, les indicateurs, les octets de chaque ligne et l’adresse</strong> sont montrés — le mode simple en montre moins, pas autre chose.</li>
+      <li><strong>Le retour au mode avancé</strong> est à la même place dans les trois, en haut à droite : on doit pouvoir en sortir sans chercher.</li>
+      <li><strong>Les couleurs</strong> sont celles de <code>namsdec-theme</code>, relevées telles quelles. Aucune maquette n’invente sa palette.</li>
+      <li><strong>Le clavier</strong> fait tout : F10 avance, Maj+F10 revient, Espace déroule.</li>
+    </ul>
+  </section>
+
+  <div class="closing">
+    <span class="eyebrow">Ce que j’en pense</span>
+    <div>
+      <p><strong>Retenu : l’Établi comme mode simple, et la Scène en bouton.</strong> Les deux sont faits dans l’application le jour même — l’Établi est la disposition du niveau débutant (quatre bandes, aucun menu, aucun rail, aucune barre d’état), la Scène une fenêtre « Regarder tourner » qui existe aux deux niveaux.</p>
+      <p>Le Carnet n’est pas retenu comme disposition. Ce qu’il apportait de plus — la question posée avant d’avancer — existe déjà dans l’application depuis le 4 novembre, et l’Établi la porte sous le code. Ces pages restent l’état de la réflexion au moment du choix.</p>
+    </div>
+  </div>
+</main>
+<footer>
+  <span>Maquettes de conception · exemple fixe · aucun assembleur ni émulateur n’est lancé</span>
+  <a href="README.md">Périmètre, contrôles et transposition en egui</a>
+  <a href="../index.html">Les maquettes précédentes</a>
+</footer>
+<script>
+const resize = () => document.querySelectorAll('.preview').forEach(p => {
+  const f = p.querySelector('iframe');
+  const scale = p.clientWidth / 1280;
+  f.style.transform = `scale(${scale})`;
+  p.style.height = `${900 * scale}px`;
+});
+new ResizeObserver(resize).observe(document.body);
+resize();
+</script>
+</body>
+</html>

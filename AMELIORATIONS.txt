@@ -10949,3 +10949,942 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      CE QUE LE BANC NE VOYAIT PAS : il mesure des images SANS POINTEUR.
      Tout ce qui ne se produit que sous le curseur lui échappait — et
      c'est la moitié de ce qu'une interface fait.
+
+9.81 [MAQUETTES] TROIS MODES SIMPLES, À DÉPARTAGER
+
+     Demandé le 9 novembre 2026 : « une interface totalement différente
+     pour le mode simple, simplifiée au maximum mais avec un
+     arrangement simple et complet », et des maquettes AVANT d'écrire
+     quoi que ce soit.
+
+     CE QU'EST LE MODE DÉBUTANT AUJOURD'HUI, et c'est le point de
+     départ du travail : un FILTRE. `NamsdecApp::niveau` décide, et
+     chaque endroit de l'interface retire ce qui est au-dessus du
+     niveau — neuf rubriques d'analyse sur vingt-cinq, cinq onglets de
+     vues sur neuf, quatre onglets de panneau sur six, un éditeur sans
+     modes. Le squelette, lui, ne change pas : les deux rails
+     d'icônes, les deux rangées d'onglets, les menus, la barre d'état,
+     la console. Quelqu'un qui ouvre namsdec pour apprendre voit donc
+     l'établi d'un analyste avec des tiroirs vides.
+
+     TROIS DIRECTIONS, dans `mockups/2026-11-09/`, et elles ne sont pas
+     trois variantes d'une même idée — c'est la question posée qui
+     change à chaque fois.
+
+     L'ÉTABLI répond : « tout tient à l'écran en même temps ». Quatre
+     bandes fixes — le code, la machine, ce que fait la ligne courante,
+     le résultat — et rien à ouvrir. Pas d'onglet, pas de rail, pas de
+     menu déroulant : rien à trouver avant de pouvoir travailler. C'est
+     la disposition que l'application sait déjà faire, et le travail
+     serait surtout de RETIRER. Ce que ça coûte : la place est répartie
+     d'avance et ne se redistribue pas.
+
+     LE CARNET répond : « qui apprend lit un texte, pas un tableau de
+     bord ». Une colonne, le programme posé comme un texte, et l'état
+     de la machine écrit EN MARGE de la ligne courante — là où un
+     professeur écrirait au crayon. La question « avant d'avancer »
+     n'est plus un bandeau de plus : c'est le sujet de la page. Ce que
+     ça coûte : on ne voit qu'un instant à la fois.
+
+     LA SCÈNE répond : « écrire et regarder sont deux moments, et les
+     mêler est ce qui rend un atelier d'assembleur illisible ». Deux
+     temps exclusifs. Dans « Écrire », il n'y a QUE le texte. Dans
+     « Regarder », le code n'est plus qu'un ruban qui se recentre sur
+     l'instruction courante, et la machine prend toute la place : trois
+     grands chiffres, la pile dessinée en blocs, la fiche de
+     l'instruction. Le seul des trois qui se lise d'un mètre. Ce que ça
+     coûte : corriger une ligne qu'on voit passer demande de revenir au
+     premier temps.
+
+     LE SCÉNARIO A CHANGÉ, ET POUR UNE RAISON MESURABLE. Les maquettes
+     du 29 octobre tournaient sur la somme de 1 à 5 en huit
+     instructions. Celles-ci ajoutent `call` et `ret` : sans eux, LA
+     PILE NE BOUGE JAMAIS, et un endroit où regarder qui ne bouge pas
+     n'apprend rien — pire, il apprend à ne plus regarder. Dix lignes,
+     22 instructions exécutées, 23 états, `exit(15)`.
+
+     ET LE PIÈGE DE LA FIN EST LEVÉ, ce qu'aucune des maquettes
+     précédentes ne faisait : à l'arrêt, RAX vaut 60 et non 15. C'est
+     le numéro de `exit` ; la somme est partie dans RDI. Quelqu'un qui
+     apprend lit la grande carte RAX en premier et en conclut que sa
+     boucle est fausse. La Scène le dit en toutes lettres à la place de
+     la fiche.
+
+     DEUX DÉFAUTS TROUVÉS PAR LA MESURE, PAS PAR LA RELECTURE — les
+     trois maquettes ont été rendues sans fenêtre (`chromium-browser
+     --headless`) et regardées, aux pas 0, 4 et 22, et sur l'écran de
+     la faute de frappe :
+
+       * le PUPITRE DU CARNET, flottant au bas de la fenêtre, MANGEAIT
+         LA DERNIÈRE RÉPONSE de la question de prévision. Il est passé
+         dans le flux, collé en bas (`position: sticky`), et il PORTE
+         MAINTENANT L'ÉTAT DE LA MACHINE : collé en bas, il passe
+         forcément devant quelque chose — autant que ce soit du texte
+         déjà lu, et pas les registres qu'on regarde entre deux pas ;
+
+       * un BOUTON ÉTEINT GARDAIT SON FOND D'ACCENT. Et la chasse à ce
+         défaut-là en a donné un autre, plus utile : le bouton n'avait
+         rien gardé du tout, IL ÉTAIT EN TRAIN DE LE PERDRE. La capture
+         tombait au milieu d'un fondu de 120 ms. Dix minutes perdues à
+         soupçonner une règle CSS qui était juste.
+
+     D'OÙ UNE RÈGLE QUI VAUT POUR TOUT CE QUI SERA CAPTURÉ : sous
+     `prefers-reduced-motion`, TOUTES les transitions passent à zéro
+     (`base.css`), et les captures se prennent avec
+     `--force-prefers-reduced-motion`. Deux rendus successifs sont
+     alors identiques au pixel. C'est la même leçon que pour le banc
+     des captures de l'application : une image qui bouge seule fait
+     douter de toutes les autres.
+
+     CE QUI REND UN CONTRÔLE ÉCRIVABLE ICI : `?pas=N` ouvre n'importe
+     lequel des 23 instants, `?erreur=1` ouvre l'écran de la faute.
+     Sans cela, on ne sait capturer que l'état d'ouverture, et c'est
+     précisément celui qui ne montre rien.
+
+     CE QUI N'EST PAS TRANCHÉ, et ce qui attend : le mode simple
+     garde-t-il la forme d'un atelier, devient-il une lecture, ou
+     sépare-t-il les deux moments ? Les trois ne s'excluent pas —
+     l'Établi peut être le mode simple et la Scène un bouton
+     « regarder tourner » qui existe AUSSI au mode avancé. Aucune ligne
+     de Rust n'est écrite tant que ce n'est pas décidé, et le manuel
+     n'est pas touché : rien de visible n'a changé dans l'application.
+
+9.82 [FAIT] L'ÉTABLI, ET LA SCÈNE EN BOUTON
+
+     Décidé le 9 novembre 2026, après les trois maquettes de 9.81 :
+     « l'Établi, mais garde la Scène en bouton ».
+
+     CE QUI CHANGE VRAIMENT, et ce n'est pas une affaire de panneaux :
+     `Niveau::Débutant` ne FILTRE plus l'interface complète, il CHOISIT
+     UNE MISE EN PAGE. `draw` bifurque en haut — `etabli_ui` d'un côté,
+     les panneaux d'avant de l'autre — et tout le reste de l'image est
+     commun : les quinze fenêtres, la palette, les raccourcis, les
+     réglages. Un mode simple qui perdrait l'aide ou les préférences ne
+     serait pas simple, il serait amputé.
+
+     CE QUE L'ÉTABLI GARDE DE L'INTERFACE COMPLÈTE, ET POURQUOI. La
+     rangée des vues reste : au niveau débutant elle porte le
+     désassemblage, le déroulement, l'analyse et les points d'arrêt —
+     quatre façons de regarder que ce même niveau juge compréhensibles
+     sans rien savoir d'avance. Les retirer aurait fait un mode simple
+     PLUS PAUVRE que le mode débutant qu'il remplace, ce qui n'était
+     pas la demande. La barre des fichiers reste aussi, mais seulement
+     à partir de deux fichiers ouverts : une rangée d'onglets qui n'en
+     porte qu'un ne dit rien que le nom déjà écrit dans la barre.
+
+     ET UNE PORTE QU'IL A FALLU AJOUTER : LES EXERCICES. Ils n'avaient
+     de chemin que par le menu Aide, qui n'existe plus ici. Cent
+     quatorze étapes, et le mode simple est exactement celui de ceux à
+     qui elles s'adressent — le bouton est dans la barre, grisé quand
+     le module n'est pas installé, et il dit alors où l'installer. Une
+     porte qu'on ne voit pas n'existe pas.
+
+     QUATRE DÉFAUTS TROUVÉS PAR LA MESURE, PAS PAR LA RELECTURE. Les
+     trois scènes de l'Établi ont été ajoutées au banc dès la première
+     version, donc passées par TOUS ses invariants :
+
+       * LES REGISTRES ÉTAIENT COUPÉS À DROITE. Le volet de la machine
+         avait une largeur fixe de 330 px, et la première capture a
+         montré « X » pour RAX et seize chiffres hexadécimaux qui
+         sortaient de l'écran. La largeur voulue est restée 330, mais
+         elle ne descend plus sous `sidebar_min_width`, qui MESURE ce
+         qu'il faut pour une paire de registres. Un chiffre qui manque
+         vaut un registre faux.
+
+       * LA BARRE SE RECOUVRAIT À 800 PIXELS : « Pas à pas » peint SUR
+         « Ouvrir un fichier… ». Un alignement à droite prend ce qui
+         reste, et quand il ne reste rien il passe par-dessus. La barre
+         se coupe donc en deux rangées sous 900 px.
+
+       * DEUX HAUTEURS DE BOUTON CÔTE À CÔTE, 27 contre 25 : un bouton
+         encadré compte son liseré, un bouton à icône non. Les cinq
+         gestes sont une rangée de commandes, ils se peignent donc
+         pareil — d'où une icône neuve pour « Assembler » (trois traits
+         de longueurs inégales, et le bloc plein que nasm en fait).
+         Les quatre portes de droite sont encadrées entre elles, et
+         séparées des gestes par toute la largeur de la barre.
+
+       * LA SORTIE ÉTAIT TRANCHÉE PAR LE MILIEU sous la liste des
+         erreurs : quatre pixels peints sur quinze. Quand l'assemblage
+         a échoué il n'y a pas d'émulateur, donc rien à annoncer : la
+         bande ne montre que les erreurs. Une zone dont l'unique ligne
+         est coupée a montré tout ce qu'elle avait, et l'a montré à
+         moitié.
+
+     ET UN CINQUIÈME, QUI N'ÉTAIT PAS UNE QUESTION DE PIXELS : une
+     `ScrollArea` bornée à 150 px autour de la bande « ce que fait
+     cette ligne » EMPÊCHAIT PUREMENT ET SIMPLEMENT le bloc « Dernier
+     pas » de se peindre. Le contrôle de la prévision ne le trouvait
+     plus à l'écran alors que l'application le tenait bien en mémoire.
+     Mesurée dans un panneau qui s'ajuste à son contenu, une zone
+     défilante ne sait pas quelle hauteur demander. C'est le panneau
+     qui se borne, pas elle.
+
+     TROIS CONTRÔLES RÉÉCRITS, ET AUCUN AFFAIBLI. Ils supposaient tous
+     que le mode débutant avait des menus et une barre d'outils :
+
+       * `la_barre_d_outils_se_gradue` : « Arrêter » ne paraît plus au
+         repos, puisque c'est « Exécuter » qui le devient pendant que
+         le programme tourne. Le contrôle le vérifie maintenant DANS
+         CET ÉTAT-LÀ, et vérifie aussi que « Exécuter » lui cède la
+         place ;
+       * `la_bascule_des_niveaux_est_dans_le_menu_affichage` est
+         devenu `on_peut_toujours_changer_de_niveau` : menu Affichage
+         d'un côté, bouton de la barre de l'autre, et il vérifie en
+         prime que le mode simple n'a AUCUN menu ;
+       * `les_menus_se_graduent_sans_se_contredire` a changé de sujet,
+         parce que son ancien sujet n'existait plus : il vérifie que le
+         menu Outils du mode avancé montre tout, et surtout que le mode
+         simple NE PERD RIEN — les cinq vues de son niveau, les quatre
+         portes de sa barre, et le nom du pas.
+
+     LA SCÈNE, EN FENÊTRE ET AUX DEUX NIVEAUX. Un ruban — l'instruction
+     qu'on vient d'exécuter, celle qui vient, les quatre suivantes —,
+     jusqu'à trois registres en gros chiffres (ceux que le dernier pas
+     a changés, et à défaut ceux qu'on regarde le plus souvent), la
+     fiche de l'instruction, et les commandes.
+
+     POURQUOI UNE FENÊTRE ET NON UNE DIXIÈME VUE : elle s'ouvre
+     par-dessus ce qu'on faisait et se referme sans rien déranger, elle
+     existe aux DEUX niveaux, et elle peut prendre tout l'écran. Une
+     vue partage l'écran ; une fenêtre peut le prendre, et c'est la
+     seule façon de montrer un pas à quelqu'un qui n'est pas devant le
+     clavier. Elle ne calcule rien de neuf : le ruban décode depuis RIP
+     comme le fait le bandeau de la prochaine instruction, les valeurs
+     viennent de `regs_before`, la fiche de namsdec-doc. CE QUI CHANGE
+     N'EST PAS CE QU'ON MONTRE, C'EST LA TAILLE À LAQUELLE ON LE
+     MONTRE.
+
+     TROIS DÉFAUTS DE PLUS, DITS PAR LE BANC EN UNE PASSE : la flèche
+     « → » manque de la police et se peignait en carré vide (c'est
+     « -> », comme le bloc « Dernier pas ») ; la barre de titre d'egui
+     peint son titre en dix-huit points, une taille qui n'est nulle
+     part ailleurs dans l'application (les quinze fenêtres dessinent la
+     leur, celle-ci aussi désormais) ; et une hauteur par défaut lui
+     laissait six cents pixels de vide au milieu — une fenêtre plus
+     grande que ce qu'elle montre fait croire qu'il manque quelque
+     chose.
+
+     CE QUI RESTE OUVERT : la pile n'est pas dessinée dans la Scène,
+     seulement RSP quand il bouge. La maquette la montrait en blocs
+     empilés ; le panneau de droite la montre déjà, et l'ajouter ici
+     demanderait de partager la fenêtre en deux colonnes. À reprendre
+     si l'usage le réclame.
+
+9.83 [FAIT] CE QUI NE TIENT PAS DANS UNE BANDE SORT DANS UNE FENÊTRE
+
+     Trouvé à l'écran, le 10 novembre 2026, sur un ELF lié
+     dynamiquement ouvert dans l'Établi — pas sur un programme
+     assemblé, et c'est tout le sujet : les trois scènes du banc
+     tournent sur un source de quinze lignes, dont la pile ne porte que
+     des zéros et dont namsdec n'a rien de particulier à dire.
+
+     TROIS CHOSES ÉTAIENT COUPÉES, ET AUCUNE NE SE LISAIT :
+
+       * LA PILE défilait horizontalement. Celle d'un vrai binaire
+         porte l'environnement — « SHELL=/bin/sh », « HOME=/ » — et des
+         pointeurs déréférencés : quarante caractères là où un
+         programme assemblé en montre seize. Les adresses étaient
+         rognées à gauche.
+
+       * LE RÉSULTAT était tranché au milieu de sa troisième ligne. La
+         note sur les binaires liés dynamiquement fait quatre lignes
+         pleines, et la bande en montre deux et demie.
+
+       * LA LIGNE D'ÉTAT avait avalé RIP ET LE BOUTON DE LA SCÈNE.
+         Posés APRÈS le message dans un alignement à droite, ils
+         prenaient « ce qui reste » — et il ne restait rien. Ils
+         n'étaient pas coupés : ils étaient ABSENTS, et rien ne le
+         disait.
+
+     CE QUI EST FAIT. Les deux bandes dont le contenu n'a pas de taille
+     connue d'avance — « Ce que fait la machine » et « Résultat » —
+     portent un bouton DÉTACHER au bord droit de leur titre, qui les
+     sort dans une fenêtre et rend leur place au code. C'est le geste
+     qu'a déjà la rangée des vues, le même libellé, la même forme, et
+     fermer la fenêtre ramène la bande. Le corps de chacune est à part
+     de son titre : les deux endroits montrent la MÊME chose, une
+     fenêtre n'étant pas une autre vue mais la même vue ailleurs.
+
+     ET LA LIGNE D'ÉTAT POSE SA DROITE EN PREMIER. Elle réserve ainsi
+     sa place, et c'est le message qui se serre — ce qu'il sait faire :
+     `status_message_ui` mesure la largeur qu'il voulait et pose une
+     infobulle donnant le texte entier dès qu'il a été coupé. Cette
+     règle existait depuis des mois dans la barre d'état du mode
+     avancé ; l'Établi la réécrivait à moitié au lieu de l'appeler.
+     Une seule écriture, maintenant, pour les deux niveaux.
+
+     LA LEÇON, ET ELLE VAUT POUR LE BANC ENTIER : les trois scènes de
+     l'Établi tournaient sur le programme du banc, quinze lignes et des
+     registres à zéro. Aucun invariant ne pouvait voir ces trois
+     défauts, parce qu'aucune scène ne portait de contenu LONG. Les
+     deux scènes ajoutées ici (« la machine détachée », « le résultat
+     détaché ») ne corrigent pas ce trou — il reste à faire : une
+     scène de l'Établi devant un vrai binaire lié dynamiquement.
+
+9.84 [FAIT] QUATRE MANQUES DE L'ÉTABLI, VUS À L'ÉCRAN
+
+     Retour du 10 novembre 2026, après avoir ouvert un vrai binaire :
+     « un btn fermer et une icone en forme d'engrenage pour le reglage,
+     la console n'est pas assez visible, la calculatrice devra etre
+     la ».
+
+     LE BOUTON FERMER MANQUAIT, ET C'EST UN OUBLI FRANC. namsdec
+     dessine sa propre décoration : les trois pastilles — fermer,
+     réduire, agrandir — vivent en tête de la BARRE DE MENUS. L'Établi
+     n'a pas de barre de menus, et personne n'a pensé à reprendre les
+     pastilles : on ne pouvait donc plus fermer la fenêtre depuis
+     l'application, seulement par le gestionnaire de fenêtres, que
+     namsdec a justement cessé d'afficher. Elles sont au même endroit
+     qu'au mode avancé, par le même `chrome::window_buttons_ui` — la
+     fermeture occupe l'angle qu'une souris lancée vers le haut à
+     gauche atteint sans viser.
+
+     C'est la leçon de ce retour, et elle dépasse le bouton : en
+     retirant la barre de menus, on a retiré CE QU'ELLE PORTAIT, sans
+     en faire l'inventaire. Les exercices avaient déjà été rattrapés
+     ainsi (A 9.82) ; les pastilles, les préférences et la calculatrice
+     sont du même tonneau.
+
+     L'ENGRENAGE DES RÉGLAGES, et une icône plutôt qu'un mot : c'est le
+     seul bouton de cette barre qui ne mène pas à un geste du travail
+     en cours, et le signe est reconnu partout. Dessiné (`icon_gear` :
+     un anneau, huit dents) comme tout le reste — « ⚙ » n'est pas dans
+     la police par défaut d'egui et se peindrait en carré vide.
+
+     LA CALCULATRICE : convertir entre décimal, hexadécimal et binaire
+     est le geste le plus fréquent du premier mois — « combien fait
+     0x3c ? » —, et elle n'avait de chemin que par le menu Outils.
+
+     LA CONSOLE PAS ASSEZ VISIBLE : trois corrections, et aucune n'est
+     une question de goût.
+
+       * LA HAUTEUR passe de 150 à 200. À 150, la sortie montrait deux
+         lignes sous sa rangée de saisie : le « bonjour » qu'un premier
+         programme écrit — ce qu'on attendait de toute la séance — se
+         lisait comme une note de bas de page.
+
+       * LE FOND de la bande passe de celui de l'ÉDITEUR à celui des
+         BANDES. La sortie a son propre cadre sombre, qui ne ressortait
+         pas sur un fond de la même teinte ; sur le fond des bandes, le
+         terminal se détache comme ce qu'il est.
+
+       * LE TITRE ANNONCE QUE LE PROGRAMME A PARLÉ : une pastille verte
+         devant « RÉSULTAT », et le titre s'éclaircit. On le voit sans
+         lire la bande — ce qui compte sur un écran qui change à chaque
+         pas.
+
+
+9.85 [FAIT] TROIS COMMANDES QUI MENTENT, SUR UNE SEULE CAPTURE
+
+     Retour du 10 novembre 2026, une flèche verte posée sur le bouton
+     « Détacher » de la rangée des vues, la source active : « Ne sert à
+     rien ». Les deux autres défauts n'étaient pas désignés ; ils
+     étaient sur la même image, et ils relèvent de la même famille — un
+     élément de l'écran qui promet autre chose que ce qu'il fait.
+
+     I. LE BOUTON QUI NE DÉTACHE RIEN
+
+     La source NE SE DÉTACHE PAS, et c'est un choix ancien : elle est
+     la vue qui reste quand les autres partent, une rangée vide ne
+     mènerait nulle part (`VueCentrale::détachable`). `détacher_vue`
+     refuse donc — EN SILENCE. Et `views_bar_ui` le savait déjà à
+     moitié : elle met à zéro la LARGEUR retenue pour le bouton quand
+     il n'y a rien à détacher. Elle ne le PEIGNAIT pas pour autant
+     moins. Le bouton s'allumait au survol, se pressait, et n'obtenait
+     rien.
+
+     L'INTENTION ÉTAIT DONC DÉJÀ ÉCRITE, à un endroit, et pas à
+     l'autre. C'est le pire des deux états : la rangée comptait sur son
+     absence et le dessinait quand même, si bien que le bouton se
+     posait dans une place retenue pour autre chose.
+
+     ET IL NE SE VOYAIT QU'EN COMPAGNIE. La rangée n'appelle la
+     commande de son bord droit que s'il reste de la place retenue pour
+     elle (`réserve > 0.0`). Devant la source, le bouton en retient
+     zéro : sans le compteur de problèmes à côté, il ne se peignait pas
+     du tout. L'écran du retour portait justement « ⚠ 2 ». C'est
+     pourquoi le contrôle en sème deux, et pourquoi il ne passe pas par
+     nasm pour cela — ce qu'il mesure est une mise en page.
+
+     II. LE MESSAGE D'ÉTAT QUI PASSE PAR DESSUS LA SCÈNE
+
+     Sur la même image, la note d'un binaire lié dynamiquement — quatre
+     lignes — partait du bord gauche de la frise de l'Établi et passait
+     PAR DESSUS le bouton « Regarder tourner », puis par dessus RIP.
+     Mesuré à 1600 px de large : l'encre allait jusqu'à x = 2824.
+
+     LA CAUSE N'ÉTAIT PAS DANS LA FRISE. Une étiquette posée dans un
+     `ui.horizontal` d'egui est en `Extend` : elle s'allonge au-delà de
+     la place qu'on lui laisse au lieu de s'y couper. La barre d'état
+     du mode avancé s'en gardait ELLE-MÊME, en posant `wrap_mode` avant
+     d'appeler `status_message_ui` ; la frise de l'Établi, écrite plus
+     tard, ne savait pas qu'il fallait le faire. La règle est donc
+     passée DANS `status_message_ui`, où elle n'a plus à être sue par
+     qui l'appelle.
+
+     ET L'INFOBULLE EN DÉPENDAIT. Elle ne paraît que si l'on a coupé
+     (`demandé > réponse.rect.width()`), et l'on ne coupait jamais : un
+     message qui déborde l'écran n'était donc lisible NULLE PART. Une
+     étiquette qui se coupe d'elle-même rend la mesure vraie des deux
+     côtés — ce qu'on a laissé est ce qu'on a peint.
+
+     III. LA LÉGENDE DE LA PILE, LISIBLE SEULEMENT EN POUSSANT UNE BARRE
+
+     Les mots de pile défilent de côté, et pour une bonne raison : une
+     valeur coupée au bord n'est pas une valeur abrégée, c'est une
+     valeur fausse. Mais la phrase qui explique le grisé — « au-dessus
+     de RSP : déjà dépilé » — était peinte DANS cette zone, en dernière
+     ligne de `stack_words_ui`. Trois conséquences, toutes visibles sur
+     la capture : elle se repliait sur la largeur du CONTENU et non sur
+     celle du volet, donc coupée au milieu d'un mot ; elle allongeait
+     la course du défilement pour son seul compte ; et il fallait
+     pousser la barre pour lire ce qui était censé dispenser de le
+     faire.
+
+     Elle est sortie de la zone. Les valeurs gardent leur défilement,
+     la phrase se replie : une valeur coupée serait fausse, une phrase
+     repliée reste vraie.
+
+     CE QUE LE BANC NE VOYAIT PAS, ET POURQUOI. Les trois défauts ont
+     passé des centaines de contrôles, pour trois raisons différentes
+     et instructives :
+
+       * le bouton inerte demandait un VOISIN (le compteur de
+         problèmes) pour seulement se peindre ;
+       * la frise de l'Établi n'avait jamais porté d'état LONG —
+         toutes ses scènes disaient « Assemblé » ou « Arrêté » ;
+       * la légende de la pile demandait une pile LARGE — une pile de
+         zéros donne des lignes courtes, la zone n'a rien à faire
+         défiler, et la phrase se replie bien à l'aise.
+
+     Les trois contrôles neufs sèment donc ce qui manquait, et chacun a
+     été éprouvé en remettant son défaut : 1 bouton au lieu de 0,
+     x = 2824 au lieu de 1584, 388 px peints pour 331 visibles. Une
+     scène de banc est ajoutée pour le troisième cas de figure —
+     l'Établi avec une note longue dans sa frise.
+
+     IV. ET UN QUATRIÈME, TROUVÉ EN REGARDANT — DANS LE BANC LUI-MÊME
+
+     La scène neuve, rendue en image, montrait le code de l'éditeur en
+     CHARABIA, tout le reste de l'écran étant juste. Ce n'était pas
+     l'application : l'atlas de glyphes se construit en peignant, une
+     scène qui apporte deux cents caractères neufs le fait grandir à la
+     dernière image, et le premier rendu emploie encore l'ancienne
+     texture — les glyphes déjà posés y pointent sur les mauvaises
+     cases. Le deuxième rendu voit l'atlas à jour.
+
+     Les trois relevés d'images rendent donc deux fois et jettent la
+     première. C'est le même piège que leurs six images préalables, un
+     cran plus tard : celles-là laissent la MISE EN PAGE se stabiliser,
+     celle-ci laisse la TEXTURE la rattraper. Une image qui bouge seule
+     fait douter de toutes les autres — et celle-ci aurait fait
+     chercher un défaut de police là où il n'y en avait pas.
+
+
+9.86 [FAIT] LE PARCOURS SE CONSULTAIT AU LIEU DE SE FAIRE
+
+     Demande du 10 novembre 2026 : « ux et ui pour débutant, ça ne doit
+     pas être rébarbatif, les exercices devraient être interactifs ».
+
+     CE QUI SE PASSAIT, ET C'ÉTAIT LE TROU DE CE MODE-LÀ. Au mode
+     avancé, l'énoncé et le but d'un exercice vivent dans le panneau
+     latéral, qui est TOUJOURS LÀ. L'Établi n'a pas de panneau latéral,
+     et personne n'avait repris ce que celui-ci portait — c'est la même
+     leçon qu'en A 9.84 avec la barre de menus, un cran plus loin. On
+     ouvrait donc « Exercices… », on chargeait une étape, on refermait
+     la fenêtre, et l'on se retrouvait seul devant un programme à
+     trous : sans l'énoncé, sans le but, sans savoir si l'on avait
+     réussi. Rien n'était cassé ; simplement, le parcours se
+     CONSULTAIT, comme un catalogue, au lieu de SE FAIRE.
+
+     C'est cela qui est rébarbatif, et non la liste elle-même.
+
+     LA BANDE DE L'EXERCICE : en haut, sur toute la largeur, et
+     seulement quand une étape est chargée. Le rang et le palier —
+     « 2/117 · Découverte » —, le titre, l'énoncé, puis le but condition
+     par condition. À droite, la barre du parcours entier, « Choisir… »
+     et « Étape suivante ».
+
+     RIEN DE TOUT CELA N'EST RÉÉCRIT. `goal_ui` peignait déjà les
+     conditions avec le constat de ce qui manque, le budget
+     d'instructions, la question des étapes de lecture et le cas des
+     démonstrations ; `exercise_after` savait déjà quelle est la suite
+     NON RÉUSSIE. Ce qui manquait n'était pas le texte, c'était
+     l'endroit où le peindre. Le redire autrement aurait fait deux
+     vérités à tenir d'accord.
+
+     CE QUI REND L'EXERCICE INTERACTIF, et le mot est celui de la
+     demande : le but s'allume PENDANT qu'on avance, pastille par
+     pastille, sous les yeux. Une condition qui passe au vert au pas
+     numéro sept est un retour ; la même, lue dans une fenêtre qu'on
+     rouvre après coup, est un verdict.
+
+     EN HAUT ET SUR TOUTE LA LARGEUR, et c'est mesuré : un énoncé de la
+     série livrée fait de cent cinquante à quatre cent soixante
+     caractères. Sur toute la largeur, cela fait deux lignes ; dans la
+     colonne du code, six.
+
+     LA HAUTEUR AUSSI EST MESURÉE. Cent soixante-quatre pixels avaient
+     été écrits d'instinct, et la capture montrait la dernière ligne
+     coupée des DEUX formes — le budget pour une étape d'écriture,
+     « exécutez pour voir ce que la machine en dit » pour une étape de
+     lecture. C'est à chaque fois la ligne qui dit quoi faire ensuite.
+     Le contenu demande jusqu'à 136 px sur un écran de 1600 : 190
+     couvre le titre, les marges et l'air entre les deux.
+
+     DEUX FRACTIONS NE TIENNENT PAS SUR UNE LIGNE. La barre du parcours
+     portait « 1/117 » à côté d'elle, et le titre « 2/117 » trois
+     centimètres plus à gauche : même forme, même dénominateur, l'une
+     disant le RANG et l'autre les RÉUSSIS. Sur la capture, on les
+     lisait l'une pour l'autre. Le rang reste écrit — c'est lui qu'on
+     cherche —, le compte des réussis se survole.
+
+     UN DÉFAUT DE MESURE TROUVÉ EN CHEMIN, ET IL VAUT PLUS QUE LA BANDE
+
+     Le contrôle « rien n'est coupé dans la bande » accusait
+     « RIP 0x400000 », dans la frise, d'être coupé : 86 px peints,
+     14 visibles. Il ne l'était pas.
+
+     `Rect::from_min_size(t.pos, t.galley.size())` EST FAUX, et il l'est
+     en silence. `TextShape::pos` n'est le coin haut-gauche que pour une
+     galley alignée à GAUCHE. Alignée à droite — tout ce qu'une rangée
+     `right_to_left` pose, et egui en met partout —, `pos` est le bord
+     DROIT, et la galley porte son décalage dans son propre rectangle :
+     `galley.rect` vaut `[-86, 0] - [0, 14]`. Rect alloué pour RIP :
+     `[1499.8 - 1586.0]`. Mesure naïve : `[1586.0 - 1672.2]`.
+
+     L'erreur vaut la largeur du texte, et elle est TOUJOURS VERS LA
+     DROITE — c'est-à-dire vers le bord où un recouvrement se produit.
+     Un relevé qui emploie cette forme déplace donc chaque étiquette
+     alignée à droite hors du cadre où elle est vraiment : il rate les
+     recouvrements de ce côté-là et en invente ailleurs. Dix-sept
+     endroits du banc l'employaient.
+
+     `galley.rect` porte déjà le décalage ; `cadre_du_texte` le
+     translate, une fois, pour tout le monde. Les relevés qui
+     parcourent `galley.rows` étaient justes depuis toujours, pour la
+     même raison : les lignes sont dans l'espace de la galley, décalage
+     compris. La règle du skill — « le rectangle, pas la position » —
+     était donc à moitié écrite : c'est le rectangle DE LA GALLEY, pas
+     sa position plus sa taille.
+
+     TROIS CONTRÔLES, CHACUN ÉPROUVÉ EN RETIRANT LA BANDE. Et le
+     premier a dû être resserré : il cherchait l'énoncé dans TOUT
+     l'écran, et passait au vert la bande retirée — le programme de
+     départ d'un exercice REDIT son énoncé en commentaire. Il ne
+     regarde plus que ce qui est peint au-dessus de la zone de travail.
+     Deux scènes de banc en plus, une par forme d'exercice : elles ne
+     portent pas la même mise en page, et la seconde ne serait jamais
+     mesurée si l'on ne regardait que la première.
+
+     LA BANDE PREND LA PLACE DU CODE, ET IL A FALLU LA COMPTER
+
+     Rendue au plus petit écran que l'application accepte — 800x520 —,
+     la bande posée, la rangée des vues était coupée en deux. Mesuré en
+     LIGNES DE PROGRAMME entièrement visibles, parce que c'est ce qu'on
+     vient faire et que c'est la seule mesure qui ne se périme pas
+     quand une police change : six lignes sans exercice, ZÉRO avec.
+
+     CE QUI A MARCHÉ : donner à la bande une PART de ce qui reste
+     plutôt que ses 190 pixels. Zéro ligne devient deux. Au-dessus de
+     860 pixels de place disponible la part ne mord plus, et la bande
+     reprend ses 190 — sur un portable ordinaire (1366x768), quatorze
+     lignes.
+
+     DEUX ESSAIS QUI N'ONT PAS MARCHÉ, et ils valent d'être écrits :
+
+       * RAPETISSER ENCORE LA BANDE ne donne rien. Un septième de ce
+         qui reste au lieu d'un cinquième : toujours deux lignes. La
+         bande du résultat prend « 45 % de ce qui reste », une part
+         elle aussi, et reprend tout ce que celle-ci rend avant que le
+         code n'en voie la couleur.
+       * BORNER LA BANDE DE LA LIGNE COURANTE — seule des trois à
+         prendre un nombre de pixels fixe — gagnait bien une troisième
+         ligne, et faisait se recouvrir DEUX PANNEAUX : à 800x520, la
+         bande du résultat se retrouvait posée sur celle de la ligne,
+         « RÉSULTAT » peint par-dessus le numéro de ligne 13. Attrapé
+         par `panels_do_not_overlap_on_the_smallest_screen`, qui
+         existait déjà. Une ligne de code gagnée ne paie pas deux
+         panneaux qui se recouvrent, et l'on ne garde pas une borne
+         dont on ne sait pas expliquer l'effet : retirée.
+
+     TROIS MESURES FAUSSES EN CHEMIN, ET LA MÊME CAUSE DEUX FOIS.
+
+     La première : un A/B disait que la part ne donnait rien. Le
+     binaire de l'essai n'avait pas été recompilé. C'est le piège que
+     le skill d'audit nomme en toutes lettres, et il se tend aussi avec
+     `touch` quand la commande qui suit ne dit pas qu'elle compile.
+     RÈGLE : un A/B de mise en page ne vaut que si la ligne
+     « Compiling » est dans la sortie des DEUX côtés.
+
+     La deuxième, plus bête et plus instructive : on a comparé deux
+     PARTS entre elles — un cinquième contre un septième, deux lignes
+     des deux côtés — et conclu « la part ne sert à rien ». On ne
+     l'avait jamais comparée à ce qu'elle remplaçait. Comparer deux
+     variantes d'une idée ne dit RIEN de l'idée.
+
+     CE QUI RESTE SU, ET NON CORRIGÉ : à 800x520, l'Établi avec un
+     exercice montre deux lignes de programme. Le seul levier qui reste
+     est la part de la bande du résultat, et sa hauteur vient d'une
+     demande explicite du 10 novembre (A 9.84, « la console n'est pas
+     assez visible »). C'est un arbitrage pour Fred, pas pour nous.
+
+
+9.87 [FAIT] L'INTERFACE MONTRAIT L'ÉTAT SANS LE NOMMER
+
+     Retour du 10 novembre 2026, après la bande de l'exercice : « c'est
+     bon mais l'interface n'est pas assez pédagogique ».
+
+     OÙ ÇA MANQUAIT, ET ON LE VOIT SUR UNE CAPTURE. Le volet « ce que
+     fait la machine » montre dix-sept noms de trois lettres, seize
+     chiffres hexadécimaux chacun, et sept sigles de deux lettres
+     suivis d'un zéro. Pas un mot. C'est l'écran du mode DÉBUTANT, et
+     c'est le seul endroit de ce mode qui montre de l'état brut sans le
+     nommer — alors que la règle de l'Établi est que chaque bande se
+     présente elle-même, et que RIEN ne se survole pour savoir ce que
+     c'est (voir l'en-tête d'`etabli.rs`).
+
+     La pile, elle, avait sa légende depuis toujours : « en grisé,
+     au-dessus de RSP : déjà dépilé ». Les deux autres n'en avaient
+     aucune. L'incohérence était dans le même panneau.
+
+     I. LE DERNIER PAS SE DIT EN TOUTES LETTRES
+
+     C'est la correction qui compte, parce qu'elle porte sur le MOMENT
+     où l'on apprend — « lire, prévoir, avancer, CONSTATER ». La bande
+     du dernier pas ne constatait rien de lisible à qui débute :
+
+         RCX 0x3 -> 0x2        demande de lire l'hexadécimal
+         ZF 0 -> 1             demande de savoir ce qu'est ZF
+
+     Deux traductions exigées au moment précis où l'on vérifie si l'on
+     avait compris, et deux choses qu'on vient justement apprendre.
+     Désormais, au niveau débutant seulement :
+
+         RCX 3 -> 2
+         ZF 0 -> 1 — le dernier résultat est nul — c'est lui qu'un
+                     `je`/`jz` lit
+
+     SOUS LE MILLION, LE DÉCIMAL. Le programme qu'on vient de taper dit
+     `mov rcx, 3` ; répondre `0x3` demandait de se reconnaître avant de
+     comprendre. Au-dessus du million ce ne sont plus des quantités
+     mais des ADRESSES, et l'hexadécimal reste : `0x401000` se
+     reconnaît dans le listing, 4 198 400 ne se reconnaît nulle part.
+     Le seuil est choisi pour cela et non pour sa rondeur — la plus
+     basse adresse d'un ELF ordinaire est 0x400000, soit 4 194 304.
+
+     LE RÔLE, ET SEULEMENT QUAND L'INDICATEUR EST POSÉ. Un indicateur
+     qui retombe ne dit pas l'inverse de ce qu'il disait — « le
+     résultat n'est pas nul » est vrai et sans intérêt —, et sept
+     phrases à chaque `cmp` noieraient celle qui compte.
+
+     UNE SEULE TABLE POUR DEUX ENDROITS. La phrase vient de
+     `flag_words`, sortie de `flag_description` pour l'occasion :
+     l'infobulle et la bande disent la même chose, et deux phrases pour
+     le même indicateur seraient deux vérités à tenir d'accord.
+
+     II. LE VOLET DIT CE QU'IL MONTRE
+
+     Une phrase au-dessus des registres, une sous les indicateurs, au
+     mode simple seulement. Pas dans l'infobulle : les sept indicateurs
+     ont déjà la leur, complète, et elle demande de SAVOIR QU'IL FAUT
+     SURVOLER — c'est-à-dire de savoir que ces sigles cachent quelque
+     chose. Celui qui l'ignore est exactement celui à qui cela
+     s'adresse.
+
+     AVANT LA LISTE, ET NON APRÈS, et c'est la capture qui l'a dit. La
+     première version posait la légende des registres SOUS les dix-sept
+     lignes : on lisait donc dix-sept lignes incompréhensibles, puis ce
+     qu'elles étaient. Celle des indicateurs reste après sa rangée —
+     une rangée d'une seule ligne est déjà vue en entier quand on
+     arrive à la phrase. L'ordre est retenu par le contrôle, qui
+     compare les deux ordonnées.
+
+     RIEN AU MODE AVANCÉ, et les deux contrôles le mesurent aussi : le
+     panneau latéral y est déjà serré, et ces phrases y seraient du
+     bruit devant quelqu'un qui sait. Un contrôle qui ne vérifierait
+     que la présence ne prouverait pas que la règle S'ARRÊTE.
+
+     DEUX CONTRÔLES EXISTANTS ONT DIT LEUR MOT, ET C'EST CE QU'ON LEUR
+     DEMANDE.
+
+     `every_text_size_belongs_to_a_declared_set` a refusé la taille 11
+     des deux légendes : le jeu déclaré est 9, 12, 13, 14, 28. Une
+     taille de plus, choisie d'instinct pour « un peu plus petit que le
+     texte », aurait fait une quinzième nuance dans une interface qui
+     en compte cinq. Passées à 12.
+
+     `la_réponse_attend_le_pas_au_niveau_débutant` attendait
+     « RAX 0x0 -> 0x1 » et voit désormais « RAX 0 -> 1 ». Il a été mis
+     à jour, et non assoupli : un contrôle qui accepterait les deux
+     écritures ne distinguerait plus les deux niveaux, qui sont
+     justement ce qu'on vient de séparer.
+
+     ET LA LONGUEUR DES DEUX PHRASES EST, ELLE AUSSI, UNE MESURE. La
+     première rédaction en faisait trois lignes chacune, soit cent
+     pixels pris au volet : la pile tombait sous la ligne de flottaison
+     et l'on n'en voyait plus que deux mots, RSP compris. Or le
+     commentaire de ce volet dit depuis toujours que registres et pile
+     sont « justement les deux endroits qu'on regarde ENSEMBLE en
+     avançant d'un pas ». Une légende qui chasse ce qu'elle accompagne
+     ne vaut pas mieux que pas de légende.
+
+     Resserrées à deux lignes, RSP revient. Et le repli a demandé un
+     dernier mot : « ZF : « c'était zéro » » coupait juste avant le
+     deux-points, qui ouvrait la seconde ligne tout seul. « ZF veut
+     dire » ne se coupe pas ainsi. On ne choisit pas où egui replie,
+     mais on choisit des phrases qui se replient bien.
+
+
+9.88 [FAIT] LE PROGRAMME QU'ON LIT N'ÉTAIT EXPLIQUÉ NULLE PART
+
+     Troisième retour du 10 novembre 2026 : « l'interface n'est
+     toujours pas assez pédagogique ».
+
+     ON A REGARDÉ LE PREMIER ÉCRAN, et c'est lui qui a répondu.
+     L'Établi s'ouvre sur un programme de quinze lignes — `mov`,
+     `add`, `dec`, `jnz`, `hlt`, `global`, `section`. Sept mots qu'un
+     débutant ne connaît pas. Dessous, la bande « ce que fait cette
+     ligne » disait : « Ici s'afficheront l'adresse de la prochaine
+     instruction, ce qu'elle fait, et les octets qui la composent »
+     — autrement dit : revenez quand vous aurez assemblé.
+
+     Pendant ce temps, namsdec porte CENT QUATRE-VINGT-NEUF FICHES, et
+     la seule porte qui y menait depuis l'éditeur était F1 — une
+     touche dont rien, à l'écran, ne parle. Le texte existait ; il
+     manquait l'endroit et le moment.
+
+     LA BANDE EXPLIQUE LA LIGNE OÙ EST LE CURSEUR, tant que rien ne
+     tourne : le mot, ce qu'il veut dire, le corps de la fiche, et
+     « La fiche entière » à un clic. On parcourt un programme ligne à
+     ligne AVANT de l'exécuter, ce qui est la première moitié de
+     l'apprentissage — « lire, prévoir, avancer, constater », et c'est
+     le premier verbe qui n'avait aucun support.
+
+     LE PREMIER MOT DE LA LIGNE, ET NON LE MOT SOUS LE CURSEUR. C'est
+     la différence avec F1, et elle est voulue : F1 répond à une
+     question qu'on POSE — on a mis le curseur sur `rep`, c'est de
+     `rep` qu'on parle. Ici personne n'a rien demandé : la bande suit
+     le curseur de ligne en ligne, et ce qu'on veut savoir d'une ligne
+     est ce qu'elle FAIT.
+
+     QUAND LA LIGNE N'A RIEN À DIRE — une ligne vide, une étiquette
+     seule, un commentaire —, la bande garde ce qu'elle annonçait et
+     ajoute comment la faire parler. C'est exactement l'état du PREMIER
+     ÉCRAN : le curseur y est au premier caractère, qui ouvre une ligne
+     de commentaire, et la première version restait donc muette au
+     moment précis où elle avait le plus à apprendre. La capture l'a
+     dit ; aucune mesure ne l'aurait demandé.
+
+     UNE SEULE PHRASE POUR LES DEUX CAS : sous une fiche elle dit « il
+     y en a d'autres », sans fiche elle dit « essayez ». Deux phrases
+     presque identiques seraient deux phrases à tenir d'accord.
+
+     ET UN DÉFAUT VIEUX DE TOUJOURS, SORTI PAR CELUI-CI
+
+     La fiche d'`add` dit « le débordement *non signé* ». `prose` — qui
+     met les fiches en forme — ne rendait que les accents graves et les
+     DOUBLES astérisques. Cinquante passages des fiches emploient les
+     simples : la fenêtre d'aide montrait donc ses astérisques depuis
+     toujours, et personne ne l'avait vu parce qu'elles sont discrètes.
+     La bande les a mises au premier écran, en gros, sur la première
+     instruction qu'on lit.
+
+     L'invariant `no_screen_shows_its_own_markup` ne regardait que les
+     doubles. Il regarde maintenant les deux, et la règle exclut la
+     multiplication comme `prose` l'exclut : une paire ne compte comme
+     balisage que si son ouvrante est collée à ce qui suit et sa
+     fermante à ce qui précède. « RDX:RAX = RAX * 3 » garde donc son
+     astérisque — elle a un blanc de chaque côté.
+
+     C'est le troisième défaut de cette séance que l'on trouve en
+     ajoutant quelque chose à côté, et non en cherchant. Un écran neuf
+     ne montre pas seulement ce qu'il apporte : il met sous le nez ce
+     qui dormait à côté.
+
+     ET LA BANDE A COÛTÉ CE QU'ELLE VALAIT, MESURÉ DEUX FOIS
+
+     Le contrôle du plus petit écran, écrit la veille, a parlé tout de
+     suite : à 800x520, la fiche COMPLÈTE dans la bande ramenait de six
+     à UNE le nombre de lignes de programme entièrement visibles. Une
+     explication qui chasse le programme qu'elle explique ne vaut pas
+     mieux que pas d'explication — c'est la même leçon que les légendes
+     du volet de la machine, quelques heures plus tôt.
+
+     PREMIÈRE PHRASE SEULEMENT, le reste derrière « La fiche entière » :
+     une à trois. Une bande n'est pas une page de manuel ; elle dit de
+     quoi il s'agit et montre la porte.
+
+     PUIS LE CAS QU'ON N'AVAIT PAS REGARDÉ : un exercice chargé, pas
+     encore assemblé. Les DEUX bandes d'explication paraissaient
+     ensemble — la consigne en haut, la fiche en bas — et il ne restait
+     ZÉRO ligne de programme. Pas un écran serré : un écran cassé.
+
+     UNE SEULE BANDE D'EXPLICATION À LA FOIS. Ce n'est pas une règle de
+     taille mais de RÔLE : expliquer ce qu'on a sous les yeux est un
+     seul métier, et deux bandes qui le font en même temps se disputent
+     la même place. Quand un exercice est en cours, c'est lui qui
+     l'exerce ; la bande du bas reprend son rôle d'avant. Deux lignes
+     reviennent, soit le chiffre d'avant cette bande.
+
+     CE QUE CELA COÛTE, ET C'EST DIT : pendant un exercice, la ligne où
+     est le curseur ne s'explique plus toute seule. Il reste F1 et le
+     survol — c'est-à-dire, pour un débutant, rien. Le vrai levier est
+     ailleurs et il n'est pas à nous : la bande du résultat prend 45 %
+     de ce qui reste (A 9.86).
+
+     LES TROIS CHIFFRES DU CONTRÔLE ONT DONC BOUGÉ, et deux ont baissé
+     exprès : 6 -> 3 sans exercice (le prix de la bande, payé en
+     connaissance de cause), 2 -> 2 avec (la règle de la bande unique
+     le rend), 14 sur un portable ordinaire, inchangé. Un contrôle dont
+     on baisse le seuil sans écrire pourquoi est un contrôle qu'on
+     vient d'éteindre.
+
+
+9.89 [FAIT] TROIS GESTES QUI NE SE DÉFAISAIENT PAS, ET CE QU'ILS ONT SORTI
+
+     Trois captures annotées du 10 novembre 2026, et une demande :
+     « mets un btn de cacher/afficher », « ça devrait être une
+     bascule », « pourquoi ces lignes », et « améliore encore
+     l'interface débutant pour qu'elle soit plus conviviale ».
+
+     I. « MONTRER » N'AVAIT PAS DE RETOUR
+
+     La prévision retient la réponse jusqu'au pas ; « Montrer » la
+     donne d'un clic. Et puis plus rien : la réponse restait jusqu'au
+     pas suivant, et l'on ne pouvait plus se reposer la question. Un
+     geste qui ne se défait pas se prend avec hésitation — or
+     l'hésitation est exactement ce que ce mode cherche à lever
+     (« demander une aide ne doit pas coûter un aveu »).
+
+     « Cacher » paraît à la place de « Montrer » une fois la réponse
+     ouverte, et SEULEMENT quand la prévision est en jeu : hors de ce
+     réglage, la réponse n'a jamais été cachée, et un bouton
+     « Cacher » y proposerait de masquer ce que namsdec a toujours
+     montré — ce qui n'est pas une bascule mais une option de plus.
+
+     II. LE COMPTEUR DE PROBLÈMES N'EN ÉTAIT PAS UNE NON PLUS
+
+     Il ouvrait la console sur l'onglet Diagnostics ; rien ne la
+     refermait par là. Deuxième clic, rien. Il bascule — mais SEULEMENT
+     si l'on est déjà sur la liste : la console ouverte sur la sortie
+     du programme, un clic sur le compte doit montrer les problèmes,
+     pas tout fermer. C'est le même geste dans les deux cas, et il ne
+     se renverse qu'une fois rendu.
+
+     III. « POURQUOI CES LIGNES » : UN TRAIT QUI PROMETTAIT UN CLIC
+
+     Deux flèches rouges sur des soulignements, dans la bande du
+     résultat. `cliquable` pose un trait sous le texte, visible au
+     repos : c'est le signe qu'un clic mène quelque part. Tous les
+     diagnostics y passaient, y compris ceux qui ne portent AUCUNE
+     ligne — les notes sur le binaire chargé, qui parlent du programme
+     entier. Le trait y promettait un clic que la ligne d'en dessous
+     refusait (`if d.line > 0`).
+
+     C'est la même famille que le bouton « Détacher » devant la source,
+     le même jour : un signe qui annonce un geste que rien ne rend. Un
+     trait de moins vaut mieux qu'une promesse de plus.
+
+     IV. DEUX DÉFAUTS VUS SUR LES MÊMES IMAGES, QU'ON N'AVAIT PAS
+         DEMANDÉ DE CORRIGER
+
+     L'ÉNONCÉ DE L'EXERCICE MONTRAIT SES ACCENTS GRAVES. Les énoncés
+     citent les instructions dont ils parlent — « `loop` décrémente
+     RCX » —, et la bande les peignait tels quels. Elle passe par
+     `prose`, comme la fiche de la bande du bas. (Le contrôle qui
+     cherchait l'énoncé à l'écran a dû être repris : il cherchait les
+     trente premiers caractères du texte BRUT, c'est-à-dire le
+     balisage qu'on venait de retirer.)
+
+     LE CONSTAT DU BUT PARLAIT ENCORE EN HEXADÉCIMAL. Sur la même
+     image, la bande du bas disait « RCX 3 -> 2 » pendant que le but,
+     trois centimètres plus haut, disait « rax vaut 0x0 ». Deux façons
+     d'écrire le même nombre sur un même écran, c'est une de trop. Le
+     constat suit la règle du niveau ; la CONDITION, elle, reste telle
+     que l'exercice l'a écrite — c'est son texte, pas le nôtre.
+
+     V. PLUS CONVIVIALE : LA CIBLE SE LIT AVANT DE COMMENCER
+
+     `exercise_goal` se tait tant qu'aucun programme ne tourne, et
+     c'est juste : on ne dit pas « pas atteint » à qui n'a encore rien
+     lancé. Mais se taire faisait qu'on écrivait SANS SAVOIR OÙ L'ON
+     VA — les conditions ne se lisaient qu'après le premier essai,
+     alors qu'elles sont ce qui dirige ce qu'on écrit.
+
+     Elles sont montrées d'emblée, en gris, sans pastille et sans
+     verdict : ce ne sont pas des conditions qui tiennent ou qui
+     manquent, ce sont des conditions qu'on n'a pas encore éprouvées.
+     Montrer la cible est une aide ; la juger avant l'essai serait un
+     reproche, et le contrôle vérifie qu'aucun verdict n'est posé.
+
+     VI. DEUX REMARQUES DE PLUS, SUR UNE CAPTURE QUE J'AVAIS MANQUÉE
+
+     Une quatrième capture, de 18h37, portait deux flèches vertes que
+     je n'avais pas vues — j'avais pris les trois premières pour « les
+     trois dernières ». Il a fallu que Fred le dise.
+
+     LE NOM DU FICHIER, DANS LA BARRE DU HAUT : « si le nom est trop
+     long le concatener ou premiers caractères puis … ». Un nom de
+     fichier n'a pas de limite, et celui-ci ouvre une rangée qui porte
+     ensuite cinq commandes : laissé entier, il les repousse — et
+     au-delà, il pousse la barre sur deux lignes ou passe par-dessus ce
+     qui s'aligne à droite. C'est le troisième endroit du même défaut
+     corrigé dans la journée, après la frise et le titre de l'exercice.
+
+     ABRÉGÉ PAR LE MILIEU, et c'est le point : couper par la droite
+     perdrait l'extension, qui dit de quoi le fichier est fait, et deux
+     fichiers d'un même projet ne se distinguent souvent que par leur
+     début. Une « extension » de plus de six caractères n'en est pas
+     une — c'est la fin du nom, et la garder reviendrait à ne presque
+     rien couper. Le nom entier reste au survol.
+
+     « VARIABLES D'ENVIRONNEMENT » : « INNACCESIBLE ».
+
+     La bande du résultat porte, de haut en bas, les notes du binaire,
+     la sortie du programme, puis les rangées du bas — les arguments,
+     l'environnement, et LE CHAMP OÙ L'ON RÉPOND AU PROGRAMME. Ces
+     rangées-là vivent dans un panneau ancré au bas de la sortie :
+     quand la bande est trop courte, elles passent sous son bord,
+     c'est-à-dire sous le bord de la fenêtre. Sur la capture, le
+     programme demandait « Enter your name: » et il n'y avait plus
+     nulle part où le lui dire.
+
+     DEUX ENDROITS SERRAIENT, et il a fallu les deux :
+
+       * la BANDE elle-même ne se donnait pour plancher que
+         `RESULTAT_MIN`, qui ne compte que la sortie ;
+       * et la zone des PROBLÈMES, au-dessus, ne réservait à tout ce
+         qui suit que `SORTIE_MIN` — le cadre de la sortie, sans les
+         trois rangées qui viennent après elle.
+
+     Les deux prennent maintenant la mesure que la console du mode
+     avancé se donne déjà (`console_input_estimate`, majorée par ce que
+     l'image précédente a réellement pris). Deux formules pour une même
+     rangée finiraient par compter deux choses.
+
+     LE CONTRÔLE A DÛ ÊTRE RESSERRÉ, et c'est instructif : écrit
+     d'abord sur un binaire ouvert SANS notes, il passait quoi qu'on
+     fasse du plancher — deux cents pixels suffisent quand la bande n'a
+     que sa sortie à porter. C'est la note de quatre lignes d'un
+     binaire lié dynamiquement qui pousse les rangées du bas sous le
+     bord, et c'est donc elle qu'il fallait semer. Une scène qui ne
+     reproduit pas la contrainte ne mesure pas la correction.
+
+     ET LE PLANCHER A DÛ ÊTRE BORNÉ À SON TOUR. Premier jet : il
+     l'emportait sur la part de 45 % que la bande se donne. À 800x520
+     il la dépassait de trente-trois pixels, pris à la bande de la
+     ligne courante — qui, elle, ne défile pas : son contenu passait
+     PAR-DESSUS la rangée des vues, « Le programme est terminé. »
+     peint sur « Source ». Attrapé par
+     `panels_do_not_overlap_on_the_smallest_screen`, le même contrôle
+     qui avait déjà refusé la borne sur cette bande-là quelques heures
+     plus tôt.
+
+     La garantie vaut donc là où il y a la place. C'est honnête : à
+     800x520, cinq bandes et un volet ne tiennent pas, et la rangée de
+     saisie s'y coupe comme le reste. Mieux vaut une promesse tenue sur
+     les écrans ordinaires qu'une promesse qui casse la mise en page du
+     plus petit — et c'est la troisième fois de la journée que ce
+     contrôle-là arbitre.

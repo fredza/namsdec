@@ -473,3 +473,72 @@ pub(crate) fn icon_trash(painter: &egui::Painter, rect: egui::Rect, color: egui:
         trait_,
     ));
 }
+
+/// Assembler : le texte à gauche, les octets à droite.
+///
+/// Trois traits de longueurs inégales — on reconnaît du texte à ses
+/// lignes qui ne finissent pas au même endroit — et un bloc plein qui
+/// est ce que nasm en fait. C'est la seule chose que cette commande
+/// fait, et c'est ce qu'il faut qu'elle dise.
+///
+/// Dessinée plutôt que prise dans la police : « 🔨 » et les autres
+/// glyphes d'outil manquent de la police par défaut d'egui et
+/// retombent sur un carré vide — voir [`icon_button`].
+pub(crate) fn icon_assemble(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let r = rect.shrink(1.0);
+    let stroke = egui::Stroke::new(1.3, color);
+    // Le texte : trois lignes sur la moitié gauche, dont une plus
+    // courte. Toutes de la même longueur, elles se lisaient comme un
+    // menu « hamburger ».
+    let gauche = r.left();
+    let largeur = r.width() * 0.46;
+    for (i, part) in [1.0, 0.72, 0.9].into_iter().enumerate() {
+        let y = r.top() + r.height() * (0.22 + 0.28 * i as f32);
+        painter.line_segment(
+            [
+                egui::pos2(gauche, y),
+                egui::pos2(gauche + largeur * part, y),
+            ],
+            stroke,
+        );
+    }
+    // Les octets : un bloc plein, à droite, de la hauteur des trois
+    // lignes réunies.
+    let bloc = egui::Rect::from_min_max(
+        egui::pos2(r.right() - r.width() * 0.3, r.top() + r.height() * 0.18),
+        egui::pos2(r.right(), r.bottom() - r.height() * 0.18),
+    );
+    painter.rect_filled(bloc, 1.0, color);
+}
+
+/// L'engrenage des réglages.
+///
+/// Un anneau et huit dents, dessinés plutôt que pris dans la police :
+/// « ⚙ » n'est pas dans la police par défaut d'egui et se peint en
+/// carré vide — la raison d'être de tout ce module.
+pub(crate) fn icon_gear(painter: &egui::Painter, rect: egui::Rect, color: egui::Color32) {
+    let centre = rect.center();
+    let rayon = rect.width().min(rect.height()) * 0.5;
+    // L'anneau : assez épais pour tenir à quatorze pixels, assez fin
+    // pour qu'on voie le trou du milieu.
+    let couronne = rayon * 0.62;
+    painter.circle_stroke(
+        centre,
+        couronne * 0.74,
+        egui::Stroke::new((rayon * 0.30).max(1.2), color),
+    );
+    // Huit dents, posées en rayons : un trait court depuis le bord de
+    // l'anneau vers l'extérieur. Moins de huit se lit comme une fleur,
+    // plus se brouille à cette taille.
+    let dent = egui::Stroke::new((rayon * 0.26).max(1.0), color);
+    for i in 0..8 {
+        let angle = std::f32::consts::TAU * (i as f32) / 8.0;
+        let (sin, cos) = angle.sin_cos();
+        let depuis = egui::pos2(
+            centre.x + cos * couronne * 0.92,
+            centre.y + sin * couronne * 0.92,
+        );
+        let vers = egui::pos2(centre.x + cos * rayon, centre.y + sin * rayon);
+        painter.line_segment([depuis, vers], dent);
+    }
+}

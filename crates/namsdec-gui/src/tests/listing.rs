@@ -958,7 +958,7 @@ fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
                 && texte.galley.text() == "7f"
                 && r7f.is_none()
             {
-                r7f = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()));
+                r7f = Some(cadre_du_texte(texte));
             }
         }
         sortie.textures_delta.clear();
@@ -1712,7 +1712,7 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
                 let texte = t.galley.text();
                 if texte.len() == 2 && texte.chars().all(|c| c.is_ascii_hexdigit()) {
-                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let rect = cadre_du_texte(t);
                     let vu = rect.intersect(clipped.clip_rect);
                     let dedans = fenêtre.is_none_or(|f: egui::Rect| f.contains(vu.center()));
                     if vu.is_positive() && dedans {

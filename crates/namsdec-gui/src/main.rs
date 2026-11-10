@@ -17,6 +17,7 @@ mod editing;
 mod editor;
 mod enums;
 mod errors;
+mod etabli;
 mod exercises;
 mod exports;
 mod files;
@@ -46,6 +47,7 @@ mod readings;
 mod resources;
 mod roles;
 mod run;
+mod scene;
 mod session;
 mod settings;
 mod sidebar;
@@ -1275,6 +1277,22 @@ struct NamsdecApp {
     /// La fenêtre du motif cyclique — celle qui répond à « de combien ça
     /// déborde ».
     show_cyclic: bool,
+    /// Les deux bandes de l'Établi qu'on a sorties dans une fenêtre.
+    ///
+    /// De la session, comme les vues détachées de la rangée : on sort
+    /// une bande pour lire ce qui n'y tient pas, et on la referme.
+    /// Voir `etabli::etabli_fenetres_ui` pour le pourquoi — la pile
+    /// d'un vrai binaire et les explications de namsdec ne tiennent pas
+    /// toujours dans une place répartie d'avance.
+    etabli_machine_detachee: bool,
+    etabli_resultat_detache: bool,
+    /// La Scène : la machine en grand, pour regarder un pas se faire.
+    ///
+    /// De la session et non du disque, comme les autres fenêtres : on
+    /// l'ouvre pour suivre un passage, on la referme après. Voir
+    /// `scene.rs` pour ce qu'elle montre et pourquoi elle n'est pas
+    /// une vue.
+    show_scene: bool,
     /// La longueur demandée, et la valeur qu'on cherche à replacer. Des
     /// saisies de travail, comme l'adresse du vidage mémoire : elles ne
     /// vont pas dans `settings.json`, où elles n'auraient aucun sens au
@@ -1828,6 +1846,8 @@ enum PaletteCommand {
     ShowTimeline,
     ShowDisassembly,
     ShowCyclic,
+    /// La Scène : la machine en grand (voir `scene.rs`).
+    ShowScene,
     SetTheme(&'static Theme),
     SetLang(Lang),
     SaveAs,
@@ -2194,6 +2214,9 @@ impl Default for NamsdecApp {
             flow_fit: false,
             flow_goal: String::new(),
             show_cyclic: false,
+            etabli_machine_detachee: false,
+            etabli_resultat_detache: false,
+            show_scene: false,
             // Cent, comme pwndbg : de quoi couvrir un tampon
             // d'apprentissage sans noyer la fenêtre.
             cyclic_len: "100".to_owned(),
@@ -2606,6 +2629,7 @@ impl NamsdecApp {
             PaletteCommand::ShowBreakpoints => self.montrer_vue(VueCentrale::Breakpoints),
             PaletteCommand::ShowTimeline => self.montrer_vue(VueCentrale::Timeline),
             PaletteCommand::ShowCyclic => self.show_cyclic = true,
+            PaletteCommand::ShowScene => self.show_scene = true,
             PaletteCommand::ShowDisassembly => self.montrer_vue(VueCentrale::Disassembly),
             PaletteCommand::SetTheme(theme) => {
                 self.theme = theme;
@@ -2731,7 +2755,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 20] {
+    fn window_states(&self) -> [(&'static str, bool); 23] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -2751,6 +2775,9 @@ impl NamsdecApp {
             ),
             ("disassembly_window", self.show_disassembly),
             ("cyclic_window", self.show_cyclic),
+            ("scene_window", self.show_scene),
+            ("etabli_machine_window", self.etabli_machine_detachee),
+            ("etabli_resultat_window", self.etabli_resultat_detache),
             ("analysis_window", self.show_analysis),
             ("calculator_window", self.show_calculator),
             ("exercises_window_v2", self.exercises && self.show_exercises),
@@ -3531,190 +3558,209 @@ impl NamsdecApp {
             chrome::resize_edges_ui(&ctx, self.theme);
         }
 
-        timed(&mut spans, "barres", || {
-            egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
-            if self.show_toolbar {
-                egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
-            }
-        });
-        if self.show_statusbar {
-            // Un fond légèrement distinct, sans bordure complète autour —
-            // une pleine boîte s'est révélée trop marquée (retour
-            // utilisateur), un simple ton différent suffit à la séparer du
-            // panneau au-dessus sans "encadrer" toute la barre.
-            let statusbar_frame = egui::Frame::new()
-                .fill(ui.visuals().faint_bg_color)
-                .inner_margin(egui::Margin::symmetric(10, 5));
-            egui::Panel::bottom("statusbar")
-                .frame(statusbar_frame)
-                .show(ui, |ui| self.statusbar_ui(ui));
-        }
-        // LES BARRES D'ICÔNES DES BORDS, posées avant les panneaux
-        // qu'elles commandent.
+        // DEUX DISPOSITIONS, ET NON UN FILTRE DE PLUS.
         //
-        // L'ordre est tout : un panneau egui prend la place qui reste au
-        // moment où il est posé. Les barres passant les premières, elles
-        // tiennent toute la hauteur — de sous la barre d'outils jusqu'à
-        // la barre d'état — et la console s'ouvre ENTRE elles, comme
-        // chez JetBrains. Posées après, elles s'arrêteraient au-dessus
-        // de la console et l'icône qui l'ouvre serait séparée d'elle.
-        if self.show_rails {
-            timed(&mut spans, "barres d'icônes", || {
-                let cadre = egui::Frame::new()
-                    .fill(self.theme.panel)
-                    .inner_margin(egui::Margin::symmetric(4, 6));
-                egui::Panel::left("barre_gauche")
-                    .resizable(false)
-                    .exact_size(barres::BARRE_LARGEUR)
-                    .frame(cadre)
-                    .show(ui, |ui| self.barre_gauche_ui(ui));
-                egui::Panel::right("barre_droite")
-                    .resizable(false)
-                    .exact_size(barres::BARRE_LARGEUR)
-                    .frame(cadre)
-                    .show(ui, |ui| self.barre_droite_ui(ui));
-            });
-        }
-        // Au-dessus de la barre de statut, sous l'éditeur, et sur toute
-        // la largeur : la console garde ainsi les 80 colonnes qu'un
-        // programme suppose quand il écrit.
-        if self.show_console {
-            timed(&mut spans, "console", || {
-                let plafond =
-                    (ui.available_height() * CONSOLE_MAX_FRACTION).max(CONSOLE_MIN_HEIGHT);
-                let voulue = self.console_wanted_height(ui).min(plafond);
-                let id = egui::Id::new("console");
-                // En mode automatique, la hauteur est réécrite à chaque
-                // image : c'est ainsi qu'elle suit ce que la console a à
-                // dire, plutôt que de garder celle d'une image passée.
-                if self.console_height.is_none() {
-                    let état = egui::containers::panel::PanelState {
-                        outer_rect: egui::Rect::from_min_size(
-                            egui::Pos2::ZERO,
-                            egui::vec2(ui.available_width(), voulue),
-                        ),
-                    };
-                    ui.ctx().data_mut(|data| data.insert_persisted(id, état));
-                }
-                // Le plancher : ce que la zone de saisie prend, quand il
-                // y en a une. Une hauteur figée à la poignée ne doit pas
-                // pouvoir passer dessous — sinon le champ où l'on tape se
-                // retrouve sous la barre de statut, au moment précis où
-                // le programme attend quelque chose. L'utilisateur règle
-                // la place de la sortie, pas celle de ce qui commande.
-                let saisie = self
-                    .console_input_estimate(ui)
-                    .max(self.console_input_height.unwrap_or(0.0));
-                let plancher = if saisie > 0.0 {
-                    // La saisie, les onglets, et une ligne de journal :
-                    // en dessous, on ne verrait plus où taper.
-                    //
-                    // LA LIGNE DE JOURNAL EST COMPTÉE DEPUIS, et elle
-                    // ne l'était pas : le plancher ne gardait rien pour
-                    // la sortie, qui réclame alors son propre minimum
-                    // et le prend sur la saisie — son fond est opaque,
-                    // et il est peint par-dessus. Les deux rangées du
-                    // haut de la saisie disparaissaient dessous sans
-                    // qu'aucune mesure ne bouge : elles étaient peintes
-                    // et entières, simplement recouvertes.
-                    // Les marges du cadre de la sortie, et elles
-                    // seules : la sortie sait se replier jusqu'à ne
-                    // plus rien montrer, son cadre non.
-                    let sortie = console::MARGES_DE_LA_SORTIE;
-                    (saisie + ui.text_style_height(&egui::TextStyle::Button) + 28.0 + sortie)
-                        .max(CONSOLE_MIN_HEIGHT)
-                        .min(plafond)
-                } else {
-                    CONSOLE_MIN_HEIGHT.min(plafond)
-                };
-                egui::Panel::bottom(id)
-                    .resizable(true)
-                    .default_size(self.console_height.unwrap_or(voulue).max(plancher))
-                    .min_size(plancher)
-                    .max_size(plafond)
-                    .show(ui, |ui| self.console_panel_ui(ui));
-                // Ce que le panneau fait vraiment. S'il n'est pas à la
-                // hauteur demandée, c'est que la poignée a été tirée :
-                // on retient alors ce choix, et l'ajustement s'arrête.
-                let rendue = egui::containers::panel::PanelState::load(ui.ctx(), id)
-                    .map(|état| état.outer_rect.height());
-                if let Some(rendue) = rendue {
-                    match self.console_height {
-                        Some(gardée) if (rendue - gardée).abs() > 1.0 => {
-                            self.console_height = Some(rendue);
-                        }
-                        None if (rendue - voulue).abs() > 1.0 => {
-                            self.console_height = Some(rendue);
-                        }
-                        _ => {}
-                    }
+        // Jusqu'au 9 novembre 2026, le mode débutant était l'interface
+        // complète avec des morceaux en moins : même barre de menus,
+        // mêmes rails, même barre d'état, et des panneaux qui ne
+        // paraissaient pas. L'Établi est une mise en page À ELLE —
+        // quatre bandes fixes, rien à ouvrir — et c'est le niveau qui
+        // choisit entre les deux, non plus ce que chaque panneau
+        // décide de montrer. Voir `etabli.rs` pour le pourquoi, et
+        // `mockups/2026-11-09/` pour les trois maquettes départagées.
+        //
+        // Le reste de la frame ne change pas : les fenêtres flottantes,
+        // la palette, les réglages et les raccourcis sont les mêmes aux
+        // deux niveaux. Un mode simple qui perdrait l'aide ou les
+        // préférences ne serait pas simple, il serait amputé.
+        if self.debutant {
+            timed(&mut spans, "établi", || self.etabli_ui(ui));
+        } else {
+            timed(&mut spans, "barres", || {
+                egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
+                if self.show_toolbar {
+                    egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
                 }
             });
-        }
-        timed(&mut spans, "panneau latéral", || {
-            if self.show_sidebar {
-                let minimum = sidebar_min_width(ui);
-                let id = egui::Id::new("sidebar");
-                // `min_size` ne borne que la poignée : une largeur
-                // retenue d'une session précédente — ou d'avant un
-                // changement de police ou de zoom — passe dessous sans
-                // être corrigée, et les registres perdent leur dernier
-                // chiffre. On la relève donc nous-mêmes.
-                if let Some(état) = egui::containers::panel::PanelState::load(ui.ctx(), id)
-                    && état.outer_rect.width() < minimum
-                {
-                    let corrigé = egui::containers::panel::PanelState {
-                        outer_rect: egui::Rect::from_min_size(
-                            état.outer_rect.min,
-                            egui::vec2(minimum, état.outer_rect.height()),
-                        ),
-                    };
-                    ui.ctx().data_mut(|data| data.insert_persisted(id, corrigé));
-                }
-                egui::Panel::right(id)
-                    .resizable(true)
-                    .default_size(SIDEBAR_WIDTH)
-                    .min_size(minimum)
-                    .max_size((ui.available_width() * SIDEBAR_MAX_FRACTION).max(minimum))
-                    .show(ui, |ui| self.sidebar_ui(ui));
+            if self.show_statusbar {
+                // Un fond légèrement distinct, sans bordure complète autour —
+                // une pleine boîte s'est révélée trop marquée (retour
+                // utilisateur), un simple ton différent suffit à la séparer du
+                // panneau au-dessus sans "encadrer" toute la barre.
+                let statusbar_frame = egui::Frame::new()
+                    .fill(ui.visuals().faint_bg_color)
+                    .inner_margin(egui::Margin::symmetric(10, 5));
+                egui::Panel::bottom("statusbar")
+                    .frame(statusbar_frame)
+                    .show(ui, |ui| self.statusbar_ui(ui));
             }
-        });
-        // La légende de la chaleur, sous l'éditeur : une bande de
-        // couleur sans échelle ne dit rien — « plus rouge » ne se
-        // convertit en « mille passages » que si quelque chose le dit.
-        if self.heat_legend {
-            timed(&mut spans, "légende", || {
-                let passages = self.line_visits();
-                if !passages.is_empty() {
-                    let max = passages.values().copied().max().unwrap_or(1);
-                    egui::Panel::bottom("heat_legend")
+            // LES BARRES D'ICÔNES DES BORDS, posées avant les panneaux
+            // qu'elles commandent.
+            //
+            // L'ordre est tout : un panneau egui prend la place qui reste au
+            // moment où il est posé. Les barres passant les premières, elles
+            // tiennent toute la hauteur — de sous la barre d'outils jusqu'à
+            // la barre d'état — et la console s'ouvre ENTRE elles, comme
+            // chez JetBrains. Posées après, elles s'arrêteraient au-dessus
+            // de la console et l'icône qui l'ouvre serait séparée d'elle.
+            if self.show_rails {
+                timed(&mut spans, "barres d'icônes", || {
+                    let cadre = egui::Frame::new()
+                        .fill(self.theme.panel)
+                        .inner_margin(egui::Margin::symmetric(4, 6));
+                    egui::Panel::left("barre_gauche")
                         .resizable(false)
-                        .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 4)))
-                        .show(ui, |ui| self.heat_legend_ui(ui, max));
+                        .exact_size(barres::BARRE_LARGEUR)
+                        .frame(cadre)
+                        .show(ui, |ui| self.barre_gauche_ui(ui));
+                    egui::Panel::right("barre_droite")
+                        .resizable(false)
+                        .exact_size(barres::BARRE_LARGEUR)
+                        .frame(cadre)
+                        .show(ui, |ui| self.barre_droite_ui(ui));
+                });
+            }
+            // Au-dessus de la barre de statut, sous l'éditeur, et sur toute
+            // la largeur : la console garde ainsi les 80 colonnes qu'un
+            // programme suppose quand il écrit.
+            if self.show_console {
+                timed(&mut spans, "console", || {
+                    let plafond =
+                        (ui.available_height() * CONSOLE_MAX_FRACTION).max(CONSOLE_MIN_HEIGHT);
+                    let voulue = self.console_wanted_height(ui).min(plafond);
+                    let id = egui::Id::new("console");
+                    // En mode automatique, la hauteur est réécrite à chaque
+                    // image : c'est ainsi qu'elle suit ce que la console a à
+                    // dire, plutôt que de garder celle d'une image passée.
+                    if self.console_height.is_none() {
+                        let état = egui::containers::panel::PanelState {
+                            outer_rect: egui::Rect::from_min_size(
+                                egui::Pos2::ZERO,
+                                egui::vec2(ui.available_width(), voulue),
+                            ),
+                        };
+                        ui.ctx().data_mut(|data| data.insert_persisted(id, état));
+                    }
+                    // Le plancher : ce que la zone de saisie prend, quand il
+                    // y en a une. Une hauteur figée à la poignée ne doit pas
+                    // pouvoir passer dessous — sinon le champ où l'on tape se
+                    // retrouve sous la barre de statut, au moment précis où
+                    // le programme attend quelque chose. L'utilisateur règle
+                    // la place de la sortie, pas celle de ce qui commande.
+                    let saisie = self
+                        .console_input_estimate(ui)
+                        .max(self.console_input_height.unwrap_or(0.0));
+                    let plancher = if saisie > 0.0 {
+                        // La saisie, les onglets, et une ligne de journal :
+                        // en dessous, on ne verrait plus où taper.
+                        //
+                        // LA LIGNE DE JOURNAL EST COMPTÉE DEPUIS, et elle
+                        // ne l'était pas : le plancher ne gardait rien pour
+                        // la sortie, qui réclame alors son propre minimum
+                        // et le prend sur la saisie — son fond est opaque,
+                        // et il est peint par-dessus. Les deux rangées du
+                        // haut de la saisie disparaissaient dessous sans
+                        // qu'aucune mesure ne bouge : elles étaient peintes
+                        // et entières, simplement recouvertes.
+                        // Les marges du cadre de la sortie, et elles
+                        // seules : la sortie sait se replier jusqu'à ne
+                        // plus rien montrer, son cadre non.
+                        let sortie = console::MARGES_DE_LA_SORTIE;
+                        (saisie + ui.text_style_height(&egui::TextStyle::Button) + 28.0 + sortie)
+                            .max(CONSOLE_MIN_HEIGHT)
+                            .min(plafond)
+                    } else {
+                        CONSOLE_MIN_HEIGHT.min(plafond)
+                    };
+                    egui::Panel::bottom(id)
+                        .resizable(true)
+                        .default_size(self.console_height.unwrap_or(voulue).max(plancher))
+                        .min_size(plancher)
+                        .max_size(plafond)
+                        .show(ui, |ui| self.console_panel_ui(ui));
+                    // Ce que le panneau fait vraiment. S'il n'est pas à la
+                    // hauteur demandée, c'est que la poignée a été tirée :
+                    // on retient alors ce choix, et l'ajustement s'arrête.
+                    let rendue = egui::containers::panel::PanelState::load(ui.ctx(), id)
+                        .map(|état| état.outer_rect.height());
+                    if let Some(rendue) = rendue {
+                        match self.console_height {
+                            Some(gardée) if (rendue - gardée).abs() > 1.0 => {
+                                self.console_height = Some(rendue);
+                            }
+                            None if (rendue - voulue).abs() > 1.0 => {
+                                self.console_height = Some(rendue);
+                            }
+                            _ => {}
+                        }
+                    }
+                });
+            }
+            timed(&mut spans, "panneau latéral", || {
+                if self.show_sidebar {
+                    let minimum = sidebar_min_width(ui);
+                    let id = egui::Id::new("sidebar");
+                    // `min_size` ne borne que la poignée : une largeur
+                    // retenue d'une session précédente — ou d'avant un
+                    // changement de police ou de zoom — passe dessous sans
+                    // être corrigée, et les registres perdent leur dernier
+                    // chiffre. On la relève donc nous-mêmes.
+                    if let Some(état) = egui::containers::panel::PanelState::load(ui.ctx(), id)
+                        && état.outer_rect.width() < minimum
+                    {
+                        let corrigé = egui::containers::panel::PanelState {
+                            outer_rect: egui::Rect::from_min_size(
+                                état.outer_rect.min,
+                                egui::vec2(minimum, état.outer_rect.height()),
+                            ),
+                        };
+                        ui.ctx().data_mut(|data| data.insert_persisted(id, corrigé));
+                    }
+                    egui::Panel::right(id)
+                        .resizable(true)
+                        .default_size(SIDEBAR_WIDTH)
+                        .min_size(minimum)
+                        .max_size((ui.available_width() * SIDEBAR_MAX_FRACTION).max(minimum))
+                        .show(ui, |ui| self.sidebar_ui(ui));
                 }
             });
-        }
+            // La légende de la chaleur, sous l'éditeur : une bande de
+            // couleur sans échelle ne dit rien — « plus rouge » ne se
+            // convertit en « mille passages » que si quelque chose le dit.
+            if self.heat_legend {
+                timed(&mut spans, "légende", || {
+                    let passages = self.line_visits();
+                    if !passages.is_empty() {
+                        let max = passages.values().copied().max().unwrap_or(1);
+                        egui::Panel::bottom("heat_legend")
+                            .resizable(false)
+                            .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 4)))
+                            .show(ui, |ui| self.heat_legend_ui(ui, max));
+                    }
+                });
+            }
 
-        // L'éditeur recolore tout le tampon à chaque frame : c'est le
-        // premier suspect dès que la source devient longue (un binaire
-        // désassemblé, par exemple).
-        // La zone de travail, relevée ICI : les barres sont posées, le
-        // panneau latéral aussi, et ce qui reste est la place de
-        // l'éditeur. C'est elle qu'une fenêtre agrandie occupe, pour ne
-        // pas recouvrir les menus ni la barre d'état.
-        self.zone_de_travail = ui.available_rect_before_wrap();
-        // Les fichiers, puis les vues, puis la vue elle-même.
-        //
-        // La barre des fichiers est sortie de `editor_ui` : elle dit
-        // quel programme on travaille, ce qui reste vrai quelle que
-        // soit la vue — le désassemblage est celui de CE fichier. Elle
-        // disparaissait en même temps que l'éditeur, et l'on ne savait
-        // plus de quoi on lisait le code machine.
-        timed(&mut spans, "onglets", || {
-            self.tabs_bar_ui(ui);
-            self.views_bar_ui(ui);
-        });
-        timed(&mut spans, "éditeur", || self.vue_centrale_ui(ui));
+            // L'éditeur recolore tout le tampon à chaque frame : c'est le
+            // premier suspect dès que la source devient longue (un binaire
+            // désassemblé, par exemple).
+            // La zone de travail, relevée ICI : les barres sont posées, le
+            // panneau latéral aussi, et ce qui reste est la place de
+            // l'éditeur. C'est elle qu'une fenêtre agrandie occupe, pour ne
+            // pas recouvrir les menus ni la barre d'état.
+            self.zone_de_travail = ui.available_rect_before_wrap();
+            // Les fichiers, puis les vues, puis la vue elle-même.
+            //
+            // La barre des fichiers est sortie de `editor_ui` : elle dit
+            // quel programme on travaille, ce qui reste vrai quelle que
+            // soit la vue — le désassemblage est celui de CE fichier. Elle
+            // disparaissait en même temps que l'éditeur, et l'on ne savait
+            // plus de quoi on lisait le code machine.
+            timed(&mut spans, "onglets", || {
+                self.tabs_bar_ui(ui);
+                self.views_bar_ui(ui);
+            });
+            timed(&mut spans, "éditeur", || self.vue_centrale_ui(ui));
+        }
 
         // Fenêtres flottantes — dont l'explorateur, qui n'occupe donc plus
         // de place dans la mise en page et ne dépend d'aucun panneau.
@@ -3736,6 +3782,8 @@ impl NamsdecApp {
             self.installer_window_ui(&ctx);
             self.disassembly_window_ui(&ctx);
             self.cyclic_window_ui(&ctx);
+            self.scene_window_ui(&ctx);
+            self.etabli_fenetres_ui(&ctx);
             self.analysis_window_ui(&ctx);
             self.calculator_window_ui(&ctx);
             if self.exercises {
@@ -3867,18 +3915,93 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
             if morceau.is_empty() {
                 continue;
             }
-            job.append(
-                morceau,
-                0.0,
-                if appuyé {
-                    fort.clone()
-                } else {
-                    normal.clone()
-                },
-            );
+            if appuyé {
+                job.append(morceau, 0.0, fort.clone());
+                continue;
+            }
+            // ET L'ASTÉRISQUE SIMPLE, QUI NE SE RENDAIT PAS.
+            //
+            // Cinquante passages des fiches l'emploient — « le
+            // débordement *non signé* », « laisse RAX *intacte* » — et
+            // la fenêtre d'aide montrait ses astérisques depuis
+            // toujours. Personne ne l'avait vu parce qu'elles sont
+            // discrètes ; la bande qui explique la ligne où est le
+            // curseur les a mises sous le nez, en gros, au premier
+            // écran.
+            //
+            // LA RÈGLE EXCLUT LA MULTIPLICATION, et c'est tout le soin
+            // à prendre : une paire n'ouvre un passage appuyé que si
+            // son ouvrante est collée au mot qui suit et sa fermante
+            // au mot qui précède. « RDX:RAX = RAX * 3 » garde donc son
+            // astérisque — elle a un blanc de chaque côté.
+            emphase_simple(&mut job, morceau, &normal, &fort);
         }
     }
     job
+}
+
+/// Pose un morceau de prose en rendant ses `*emphases*` simples.
+///
+/// Appelé après le découpage sur `**` : ce qui arrive ici ne porte plus
+/// que des astérisques seules. Une paire ouvre un passage appuyé quand
+/// elle se comporte comme en Markdown — ouvrante collée à ce qui suit,
+/// fermante collée à ce qui précède. Tout le reste est rendu tel quel,
+/// ce qui laisse passer la multiplication et une astérisque qui ne
+/// ferme rien.
+fn emphase_simple(
+    job: &mut egui::text::LayoutJob,
+    texte: &str,
+    normal: &egui::TextFormat,
+    fort: &egui::TextFormat,
+) {
+    let mut reste = texte;
+    // `depuis` avance quand une astérisque ne s'est pas révélée être
+    // une ouvrante : sans lui, on la réexaminerait sans fin.
+    let mut depuis = 0usize;
+    while let Some(relatif) = reste.get(depuis..).and_then(|q| q.find('*')) {
+        let ouvre = depuis + relatif;
+        let octets = reste.as_bytes();
+        // Collée à ce qui suit, sinon ce n'est pas une ouvrante.
+        if !octets
+            .get(ouvre + 1)
+            .is_some_and(|c| !c.is_ascii_whitespace() && *c != b'*')
+        {
+            depuis = ouvre + 1;
+            continue;
+        }
+        // La fermante : la première astérisque collée au mot qui la
+        // précède, sans passer de ligne — une emphase ne s'étend pas
+        // sur un paragraphe.
+        let mut ferme = None;
+        let mut curseur = ouvre + 1;
+        while let Some(relatif) = reste.get(curseur..).and_then(|q| q.find('*')) {
+            let candidat = curseur + relatif;
+            if reste[ouvre + 1..candidat].contains('\n') {
+                break;
+            }
+            if octets
+                .get(candidat - 1)
+                .is_some_and(|c| !c.is_ascii_whitespace())
+            {
+                ferme = Some(candidat);
+                break;
+            }
+            curseur = candidat + 1;
+        }
+        let Some(ferme) = ferme else {
+            depuis = ouvre + 1;
+            continue;
+        };
+        if ouvre > 0 {
+            job.append(&reste[..ouvre], 0.0, normal.clone());
+        }
+        job.append(&reste[ouvre + 1..ferme], 0.0, fort.clone());
+        reste = &reste[ferme + 1..];
+        depuis = 0;
+    }
+    if !reste.is_empty() {
+        job.append(reste, 0.0, normal.clone());
+    }
 }
 
 /// L'identifiant de la boîte « À propos ».

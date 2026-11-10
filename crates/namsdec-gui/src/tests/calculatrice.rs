@@ -87,10 +87,7 @@ fn the_expression_is_typed_inside_the_screen_above_the_result() {
         for clipped in &sortie.shapes {
             match &clipped.shape {
                 egui::epaint::Shape::Text(t) => {
-                    textes.push((
-                        t.galley.text().to_owned(),
-                        egui::Rect::from_min_size(t.pos, t.galley.size()),
-                    ));
+                    textes.push((t.galley.text().to_owned(), cadre_du_texte(t)));
                 }
                 // Le cadre de l'écran : la seule forme à cette largeur.
                 // Deux pixels de tolérance, parce que le liseré déborde
@@ -686,10 +683,7 @@ fn the_base_and_the_width_are_two_twins_and_read_as_twins() {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                    posés.push((
-                        t.galley.text().to_owned(),
-                        egui::Rect::from_min_size(t.pos, t.galley.size()),
-                    ));
+                    posés.push((t.galley.text().to_owned(), cadre_du_texte(t)));
                 }
             }
             sortie.textures_delta.clear();

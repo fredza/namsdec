@@ -104,6 +104,118 @@ fn la_source_ne_quitte_jamais_la_rangee() {
     assert_eq!(app.vue_centrale, VueCentrale::Source);
 }
 
+/// ET IL NE SE PEINT PAS NON PLUS.
+///
+/// Le contrôle précédent dit que `détacher_vue` refuse la source ; il
+/// ne dit rien de ce qu'on VOIT. Et ce qu'on voyait, c'était le bouton
+/// « Détacher » au bout de la rangée, la source active — un bouton qui
+/// s'allume au survol, se presse, et ne fait rien. Relevé à l'écran le
+/// 10 novembre 2026 sur l'Établi : « ne sert à rien ». La place du
+/// bouton était pourtant déjà mise à zéro dans ce cas ; seule la
+/// peinture avait été oubliée, ce qui est le pire des deux — la rangée
+/// comptait sur son absence et le dessinait quand même.
+///
+/// ON COMPTE, ON NE MESURE PAS. Une première écriture bornait la
+/// rangée des vues au haut de la zone de travail : la rangée est en
+/// fait quarante pixels plus bas, et la moitié du contrôle passait en
+/// ne regardant rien. Le nombre de boutons du même nom, lui, ne dépend
+/// d'aucune coordonnée.
+///
+/// Les deux dispositions sont éprouvées : le mode avancé n'a que ce
+/// bouton-là — devant la source, il n'en reste donc AUCUN —, tandis
+/// que l'Établi en porte deux autres du même nom, sur le titre de la
+/// machine et sur celui du résultat. Là, c'est l'ÉCART qui parle :
+/// passer à une vue détachable doit en ajouter exactement un.
+#[test]
+fn detacher_ne_se_peint_pas_devant_la_source() {
+    /// Combien de fois « Détacher » est écrit sur tout l'écran.
+    fn comptés(ctx: &egui::Context, app: &mut NamsdecApp, entrée: &egui::RawInput) -> usize {
+        let s = strings(app.lang);
+        let mut n = 0;
+        for _ in 0..3 {
+            n = 0;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && t.galley.text() == s.view_detach
+                {
+                    n += 1;
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        n
+    }
+
+    for débutant in [false, true] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1000.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.debutant = débutant;
+        let s = strings(app.lang);
+
+        // DEUX AVERTISSEMENTS SEMÉS À LA MAIN, et c'est ce qui rend
+        // le défaut visible : la rangée n'appelle la commande de son
+        // bord droit que s'il y a de la place RETENUE pour elle
+        // (`réserve > 0.0`, voir `rangée_d_onglets_repliée`). Devant
+        // la source, le bouton en retient zéro — seul le compteur de
+        // problèmes en retenait, et sans lui le bouton ne se peignait
+        // pas du tout. L'écran du 10 novembre 2026 portait justement
+        // « ⚠ 2 ». On ne passe pas par nasm pour autant : ce qui est
+        // mesuré ici est une mise en page, pas un assemblage.
+        app.diagnostics = (1..=2)
+            .map(|line| namsdec_asm::Diagnostic {
+                line,
+                severity: namsdec_asm::Severity::Warning,
+                message: "semé par le contrôle".to_owned(),
+                kind: None,
+            })
+            .collect();
+        assert_eq!(
+            app.compte_des_problemes(),
+            (0, 2),
+            "la semence doit bien donner deux avertissements à compter"
+        );
+
+        app.montrer_vue(VueCentrale::Source);
+        let devant_la_source = comptés(&ctx, &mut app, &entrée);
+        if !débutant {
+            assert_eq!(
+                devant_la_source, 0,
+                "la source ne se détache pas : « {} » ne doit pas se peindre du tout \
+                 au mode avancé, et il l'est {devant_la_source} fois",
+                s.view_detach
+            );
+        }
+
+        // ET IL REVIENT dès qu'il y a de quoi détacher. Sans cette
+        // moitié, le contrôle passerait aussi bien si le bouton
+        // disparaissait pour toujours.
+        app.montrer_vue(VueCentrale::Disassembly);
+        assert_eq!(
+            app.vue_centrale,
+            VueCentrale::Disassembly,
+            "la scène doit bien montrer le désassemblage (débutant = {débutant})"
+        );
+        let devant_une_vue = comptés(&ctx, &mut app, &entrée);
+        assert_eq!(
+            devant_une_vue,
+            devant_la_source + 1,
+            "passer de la source au désassemblage doit AJOUTER « {} », et un seul \
+             (débutant = {débutant}) : {devant_la_source} devant la source, \
+             {devant_une_vue} devant le désassemblage",
+            s.view_detach
+        );
+    }
+}
+
 /// Le listing est le même des deux côtés.
 ///
 /// C'est tout l'intérêt d'avoir un seul corps : la vue en onglet et la
@@ -499,7 +611,7 @@ fn le_bouton_detacher_garde_sa_gouttiere_et_reste_petit() {
             if let egui::epaint::Shape::Text(t) = &clipped.shape
                 && t.galley.text() == s.view_detach
             {
-                encre = Some(egui::Rect::from_min_size(t.pos, t.galley.size()));
+                encre = Some(cadre_du_texte(t));
             }
         }
         // Puis le plus petit rectangle qui le contient : son cadre.
@@ -593,10 +705,7 @@ fn on_renomme_une_fonction_inconnue_depuis_la_rangee() {
                 && let Some(hexa) = t.galley.text().strip_prefix("sub_")
                 && let Ok(adresse) = u64::from_str_radix(hexa, 16)
             {
-                cible = Some((
-                    adresse,
-                    egui::Rect::from_min_size(t.pos, t.galley.size()).center(),
-                ));
+                cible = Some((adresse, cadre_du_texte(t).center()));
             }
         }
         sortie.textures_delta.clear();
@@ -1453,7 +1562,7 @@ fn l_accueil_tient_dans_le_plus_petit_ecran() {
             let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(texte) = &clipped.shape {
-                    let cadre = egui::Rect::from_min_size(texte.pos, texte.galley.size());
+                    let cadre = cadre_du_texte(texte);
                     // CE QUI SE VOIT, et non ce qui est peint : une
                     // ligne sortie de la zone qui défile est dans la
                     // liste des formes, rognée à néant.
@@ -1596,5 +1705,52 @@ fn au_niveau_debutant_taper_ecrit() {
     assert!(
         textes.iter().any(|t| t == "NORMAL"),
         "et la pastille dit où l'on est : {textes:?}"
+    );
+}
+
+/// LE COMPTEUR DE PROBLÈMES EST UNE BASCULE.
+///
+/// Demandé à l'écran le 10 novembre 2026, une flèche rouge sur le
+/// compteur : « ça devrait être une bascule ». Il ouvrait la console
+/// sur l'onglet Diagnostics, et rien ne la refermait par là — on
+/// cliquait une deuxième fois, il ne se passait rien, et il fallait
+/// aller chercher ailleurs ce qu'on venait d'ouvrir ici.
+///
+/// TROIS ÉTATS, et le troisième est le seul qui mérite un contrôle :
+/// la console ouverte SUR UN AUTRE ONGLET. Un clic doit y montrer les
+/// problèmes, pas tout fermer — c'est le même geste qu'au premier
+/// clic, « montre-moi les problèmes », et il ne se renverse qu'une
+/// fois rendu.
+#[test]
+fn le_compteur_de_problemes_bascule() {
+    // On part console fermée : c'est l'état du mode simple, et c'est
+    // celui où le geste commence.
+    let mut app = NamsdecApp {
+        show_console: false,
+        ..Default::default()
+    };
+
+    app.aller_au_probleme(crate::widgets::Problèmes::Liste);
+    assert!(app.show_console, "un clic l'ouvre");
+    assert_eq!(
+        app.console_tab,
+        ConsoleTab::Diagnostics,
+        "sur la liste des problèmes, et non sur la sortie du programme"
+    );
+
+    app.aller_au_probleme(crate::widgets::Problèmes::Liste);
+    assert!(
+        !app.show_console,
+        "un deuxième clic la referme : c'est une bascule"
+    );
+
+    // ET DEPUIS UN AUTRE ONGLET : on montre, on ne ferme pas.
+    app.show_console = true;
+    app.console_tab = ConsoleTab::Output;
+    app.aller_au_probleme(crate::widgets::Problèmes::Liste);
+    assert!(
+        app.show_console && app.console_tab == ConsoleTab::Diagnostics,
+        "la console ouverte sur la sortie, le compteur amène aux problèmes \
+         au lieu de tout fermer"
     );
 }

@@ -83,7 +83,7 @@ fn a_long_status_message_does_not_run_under_the_right_hand_side() {
         for clipped in &output.shapes {
             if let egui::epaint::Shape::Text(text) = &clipped.shape {
                 let content = text.galley.text();
-                let rect = egui::Rect::from_min_size(text.pos, text.galley.size());
+                let rect = cadre_du_texte(text);
                 if content.contains("erreur erreur") {
                     message = Some(rect);
                 } else if content.starts_with("NASM") || content.contains("nasm") {
@@ -405,7 +405,7 @@ fn a_truncated_status_message_can_be_read_in_full() {
                 && t.galley.text() == texte
             {
                 élidé = t.galley.elided;
-                case = Some(egui::Rect::from_min_size(t.pos, t.galley.size()));
+                case = Some(cadre_du_texte(t));
             }
         }
         sortie.textures_delta.clear();
@@ -662,5 +662,345 @@ fn the_close_entry_never_leaves_the_file_menu() {
         autour.iter().any(|l| l.contains("why_nothing_to_close")),
         "et elle dit pourquoi elle est grise :\n{}",
         autour.join("\n")
+    );
+}
+
+/// LE MESSAGE D'ÉTAT SE COUPE AU BORD, ET SE RELIT AU SURVOL.
+///
+/// Relevé sur la capture du 10 novembre 2026, sur l'Établi : la note
+/// d'un binaire lié dynamiquement — quatre lignes — partait du bord
+/// gauche de la frise et passait PAR DESSUS le bouton de la Scène,
+/// puis par dessus RIP, puis hors de l'écran. Mesuré à 1600 px de
+/// large : l'encre allait jusqu'à x = 2824.
+///
+/// LA CAUSE N'ÉTAIT PAS DANS LA FRISE mais dans une habitude d'egui :
+/// une étiquette posée dans un `ui.horizontal` est en `Extend`, elle
+/// s'allonge au-delà de la place qu'on lui laisse au lieu de s'y
+/// couper. La barre d'état du mode avancé s'en gardait elle-même, en
+/// posant `wrap_mode` avant d'appeler le message ; la frise de
+/// l'Établi, écrite plus tard, ne le savait pas. La règle est donc
+/// passée DANS `status_message_ui`, où elle n'a plus à être sue.
+///
+/// Et l'infobulle en dépendait : elle ne paraît que si l'on a coupé,
+/// et l'on ne coupait jamais. Un message qui déborde l'écran sans
+/// infobulle n'est lisible NULLE PART.
+#[test]
+fn le_message_d_etat_se_coupe_au_bord_de_la_frise() {
+    const LARGEUR: f32 = 1600.0;
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(LARGEUR, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    // La note la plus longue de l'interface, celle de la capture.
+    app.status = Status::Note(|s| s.binary_dynamic);
+    let début = strings(app.lang)
+        .binary_dynamic
+        .chars()
+        .take(30)
+        .collect::<String>();
+
+    let mut encre: Option<egui::Rect> = None;
+    let mut coupé = false;
+    for _ in 0..3 {
+        encre = None;
+        coupé = false;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley.text().starts_with(&début)
+                // La bande du résultat redit la même note en entier,
+                // et c'est sa place : elle a la largeur pour cela. On
+                // ne garde que celle de la frise, tout en haut.
+                && t.pos.y < 100.0
+            {
+                encre = Some(cadre_du_texte(t));
+                coupé = t.galley.elided;
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let encre = encre.expect("la note doit se peindre dans la frise de l'Établi");
+    assert!(
+        encre.right() <= LARGEUR,
+        "le message d'état déborde l'écran : il va jusqu'à x = {:.0} pour {LARGEUR:.0} de large",
+        encre.right()
+    );
+    assert!(
+        coupé,
+        "une note de quatre lignes NE TIENT PAS sur la frise : elle doit être coupée \
+         (et donc relisible au survol), et `galley.elided` dit qu'elle ne l'est pas"
+    );
+}
+
+/// LA LÉGENDE DE LA PILE NE SE LIT PAS EN POUSSANT UNE BARRE.
+///
+/// Les mots de pile défilent de côté, et pour une bonne raison : une
+/// valeur coupée au bord n'est pas une valeur abrégée, c'est une
+/// valeur fausse. Mais la phrase qui explique le grisé — « au-dessus
+/// de RSP : déjà dépilé » — était peinte DANS cette zone, en dernière
+/// ligne. Elle n'y repliait pas, allongeait la course du défilement
+/// pour son seul compte, et la capture du 10 novembre 2026 la montrait
+/// coupée au milieu d'un mot, dans le volet de l'Établi.
+///
+/// On mesure donc qu'elle tient dans ce qu'on en voit : son encre et
+/// son encre rognée par le découpage sont le même rectangle.
+///
+/// L'ÉMULATEUR EST POSÉ À LA MAIN, sans passer par nasm : ce qui est
+/// mesuré ici est une mise en page, et elle ne doit pas dépendre de ce
+/// qui est installé sur la machine. Si `Backend` change au point que
+/// cette pose ne compile plus, c'est ce commentaire qui dira pourquoi
+/// elle existait.
+#[test]
+fn la_legende_de_la_pile_tient_dans_le_volet() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+    const TAILLE: usize = 0x4000;
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1400.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+
+    let mut mem = Memory::new(BASE, TAILLE);
+    mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+    // UNE PILE LARGE, et c'est la moitié du contrôle.
+    //
+    // Une pile de zéros donne des lignes courtes, la zone qui défile
+    // de côté n'a rien à faire défiler, et la légende se replie bien
+    // à l'aise : le défaut ne paraît pas. Ce que montrait la capture,
+    // c'est une pile d'environnement — un mot qui pointe sur une
+    // chaîne, que namsdec suit et écrit en clair. La ligne devient
+    // deux fois plus large que le volet, et c'est à CETTE largeur que
+    // tout ce qui partage la zone se replie, légende comprise.
+    const CHAÎNE: u64 = BASE + 0x1000;
+    mem.load(CHAÎNE, b"HOME=/home/quelquun/avec/un/chemin/tres/long\0")
+        .expect("la chaîne se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    let rsp = BASE + 0x2000;
+    cpu.regs.set64(Reg64::Rsp, rsp);
+    for mot in 0..4 {
+        cpu.mem
+            .write_u64(rsp + mot * 8, CHAÎNE)
+            .expect("le mot de pile s'écrit");
+    }
+    app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+    let s = strings(app.lang);
+    let mut encre: Option<egui::Rect> = None;
+    let mut vue: Option<egui::Rect> = None;
+    for _ in 0..3 {
+        encre = None;
+        vue = None;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley
+                    .text()
+                    .starts_with(&s.stack_above_hint.chars().take(20).collect::<String>())
+            {
+                let r = cadre_du_texte(t);
+                encre = Some(r);
+                vue = Some(r.intersect(clipped.clip_rect));
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let encre = encre.expect("la légende du grisé se peint sous la pile");
+    let vue = vue.expect("et elle a un découpage");
+    assert!(
+        vue.width() >= encre.width() - 0.5,
+        "la légende de la pile est coupée : {:.0} px peints, {:.0} px visibles \
+         — elle doit se replier dans le volet, non défiler de côté",
+        encre.width(),
+        vue.width()
+    );
+}
+
+/// LE REPÈRE DE MESURE DES TEXTES, ÉPROUVÉ SUR UN TEXTE ALIGNÉ À DROITE.
+///
+/// `cadre_du_texte` existe pour une raison précise, et une raison qui
+/// ne se voit pas : `TextShape::pos` n'est le coin haut-gauche que pour
+/// une galley alignée à GAUCHE. Alignée à droite — tout ce qu'une
+/// rangée `right_to_left` pose, et egui en met partout —, `pos` est le
+/// bord DROIT.
+///
+/// Dix-sept relevés du banc mesuraient `from_min_size(pos, size)`. Ils
+/// déplaçaient donc chaque étiquette alignée à droite d'une largeur de
+/// texte VERS LA DROITE, c'est-à-dire vers le bord où un recouvrement
+/// se produit : ils rataient les recouvrements de ce côté-là, et
+/// pouvaient en inventer ailleurs. Le défaut s'est révélé en accusant
+/// « RIP 0x400000 » d'être coupé dans la frise de l'Établi alors qu'il
+/// ne l'était pas.
+///
+/// Ce contrôle prend ce même RIP — le seul texte aligné à droite dont
+/// on connaisse la place exacte — et vérifie les deux moitiés : que le
+/// repère le pose DANS l'écran, et que la forme naïve l'en sortait.
+/// Sans la seconde moitié, le contrôle passerait aussi bien si egui
+/// changeait d'avis et alignait tout à gauche.
+#[test]
+fn le_cadre_d_un_texte_suit_son_alignement() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+    const LARGEUR: f32 = 1600.0;
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(LARGEUR, 1000.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    let mut mem = Memory::new(BASE, 0x1000);
+    mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+    let mut juste: Option<egui::Rect> = None;
+    let mut naïf: Option<egui::Rect> = None;
+    let mut aligné_a_droite = false;
+    for _ in 0..3 {
+        juste = None;
+        naïf = None;
+        aligné_a_droite = false;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && t.galley.text().starts_with("RIP ")
+            {
+                juste = Some(cadre_du_texte(t));
+                naïf = Some(egui::Rect::from_min_size(t.pos, t.galley.size()));
+                aligné_a_droite = t.galley.job.halign == egui::Align::Max;
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let juste = juste.expect("RIP se peint dans la frise de l'Établi");
+    let naïf = naïf.expect("et l'on sait aussi ce que la forme naïve en aurait dit");
+    assert!(
+        aligné_a_droite,
+        "RIP est posé par une rangée `right_to_left` : sans cela, ce contrôle ne \
+         mesure plus ce pour quoi il existe"
+    );
+    assert!(
+        juste.right() <= LARGEUR,
+        "le repère doit poser RIP DANS l'écran : il va jusqu'à x = {:.0} pour \
+         {LARGEUR:.0} de large",
+        juste.right()
+    );
+    assert!(
+        naïf.right() > LARGEUR,
+        "et la forme naïve doit, elle, l'en sortir — sinon le repère ne corrige rien \
+         et le contrôle ne regarde pas ce qu'il croit : naïf {naïf:?}, juste {juste:?}"
+    );
+}
+
+/// LE NOM DU FICHIER S'ABRÈGE, ET GARDE SON EXTENSION.
+///
+/// Demandé à l'écran le 10 novembre 2026, une flèche verte sur le nom
+/// de la barre du haut : « si le nom est trop long le concatener ou
+/// premiers caractères puis … ». Un nom de fichier n'a pas de limite,
+/// et celui-ci ouvre une rangée qui porte ensuite cinq commandes :
+/// laissé entier, il les repousse hors de la barre.
+///
+/// PAR LE MILIEU, et c'est le point : couper par la droite perdrait
+/// l'extension, qui dit de quoi le fichier est fait, et deux fichiers
+/// d'un même projet ne se distinguent souvent que par leur début.
+///
+/// Le contrôle mesure les deux bouts — la fonction qui abrège, puis ce
+/// qui est PEINT, avec le nom entier au survol. La première sans la
+/// seconde laisserait un nom juste qu'on n'affiche pas.
+#[test]
+fn le_nom_du_fichier_s_abrege_dans_la_barre() {
+    use crate::etabli::{NOM_MAX, nom_abrégé};
+
+    // 1. LA RÈGLE, sur les trois cas qui comptent.
+    assert_eq!(
+        nom_abrégé("court.asm", NOM_MAX),
+        "court.asm",
+        "un nom qui tient ne se touche pas"
+    );
+    let long = "un_nom_de_travail_vraiment_tres_long.asm";
+    let abrégé = nom_abrégé(long, NOM_MAX);
+    assert!(
+        abrégé.chars().count() <= NOM_MAX,
+        "l'abrégé tient dans la limite : « {abrégé} »"
+    );
+    assert!(
+        abrégé.ends_with(".asm"),
+        "et garde son extension : « {abrégé} »"
+    );
+    assert!(
+        long.starts_with(&abrégé[..abrégé.find('…').expect("le signe de coupure")]),
+        "le début est celui du vrai nom : « {abrégé} »"
+    );
+    // Une « extension » qui n'en est pas une ne se garde pas : au-delà
+    // de six caractères, c'est la fin du nom, et la garder reviendrait
+    // à ne presque rien couper.
+    let faux = "archive_de_travail.sauvegarde_du_jeudi";
+    assert!(
+        !nom_abrégé(faux, NOM_MAX).ends_with("jeudi"),
+        "une fin de nom n'est pas une extension"
+    );
+
+    // 2. ET C'EST BIEN CE QUI EST PEINT, le nom entier au survol.
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    app.current_file = Some(std::path::PathBuf::from("/tmp").join(long));
+
+    let mut vu = false;
+    let mut entier = false;
+    for _ in 0..3 {
+        vu = false;
+        entier = false;
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                let texte = t.galley.text();
+                if texte.starts_with(&abrégé) {
+                    vu = true;
+                }
+                if texte.contains(long) {
+                    entier = true;
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(vu, "la barre du haut doit porter le nom abrégé");
+    assert!(
+        !entier,
+        "et jamais le nom entier : c'est lui qui repoussait les commandes"
     );
 }

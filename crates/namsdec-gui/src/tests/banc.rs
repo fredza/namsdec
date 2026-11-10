@@ -425,10 +425,7 @@ fn two_texts_of_a_window_never_overlap() {
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         for clipped in &sortie.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                textes.push((
-                    t.galley.text().to_owned(),
-                    egui::Rect::from_min_size(t.pos, t.galley.size()),
-                ));
+                textes.push((t.galley.text().to_owned(), cadre_du_texte(t)));
             }
         }
         sortie.textures_delta.clear();
@@ -834,10 +831,7 @@ fn a_truncated_text_can_still_be_read_in_full() {
                 if let egui::epaint::Shape::Text(t) = &clipped.shape
                     && t.galley.elided
                 {
-                    coupés.push((
-                        t.galley.text().to_owned(),
-                        egui::Rect::from_min_size(t.pos, t.galley.size()),
-                    ));
+                    coupés.push((t.galley.text().to_owned(), cadre_du_texte(t)));
                 }
             }
             sortie.textures_delta.clear();
@@ -979,7 +973,7 @@ fn every_text_stands_out_from_its_background() {
                     fonds.push((r.rect, r.fill));
                 }
                 egui::epaint::Shape::Text(t) => {
-                    let place = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let place = cadre_du_texte(t);
                     if dans.is_some_and(|c| !c.contains_rect(place.shrink(1.0))) {
                         continue;
                     }
@@ -1452,8 +1446,64 @@ fn no_screen_shows_its_own_markup() {
                 "« {nom} » montre son balisage : {:?}",
                 texte.chars().take(90).collect::<String>()
             );
+            // ET L'ASTÉRISQUE SIMPLE, depuis le 10 novembre 2026.
+            //
+            // Le contrôle ne regardait que les doubles, et cinquante
+            // passages des fiches emploient les simples : « le
+            // débordement *non signé* », « laisse RAX *intacte* ». La
+            // fenêtre d'aide les montrait donc telles quelles depuis
+            // toujours, sans que personne le voie — jusqu'à ce qu'une
+            // bande les mette au premier écran, en gros.
+            //
+            // LA MULTIPLICATION RESTE PERMISE, et c'est la raison de
+            // la forme exacte du motif : on ne refuse qu'une paire qui
+            // se comporte comme du balisage — ouvrante collée à ce qui
+            // suit, fermante collée à ce qui précède. « RAX * 3 » a un
+            // blanc de chaque côté et passe.
+            assert!(
+                !paire_d_emphase(texte),
+                "« {nom} » montre une emphase non rendue : {:?}",
+                texte.chars().take(90).collect::<String>()
+            );
         }
     }
+}
+
+/// Le texte porte-t-il une paire d'astérisques qui se lit comme du
+/// balisage ?
+///
+/// Les règles de Markdown, réduites à ce qu'on emploie : l'ouvrante
+/// est collée au mot qui suit, la fermante au mot qui précède, et
+/// l'emphase ne passe pas la ligne.
+fn paire_d_emphase(texte: &str) -> bool {
+    let octets = texte.as_bytes();
+    let mut depuis = 0usize;
+    while let Some(relatif) = texte.get(depuis..).and_then(|q| q.find('*')) {
+        let ouvre = depuis + relatif;
+        if !octets
+            .get(ouvre + 1)
+            .is_some_and(|c| !c.is_ascii_whitespace() && *c != b'*')
+        {
+            depuis = ouvre + 1;
+            continue;
+        }
+        let mut curseur = ouvre + 1;
+        while let Some(relatif) = texte.get(curseur..).and_then(|q| q.find('*')) {
+            let candidat = curseur + relatif;
+            if texte[ouvre + 1..candidat].contains('\n') {
+                break;
+            }
+            if octets
+                .get(candidat - 1)
+                .is_some_and(|c| !c.is_ascii_whitespace())
+            {
+                return true;
+            }
+            curseur = candidat + 1;
+        }
+        depuis = ouvre + 1;
+    }
+    false
 }
 
 /// Les points de suspension sont des points de suspension.
@@ -3866,9 +3916,26 @@ fn captures_de_toutes_les_scenes() {
     let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/captures");
     std::fs::create_dir_all(&dossier).expect("le dossier des captures se crée");
 
+    // NE RENDRE QUE CE QU'ON REGARDE.
+    //
+    // Les cent vingt-deux scènes prennent plusieurs minutes et un
+    // pilote graphique logiciel entier. Quand on vient de toucher une
+    // seule mise en page, on la rend seule :
+    //
+    // ```text
+    // CAPTURES=établi cargo test -p namsdec-gui -- --ignored --nocapture captures_de_toutes_les_scenes
+    // ```
+    //
+    // Sans la variable, tout est rendu — un filtre qui s'oublierait
+    // ferait un banc qui ne regarde plus rien.
+    let filtre = std::env::var("CAPTURES").unwrap_or_default();
+
     let mut écrites = 0;
     let mut refusées = Vec::new();
     for (nom, _, prépare) in scènes() {
+        if !filtre.is_empty() && !nom.contains(&filtre) {
+            continue;
+        }
         let mut app = NamsdecApp::default();
         // La scène se pose UNE fois, avant la première image : `prépare`
         // écrit dans l'application, et la rejouer à chaque image
@@ -3934,6 +4001,24 @@ fn captures_de_toutes_les_scenes() {
             fond, attendu.panel,
             "{nom} : rendue sans le thème — fond {fond:?}"
         );
+        // DEUX RENDUS, ET LE PREMIER EST JETÉ.
+        //
+        // L'ATLAS DE GLYPHES SE CONSTRUIT EN PEIGNANT. Une scène qui
+        // apporte beaucoup de caractères neufs — la note d'un binaire
+        // lié dynamiquement en apporte plus de deux cents — fait
+        // grandir la texture des polices à la dernière image, et le
+        // premier rendu emploie encore l'ancienne : les glyphes déjà
+        // posés y pointent sur les mauvaises cases. Vu le 10 novembre
+        // 2026 sur « établi / une note longue » : le code de l'éditeur
+        // s'y peignait en charabia, tout le reste de l'image étant
+        // juste. Le deuxième rendu, lui, voit l'atlas à jour.
+        //
+        // C'est le même piège que les six images ci-dessus, d'un cran
+        // plus tard : on les fait pour que la MISE EN PAGE se stabilise,
+        // et celle-ci pour que la TEXTURE la rattrape. Une image qui
+        // bouge seule fait douter de toutes les autres.
+        let _ = harness.render();
+        harness.step();
         match harness.render() {
             Ok(image) => {
                 let fichier = dossier.join(format!("{}.png", nom.replace(['/', ' '], "_")));
@@ -3953,7 +4038,15 @@ fn captures_de_toutes_les_scenes() {
         refusées.len(),
         refusées.join("\n  ")
     );
-    assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
+    // Sans filtre, le banc doit rendre tout ce qu'il a : une liste de
+    // scènes qui se viderait sans bruit ferait un banc vert qui ne
+    // regarde rien. Avec filtre, on a demandé moins — mais au moins
+    // une, sinon c'est le nom qu'on a mal écrit.
+    if filtre.is_empty() {
+        assert!(écrites > 20, "le banc a plus de vingt scènes : {écrites}");
+    } else {
+        assert!(écrites > 0, "aucune scène ne s'appelle « {filtre} »");
+    }
 }
 
 /// Les mêmes scènes, au plus petit écran que l'application accepte.
@@ -3994,6 +4087,24 @@ fn captures_du_petit_ecran() {
         for _ in 0..6 {
             harness.step();
         }
+        // DEUX RENDUS, ET LE PREMIER EST JETÉ.
+        //
+        // L'ATLAS DE GLYPHES SE CONSTRUIT EN PEIGNANT. Une scène qui
+        // apporte beaucoup de caractères neufs — la note d'un binaire
+        // lié dynamiquement en apporte plus de deux cents — fait
+        // grandir la texture des polices à la dernière image, et le
+        // premier rendu emploie encore l'ancienne : les glyphes déjà
+        // posés y pointent sur les mauvaises cases. Vu le 10 novembre
+        // 2026 sur « établi / une note longue » : le code de l'éditeur
+        // s'y peignait en charabia, tout le reste de l'image étant
+        // juste. Le deuxième rendu, lui, voit l'atlas à jour.
+        //
+        // C'est le même piège que les six images ci-dessus, d'un cran
+        // plus tard : on les fait pour que la MISE EN PAGE se stabilise,
+        // et celle-ci pour que la TEXTURE la rattrape. Une image qui
+        // bouge seule fait douter de toutes les autres.
+        let _ = harness.render();
+        harness.step();
         if let Ok(image) = harness.render() {
             let fichier = dossier.join(format!("{}.png", nom.replace(['/', ' '], "_")));
             image.save(&fichier).expect("l'image s'écrit");
@@ -4368,7 +4479,7 @@ fn a_raised_flag_shows_as_a_patch_and_not_as_an_outline() {
                 if let egui::epaint::Shape::Text(t) = &clipped.shape
                     && t.galley.job.text.starts_with("ZF ")
                 {
-                    let rect = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let rect = cadre_du_texte(t);
                     if encre.is_none_or(|haut: egui::Rect| rect.top() < haut.top()) {
                         encre = Some(rect);
                     }
@@ -4472,7 +4583,7 @@ fn a_framed_button_opens_its_label_with_a_capital() {
                     let egui::epaint::Shape::Text(t) = &clipped.shape else {
                         continue;
                     };
-                    let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let encre = cadre_du_texte(t);
                     if !cadres.iter().any(|c| c.expand(1.0).contains_rect(encre)) {
                         continue;
                     }
@@ -4640,7 +4751,7 @@ fn le_vidage_binaire_emploie_la_place_qu_on_lui_donne() {
                 let texte = t.galley.text();
                 if texte.len() == 6 && texte.chars().all(|c| c.is_ascii_hexdigit()) {
                     // Ce qui sort de la découpe n'est pas à l'écran.
-                    let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                    let encre = cadre_du_texte(t);
                     if clipped.clip_rect.intersects(encre) {
                         vues += 1;
                         bas_des_lignes = bas_des_lignes.max(encre.bottom());
@@ -4737,7 +4848,7 @@ fn choisir_un_octet_ne_retrecit_pas_le_vidage_quand_la_place_y_est() {
         for clipped in formes {
             if let egui::Shape::Text(t) = &clipped.shape {
                 let texte = t.galley.text();
-                let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let encre = cadre_du_texte(t);
                 if !clipped.clip_rect.intersects(encre) {
                     continue;
                 }
@@ -4863,6 +4974,24 @@ fn releve_hex() {
                 harness.step();
             }
         }
+        // DEUX RENDUS, ET LE PREMIER EST JETÉ.
+        //
+        // L'ATLAS DE GLYPHES SE CONSTRUIT EN PEIGNANT. Une scène qui
+        // apporte beaucoup de caractères neufs — la note d'un binaire
+        // lié dynamiquement en apporte plus de deux cents — fait
+        // grandir la texture des polices à la dernière image, et le
+        // premier rendu emploie encore l'ancienne : les glyphes déjà
+        // posés y pointent sur les mauvaises cases. Vu le 10 novembre
+        // 2026 sur « établi / une note longue » : le code de l'éditeur
+        // s'y peignait en charabia, tout le reste de l'image étant
+        // juste. Le deuxième rendu, lui, voit l'atlas à jour.
+        //
+        // C'est le même piège que les six images ci-dessus, d'un cran
+        // plus tard : on les fait pour que la MISE EN PAGE se stabilise,
+        // et celle-ci pour que la TEXTURE la rattrape. Une image qui
+        // bouge seule fait douter de toutes les autres.
+        let _ = harness.render();
+        harness.step();
         let image = harness.render().expect("rendu");
         image
             .save(dossier.join(format!("hex-{étiquette}.png")))
@@ -4916,7 +5045,7 @@ fn l_editeur_binaire_remplit_la_largeur_qu_on_lui_donne() {
         // trente-deux octets : c'est le numéro de sa dernière colonne.
         formes.iter().any(|clipped| {
             if let egui::Shape::Text(t) = &clipped.shape {
-                let encre = egui::Rect::from_min_size(t.pos, t.galley.size());
+                let encre = cadre_du_texte(t);
                 t.galley.text() == "1f" && clipped.clip_rect.intersects(encre)
             } else {
                 false
@@ -5338,7 +5467,7 @@ fn une_rangee_d_onglets_tient_sur_une_ligne() {
             if let egui::epaint::Shape::Text(texte) = &clipped.shape
                 && texte.galley.text() == format!("+{cachées}")
             {
-                bouton = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()).center());
+                bouton = Some(cadre_du_texte(texte).center());
             }
         }
         sortie.textures_delta.clear();
@@ -5415,10 +5544,7 @@ fn une_rangee_d_onglets_tient_sur_une_ligne() {
         for clipped in &sortie.shapes {
             match &clipped.shape {
                 egui::epaint::Shape::Text(texte) => {
-                    mots.push((
-                        texte.galley.text().to_owned(),
-                        egui::Rect::from_min_size(texte.pos, texte.galley.size()),
-                    ));
+                    mots.push((texte.galley.text().to_owned(), cadre_du_texte(texte)));
                 }
                 egui::epaint::Shape::Circle(c) => dessins.push(egui::Rect::from_center_size(
                     c.center,
@@ -5517,10 +5643,7 @@ fn aucun_survol_ne_deplace_ce_qui_l_entoure() {
                 let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
                 for clipped in &sortie.shapes {
                     if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                        vus.push((
-                            t.galley.text().to_owned(),
-                            egui::Rect::from_min_size(t.pos, t.galley.size()),
-                        ));
+                        vus.push((t.galley.text().to_owned(), cadre_du_texte(t)));
                     }
                 }
                 sortie.textures_delta.clear();

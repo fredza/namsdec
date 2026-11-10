@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>namsdec — La Scène (mode simple)</title>
+<link rel="stylesheet" href="scene.css">
+</head>
+<body>
+
+<header class="temps">
+  <span class="marque">namsdec<b>.</b></span>
+  <div class="bascule" role="tablist">
+    <button role="tab" id="t-ecrire" aria-selected="false" aria-controls="ecrire">✎ Écrire</button>
+    <button role="tab" id="t-regarder" class="jouer" aria-selected="true" aria-controls="regarder">▶ Regarder</button>
+  </div>
+  <span class="fichier">somme.asm</span>
+  <div class="mini">
+    <button>Ouvrir</button>
+    <button>Aide</button>
+    <button>Mode avancé ▸</button>
+  </div>
+</header>
+
+<!-- Temps 1 : écrire. Rien d'autre à l'écran. -->
+<section class="scene" id="ecrire" role="tabpanel" aria-labelledby="t-ecrire">
+  <div class="papier">
+    <div class="numeros" id="numeros"></div>
+    <textarea id="texte" spellcheck="false" aria-label="Le texte du programme"></textarea>
+  </div>
+  <div class="conseil">
+    <span id="verdict-asm" class="ok">Assemblé sans erreur — 10 instructions, 32 octets.</span>
+    <button class="prochain" id="b-regarder">Regarder tourner ▸</button>
+  </div>
+</section>
+
+<!-- Temps 2 : regarder. Le code n'est plus qu'un ruban. -->
+<section class="scene vue" id="regarder" role="tabpanel" aria-labelledby="t-regarder">
+  <div class="ruban"><div class="bande" id="bande"></div></div>
+  <div class="plateau">
+    <div class="devant">
+      <div class="dire">
+        <div class="quand" id="quand">Pas 4 sur 22</div>
+        <h1 id="titre"></h1>
+        <p id="texte-dire"></p>
+      </div>
+      <div>
+        <div class="cartes" id="cartes"></div>
+        <section class="fiche" id="fiche">
+          <div class="tete"><span class="mot" id="fiche-mot"></span><span class="sens" id="fiche-sens"></span></div>
+          <p id="fiche-txt"></p>
+          <div class="octets" id="fiche-octets"></div>
+        </section>
+      </div>
+      <div>
+        <div class="ligne-drapeaux">
+          <span class="drapeau" id="zf"><span class="code">ZF</span><span class="dit" id="zf-dit"></span></span>
+          <span class="drapeau"><span class="code">RIP</span><span class="dit" id="rip"></span></span>
+        </div>
+        <div class="sortie-scene" id="sortie"></div>
+      </div>
+    </div>
+    <aside class="coulisse">
+      <h2>La pile</h2>
+      <p class="sous">Ce que le programme y pose s’empile par le haut. <code>call</code> ajoute une case, <code>ret</code> la reprend.</p>
+      <div class="blocs" id="blocs"></div>
+      <div class="sol">le fond de la pile</div>
+      <div class="rsp" id="rsp"></div>
+    </aside>
+  </div>
+</section>
+
+<div class="pied">
+  <button class="geste" id="b-pas">Avancer d’un pas <span class="touche">Espace</span></button>
+  <button class="autre" id="b-recul">◀ Revenir</button>
+  <button class="autre" id="b-lancer">▶▶ Tout dérouler</button>
+  <button class="autre" id="b-reprendre">↺ Reprendre</button>
+  <div class="avancee">
+    <span class="jauge"><i id="jauge" style="width:0"></i></span>
+    <span class="compte" id="compte">4 / 22</span>
+  </div>
+</div>
+
+<div class="aveu">
+  <span>Maquette · scénario fixe · aucun assembleur ni émulateur n’est lancé</span>
+  <span class="touches">Espace avancer · ← revenir · F5 dérouler</span>
+  <span><button id="b-erreur">Montrer ce que donne une faute de frappe</button> · <a href="index.html">Galerie</a></span>
+</div>
+
+<script src="model.js"></script>
+<script src="commun.js"></script>
+<script src="scene.js"></script>
+</body>
+</html>

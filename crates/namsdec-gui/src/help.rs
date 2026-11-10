@@ -21,12 +21,18 @@ use crate::exercises::exercises_dir;
 ///
 /// Verte quand tout est fait, à la couleur d'accent sinon : la
 /// distinction se voit du coin de l'œil, sans lire le compte.
-fn barre_progression(ui: &mut egui::Ui, theme: &Theme, faits: usize, total: usize, largeur: f32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(largeur, 6.0), egui::Sense::hover());
+pub(crate) fn barre_progression(
+    ui: &mut egui::Ui,
+    theme: &Theme,
+    faits: usize,
+    total: usize,
+    largeur: f32,
+) -> egui::Response {
+    let (rect, réponse) = ui.allocate_exact_size(egui::vec2(largeur, 6.0), egui::Sense::hover());
     ui.painter()
         .rect_filled(rect, 3.0, mélange(theme.surface, theme.text, 0.16));
     if total == 0 || faits == 0 {
-        return;
+        return réponse;
     }
     let part = (faits as f32 / total as f32).clamp(0.0, 1.0);
     // Au moins la hauteur de la barre : une avancée d'un sur
@@ -43,6 +49,7 @@ fn barre_progression(ui: &mut egui::Ui, theme: &Theme, faits: usize, total: usiz
             theme.accent
         },
     );
+    réponse
 }
 
 impl NamsdecApp {

@@ -573,8 +573,31 @@ impl NamsdecApp {
             return;
         }
         let Some((conditions, atteint)) = self.exercise_goal() else {
+            // RIEN N'A TOURNÉ : ON MONTRE QUAND MÊME LA CIBLE.
+            //
+            // `exercise_goal` se tait tant qu'aucun programme ne
+            // tourne, et c'est juste : on ne dit pas « pas atteint » à
+            // qui n'a encore rien lancé. Mais se taire fait qu'on écrit
+            // SANS SAVOIR OÙ L'ON VA — la cible ne se lisait qu'après
+            // le premier essai, alors qu'elle est ce qui dirige ce
+            // qu'on écrit.
+            //
+            // En gris et sans pastille : ce ne sont pas des conditions
+            // qui tiennent ou qui manquent, ce sont des conditions
+            // qu'on n'a pas encore éprouvées. Aucun verdict n'est posé.
+            if let Some(cibles) = self.exercise_targets() {
+                ui.add_space(4.0);
+                ui.colored_label(theme.dim, s.goal_ahead);
+                for cible in cibles {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.add_space(16.0);
+                        ui.colored_label(theme.dim, egui::RichText::new(cible).monospace());
+                    });
+                }
+            }
             return;
         };
+        let débutant = self.niveau() == namsdec_re::Niveau::Débutant;
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.goal_label);
@@ -621,10 +644,27 @@ impl NamsdecApp {
                     egui::RichText::new(&ligne.texte).monospace(),
                 );
                 if let Some((gauche, valeur)) = &ligne.constat {
+                    // LE CONSTAT SUIT LA MÊME RÈGLE QUE LE DERNIER
+                    // PAS : sous le million, en décimal au niveau
+                    // débutant. Vu à l'écran le 10 novembre 2026, sur
+                    // la même image : la bande du bas disait déjà
+                    // « RCX 3 -> 2 » pendant que le but, trois
+                    // centimètres plus haut, disait « rax vaut 0x0 ».
+                    // Deux façons d'écrire le même nombre sur un même
+                    // écran, c'est une de trop.
+                    //
+                    // LA CONDITION, ELLE, RESTE TELLE QUE L'EXERCICE
+                    // L'A ÉCRITE (`rax == 0xf`) : c'est son texte, pas
+                    // le nôtre, et la réécrire ferait dire à l'énoncé
+                    // autre chose que ce que son auteur a tapé.
                     ui.colored_label(
                         theme.warn,
-                        egui::RichText::new(format!("{gauche} {} {valeur:#x}", s.goal_is))
-                            .monospace(),
+                        egui::RichText::new(format!(
+                            "{gauche} {} {}",
+                            s.goal_is,
+                            nombre_lisible(*valeur, débutant)
+                        ))
+                        .monospace(),
                     );
                 }
             });
@@ -862,7 +902,7 @@ impl NamsdecApp {
     /// un `dec rcx`, c'est l'instruction et son effet dans la même
     /// phrase, et c'est comme cela qu'on apprend ce que fait une
     /// instruction.
-    fn last_step_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn last_step_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
         let (Some(pas), Some(emulator)) = (&self.last_step, &self.emulator) else {
@@ -873,12 +913,31 @@ impl NamsdecApp {
             return;
         };
         let now = &emulator.cpu().regs;
+        // AU NIVEAU DÉBUTANT, CE QUI A CHANGÉ SE DIT EN TOUTES LETTRES.
+        //
+        // C'est ici qu'on apprend — « lire, prévoir, avancer,
+        // CONSTATER » — et la ligne ne constatait rien de lisible à
+        // qui débute : « RCX 0x3 -> 0x2 » demande de savoir lire
+        // l'hexadécimal, et « ZF 0 -> 1 » de savoir ce qu'est ZF. Deux
+        // choses qu'on vient précisément apprendre.
+        //
+        // Rien n'est ajouté au-dessus de ce niveau : l'hexadécimal est
+        // la langue du métier, et une phrase par indicateur à chaque
+        // pas serait du bruit devant quelqu'un qui n'a rien demandé.
+        let débutant = self.niveau() == namsdec_re::Niveau::Débutant;
+        let lang = self.lang;
         // RIP est écarté : il change à chaque instruction, le dire à
         // chaque pas noierait ce qui compte.
         let mut changes: Vec<String> = REGISTERS
             .iter()
             .filter(|&&(_, reg)| before.get64(reg) != now.get64(reg))
-            .map(|&(name, reg)| format!("{name} {:#x} -> {:#x}", before.get64(reg), now.get64(reg)))
+            .map(|&(name, reg)| {
+                format!(
+                    "{name} {} -> {}",
+                    nombre_lisible(before.get64(reg), débutant),
+                    nombre_lisible(now.get64(reg), débutant)
+                )
+            })
             .collect();
         // Les indicateurs, un par un : après un `cmp`, ce sont eux le
         // résultat — l'instruction ne touche aucun registre.
@@ -886,11 +945,21 @@ impl NamsdecApp {
             let flags_now = emulator.cpu().flags;
             for (name, bit) in FLAG_BITS {
                 if flags_before.contains(bit) != flags_now.contains(bit) {
-                    changes.push(format!(
-                        "{name} {} -> {}",
-                        u8::from(flags_before.contains(bit)),
-                        u8::from(flags_now.contains(bit))
-                    ));
+                    let posé = flags_now.contains(bit);
+                    let mut dit = format!("{name} {} -> {}", u8::from(!posé), u8::from(posé));
+                    // LE RÔLE, ET SEULEMENT QUAND IL EST POSÉ. Un
+                    // indicateur qui retombe ne dit pas l'inverse de ce
+                    // qu'il disait — « le résultat n'est pas nul » est
+                    // vrai mais sans intérêt —, et sept phrases à
+                    // chaque `cmp` noieraient celle qui compte.
+                    if débutant && posé {
+                        let (_, rôle) = flag_words(name, lang);
+                        if !rôle.is_empty() {
+                            dit.push_str(" — ");
+                            dit.push_str(rôle);
+                        }
+                    }
+                    changes.push(dit);
                 }
             }
         }
@@ -934,7 +1003,19 @@ impl NamsdecApp {
         }
         ui.horizontal_wrapped(|ui| {
             for change in changes {
-                ui.colored_label(theme.changed, egui::RichText::new(change).monospace());
+                // CHASSE FIXE POUR UNE VALEUR, CHASSE ORDINAIRE POUR
+                // UNE PHRASE. « ZF 0 -> 1 — le dernier résultat est
+                // nul » en chasse fixe se lit comme du code, et c'est
+                // justement ce qu'on cherchait à ne plus montrer. Le
+                // tiret cadratin est le repère : il ne paraît que
+                // lorsqu'une explication suit.
+                let texte = egui::RichText::new(&change);
+                let texte = if change.contains(" — ") {
+                    texte
+                } else {
+                    texte.monospace()
+                };
+                ui.colored_label(theme.changed, texte);
             }
         });
     }
@@ -1082,7 +1163,7 @@ impl NamsdecApp {
     ///
     /// Posé sous les registres et au-dessus des vectoriels : il se lit
     /// avec les valeurs qu'il cite, juste au-dessus.
-    fn next_instruction_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn next_instruction_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let theme = self.theme;
         let Some(emulator) = &self.emulator else {
@@ -1173,6 +1254,34 @@ impl NamsdecApp {
             self.open_requested_sheet(None);
             ui.separator();
             return;
+        }
+
+        // ET LE RETOUR : « Cacher », quand c'est « Montrer » qui a
+        // ouvert la réponse.
+        //
+        // Demandé à l'écran le 10 novembre 2026, capture à l'appui :
+        // « mets un btn de cacher/afficher ». « Montrer » n'avait pas
+        // de retour — la réponse donnée, elle restait jusqu'au pas
+        // suivant, et l'on ne pouvait plus se reposer la question. Un
+        // geste qui ne se défait pas se prend avec hésitation, et
+        // l'hésitation est exactement ce que ce mode cherche à lever :
+        // demander une aide ne doit pas coûter un aveu, ni un pas.
+        //
+        // SEULEMENT QUAND LA PRÉVISION EST EN JEU. Hors de ce réglage,
+        // la réponse n'a jamais été cachée : un bouton « Cacher » y
+        // proposerait de masquer ce que namsdec a toujours montré, ce
+        // qui n'est pas une bascule mais une option de plus.
+        if crate::prevision::réponse(self.prevoir, self.niveau(), rip, None).est_retenue()
+            && self.prevision_révélée == Some(rip)
+        {
+            ui.horizontal_wrapped(|ui| {
+                if crate::small_framed_button(ui, theme, s.foresee_hide)
+                    .on_hover_text(s.foresee_hide_hint)
+                    .clicked()
+                {
+                    self.prevision_révélée = None;
+                }
+            });
         }
 
         // L'instruction dite en clair, sous sa forme machine : c'est le
@@ -1605,7 +1714,7 @@ impl NamsdecApp {
         })
     }
 
-    fn registers_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn registers_ui(&mut self, ui: &mut egui::Ui) {
         if self.emulator.is_none() {
             // Le seul des six panneaux vides à porter le bouton : la
             // vue du processeur est celle qu'on trouve en ouvrant, et
@@ -2021,7 +2130,7 @@ impl NamsdecApp {
         }
     }
 
-    fn stack_ui(&self, ui: &mut egui::Ui) {
+    pub(crate) fn stack_ui(&self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let Some(emulator) = &self.emulator else {
             // Ce que l'onglet montrera : un panneau vide qui ne dit
@@ -2062,6 +2171,25 @@ impl NamsdecApp {
                     // appels, la convention.
                     .auto_shrink([false, true])
                     .show(ui, |ui| self.stack_words_ui(ui, emulator.as_ref()));
+                // LA LÉGENDE EST DEHORS, et c'est tout le sujet.
+                //
+                // Elle était la dernière ligne de `stack_words_ui`,
+                // donc DANS la zone qui défile de côté — où rien ne se
+                // replie. Une phrase de cent caractères y devenait une
+                // ligne de cent caractères : elle allongeait la course
+                // du défilement bien au-delà de ce que les mots de pile
+                // demandent, et sur la capture du 10 novembre 2026 elle
+                // était coupée au milieu d'un mot, lisible seulement en
+                // poussant la barre. Une légende qu'il faut aller
+                // chercher n'explique rien.
+                //
+                // Dehors, elle se replie sur la largeur du volet, comme
+                // une phrase. Les valeurs, elles, gardent leur
+                // défilement : une valeur coupée serait fausse, une
+                // phrase repliée reste vraie.
+                ui.add(egui::Label::new(
+                    egui::RichText::new(s.stack_above_hint).weak(),
+                ));
                 ui.separator();
                 self.return_addresses_ui(ui, emulator.as_ref());
                 self.call_chain_ui(ui, emulator.as_ref());
@@ -2251,7 +2379,6 @@ impl NamsdecApp {
                     ui.end_row();
                 }
             });
-        ui.weak(s.stack_above_hint);
     }
 
     /// Le tas : ce que `brk` a donné au programme, et ce qu'il en reste.
@@ -4221,7 +4348,55 @@ pub(crate) fn flash_fraction(since: Option<std::time::Instant>) -> f32 {
 /// voient.
 pub(crate) fn flag_description(name: &str, on: bool, lang: Lang) -> String {
     let fr = lang == Lang::Fr;
-    let (plein, rôle) = match name {
+    let (plein, rôle) = flag_words(name, lang);
+    let état = match (on, fr) {
+        (true, true) => "posé (1)",
+        (true, false) => "set (1)",
+        (false, true) => "retombé (0)",
+        (false, false) => "clear (0)",
+    };
+    format!("{name} — {plein} · {état}\n{rôle}")
+}
+
+/// Un nombre écrit comme celui qui le lit l'écrirait.
+///
+/// AU NIVEAU DÉBUTANT, UN PETIT NOMBRE S'ÉCRIT EN DÉCIMAL. Le
+/// programme qu'on vient de taper dit `mov rcx, 3` ; la bande du
+/// dernier pas répondait `RCX 0x3 -> 0x2`, et il fallait traduire deux
+/// fois — une fois pour se reconnaître, une fois pour comprendre. Sous
+/// le million, le décimal dit la même chose sans rien demander.
+///
+/// AU-DESSUS, L'HEXADÉCIMAL RESTE. Ce ne sont plus des quantités mais
+/// des ADRESSES — `0x401000` se reconnaît d'un coup d'œil dans le
+/// listing, `4198400` ne se reconnaît nulle part. Le million est donc
+/// choisi pour cela et non pour sa rondeur : la plus basse adresse
+/// qu'un ELF ordinaire emploie est 0x400000, soit 4 194 304.
+///
+/// Au-dessus du niveau débutant, rien ne change : l'hexadécimal est la
+/// langue du métier.
+pub(crate) fn nombre_lisible(valeur: u64, débutant: bool) -> String {
+    if débutant && valeur < 1_000_000 {
+        valeur.to_string()
+    } else {
+        format!("{valeur:#x}")
+    }
+}
+
+/// Le nom plein d'un indicateur, et ce qu'il raconte.
+///
+/// À PART DE [`flag_description`] depuis le 10 novembre 2026, et pour
+/// une raison qui tient à l'enseignement : l'infobulle n'est pas le
+/// seul endroit qui en a besoin. Au niveau débutant, un indicateur qui
+/// vient de changer est dit EN TOUTES LETTRES dans la bande du dernier
+/// pas — « ZF 0 → 1 — le dernier résultat est nul » —, parce que
+/// « ZF 0 → 1 » tout seul n'apprend rien à qui ne sait pas ce qu'est ZF.
+///
+/// Une seule table pour les deux : deux phrases pour le même
+/// indicateur seraient deux vérités à tenir d'accord, et c'est ainsi
+/// qu'une finit par être fausse.
+pub(crate) fn flag_words(name: &str, lang: Lang) -> (&'static str, &'static str) {
+    let fr = lang == Lang::Fr;
+    match name {
         "CF" => (
             if fr { "retenue" } else { "carry" },
             if fr {
@@ -4287,14 +4462,7 @@ pub(crate) fn flag_description(name: &str, on: bool, lang: Lang) -> String {
             },
         ),
         _ => ("", ""),
-    };
-    let état = match (on, fr) {
-        (true, true) => "posé (1)",
-        (true, false) => "set (1)",
-        (false, true) => "retombé (0)",
-        (false, false) => "clear (0)",
-    };
-    format!("{name} — {plein} · {état}\n{rôle}")
+    }
 }
 
 pub(crate) fn flag_chip(

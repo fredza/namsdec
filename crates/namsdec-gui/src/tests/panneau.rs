@@ -561,7 +561,7 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
                         .unwrap_or(f32::INFINITY);
                 for clipped in &sortie.shapes {
                     if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                        let posé = egui::Rect::from_min_size(t.pos, t.galley.size());
+                        let posé = cadre_du_texte(t);
                         if posé.bottom() > onglet {
                             continue;
                         }

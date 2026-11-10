@@ -1,0 +1,121 @@
+/* Le socle des trois maquettes du mode simple.
+ *
+ * Les couleurs sont celles de namsdec-theme, relevées telles quelles
+ * (crates/namsdec-theme/src/lib.rs) : une maquette qui invente ses
+ * teintes ne dit rien de ce que l'application montrera.
+ */
+
+:root {
+  --sombre-bg: #1e1e1e;
+  --sombre-panel: #252526;
+  --sombre-surface: #2d2d2d;
+  --sombre-text: #d4d4d4;
+  --sombre-dim: #858585;
+  --sombre-accent: #3794ff;
+  --sombre-good: #89d185;
+  --sombre-warn: #dcdcaa;
+  --sombre-bad: #f48771;
+  --sombre-changed: #ffd700;
+  --sombre-mnemonic: #569cd6;
+  --sombre-number: #b5cea8;
+  --sombre-label: #4ec9b0;
+  --sombre-comment: #6a9955;
+  --sombre-register: #9cdcfe;
+  --sombre-directive: #c586c0;
+  --sombre-border: #3c3c3c;
+  --sombre-selection: #264f78;
+
+  --clair-bg: #ffffff;
+  --clair-panel: #f3f3f3;
+  --clair-surface: #e8e8e8;
+  --clair-text: #1e1e1e;
+  --clair-dim: #6e6e6e;
+  --clair-accent: #005fb8;
+  --clair-good: #388a34;
+  --clair-warn: #b88500;
+  --clair-bad: #cd3131;
+  --clair-changed: #d95f00;
+  --clair-mnemonic: #0000ff;
+  --clair-number: #098658;
+  --clair-label: #267f99;
+  --clair-comment: #008000;
+  --clair-register: #0070c1;
+  --clair-directive: #af00db;
+  --clair-border: #cecece;
+  --clair-selection: #add6ff;
+
+  --mono: ui-monospace, "JetBrains Mono", "DejaVu Sans Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans", sans-serif;
+  --serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+}
+
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+body { margin: 0; font-family: var(--sans); }
+
+/* Ce qui se dit du code, partout pareil. */
+.mn { color: var(--mnemonic); }
+.rg { color: var(--register); }
+.nb { color: var(--number); }
+.lb { color: var(--label); }
+.cm { color: var(--comment); }
+.dr { color: var(--directive); }
+
+/* Un bouton ne doit jamais changer de taille selon son état : ni au
+ * survol, ni une fois pressé. Un contrôle qui bouge sous le doigt se
+ * rate, et c'est le reproche le plus souvent fait aux maquettes. */
+button {
+  font: inherit;
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: none;
+  color: inherit;
+}
+button:disabled { cursor: default; opacity: .45; }
+
+/* La ceinture d'accessibilité : un anneau visible sur les deux fonds,
+ * jamais retiré. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sr {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Le bandeau commun aux trois maquettes : ceci est une maquette, et le
+ * dire évite qu'on la prenne pour l'application. */
+.aveu {
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: .3px;
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 16px;
+}
+.aveu a { color: inherit; }
+
+/* Qui demande moins de mouvement n'en reçoit aucun.
+ *
+ * Deux raisons, et la seconde n'est pas moindre : une capture prise
+ * pendant un fondu de 120 ms ne vaut rien. On a cru dix minutes qu'un
+ * bouton éteint gardait son fond d'accent — il était simplement en
+ * train de le perdre. Une image qui bouge seule fait douter de toutes
+ * les autres. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}

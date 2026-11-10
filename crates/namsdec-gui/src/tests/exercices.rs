@@ -2921,3 +2921,688 @@ fn bloc_de_la_question(peint: &str) -> String {
     let fin = reste.find(s.exercises_search).unwrap_or(reste.len());
     reste[..fin].to_owned()
 }
+
+/// L'ÉNONCÉ ET LE BUT RESTENT SOUS LES YEUX, AU MODE SIMPLE.
+///
+/// C'était le trou de ce mode-là, et il ne se voyait qu'en s'en
+/// servant. Au mode avancé, l'énoncé et le but vivent dans le panneau
+/// latéral, qui est toujours là. L'Établi n'a pas de panneau latéral :
+/// on ouvrait « Exercices… », on chargeait une étape, on refermait la
+/// fenêtre — et l'on se retrouvait seul devant un programme à trous,
+/// sans l'énoncé, sans le but, sans savoir si l'on avait réussi. Le
+/// parcours se consultait au lieu de se faire.
+///
+/// LA FENÊTRE EST FERMÉE PENDANT LA MESURE, et c'est tout le sujet :
+/// peindre l'énoncé dans la fenêtre qu'on vient de fermer ne prouve
+/// rien. Ce contrôle regarde ce qui reste à l'écran quand elle n'est
+/// plus là.
+///
+/// L'ÉMULATEUR EST POSÉ À LA MAIN, sans passer par nasm : le but ne
+/// s'évalue que devant une machine arrêtée, et ce qu'on mesure ici est
+/// une mise en page. Les registres sont ceux que l'exercice demande —
+/// RAX à 2, RBX à 1 —, donc le but doit s'allumer.
+#[test]
+fn la_bande_de_l_exercice_porte_l_enonce_et_le_but() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = app_with_exercises();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    app.show_exercises = false;
+
+    // La machine à l'arrêt, dans l'état que l'exercice demande.
+    let mut mem = Memory::new(BASE, 0x1000);
+    mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    cpu.regs.set64(Reg64::Rax, 2);
+    cpu.regs.set64(Reg64::Rbx, 1);
+    app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+    let s = strings(app.lang);
+    // UN MORCEAU SANS BALISAGE. L'énoncé est peint par `prose` depuis
+    // le 10 novembre 2026 : ses accents graves ouvrent des morceaux de
+    // code, donc la galley ne porte plus la phrase d'un seul tenant et
+    // les accents n'y sont plus. Ce contrôle cherchait les trente
+    // premiers caractères du texte BRUT — « `xchg` le fait… » — et
+    // tombait sur le balisage qu'on venait justement de retirer. On
+    // cherche donc un morceau qui traverse les deux formes.
+    let énoncé = namsdec_exercises::find(&app.exercise_packs, "namsdec/echange")
+        .expect("l'étape existe")
+        .description
+        .get(app.lang.code())
+        .to_owned();
+    let début = énoncé
+        .split('`')
+        .map(str::trim)
+        .filter(|morceau| morceau.len() > 25)
+        .map(|morceau| morceau.chars().take(25).collect::<String>())
+        .next()
+        .expect("l'énoncé a une phrase hors des accents graves");
+
+    // AU-DESSUS DU CODE, ET SEULEMENT LÀ. Le programme de départ d'un
+    // exercice REDIT son énoncé en commentaire : chercher la phrase
+    // dans tout l'écran, c'est la trouver dans l'éditeur, et le
+    // contrôle passait au vert la bande retirée. On ne garde donc que
+    // ce qui est peint au-dessus de la rangée des vues.
+    let mut peints: Vec<String> = Vec::new();
+    for _ in 0..3 {
+        peints.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape
+                && cadre_du_texte(t).top() < app.zone_de_travail.top()
+            {
+                peints.push(t.galley.text().to_owned());
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let tout = peints.join("|");
+
+    assert!(
+        tout.contains(&début),
+        "l'énoncé de l'étape doit rester à l'écran, la fenêtre fermée — peint : {tout:.400}"
+    );
+    assert!(
+        tout.contains("rax == 2") && tout.contains("rbx == 1"),
+        "les deux conditions du but doivent être peintes, chacune avec sa pastille"
+    );
+    assert!(
+        tout.contains(s.goal_reached),
+        "et le but doit se dire ATTEINT : les registres sont ceux qu'il demande"
+    );
+    assert!(
+        tout.contains(s.etabli_exercise.to_uppercase().as_str()),
+        "la bande porte son titre, comme les quatre autres"
+    );
+}
+
+/// ET ELLE NE PARAÎT PAS QUAND IL N'Y A RIEN À MONTRER.
+///
+/// Trois états où la bande ne doit prendre aucune place : aucun
+/// exercice chargé — c'est le cas de quelqu'un qui écrit son propre
+/// programme, et c'est le cas ordinaire —, le module éteint dans les
+/// préférences, et le mode avancé, qui a son panneau latéral pour
+/// cela. Une bande qui dirait « aucun exercice » prendrait cent
+/// quatre-vingt-dix pixels pour l'annoncer.
+#[test]
+fn la_bande_de_l_exercice_ne_parait_que_s_il_y_en_a_un() {
+    let mut app = app_with_exercises();
+    assert!(
+        !app.exercices_en_bande(),
+        "rien de chargé : pas de bande — c'est l'état de qui écrit son propre programme"
+    );
+
+    app.load_exercise_now("namsdec/echange");
+    assert!(
+        app.exercices_en_bande(),
+        "une étape chargée : la bande est là"
+    );
+
+    app.exercises = false;
+    assert!(
+        !app.exercices_en_bande(),
+        "le module éteint, plus rien ne mène au parcours : la bande part avec"
+    );
+}
+
+/// RIEN N'EST COUPÉ DANS LA BANDE, À SA HAUTEUR DE DÉPART.
+///
+/// La hauteur a été MESURÉE et non choisie, et ce contrôle garde la
+/// mesure. À cent soixante-quatre pixels — le chiffre écrit d'instinct
+/// —, la capture montrait la dernière ligne coupée des DEUX formes :
+/// le budget d'instructions pour un exercice d'écriture, « exécutez
+/// pour voir ce que la machine en dit » pour un exercice de lecture.
+/// La ligne qui manque est à chaque fois celle qui dit quoi faire
+/// ensuite.
+///
+/// On compare l'encre à l'encre rognée par le découpage : c'est la
+/// seule façon de voir une ligne qu'egui peint et que la bande cache.
+#[test]
+fn la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    for (étape, attendu) in [
+        ("namsdec/echange", "Instructions"),
+        ("namsdec/prevoir_somme", "Que vaut RAX"),
+    ] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = app_with_exercises();
+        app.apply_theme(&ctx);
+        app.debutant = true;
+        app.load_exercise_now(étape);
+        app.show_exercises = false;
+        let mut mem = Memory::new(BASE, 0x1000);
+        mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+        // La bande est en haut, sous la barre et la frise : on borne
+        // la mesure à sa hauteur plutôt qu'à son contenu, pour ne pas
+        // juger la bande sur les lignes du code.
+        let mut coupés: Vec<String> = Vec::new();
+        let mut vu = false;
+        for _ in 0..3 {
+            coupés.clear();
+            vu = false;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                let encre = cadre_du_texte(t);
+                if encre.top() > 300.0 {
+                    continue;
+                }
+                if t.galley.text().contains(attendu) {
+                    vu = true;
+                }
+                let visible = encre.intersect(clipped.clip_rect);
+                if visible.height() + 0.5 < encre.height() || visible.width() + 0.5 < encre.width()
+                {
+                    coupés.push(format!(
+                        "« {} » : {:.0}x{:.0} peints, {:.0}x{:.0} visibles",
+                        t.galley.text().chars().take(40).collect::<String>(),
+                        encre.width(),
+                        encre.height(),
+                        visible.width().max(0.0),
+                        visible.height().max(0.0),
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert!(
+            vu,
+            "{étape} : la bande doit porter sa dernière ligne — « {attendu} » n'est pas peint"
+        );
+        assert!(
+            coupés.is_empty(),
+            "{étape} : {} ligne(s) coupée(s) dans la bande de l'exercice :\n  {}",
+            coupés.len(),
+            coupés.join("\n  ")
+        );
+    }
+}
+
+/// LE CODE GARDE DE QUOI S'ÉCRIRE, MÊME AU PLUS PETIT ÉCRAN.
+///
+/// La bande de l'exercice prend de la place, et elle la prend AU CODE.
+/// Sur un écran de 1600x1100 c'est un sixième ; à 800x520 — le plus
+/// petit que l'application accepte —, cent quatre-vingt-dix pixels
+/// étaient plus d'un tiers, la rangée des vues était coupée en deux et
+/// il ne restait DEUX lignes de programme. Un énoncé qui chasse le
+/// programme qu'il demande d'écrire ne sert à rien.
+///
+/// La bande prend donc une PART de ce qui reste, plafonnée à ce qu'on
+/// a mesuré, et la bande de la ligne courante est bornée de même —
+/// elle était la seule des trois à prendre un nombre de pixels fixe.
+///
+/// ON COMPTE DES LIGNES DE PROGRAMME, et non des pixels : c'est ce
+/// qu'on vient faire, et c'est la seule mesure qui ne se périme pas
+/// quand une police change.
+///
+/// LES TROIS CHIFFRES SONT MESURÉS, ET DEUX ONT BAISSÉ EXPRÈS. Sans
+/// exercice, six lignes sont devenues trois le jour où la bande du bas
+/// s'est mise à expliquer la ligne où est le curseur (A 9.88) : c'est
+/// le prix de cette bande, payé en connaissance de cause. Avec un
+/// exercice, deux : la bande du curseur s'efface alors devant celle de
+/// l'exercice, et ce chiffre-ci garde la règle — sans elle, les deux
+/// bandes ensemble ne laissaient plus AUCUNE ligne visible.
+///
+/// DEUX EST PEU, ET C'EST ÉCRIT ICI POUR CELA. À 800x520, un exercice
+/// chargé ne laisse que deux lignes — avec une hauteur de bande fixe,
+/// il n'en laissait AUCUNE. Les essais pour en gagner davantage sont
+/// consignés là où ils ont échoué (`etabli.rs`) : rapetisser encore la
+/// bande ne donne rien, la bande du résultat reprenant tout ce qu'elle
+/// rend, et borner la bande de la ligne courante faisait se recouvrir
+/// deux panneaux. Le seul levier qui reste est la part du résultat,
+/// qui vient d'une demande explicite : c'est un arbitrage à prendre,
+/// pas à deviner. Le chiffre est ici pour qu'on voie le jour où il
+/// baisse, et le jour où quelqu'un le remonte.
+#[test]
+fn au_plus_petit_ecran_l_etabli_montre_encore_du_code() {
+    for (écran, avec_exercice, plancher) in [
+        (MIN_SCREEN, false, 3),
+        (MIN_SCREEN, true, 2),
+        // ET UN PORTABLE ORDINAIRE, qui compte plus que le minimum
+        // déclaré : 1366x768 est l'écran sur lequel namsdec sera le
+        // plus souvent ouvert, et personne ne le mesurait.
+        ([1366.0, 768.0], true, 14),
+    ] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, écran.into())),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = app_with_exercises();
+        app.apply_theme(&ctx);
+        app.debutant = true;
+        if avec_exercice {
+            app.load_exercise_now("namsdec/echange");
+        }
+        // Un programme assez long pour que la place soit le seul
+        // facteur, et des lignes qu'on sait reconnaître.
+        app.source = (1..=30).map(|n| format!("    nop ; ligne {n}\n")).collect();
+        app.show_exercises = false;
+
+        let mut lignes = 0;
+        for _ in 0..3 {
+            lignes = 0;
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                    continue;
+                };
+                for ligne in t.galley.rows.iter() {
+                    if !ligne.text().contains("ligne ") {
+                        continue;
+                    }
+                    // ENTIÈREMENT VISIBLE, et non simplement peinte :
+                    // une ligne rognée par le bas se lit à moitié, ce
+                    // qui ne vaut pas mieux que pas du tout.
+                    let encre = ligne
+                        .rect_without_leading_space()
+                        .translate(t.pos.to_vec2());
+                    if encre.intersect(clipped.clip_rect).height() > encre.height() - 0.5 {
+                        lignes += 1;
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        eprintln!(
+            "MESURE {:.0}x{:.0} exercice={avec_exercice} lignes={lignes}",
+            écran[0], écran[1]
+        );
+        eprintln!(
+            "MESURE {:.0}x{:.0} exercice={avec_exercice} lignes={lignes}",
+            écran[0], écran[1]
+        );
+        eprintln!(
+            "MESURE {:.0}x{:.0} ex={avec_exercice} lignes={lignes}",
+            écran[0], écran[1]
+        );
+        assert!(
+            lignes >= plancher,
+            "à {:.0}x{:.0}, exercice = {avec_exercice} : {lignes} ligne(s) de programme \
+             entièrement visibles, {plancher} attendues — les bandes ont mangé le code",
+            écran[0],
+            écran[1],
+        );
+    }
+}
+
+/// LA LIGNE OÙ EST LE CURSEUR S'EXPLIQUE, AVANT MÊME D'ASSEMBLER.
+///
+/// C'était le trou du premier écran, et il durait tout le temps qu'on
+/// passe à LIRE un programme avant de l'exécuter — la première moitié
+/// de l'apprentissage. L'Établi portait six instructions qu'un
+/// débutant ne connaît pas, la bande du bas disait « revenez quand
+/// vous aurez assemblé », et la seule porte vers les cent
+/// quatre-vingt-neuf fiches était une touche dont rien ne parle.
+///
+/// Les fiches étaient écrites ; il manquait l'endroit et le moment.
+///
+/// TROIS ÉTATS SONT MESURÉS, parce que la bande en a trois : une ligne
+/// qui a une fiche, une ligne qui n'en a pas — où elle doit dire
+/// comment la faire parler plutôt que de se taire —, et un programme
+/// en cours d'exécution, où elle reprend son rôle d'avant. Sans le
+/// troisième, rien ne dirait que la fiche NE PREND PAS la place de ce
+/// qui se passe.
+#[test]
+fn la_ligne_du_curseur_s_explique_avant_l_assemblage() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    let rendu = |app: &mut NamsdecApp| -> String {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let mut peints = String::new();
+        for _ in 0..3 {
+            peints.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    peints.push_str(t.galley.text());
+                    peints.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        peints
+    };
+
+    let s = strings(Lang::Fr);
+    let fiche = namsdec_doc::lookup("add").expect("`add` a une fiche");
+    let titre = fiche.title.get("fr");
+
+    // 1. LE CURSEUR SUR UNE INSTRUCTION, rien qui tourne.
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    app.cursor_byte = app
+        .source
+        .find("add ")
+        .expect("le programme d'accueil additionne");
+    let peints = rendu(&mut app);
+    assert!(
+        peints.contains(titre),
+        "la bande doit porter le titre de la fiche de `add` — « {titre} »"
+    );
+    assert!(
+        peints.contains(s.etabli_cursor_line.to_uppercase().as_str()),
+        "et dire de quelle ligne elle parle"
+    );
+
+    // 2. LE CURSEUR SUR UN COMMENTAIRE : rien à expliquer, mais on dit
+    //    comment faire parler la bande. C'est l'état du PREMIER ÉCRAN,
+    //    où le curseur est au premier caractère.
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    app.cursor_byte = 0;
+    let peints = rendu(&mut app);
+    assert!(
+        !peints.contains(titre),
+        "une ligne de commentaire n'explique aucune instruction"
+    );
+    assert!(
+        peints.contains(s.etabli_cursor_hint),
+        "mais la bande doit dire comment la faire parler, au lieu de se taire"
+    );
+
+    // 3. UN PROGRAMME EN COURS : la fiche ne prend pas la place de ce
+    //    qui se passe.
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    app.cursor_byte = app
+        .source
+        .find("add ")
+        .expect("le programme d'accueil additionne");
+    let mut mem = Memory::new(BASE, 0x1000);
+    mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+    let peints = rendu(&mut app);
+    assert!(
+        !peints.contains(s.etabli_cursor_line.to_uppercase().as_str()),
+        "un programme tourne : la bande dit ce qui se passe, pas ce qu'on lisait"
+    );
+
+    // 4. UN EXERCICE EN COURS : une seule bande d'explication à la
+    //    fois. Celle de l'exercice porte déjà la consigne, et les deux
+    //    ensemble ne laissaient plus aucune ligne de programme visible
+    //    à 800x520 — voir
+    //    `au_plus_petit_ecran_l_etabli_montre_encore_du_code`, qui
+    //    garde le chiffre.
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    app.show_exercises = false;
+    app.cursor_byte = app.source.find("mov ").unwrap_or(0);
+    let peints = rendu(&mut app);
+    assert!(
+        !peints.contains(s.etabli_cursor_line.to_uppercase().as_str()),
+        "un exercice est en cours : c'est lui qui explique, et la bande du curseur \
+         s'efface — sans quoi le plus petit écran ne montre plus une ligne de code"
+    );
+}
+
+/// LE CONSTAT DU BUT PARLE LA MÊME LANGUE QUE LE DERNIER PAS.
+///
+/// Vu à l'écran le 10 novembre 2026, sur une seule image : la bande du
+/// bas disait « RCX 3 -> 2 » pendant que le but, trois centimètres
+/// plus haut, disait « rax vaut 0x0 ». Deux façons d'écrire le même
+/// nombre sur un même écran, c'est une de trop — et celle du haut
+/// demandait justement de savoir lire l'hexadécimal, ce qu'on vient
+/// apprendre.
+///
+/// LA CONDITION, ELLE, NE BOUGE PAS. `rax == 0xf` est le texte de
+/// l'exercice, pas le nôtre : la réécrire ferait dire à l'énoncé autre
+/// chose que ce que son auteur a tapé. Le contrôle vérifie les deux —
+/// le constat traduit, la condition intacte.
+#[test]
+fn le_constat_du_but_suit_la_langue_du_niveau() {
+    use namsdec_core::{Cpu, Memory};
+    const BASE: u64 = 0x40_0000;
+
+    for débutant in [true, false] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1600.0, 1100.0),
+            )),
+            ..Default::default()
+        };
+        let ctx = egui::Context::default();
+        let mut app = app_with_exercises();
+        app.apply_theme(&ctx);
+        app.debutant = débutant;
+        // Une étape dont le but porte `rax == 2`, et une machine qui
+        // n'y est pas : c'est le constat qu'on veut lire.
+        app.load_exercise_now("namsdec/echange");
+        app.show_exercises = false;
+        let mut mem = Memory::new(BASE, 0x1000);
+        mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+        let mut cpu = Cpu::new(mem);
+        cpu.regs.rip = BASE;
+        cpu.regs.set64(Reg64::Rax, 12);
+        app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+
+        // LE BUT SEUL, et non tout l'écran : au mode simple il vit
+        // dans la bande de l'exercice, au mode avancé dans la fenêtre
+        // des exercices. Deux endroits, une seule fonction — et c'est
+        // elle qu'on mesure, sans quoi le contrôle mesurerait surtout
+        // lequel des deux écrans est ouvert.
+        let mut peints = String::new();
+        for _ in 0..3 {
+            peints.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.goal_ui(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    peints.push_str(t.galley.text());
+                    peints.push('|');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        assert!(
+            peints.contains("rax == 2"),
+            "la condition reste telle que l'exercice l'a écrite"
+        );
+        if débutant {
+            assert!(
+                peints.contains("rax vaut 12"),
+                "et le constat se dit en décimal, comme la bande du dernier pas : {peints:.600}"
+            );
+        } else {
+            assert!(
+                peints.contains("rax vaut 0xc"),
+                "au-dessus du niveau débutant, l'hexadécimal reste : {peints:.600}"
+            );
+        }
+    }
+}
+
+/// LA CIBLE SE LIT AVANT DE COMMENCER.
+///
+/// `exercise_goal` se tait tant qu'aucun programme ne tourne, et c'est
+/// juste : on ne dit pas « pas atteint » à qui n'a encore rien lancé.
+/// Mais se taire faisait qu'on écrivait SANS SAVOIR OÙ L'ON VA — les
+/// conditions ne se lisaient qu'après le premier essai, alors qu'elles
+/// sont ce qui dirige ce qu'on écrit.
+///
+/// SANS VERDICT, et le contrôle le vérifie : ni « atteint » ni « pas
+/// encore » tant que rien n'a tourné. Montrer la cible est une aide ;
+/// la juger avant l'essai serait un reproche.
+#[test]
+fn la_cible_de_l_exercice_se_lit_avant_le_premier_essai() {
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = app_with_exercises();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    app.show_exercises = false;
+    assert!(
+        app.emulator.is_none(),
+        "l'étape vient d'être chargée : rien n'a encore tourné"
+    );
+
+    let s = strings(app.lang);
+    let mut peints = String::new();
+    for _ in 0..3 {
+        peints.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.goal_ui(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                peints.push_str(t.galley.text());
+                peints.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    assert!(
+        peints.contains("rax == 2") && peints.contains("rbx == 1"),
+        "les deux conditions doivent se lire avant d'avoir rien lancé : {peints:?}"
+    );
+    assert!(
+        peints.contains(s.goal_ahead),
+        "et l'on dit ce qu'elles sont : une cible, pas un verdict"
+    );
+    assert!(
+        !peints.contains(s.goal_not_yet) && !peints.contains(s.goal_reached),
+        "aucun verdict avant le premier essai — ce serait un reproche : {peints:?}"
+    );
+}
+
+/// LA BANDE DU RÉSULTAT PORTE SA RANGÉE DE SAISIE.
+///
+/// Relevé à l'écran le 10 novembre 2026, une flèche verte sur
+/// « Variables d'environnement » : « innaccesible ». La bande porte,
+/// de haut en bas, les notes du binaire, la sortie du programme, puis
+/// les rangées du bas — les arguments, l'environnement, et LE CHAMP OÙ
+/// L'ON RÉPOND AU PROGRAMME. Ces rangées-là sont dans un panneau ancré
+/// au bas de la sortie : la bande trop courte, elles passaient sous
+/// son bord, c'est-à-dire sous le bord de la fenêtre. Le programme
+/// demandait « Enter your name: » et il n'y avait plus nulle part où
+/// le lui dire.
+///
+/// LE CAS LE PLUS HAUT EST MESURÉ — un binaire ouvert, les arguments
+/// dépliés : c'est celui de la capture, et c'est celui où la bande a
+/// le plus à porter. Les trois rangées doivent être ENTIÈREMENT
+/// visibles : une rangée coupée en deux n'est pas plus cliquable
+/// qu'une rangée absente.
+#[test]
+fn la_bande_du_resultat_porte_sa_rangee_de_saisie() {
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(1600.0, 1100.0),
+        )),
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    app.debutant = true;
+    app.load_elf(&octets, NOM_FABRIQUÉ);
+    app.console_args_open = true;
+    // ET LES NOTES DU CHARGEMENT, qui occupent le HAUT de la bande.
+    //
+    // Sans elles, la bande n'a que sa sortie à porter, ses deux cents
+    // pixels par défaut suffisent, et le contrôle passe quoi qu'on
+    // fasse du plancher. C'est l'état de la capture : un binaire lié
+    // dynamiquement arrive avec une note de quatre lignes, et c'est
+    // elle qui pousse les rangées du bas sous le bord.
+    app.diagnostics = (0..2)
+        .map(|_| namsdec_asm::Diagnostic {
+            line: 0,
+            severity: namsdec_asm::Severity::Warning,
+            message: strings(Lang::Fr).binary_dynamic.to_owned(),
+            kind: None,
+        })
+        .collect();
+
+    let s = strings(app.lang);
+    let attendus = [s.console_args, s.console_env, s.console_input_label];
+    let mut manquants: Vec<String> = Vec::new();
+    for _ in 0..4 {
+        manquants.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        for attendu in attendus {
+            let mut vue = None;
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape
+                    && t.galley.text().trim() == attendu.trim()
+                {
+                    let encre = cadre_du_texte(t);
+                    vue = Some((encre, encre.intersect(clipped.clip_rect)));
+                }
+            }
+            match vue {
+                None => manquants.push(format!("« {attendu} » n'est pas peint")),
+                Some((encre, visible)) if visible.height() + 0.5 < encre.height() => manquants
+                    .push(format!(
+                        "« {attendu} » est coupé : {:.0} px sur {:.0}",
+                        visible.height().max(0.0),
+                        encre.height()
+                    )),
+                Some((encre, _)) if encre.bottom() > 1100.0 => {
+                    manquants.push(format!("« {attendu} » est sous le bord de la fenêtre"))
+                }
+                Some(_) => {}
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    assert!(
+        manquants.is_empty(),
+        "la bande du résultat doit porter ce qu'elle porte :\n  {}",
+        manquants.join("\n  ")
+    );
+}

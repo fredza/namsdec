@@ -320,7 +320,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "d'arrêt.",
         ]),
         ("note",
-         "<b>La barre d'outils se gradue, elle aussi.</b> En <b>mode débutant</b>, elle "
+         "<b>La barre d'outils se gradue, elle aussi.</b> (Elle n'existe qu'au mode avancé depuis le 9 novembre 2026 : le mode débutant a sa propre barre, celle de l'Établi — voir « Deux dispositions ». Les deux disent la même chose des mêmes commandes.) En <b>mode débutant</b>, elle "
          "porte six commandes — <b>Assembler</b>, <b>Exécuter</b>, <b>Pas à pas</b>, "
          "<b>Pas en arrière</b>, <b>Stop</b>, <b>Réinitialiser</b> — et les deux pas "
          "s'appellent par ce qu'ils font, puisqu'ils vont par paire. En mode avancé ils "
@@ -348,6 +348,125 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "rencontrerez."),
 
         ("h1", "La fenêtre"),
+        ("h2", "Deux dispositions, et c'est le niveau qui choisit"),
+        ("p",
+         "Depuis le 9 novembre 2026, namsdec ne montre pas la même fenêtre selon le "
+         "niveau. Ce n'est plus la même interface avec des morceaux en moins : c'est "
+         "<b>deux mises en page</b>, et l'on passe de l'une à l'autre d'un bouton."),
+        ("p",
+         "<b>Au mode débutant — l'Établi.</b> Quatre bandes fixes, et rien à ouvrir "
+         "avant de pouvoir travailler : pas de barre de menus, pas de barres d'icônes "
+         "aux bords, pas de barre d'état. Chaque bande porte son titre, écrit à la "
+         "première personne, parce que c'est votre programme :"),
+        ("liste", [
+         "La <b>barre du haut</b> porte le nom du fichier, et l'<b>abrège par le "
+         "milieu</b> s'il est long&nbsp;: le début dit de quel fichier il s'agit, "
+         "l'extension de quoi il est fait, et le nom entier revient au survol. Couper "
+         "par la droite perdrait l'extension, et deux fichiers d'un même projet ne se "
+         "distinguent souvent que par leur début.",
+         "<b>Ce que j'ai écrit</b> — l'éditeur, au centre, avec sa gouttière et ses "
+         "points d'arrêt. La rangée des vues est au-dessus : « Source », "
+         "« Désassemblage », « Déroulement », « Analyse », « Points d'arrêt » — les "
+         "cinq façons de regarder qui se comprennent sans rien savoir d'avance.",
+         "<b>Ce que fait la machine</b> — à droite : les registres, les sept "
+         "indicateurs, la pile, l'un sous l'autre et <b>sans onglet</b>. Choisir entre "
+         "« registres » et « pile » est un geste de trop quand on avance d'un pas : ce "
+         "sont justement les deux endroits qu'on regarde ensemble. <b>Chacun des trois "
+         "dit ce qu'il montre</b>, en une phrase, au-dessus des registres et sous les "
+         "indicateurs : dix-sept noms de trois lettres et sept sigles de deux "
+         "n'apprennent rien à qui ne les connaît pas, et il faudrait savoir qu'ils "
+         "cachent quelque chose pour penser à les survoler. Ces phrases tiennent en "
+         "<b>deux lignes</b>, et c'est mesuré&nbsp;: à trois, la pile tombait sous la "
+         "ligne de flottaison — une légende qui chasse ce qu'elle accompagne ne vaut "
+         "pas mieux que pas de légende.",
+         "<b>Ce que fait cette ligne</b> — sous le code : l'adresse qui vient, ce "
+         "qu'elle fait, ses octets, et — si « Prévoir avant d'avancer » est coché — la "
+         "question posée à la place de la réponse. En dessous, ce que le dernier pas a "
+         "changé — <b>en toutes lettres</b> : voir plus bas. <b>Tant que rien ne "
+         "tourne</b>, cette même bande explique la ligne où est le curseur&nbsp;: le "
+         "mot, ce qu'il veut dire en une phrase, la fiche en entier à un clic. On "
+         "parcourt ainsi un programme ligne à ligne <i>avant</i> de l'exécuter, ce qui "
+         "est la première moitié de l'apprentissage et ce que l'écran ne proposait "
+         "nulle part. <b>Une seule bande explique à la fois</b>&nbsp;: pendant un "
+         "exercice, c'est la bande de l'exercice qui le fait — les deux ensemble ne "
+         "laissaient plus une ligne de programme visible sur un petit écran.",
+         "<b>Résultat</b> — tout en bas : ce que le programme a écrit, ce qu'il attend "
+         "qu'on lui réponde — la bande se donne la hauteur de <b>la rangée où l'on "
+         "répond</b>, arguments et environnement compris, sinon elle passe sous le bord "
+         "de la fenêtre au moment précis où le programme pose sa question&nbsp;; sur un "
+         "écran de 800×520, où cinq bandes et un volet ne tiennent pas, elle se coupe "
+         "comme le reste — et les "
+         "erreurs de nasm <b>en tête</b> quand il y en a, "
+         "avec leur explication en clair. Quand l'assemblage a échoué, la bande ne "
+         "montre que les erreurs : il n'y a pas de sortie à annoncer. "
+         "Dès que le programme a écrit quelque chose, une <b>pastille verte</b> "
+         "paraît devant le titre et celui-ci s'éclaircit : la sortie d'un premier "
+         "programme tient sur une ligne, et il ne faut pas qu'elle se perde au milieu "
+         "d'un écran qui change à chaque pas.",
+        ]),
+        ("p",
+         "La barre du haut porte, au coin gauche, les <b>trois pastilles</b> de la "
+         "fenêtre — fermer, réduire, agrandir — comme la barre de titre du mode "
+         "avancé&nbsp;; puis les cinq gestes dans l'ordre où on les apprend — "
+         "<b>Assembler</b>, <b>Exécuter</b>, <b>Pas à pas</b>, <b>Pas en arrière</b>, "
+         "<b>Réinitialiser</b> —, et à droite les portes : <b>Ouvrir un "
+         "fichier</b>, <b>Enregistrer</b>, <b>Exercices</b>, <b>Calculatrice</b>, "
+         "<b>Aide</b>, l'<b>engrenage</b> des préférences, puis "
+         "<b>Mode avancé</b>. Aucun geste n'est caché selon l'état : ils se grisent, et "
+         "disent au survol ce qui leur manque. « Exécuter » devient « Stop » pendant "
+         "que le programme tourne — le programme court ou il ne court pas, et deux "
+         "boutons dont l'un est toujours éteint prendraient la place pour ne rien dire. "
+         "Sur une fenêtre étroite, la barre se coupe en deux rangées plutôt que de se "
+         "recouvrir."),
+        ("p",
+         "<b>Deux de ces bandes se détachent.</b> « Ce que fait la machine » et "
+         "« Résultat » portent chacune un bouton <b>Détacher</b> au bord droit de leur "
+         "titre : il les sort dans une fenêtre à elles, et la bande rend sa place au "
+         "code. Fermer la fenêtre la ramène. C'est le même geste que « Détacher » sur "
+         "la rangée des vues, et il est là pour la même raison : la place de ces "
+         "bandes est répartie d'avance, et ce qu'elles portent ne tient pas toujours "
+         "dedans — la pile d'un vrai binaire montre des chaînes d'environnement de "
+         "quarante caractères, et une note de namsdec peut faire cinq lignes. Tirer la "
+         "poignée aide ; sortir la bande règle la question."),
+        ("p",
+         "<b>Une cinquième bande paraît quand on fait un exercice</b>, en haut et sur "
+         "toute la largeur&nbsp;: l'énoncé, le but, et où l'on en est dans le parcours. "
+         "Elle n'existait pas jusqu'au 10 novembre 2026, et c'était le trou de ce "
+         "mode-là. Au mode avancé, l'énoncé et le but vivent dans le panneau latéral, "
+         "qui est toujours là&nbsp;; l'Établi n'a pas de panneau latéral. On ouvrait "
+         "donc <b>Exercices…</b>, on chargeait une étape, on refermait la fenêtre — et "
+         "l'on se retrouvait seul devant un programme à trous, sans l'énoncé, sans le "
+         "but, sans savoir si l'on avait réussi. Le parcours se <i>consultait</i> au "
+         "lieu de se faire."),
+        ("p",
+         "La bande porte <b>le rang de l'étape</b> et son palier, l'énoncé, puis le but "
+         "— condition par condition, chacune avec sa pastille, et elles "
+         "<b>s'allument pendant qu'on avance</b>. Pour une étape de lecture, c'est la "
+         "question et le champ de réponse qui s'y trouvent. À droite, une barre dit ce "
+         "qui est fait du parcours entier, et deux boutons&nbsp;: "
+         "<b>Choisir…</b> rouvre la liste, <b>Étape suivante</b> charge la suite sans y "
+         "repasser. La bande se règle à la poignée, comme celle du résultat."),
+        ("note",
+         "<b>Sur un petit écran, elle se serre — et cela ne suffit pas.</b> La bande "
+         "prend une part de ce qui reste plutôt qu'un nombre de pixels&nbsp;: à 800×520, "
+         "le plus petit écran que namsdec accepte, c'est la différence entre deux lignes "
+         "de programme visibles et aucune. <b>Deux reste peu</b>, et c'est dit ici "
+         "franchement&nbsp;: un écran de cette taille portant cinq bandes et un volet ne "
+         "peut pas tout montrer. Tirez la poignée de la bande vers le haut, ou celle du "
+         "résultat vers le bas&nbsp;; sur un écran de portable ordinaire — 1366×768 — la "
+         "question ne se pose pas."),
+        ("note",
+         "<b>Ce que le mode simple ne perd pas.</b> L'aide, les exercices, la palette "
+         "de commandes, les raccourcis, les préférences et les cinq vues du niveau "
+         "débutant sont tous là. Le mode simple montre <b>moins</b>, pas autre chose : "
+         "ce qui disparaît, ce sont les menus, les rails d'icônes, la barre d'état et "
+         "les quatre vues qui demandent de savoir ce qu'on cherche."),
+        ("p",
+         "<b>Au mode avancé</b>, la fenêtre est celle que décrit tout le reste de ce "
+         "chapitre : barre de menus, barre d'outils, rails, deux rangées d'onglets, "
+         "panneau latéral à six onglets, console et barre d'état. On y va par le bouton "
+         "<b>Mode avancé</b> de l'Établi, et l'on en revient par "
+         "<b>Affichage › Mode débutant</b>."),
         ("h2", "La barre de titre"),
         ("p",
          "namsdec dessine sa propre décoration : les menus <i>sont</i> la barre de "
@@ -619,7 +738,10 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "L'onglet disparaît alors de la rangée : une vue est à un seul endroit à la "
          "fois. <b>Fermer la fenêtre la ramène</b> dans la rangée — elle n'est jamais "
          "perdue, elle est quelque part. La <b>source</b>, elle, ne se détache pas : "
-         "c'est la vue qui reste quand les autres partent."),
+         "c'est la vue qui reste quand les autres partent, et <b>le bouton n'est pas "
+         "là</b> quand c'est elle qu'on regarde. Il s'y peignait, et ne faisait rien : "
+         "un bouton qui s'allume au survol, se presse et n'obtient rien se reclique, "
+         "puis fait douter de tout le reste de la barre."),
         ("p",
          "Sur un écran étroit, la rangée des vues <b>tient sur une ligne</b> et range ce qui ne "
          "rentre pas derrière un bouton qui dit combien&nbsp;: <b>+5</b>. Un clic "
@@ -821,13 +943,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "  0x400005  mov ebx, 2\n"
          "  Qu'est-ce que ça va changer ?   [Montrer]\n"
          "\n"
-         "Dernier pas  0x400000  mov eax, 1\n"
-         "  Ce que ça disait : EAX = 1\n"
-         "  RAX 0x0 -> 0x1"),
+         "Dernier pas  0x400021  dec rcx\n"
+         "  Ce que ça disait : RCX = RCX - 1\n"
+         "  RCX 3 -> 2\n"
+         "  ZF 0 -> 1 - le dernier resultat est nul"),
+        ("p",
+         "<b>Ce qui a changé se dit en toutes lettres</b>, et seulement en mode "
+         "débutant. Deux traductions étaient demandées à celui qui débute, au moment "
+         "même où il constate&nbsp;: « RCX 0x3 -&gt; 0x2 » suppose qu'on lit l'hexadécimal, "
+         "« ZF 0 -&gt; 1 » qu'on sait ce qu'est ZF. Deux choses qu'on vient précisément "
+         "apprendre. Sous le million, la valeur s'écrit donc en <b>décimal</b> — comme "
+         "le programme qu'on vient de taper l'écrivait — et l'indicateur qui se pose "
+         "<b>dit ce qu'il raconte</b>. Au-dessus du million ce sont des adresses, et "
+         "l'hexadécimal reste&nbsp;: <font face='Courier'>0x401000</font> se reconnaît "
+         "dans le listing, 4&nbsp;198&nbsp;400 ne se reconnaît nulle part."),
+        ("note",
+         "Rien de tout cela au-dessus du mode débutant&nbsp;: l'hexadécimal est la "
+         "langue du métier, et une phrase par indicateur à chaque pas serait du bruit "
+         "devant quelqu'un qui n'a rien demandé. Les deux niveaux sont mesurés par le "
+         "même contrôle, sans quoi on ne saurait pas que la règle <i>s'arrête</i>."),
         ("note",
          "« <b>Montrer</b> » donne la réponse sans attendre le pas, d'un clic — demander "
-         "une aide ne doit pas coûter un aveu —, et elle reste montrée pour cette "
-         "instruction-là&nbsp;: au pas suivant, la question se repose. Le réglage est "
+         "une aide ne doit pas coûter un aveu —, et « <b>Cacher</b> » la reprend&nbsp;: "
+         "la question se repose, et l'on peut essayer de retrouver la réponse avant "
+         "d'avancer. Un geste qui ne se défait pas se prend avec hésitation, et "
+         "l'hésitation est ce que ce mode cherche justement à lever. Au pas suivant, la "
+         "question se repose d'elle-même. Le réglage est "
          "dans <b>Préférences › Modules</b>, sous le mode débutant, et il <b>ne vaut "
          "qu'avec lui</b>&nbsp;: un exercice imposé à qui se sert de l'outil tous les "
          "jours serait une taxe. Rien n'est calculé de neuf — ce que namsdec disait "
@@ -1005,8 +1146,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Le compte des problèmes</b> se lit sans ouvrir la liste&nbsp;: au bord droit "
          "de la rangée des vues, un disque rouge et le nombre d'erreurs, un triangle "
          "orange et le nombre d'avertissements. Un clic dessus ouvre la liste sur le bon "
-         "onglet&nbsp;; les deux <b>chevrons</b> mènent au problème d'avant et à celui "
-         "d'après, en bouclant — le dernier ramène au premier."),
+         "onglet, et un <b>deuxième clic la referme</b> — c'est une bascule, par où l'on "
+         "ouvre on referme. Si la console était déjà ouverte sur un autre onglet, le "
+         "clic y <i>mène</i> au lieu de tout fermer&nbsp;: c'est le même geste, et il ne "
+         "se renverse qu'une fois rendu. Les deux <b>chevrons</b> mènent au problème "
+         "d'avant et à celui d'après, en bouclant — le dernier ramène au premier."),
         ("note",
          "Il ne paraît que s'il y a quelque chose à compter. Un compteur à zéro en "
          "permanence est un endroit de l'écran qu'on apprend à ne plus regarder, et c'est "
@@ -1101,6 +1245,31 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>call</font> seul au milieu de deux mille instructions "
          "ordinaires reste visible — et c'est justement le rare qu'on cherche des yeux."),
 
+        ("h2", "Regarder tourner : la machine en grand"),
+        ("p",
+         "<b>Outils › Regarder tourner…</b> (au mode simple : le bouton du même nom, "
+         "sur la ligne qui dit où l'on en est — cette ligne garde sa place pour lui et "
+         "pour RIP, et c'est le message d'état qui se coupe quand il est long, "
+         "<b>relisible en entier au survol</b>) ouvre une fenêtre qui ne montre qu'une "
+         "chose — <b>ce que l'instruction qui vient va faire, et ce que la précédente a "
+         "changé</b> — mais qui le montre en grand."),
+        ("liste", [
+         "un <b>ruban</b> d'instructions : celle qu'on vient d'exécuter, celle qui "
+         "vient (au centre, encadrée), et les quatre suivantes ;",
+         "jusqu'à <b>trois cartes</b>, une par registre que le dernier pas a changé, "
+         "avec la valeur en gros chiffres et le passage « avant, puis après » dessous. "
+         "Quand le dernier pas n'a touché aucun registre, on montre ceux qu'on regarde "
+         "le plus souvent plutôt que trois cartes vides ;",
+         "la <b>fiche</b> de l'instruction qui vient, en une ligne ;",
+         "les commandes d'exécution, toujours à la même place.",
+        ]),
+        ("p",
+         "Le panneau de droite répond à « où en est la machine ? » : seize registres, "
+         "huit indicateurs, douze cases de pile, en chiffres de treize points. Cette "
+         "fenêtre-ci répond à une autre question — « qu'est-ce que cette instruction "
+         "vient de faire ? » —, et elle se lit <b>à un mètre</b>. C'est la fenêtre qu'on "
+         "ouvre pour suivre un passage pas à pas, ou pour montrer un programme à "
+         "quelqu'un. Elle existe aux deux niveaux."),
         ("h2", "Le calcul vectoriel, et pourquoi il vous tombe dessus"),
         ("p",
          "On peut n'avoir jamais écrit une ligne de SSE et s'arrêter dessus au premier pas "
@@ -1288,6 +1457,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "est au-dessus de RSP grisé — ces octets sont encore là, mais le prochain "
          "<font face='Courier'>push</font> les écrase. La chaîne des appels, la convention "
          "System V et les entorses relevées suivent en dessous."),
+        ("p",
+         "<b>Les mots de pile défilent de côté, la phrase qui les explique non.</b> Une "
+         "ligne de pile porte une adresse, un mot de huit octets, ses repères et la suite "
+         "des pointeurs qu'il ouvre — c'est plus large qu'un panneau, et une valeur coupée "
+         "au bord ne serait pas une valeur abrégée mais une valeur fausse. La légende du "
+         "grisé, elle, est une phrase : elle se replie sur la largeur du volet et se lit "
+         "sans toucher à la barre."),
         ("p",
          "L'onglet Tas montre ce que <font face='Courier'>brk</font> a donné au programme et "
          "ce qu'il en reste. Un débogueur ordinaire ne peut pas le montrer : il ne connaît "
@@ -1634,6 +1810,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>rax == 0xf</font> — que namsdec dit « atteint » ou « pas "
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
+        ("p",
+         "<b>La cible se lit avant de commencer.</b> Tant que rien n'a tourné, les "
+         "conditions sont montrées en gris et <b>sans verdict</b>&nbsp;: ce ne sont pas "
+         "des conditions qui tiennent ou qui manquent, ce sont des conditions qu'on n'a "
+         "pas encore éprouvées. Elles se taisaient jusqu'au premier essai, et l'on "
+         "écrivait donc sans savoir où l'on allait — alors que c'est la cible qui dirige "
+         "ce qu'on écrit. Montrer la cible est une aide&nbsp;; la juger avant l'essai "
+         "serait un reproche."),
         ("p",
          "<b>Le parcours n'apprend pas qu'à écrire.</b> Une douzaine d'étapes apprennent "
          "à <b>lire</b> un binaire — ce qui est l'autre moitié du métier, et ce que font "

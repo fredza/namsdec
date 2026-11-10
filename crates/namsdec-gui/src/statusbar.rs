@@ -375,7 +375,26 @@ impl NamsdecApp {
             )
             .rect
             .width();
-        let réponse = ui.colored_label(couleur, &texte);
+        // LA TRONCATURE EST POSÉE ICI, et non laissée au décor.
+        //
+        // La barre d'état du mode avancé la posait elle-même, avec sa
+        // largeur bornée (voir `status_bar_ui`) ; la frise de l'Établi
+        // ne le faisait pas, et un `ui.horizontal` d'egui met ses
+        // étiquettes en `Extend` — elles s'allongent au-delà de la
+        // place qu'on leur laisse au lieu de s'y couper. Mesuré à
+        // 1600 px le 10 novembre 2026, la note d'un binaire lié
+        // dynamiquement : le message allait jusqu'à x = 2824, par
+        // dessus le bouton de la Scène et par dessus RIP, et
+        // `galley.elided` était faux — l'infobulle ci-dessous ne
+        // paraissait donc jamais, puisqu'on n'avait rien coupé.
+        //
+        // Une étiquette qui se coupe d'elle-même rend la mesure vraie
+        // des deux côtés : ce qu'on a laissé est ce qu'on a peint.
+        let réponse = ui.add(
+            egui::Label::new(egui::RichText::new(&texte).color(couleur))
+                .truncate()
+                .sense(egui::Sense::hover()),
+        );
         if demandé > réponse.rect.width() + 0.5 {
             réponse.on_hover_text(&texte);
         }

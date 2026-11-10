@@ -1023,7 +1023,7 @@ fn the_modules_tab_shows_every_module_namsdec_carries() {
             if let egui::epaint::Shape::Text(texte) = &clipped.shape
                 && texte.galley.text().starts_with(s.modules_re_detail)
             {
-                trouvé = Some(egui::Rect::from_min_size(texte.pos, texte.galley.size()).center());
+                trouvé = Some(cadre_du_texte(texte).center());
             }
         }
         sortie.textures_delta.clear();
@@ -1212,10 +1212,7 @@ fn lire_en_ne_se_peint_pas_sur_suivre() {
         );
         for clipped in &sortie.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                posés.push((
-                    t.galley.text().to_owned(),
-                    egui::Rect::from_min_size(t.pos, t.galley.size()),
-                ));
+                posés.push((t.galley.text().to_owned(), cadre_du_texte(t)));
             }
         }
         sortie.textures_delta.clear();
@@ -1284,10 +1281,7 @@ fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
         );
         for clipped in &sortie.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {
-                txts.push((
-                    t.galley.text().to_owned(),
-                    egui::Rect::from_min_size(t.pos, t.galley.size()),
-                ));
+                txts.push((t.galley.text().to_owned(), cadre_du_texte(t)));
             }
         }
         sortie.textures_delta.clear();
