@@ -602,9 +602,18 @@ fn a_background_job_shows_its_progress_where_one_looks() {
 
     // Le travail fini, le titre revient à ce qu'il était : une
     // application marquée « 100 % » pour toujours fait douter du reste.
+    // Ce qu'il était, c'est le nom de ce qu'on travaille — la barre des
+    // tâches et l'alt-tab ne montraient que « Namsdec », et deux
+    // fenêtres ouvertes sur deux programmes y étaient indiscernables.
     app.job = None;
     app.reflect_job_in_title(&ctx);
-    assert_eq!(app.window_title.as_deref(), Some("Namsdec"));
+    assert_eq!(
+        app.window_title.as_deref(),
+        Some(format!("Namsdec — {}", strings(app.lang).untitled_buffer).as_str())
+    );
+    app.current_file = Some(std::path::PathBuf::from("/tmp/exemple.asm"));
+    app.reflect_job_in_title(&ctx);
+    assert_eq!(app.window_title.as_deref(), Some("Namsdec — exemple.asm"));
 }
 
 /// CONSTRUIRE L'APPLICATION N'ÉCRIT RIEN DANS LES FICHIERS DE

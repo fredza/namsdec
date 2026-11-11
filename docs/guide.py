@@ -476,6 +476,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "suite du menu Aide, et le reste de la bande déplace la fenêtre ; le "
          "double-clic l'agrandit, les bords la redimensionnent."),
         ("p",
+         "<b>Le nom est celui de ce qu'on travaille</b>, quel qu'il soit : le fichier "
+         "source ouvert, le titre de l'exercice en cours, ou le nom du binaire chargé. "
+         "Un binaire n'a pourtant pas de fichier d'enregistrement — Ctrl+S n'écrit "
+         "jamais son désassemblage par-dessus l'exécutable —, et c'est son nom qui "
+         "s'affiche quand même. Un point le suit tant qu'il reste quelque chose à "
+         "enregistrer. <b>Le survol du nom donne le chemin complet</b> : deux "
+         "<font face=\"Courier\">crackme</font> rangés dans deux dossiers portent le "
+         "même nom, et l'infobulle seule dit lequel est ouvert. La barre d'état le "
+         "redit en bas, et le nom se retrouve aussi dans le titre que le système "
+         "affiche — barre des tâches et alt-tab —, de sorte que deux fenêtres de "
+         "namsdec ne se ressemblent plus. Au mode débutant, c'est la barre de "
+         "l'Établi qui porte tout cela."),
+        ("p",
          "C'est là aussi que vivent les <b>sept indicateurs</b> (CF, PF, AF, ZF, SF, DF, "
          "OF), en pastilles : la barre de titre est toujours visible et ne se replie "
          "jamais, on les a donc sous les yeux à chaque pas, à droite du nom du fichier — toujours affichés, tous à zéro tant qu'aucun programme n'a tourné. "

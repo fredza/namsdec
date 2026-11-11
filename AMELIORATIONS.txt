@@ -11888,3 +11888,68 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      les écrans ordinaires qu'une promesse qui casse la mise en page du
      plus petit — et c'est la troisième fois de la journée que ce
      contrôle-là arbitre.
+
+9.90 [FAIT] LE TITRE NE DISAIT PAS CE QU'ON LISAIT
+
+     Une capture du 11 novembre 2026, et deux phrases : « le code n'a
+     rien à voir avec le titre », « sans titre ne reflète pas le nom du
+     fichier ouvert (nom dans une infobulle avec le chemin complet) ».
+     À l'écran : le désassemblage d'un programme chargé, cent vingt
+     lignes de `main`, de `printf@plt` et de `__isoc23_scanf@plt` — et,
+     au-dessus, « namsdec sans titre ».
+
+     LA CAUSE TIENT EN UN CHAMP. `current_file` reste DÉLIBÉRÉMENT vide
+     pour un binaire ouvert : un Ctrl+S distrait n'a pas à écraser
+     l'exécutable par son propre désassemblage. Le nom du binaire vit
+     ailleurs — dans `from_binary`, qui appartient à l'onglet. L'onglet,
+     lui, savait déjà retomber dessus (c'est `tab_label`, écrit pour
+     cela) ; les QUATRE AUTRES endroits qui nomment le tampon lisaient
+     `current_file` seul et répondaient donc « sans titre » : la barre
+     de titre du mode avancé, la barre de l'Établi, la barre d'état, et
+     la mention « décompilé depuis » — celle-ci dans le cas même pour
+     lequel elle existe.
+
+     UNE SEULE RÉPONSE POUR TOUTE L'APPLICATION. `nom_du_tampon` et
+     `chemin_du_tampon` sont désormais les deux seules sources, et les
+     cinq endroits y passent. Quatre formules pour une même question
+     finissaient par donner quatre réponses.
+
+     DEUX PIÈGES EN CHEMIN, et ils valent d'être gardés :
+
+     1. Un fichier SANS en-tête ELF se charge en octets bruts, et
+        `from_binary` vaut alors `LoadedBinary::default()` — nom VIDE.
+        L'onglet d'un tel fichier s'appelait « sans titre » lui aussi.
+        C'est le chemin qui donne le nom dans ce cas.
+
+     2. `binary_path` appartient à l'APPLICATION, non à l'onglet : il
+        sert à rouvrir le dernier binaire au lancement suivant. Rendu
+        tel quel, un tampon neuf posé à côté d'un binaire aurait
+        affiché le chemin du voisin. `chemin_du_tampon` ne le donne donc
+        que si l'onglet courant vient bien d'un binaire ET que ce chemin
+        porte son nom.
+
+     LE SURVOL DIT LE CHEMIN COMPLET, partout où le nom s'écrit. Deux
+     `crackme` rangés dans deux dossiers portent le même nom ; le nom
+     seul ne dit pas lequel on a ouvert. Dans la barre de titre du mode
+     avancé, l'infobulle ne se montre que sur les LETTRES et non sur
+     toute la bande : celle-ci court jusqu'au bord de la fenêtre, et une
+     bulle qui surgit à trente centimètres du titre ne se rattache à
+     rien. La réponse est donc recopiée et rétrécie au rectangle du
+     texte, sans nouveau widget — en ajouter un au-dessus de la bande
+     lui aurait volé le glissement qui déplace la fenêtre.
+
+     ET LE TITRE DU SYSTÈME PORTE LE NOM. La barre des tâches et
+     l'alt-tab n'affichaient que « Namsdec » : deux fenêtres ouvertes
+     sur deux programmes y étaient indiscernables. Au repos, le titre
+     est maintenant « Namsdec — <nom> » ; pendant un travail de fond, la
+     progression reprend la place, comme avant.
+
+     DEUX CONTRÔLES. Le premier ouvre un fichier d'octets bruts — rien
+     à demander à la machine, ni nasm ni ld — et exige le nom à l'écran
+     aux deux modes, avec « sans titre » absent. Le second POSE LE
+     POINTEUR sur le nom tel qu'il est peint et attend l'infobulle.
+     Celui-ci a échoué trois fois avant d'être juste, et pour une raison
+     qui se reverra : un `PointerMoved` renvoyé à chaque image, fût-ce
+     au MÊME endroit, fait croire à egui que la souris bouge encore — et
+     une souris qui bouge n'ouvre aucune infobulle. On le pose une fois,
+     puis on laisse courir les soixante images du délai.

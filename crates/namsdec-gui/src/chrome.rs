@@ -320,12 +320,20 @@ const TITLE_GAP_SPACES: f32 = 12.0;
 /// qu'on redimensionnait la fenêtre : un repère qui bouge n'en est pas
 /// un. Aligné sur la fin du dernier menu, il est toujours au même
 /// endroit, et l'œil le trouve sans le chercher.
+///
+/// `chemin` est ce que dit le survol : le chemin complet de ce qui est
+/// ouvert. Un nom de fichier ne distingue pas deux `crackme` rangés
+/// dans deux dossiers — l'infobulle, elle, le dit. Elle ne se montre
+/// que sur le texte lui-même, et non sur toute la bande : celle-ci
+/// court jusqu'au bord de la fenêtre, et une infobulle qui surgit à
+/// trente centimètres du titre ne se rattache à rien.
 pub fn title_drag_ui(
     ui: &mut egui::Ui,
     theme: &'static Theme,
     titre: &str,
     modifié: bool,
     maximized: bool,
+    chemin: Option<String>,
 ) {
     let reste = ui.available_size_before_wrap();
     if reste.x <= 0.0 {
@@ -348,14 +356,31 @@ pub fn title_drag_ui(
         if modifié { theme.changed } else { theme.dim },
     );
     let départ = bande.left() + espace * TITLE_GAP_SPACES;
+    let taille = galley.size();
+    let coin = egui::pos2(départ, bande.center().y - taille.y * 0.5);
     // Écrit seulement s'il tient : sur une fenêtre étroite, mieux vaut
     // pas de titre qu'un titre qui passe sous les pastilles.
-    if départ + galley.size().x < bande.right() {
-        ui.painter().galley(
-            egui::pos2(départ, bande.center().y - galley.size().y * 0.5),
-            galley,
-            theme.dim,
-        );
+    let écrit = départ + taille.x < bande.right();
+    if écrit {
+        ui.painter().galley(coin, galley, theme.dim);
+    }
+    // LE CHEMIN COMPLET AU SURVOL DU NOM.
+    //
+    // La réponse recopiée et rétrécie au rectangle du texte : la bande,
+    // elle, va jusqu'au bord de la fenêtre, et l'infobulle se serait
+    // posée n'importe où. On vérifie en plus que le pointeur est bien
+    // sur les lettres — `hovered` est vrai sur toute la bande.
+    if écrit && let Some(chemin) = chemin.filter(|c| !c.is_empty()) {
+        let lettres = egui::Rect::from_min_size(coin, taille);
+        if réponse
+            .hover_pos()
+            .is_some_and(|pointeur| lettres.contains(pointeur))
+        {
+            let mut sur_le_nom = réponse.clone();
+            sur_le_nom.rect = lettres;
+            sur_le_nom.interact_rect = lettres;
+            sur_le_nom.on_hover_text(chemin);
+        }
     }
     if réponse.drag_started() {
         ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);

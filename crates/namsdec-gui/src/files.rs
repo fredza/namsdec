@@ -540,6 +540,73 @@ impl NamsdecApp {
         self.check_disk_change();
     }
 
+    /// Le nom de ce qu'on travaille : le fichier, l'exercice, le
+    /// binaire ouvert, ou « sans titre ».
+    ///
+    /// UNE SEULE RÉPONSE POUR TOUTE L'APPLICATION. Quatre endroits
+    /// nommaient le tampon chacun de leur côté — la barre de titre, la
+    /// barre de l'Établi, la barre d'état, la mention « décompilé
+    /// depuis » — et tous les quatre lisaient `current_file` seul. Or
+    /// `current_file` reste VIDE pour un binaire ouvert, exprès (un
+    /// Ctrl+S distrait n'a pas à écraser l'exécutable par son propre
+    /// désassemblage) : l'onglet, lui, savait retomber sur le nom du
+    /// binaire, mais la barre de titre affichait « sans titre » au-dessus
+    /// du désassemblage d'un programme qu'on venait d'ouvrir. C'est le
+    /// défaut relevé à l'écran le 11 novembre 2026.
+    pub(crate) fn nom_du_tampon(&self) -> String {
+        // Le nom du binaire vient de `from_binary`, qui appartient à
+        // l'onglet ; il est vide pour des octets bruts — un fichier sans
+        // en-tête ELF —, et c'est alors le chemin qui le donne.
+        let nom_du_binaire = self
+            .assemble_state
+            .as_ref()
+            .and_then(|state| state.from_binary.as_ref())
+            .map(|binaire| binaire.name.clone())
+            .map(|nom| {
+                if nom.is_empty() {
+                    self.chemin_du_tampon()
+                        .and_then(|chemin| chemin.file_name())
+                        .map(|nom| nom.to_string_lossy().into_owned())
+                        .unwrap_or_default()
+                } else {
+                    nom
+                }
+            });
+        tab_label(
+            self.current_file.as_deref(),
+            self.current_exercise.as_deref(),
+            nom_du_binaire.as_deref(),
+            strings(self.lang),
+            &self.exercise_packs,
+            self.lang,
+            self.untitled_no,
+        )
+    }
+
+    /// Le chemin complet de ce que montre le tampon, quand il en a un.
+    ///
+    /// C'est ce que les infobulles de la barre de titre disent : un nom
+    /// de fichier ne distingue pas deux `crackme` rangés dans deux
+    /// dossiers, et l'on ne sait plus lequel on a chargé.
+    pub(crate) fn chemin_du_tampon(&self) -> Option<&Path> {
+        if let Some(chemin) = self.current_file.as_deref() {
+            return Some(chemin);
+        }
+        // UN BINAIRE, ET CELUI DE CET ONGLET. `binary_path` appartient à
+        // l'application et non à l'onglet — il sert à rouvrir le dernier
+        // binaire au lancement suivant —, si bien qu'un tampon neuf
+        // posé à côté d'un binaire aurait affiché le chemin du voisin.
+        // On ne le rend donc que si l'onglet courant vient bien d'un
+        // binaire, et que ce chemin porte son nom.
+        let binaire = self.assemble_state.as_ref()?.from_binary.as_ref()?;
+        let chemin = self.binary_path.as_deref()?;
+        let porte_son_nom = binaire.name.is_empty()
+            || chemin
+                .file_name()
+                .is_some_and(|nom| nom.to_string_lossy() == binaire.name);
+        porte_son_nom.then_some(chemin)
+    }
+
     /// Tous les onglets dans l'ordre, l'actif à sa place.
     ///
     /// L'actif n'est pas rangé dans la liste — c'est l'état de travail
@@ -548,18 +615,7 @@ impl NamsdecApp {
     pub(crate) fn tab_labels(&self) -> Vec<(String, bool)> {
         let s = strings(self.lang);
         let actif = (
-            tab_label(
-                self.current_file.as_deref(),
-                self.current_exercise.as_deref(),
-                self.assemble_state
-                    .as_ref()
-                    .and_then(|state| state.from_binary.as_ref())
-                    .map(|binaire| binaire.name.as_str()),
-                s,
-                &self.exercise_packs,
-                self.lang,
-                self.untitled_no,
-            ),
+            self.nom_du_tampon(),
             // Le relevé de l'image : la barre d'onglets est dessinée à
             // chaque image, et chaque onglet comparait son texte entier
             // (voir `modifié_vu`). Le repli sur la comparaison vive sert

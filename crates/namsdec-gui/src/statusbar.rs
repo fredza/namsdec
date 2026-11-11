@@ -112,12 +112,11 @@ impl NamsdecApp {
             // enregistrer. Sans cela, rien à l'écran ne distingue un
             // tampon sauvegardé d'un tampon qui ne l'est pas — et on ne
             // s'en aperçoit qu'en fermant.
-            let file = self
-                .current_file
-                .as_ref()
-                .and_then(|path| path.file_name())
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| s.untitled_buffer.to_owned());
+            // `nom_du_tampon` plutôt que `current_file` : un binaire
+            // ouvert n'a pas de `current_file`, et la barre d'état
+            // annonçait « sans titre » pendant qu'on désassemblait un
+            // programme nommé.
+            let file = self.nom_du_tampon();
             // Le relevé de l'image, et non une comparaison de plus :
             // voir `modifié_vu`.
             let modified = self.modifié_vu;
@@ -129,10 +128,25 @@ impl NamsdecApp {
                     file
                 },
             )
-            .on_hover_text(if modified {
-                s.buffer_modified
-            } else {
-                s.buffer_saved
+            .on_hover_text(match self.chemin_du_tampon() {
+                // LE CHEMIN COMPLET D'ABORD, l'état ensuite : c'est ce
+                // qu'on vient chercher ici quand deux fichiers portent
+                // le même nom.
+                Some(chemin) => format!(
+                    "{}\n{}",
+                    chemin.display(),
+                    if modified {
+                        s.buffer_modified
+                    } else {
+                        s.buffer_saved
+                    }
+                ),
+                None => (if modified {
+                    s.buffer_modified
+                } else {
+                    s.buffer_saved
+                })
+                .to_owned(),
             });
             ui.separator();
 

@@ -356,6 +356,141 @@ fn the_title_bar_carries_the_file_name() {
     );
 }
 
+/// Un binaire ouvert porte son nom dans la barre de titre, et son
+/// chemin au survol.
+///
+/// RELEVÉ À L'ÉCRAN LE 11 NOVEMBRE 2026 : « le code n'a rien à voir avec
+/// le titre », au-dessus du désassemblage d'un programme chargé que la
+/// barre appelait « sans titre ». Un binaire n'a pas de `current_file`
+/// — un Ctrl+S distrait n'a pas à écraser l'exécutable par son propre
+/// désassemblage — et les quatre endroits qui nomment le tampon lisaient
+/// ce champ-là seul. Ils passent tous par `nom_du_tampon` désormais.
+///
+/// Des octets bruts plutôt qu'un ELF fabriqué : ce contrôle ne doit rien
+/// demander à la machine, ni nasm ni ld.
+#[test]
+fn un_binaire_ouvert_porte_son_nom_dans_la_barre_de_titre() {
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("crackme");
+    std::fs::write(&chemin, [0x90u8, 0x90, 0x90, 0xf4]).unwrap();
+
+    let données = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+    with_data_home(données.path(), || app.open_file(chemin.clone()));
+
+    assert!(
+        app.current_file.is_none(),
+        "un binaire ne s'ouvre pas comme une source"
+    );
+    assert_eq!(app.nom_du_tampon(), "crackme");
+    assert_eq!(
+        app.chemin_du_tampon(),
+        Some(chemin.as_path()),
+        "le survol doit pouvoir dire d'où il vient"
+    );
+
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains("crackme"),
+        "le nom du binaire manque à l'écran : {painted}"
+    );
+    assert!(
+        !painted.contains(s.untitled_buffer),
+        "« {} » n'a plus rien à faire ici : {painted}",
+        s.untitled_buffer
+    );
+
+    // Et au mode simple, où la barre de titre est remplacée par celle
+    // de l'Établi.
+    app.debutant = true;
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains("crackme"),
+        "l'Établi aussi nomme le binaire : {painted}"
+    );
+    assert!(
+        !painted.contains(s.untitled_buffer),
+        "« {} » revenait au mode simple : {painted}",
+        s.untitled_buffer
+    );
+}
+
+/// Le survol du nom, dans la barre de titre, dit le chemin complet.
+///
+/// Demandé le 11 novembre 2026 en même temps que le nom lui-même :
+/// « nom dans une infobulle avec le chemin complet ». Deux `crackme`
+/// rangés dans deux dossiers portent le même nom ; seule l'infobulle
+/// dit lequel on a ouvert.
+#[test]
+fn le_survol_du_titre_dit_le_chemin_complet() {
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("crackme");
+    std::fs::write(&chemin, [0x90u8, 0x90, 0x90, 0xf4]).unwrap();
+
+    let données = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+    with_data_home(données.path(), || app.open_file(chemin.clone()));
+
+    let attendu = chemin.display().to_string();
+
+    // Le pointeur se pose sur le nom tel qu'il est PEINT, non sur des
+    // coordonnées devinées — et il y reste : l'infobulle n'arrive
+    // qu'après le demi-second de délai, soit une trentaine d'images.
+    let survole_le_nom = |app: &mut NamsdecApp| -> bool {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 1400.0));
+        let mut pointeur = None;
+        let mut posé = false;
+        let mut vu = false;
+        for _ in 0..60 {
+            let input = egui::RawInput {
+                screen_rect: Some(écran),
+                events: pointeur
+                    .take()
+                    .map(egui::Event::PointerMoved)
+                    .into_iter()
+                    .collect(),
+                ..Default::default()
+            };
+            let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+            let mut titre = None;
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(text) = &clipped.shape {
+                    if text.galley.text() == "crackme" && text.pos.y < 40.0 {
+                        titre = Some((text.pos, text.galley.rect.size()));
+                    }
+                    if text.galley.text().contains(attendu.as_str()) {
+                        vu = true;
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+            // UNE SEULE FOIS : un `PointerMoved` à chaque image, fût-ce
+            // au même endroit, fait croire à egui que la souris bouge
+            // encore — et une souris qui bouge n'ouvre aucune infobulle.
+            if !posé && let Some((pos, taille)) = titre {
+                pointeur = Some(pos + taille * 0.5);
+                posé = true;
+            }
+        }
+        vu
+    };
+
+    assert!(
+        survole_le_nom(&mut app),
+        "le survol du nom, dans la barre de titre, devrait montrer « {attendu} »"
+    );
+
+    // Et au mode simple, où c'est la barre de l'Établi qui porte le nom.
+    app.debutant = true;
+    assert!(
+        survole_le_nom(&mut app),
+        "le survol du nom, à l'Établi, devrait montrer « {attendu} »"
+    );
+}
+
 /// Un message d'état trop long se lit en entier au survol.
 ///
 /// La barre le tronque pour ne pas passer sur les compartiments de

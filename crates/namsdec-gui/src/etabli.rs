@@ -446,12 +446,12 @@ impl NamsdecApp {
         // Le nom du fichier, et son point quand il est modifié. C'est
         // la seule chose que la barre de titre disait et que cette
         // barre-ci doit redire : au mode simple, elle n'est plus là.
-        let nom = self
-            .current_file
-            .as_ref()
-            .and_then(|p| p.file_name())
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_else(|| s.untitled_buffer.to_owned());
+        //
+        // PAR `nom_du_tampon`, ET NON PAR `current_file` : un binaire
+        // ouvert n'a pas de `current_file` — voir là-bas —, et cette
+        // barre affichait donc « sans titre » au-dessus du
+        // désassemblage d'un programme qu'on venait de charger.
+        let nom = self.nom_du_tampon();
         // ABRÉGÉ PAR LA FIN QUAND IL EST LONG.
         //
         // Demandé à l'écran le 10 novembre 2026, une flèche verte sur
@@ -481,8 +481,18 @@ impl NamsdecApp {
                 .monospace()
                 .size(13.0),
         );
-        if abrégé != nom {
-            étiquette.on_hover_text(&nom);
+        // AU SURVOL, LE CHEMIN COMPLET — et le nom entier quand il n'y
+        // a pas de chemin (un tampon neuf, un exercice). Deux `crackme`
+        // rangés dans deux dossiers portent le même nom ; seule
+        // l'infobulle dit lequel on a ouvert.
+        match self.chemin_du_tampon() {
+            Some(chemin) => {
+                étiquette.on_hover_text(chemin.display().to_string());
+            }
+            None if abrégé != nom => {
+                étiquette.on_hover_text(&nom);
+            }
+            None => {}
         }
     }
 

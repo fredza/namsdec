@@ -5359,6 +5359,26 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
   réclament, par la mesure que la console du mode avancé se donnait
   déjà.
 
+- `[x]` **Le titre ne disait pas ce qu'on lisait** — 11 novembre 2026
+  (A 9.90). Une capture : cent vingt lignes de désassemblage d'un
+  programme chargé, et au-dessus « namsdec sans titre ». Un binaire
+  ouvert n'a pas de `current_file` — exprès : un Ctrl+S distrait n'a pas
+  à écraser l'exécutable par son propre désassemblage — et les quatre
+  endroits qui nomment le tampon lisaient ce champ-là seul. Ils passent
+  tous par `nom_du_tampon` et `chemin_du_tampon` désormais, les deux
+  seules sources de l'application.
+
+  **Le survol donne le chemin complet**, partout où le nom s'écrit :
+  deux `crackme` rangés dans deux dossiers portent le même nom. Dans la
+  barre de titre, l'infobulle ne se montre que sur les lettres — la
+  bande, elle, court jusqu'au bord de la fenêtre. **Et le titre du
+  système porte le nom** : l'alt-tab ne montrait que « Namsdec ».
+
+  **Le contrôle du survol a échoué trois fois** pour une raison qui se
+  reverra : un `PointerMoved` renvoyé à chaque image, fût-ce au même
+  endroit, fait croire à egui que la souris bouge encore — et une souris
+  qui bouge n'ouvre aucune infobulle.
+
 ---
 
 ## Comment cette liste se tient

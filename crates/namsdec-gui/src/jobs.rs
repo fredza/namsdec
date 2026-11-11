@@ -203,7 +203,12 @@ impl NamsdecApp {
                 Some(part) => format!("{APP_NAME} — {} {:.0} %", job.label, part * 100.0),
                 None => format!("{APP_NAME} — {}", job.label),
             },
-            None => APP_NAME.to_owned(),
+            // AU REPOS, LE NOM DE CE QU'ON TRAVAILLE. La barre des
+            // tâches et l'alt-tab ne montraient que « namsdec » : deux
+            // fenêtres ouvertes sur deux programmes étaient
+            // indiscernables. Le nom vient de `nom_du_tampon`, donc un
+            // binaire chargé s'y nomme aussi.
+            None => format!("{APP_NAME} — {}", self.nom_du_tampon()),
         };
         if self.window_title.as_deref() != Some(voulu.as_str()) {
             ctx.send_viewport_cmd(egui::ViewportCommand::Title(voulu.clone()));
@@ -226,13 +231,11 @@ impl NamsdecApp {
             return;
         };
         let octets = state.output.file.clone();
-        self.decompiled_from = Some(
-            self.current_file
-                .as_ref()
-                .and_then(|p| p.file_name())
-                .map(|nom| nom.to_string_lossy().into_owned())
-                .unwrap_or_else(|| strings(self.lang).untitled_buffer.to_owned()),
-        );
+        // Ce qu'on décompile est le plus souvent un binaire ouvert, et
+        // un binaire ouvert n'a pas de `current_file` : la mention
+        // « décompilé depuis » disait « sans titre » dans le cas même
+        // pour lequel elle existe.
+        self.decompiled_from = Some(self.nom_du_tampon());
         self.decompile_result = None;
         let (sender, receiver) = mpsc::channel();
         std::thread::spawn(move || {

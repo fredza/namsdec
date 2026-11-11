@@ -1028,13 +1028,20 @@ impl NamsdecApp {
                 if !self.system_titlebar {
                     ui.add_space(8.0);
                     let maximisée = ui.input(|i| i.viewport().maximized.unwrap_or(false));
-                    let fichier = self
-                        .current_file
-                        .as_ref()
-                        .and_then(|path| path.file_name())
-                        .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| s.untitled_buffer.to_owned());
-                    chrome::title_drag_ui(ui, self.theme, &fichier, self.modifié_vu, maximisée);
+                    // `nom_du_tampon` et non `current_file` : celui-ci
+                    // reste vide pour un binaire ouvert, et la barre de
+                    // titre annonçait « sans titre » au-dessus du
+                    // désassemblage d'un programme chargé.
+                    let fichier = self.nom_du_tampon();
+                    chrome::title_drag_ui(
+                        ui,
+                        self.theme,
+                        &fichier,
+                        self.modifié_vu,
+                        maximisée,
+                        self.chemin_du_tampon()
+                            .map(|chemin| chemin.display().to_string()),
+                    );
                 }
             });
         });
