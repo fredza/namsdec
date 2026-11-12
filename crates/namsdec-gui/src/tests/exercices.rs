@@ -3821,3 +3821,109 @@ fn le_but_se_lit_en_toutes_lettres_au_mode_debutant() {
     let painted = paint(&mut app);
     assert!(painted.contains("rax == 0xf"), "{painted}");
 }
+
+/// CHAQUE ÉTAPE À TROU A UN INDICE, et l'indice n'est pas la solution.
+///
+/// Entre la consigne et le programme entier, il n'y avait rien : on
+/// relisait la consigne, on ne trouvait pas, et le seul recours mettait
+/// fin à l'exercice. L'indice est le palier qui manquait.
+///
+/// Deux sources, et le contrôle accepte les deux : l'exercice porte son
+/// indice (`hint`), ou namsdec le CALCULE — les instructions que la
+/// solution emploie et que le programme livré n'a pas. Le calcul suffit
+/// pour quatre-vingts étapes ; les vingt et une autres l'ont écrit.
+#[test]
+fn chaque_etape_a_trou_a_un_indice_qui_ne_donne_pas_la_solution() {
+    let pack = builtin_pack();
+    let mut écrits = 0;
+    let mut calculés = 0;
+    for exercice in &pack.exercises {
+        let Some(solution) = exercice.solution.as_deref() else {
+            // Pas de trou, pas d'indice : une démonstration ne se
+            // cherche pas.
+            assert!(
+                exercice.hint.is_none(),
+                "{} n'a rien à chercher et porte pourtant un indice",
+                exercice.id
+            );
+            continue;
+        };
+        // L'app, telle qu'elle est en ouvrant l'étape.
+        let mut app = app_with_exercises();
+        app.load_exercise_now(&namsdec_exercises::full_id(&pack, exercice));
+        let (écrit, manquantes) = app
+            .exercise_hint()
+            .unwrap_or_else(|| panic!("{} : aucun indice, écrit ou calculé", exercice.id));
+        if écrit.is_some() {
+            écrits += 1;
+        }
+        if !manquantes.is_empty() {
+            calculés += 1;
+        }
+
+        // UN INDICE N'EST PAS UNE SOLUTION. S'il portait une ligne
+        // entière du programme à écrire, le palier intermédiaire
+        // n'existerait plus : il n'y aurait que deux états, bloqué et
+        // fini.
+        if let Some(écrit) = écrit {
+            for ligne in solution.lines() {
+                let ligne = ligne.split(';').next().unwrap_or("").trim();
+                // Les lignes trop courtes ne prouvent rien : « ret »
+                // ou « hlt » se citent sans rien révéler.
+                if ligne.len() < 12 || ligne.ends_with(':') {
+                    continue;
+                }
+                assert!(
+                    !écrit.contains(ligne),
+                    "l'indice de {} recopie une ligne de la solution : « {ligne} »",
+                    exercice.id
+                );
+            }
+        }
+    }
+    // Les deux sources servent vraiment : si l'une tombait à zéro, le
+    // contrôle passerait au vert en ne regardant plus qu'une moitié.
+    assert!(écrits >= 20, "seulement {écrits} indices écrits");
+    assert!(calculés >= 70, "seulement {calculés} indices calculés");
+}
+
+/// L'indice se demande, s'affine à mesure qu'on écrit, et mène aux
+/// fiches.
+#[test]
+fn l_indice_se_demande_et_suit_ce_qu_on_a_deja_ecrit() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/boucle");
+    let s = strings(app.lang);
+
+    // Ce que la solution emploie et que le sujet n'a pas.
+    let (écrit, manquantes) = app.exercise_hint().expect("un indice");
+    assert!(écrit.is_none(), "celle-ci n'en a pas besoin d'écrit");
+    assert_eq!(manquantes, vec!["add", "dec", "jnz"]);
+
+    // IL S'AFFINE : ce qu'on vient d'écrire n'est plus proposé.
+    app.set_source(format!("{}\n    add rax, rcx\n", app.source));
+    let (_, manquantes) = app.exercise_hint().expect("un indice");
+    assert_eq!(manquantes, vec!["dec", "jnz"], "l'indice suit le tampon");
+
+    // IL NE SE MONTRE PAS TOUT SEUL : un indice qu'on n'a pas réclamé
+    // est une réponse soufflée.
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.exercise_hint), "le bouton est là");
+    assert!(
+        !painted.contains(s.exercise_hint_uses),
+        "mais pas son contenu : {painted}"
+    );
+
+    app.indice_montré = true;
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.exercise_hint_uses), "{painted}");
+    assert!(painted.contains("jnz"), "{painted}");
+
+    // Et il repart à zéro à l'étape suivante : c'est l'étape qu'on
+    // cherche, pas la séance.
+    app.load_exercise_now("namsdec/compteur");
+    assert!(!app.indice_montré);
+    let (_, manquantes) = app.exercise_hint().expect("un indice");
+    assert_eq!(manquantes, vec!["loop"]);
+}

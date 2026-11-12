@@ -873,7 +873,11 @@ impl NamsdecApp {
         let suivant = self.exercise_after(&id);
 
         let mut choisir = false;
+        let mut montrer_l_indice = false;
         let mut montrer_la_solution = false;
+        // Un indice à donner ? Il disparaît quand il n'a plus rien à
+        // dire — tout ce que la solution emploie est écrit.
+        let indice = !self.indice_montré && self.exercise_hint().is_some();
         let mut aller: Option<String> = None;
         // Y a-t-il une solution à montrer ? Une démonstration et une
         // étape de lecture n'en ont pas : le bouton ne paraît pas
@@ -913,6 +917,18 @@ impl NamsdecApp {
                         .clicked()
                 {
                     montrer_la_solution = true;
+                }
+                // L'INDICE AVANT LA SOLUTION, et il est posé APRÈS elle
+                // : la rangée va de droite à gauche, si bien que le
+                // dernier ajouté est le plus à gauche. On lit donc
+                // « Un indice », puis « La solution » — l'ordre dans
+                // lequel on les demande.
+                if indice
+                    && small_framed_button(ui, theme, s.exercise_hint)
+                        .on_hover_text(s.exercise_hint_hint)
+                        .clicked()
+                {
+                    montrer_l_indice = true;
                 }
                 ui.add_space(8.0);
                 // CE QUI EST FAIT DU PARCOURS, et non de cette étape :
@@ -1012,6 +1028,9 @@ impl NamsdecApp {
 
         if choisir {
             self.show_exercises = true;
+        }
+        if montrer_l_indice {
+            self.indice_montré = true;
         }
         if montrer_la_solution {
             self.show_solution = true;

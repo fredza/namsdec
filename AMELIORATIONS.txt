@@ -12121,3 +12121,64 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      `every_goal_is_readable_and_on_the_right_side` portait la liste
      des quatre-vingt-dix-sept étapes « atteintes d'emblée ». Elle
      disait vrai, et c'était le défaut.
+
+9.93 [FAIT] UN INDICE, ENTRE LA CONSIGNE ET LA SOLUTION
+
+     Demandé le 12 novembre 2026 : « sais-tu améliorer les exercices
+     pour qu'ils soient plus pédagogiques ».
+
+     CE QUI MANQUAIT, APRÈS LES TROUS. L'aide était tout ou rien : la
+     consigne du trou, et si elle ne suffisait pas, le programme
+     entier. Or regarder la solution met fin à l'exercice. Entre les
+     deux, il n'y avait aucun palier — et c'est exactement le moment où
+     quelqu'un qui apprend abandonne.
+
+     L'INDICE SE CALCULE POUR QUATRE-VINGTS ÉTAPES, et c'est ce qui
+     rend la chose tenable : on compare les mnémoniques de la SOLUTION
+     à ceux du TAMPON, et l'on nomme ceux qui manquent. « La solution
+     livrée emploie : add, dec, jnz ». Rien à rédiger, et toujours
+     juste, puisque cela se lit dans la solution.
+
+     TROIS PROPRIÉTÉS QUI NE SONT PAS DES ORNEMENTS :
+
+       — IL S'AFFINE. La comparaison porte sur ce qu'on a tapé, pas sur
+         le sujet livré : ce qu'on vient de trouver n'est plus
+         proposé ;
+       — LES INSTRUCTIONS SONT CLIQUABLES, chacune vers sa fiche. Les
+         cent quatre-vingt-neuf fiches existaient, et rien n'y menait
+         DEPUIS un exercice — c'est-à-dire au moment précis où l'on en
+         a besoin ;
+       — IL DIT CE QU'IL EST. « La solution livrée emploie », et non
+         « il faut écrire », avec « la vôtre peut employer autre
+         chose » : il y a mille façons d'écrire une boucle, et un
+         indice qui se donnerait pour un verdict apprendrait à imiter.
+
+     VINGT ET UN INDICES ÉCRITS, pour les étapes dont le trou ne
+     demande AUCUNE instruction nouvelle : une valeur à trouver
+     (`re_un_octet`, `re_comparaison`), un ordre à remettre (`pile`),
+     une répétition à voir (`xor_chiffrement`, `concatener`). Ce sont
+     les plus subtiles, et le calcul n'y dit rien. Un contrôle vérifie
+     qu'aucun ne recopie une ligne de la solution : un indice qui
+     donnerait le programme supprimerait le palier qu'on vient
+     d'ajouter.
+
+     ET IL NE SE MONTRE PAS TOUT SEUL. Un indice qu'on n'a pas réclamé
+     est une réponse soufflée ; il se demande, et il repart à zéro à
+     l'étape suivante — c'est l'étape qu'on cherche, pas la séance.
+
+     LE BANC A REFUSÉ DEUX FOIS L'AJOUT, et les deux fois il avait
+     raison. Les instructions de l'indice se cliquaient SANS LE DIRE —
+     un `Label` et un `Sense::click()`, donc ni trait ni main au
+     survol : « un signe qui n'apparaît qu'une fois qu'on est dessus ne
+     sert qu'à celui qui savait déjà ». Elles passent par `cliquable`,
+     comme les douze autres textes cliquables de l'application. Et le
+     bouton « Un indice », posé dans le but, coûtait une ligne à la
+     bande : le budget sortait par le bas. Il a rejoint les autres
+     gestes de l'étape, dans la rangée du titre — c'est leur place, et
+     la bande ne grandit pas. L'indice lui-même reste dans la zone qui
+     défile, où il ne paraît qu'une fois demandé.
+
+     CE QUI A ÉTÉ MESURÉ PUIS LAISSÉ : les énoncés. Médiane de 334
+     caractères, aucun en dessous de 150, tous renvoyant à au moins une
+     fiche — il n'y avait pas de manque à corriger, et réécrire au
+     jugé aurait coûté la clarté qu'ils ont.

@@ -129,6 +129,8 @@ impl NamsdecApp {
         let mut fermer_ok = false;
         let mut load = None;
         let mut solution = false;
+        let mut montrer_l_indice = false;
+        let indice = !self.indice_montré && self.exercise_hint().is_some();
         let mut fiche: Option<&'static str> = None;
         let fenêtre_exercises_window = egui::Window::new(s.exercises_title)
             // L'identifiant a changé de version, et il le fallait :
@@ -210,6 +212,13 @@ impl NamsdecApp {
                         }
                         // La solution, au même endroit que les deux
                         // autres gestes de l'étape en cours.
+                        if indice
+                            && framed_button(ui, theme, s.exercise_hint)
+                                .on_hover_text(s.exercise_hint_hint)
+                                .clicked()
+                        {
+                            montrer_l_indice = true;
+                        }
                         if exercise.solution.is_some()
                             && framed_button(ui, theme, s.exercise_solution)
                                 .on_hover_text(s.exercise_solution_hint)
@@ -516,6 +525,9 @@ impl NamsdecApp {
         if let Some(id) = load {
             self.load_exercise(&id);
             open = false;
+        }
+        if montrer_l_indice {
+            self.indice_montré = true;
         }
         if solution {
             self.show_solution = true;

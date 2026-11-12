@@ -1202,6 +1202,12 @@ struct NamsdecApp {
     /// s'est donnée le 10 novembre 2026 avec « Montrer » (A 9.89),
     /// « demander une aide ne doit pas coûter un aveu ».
     show_solution: bool,
+    /// L'indice de l'étape en cours a-t-il été demandé ?
+    ///
+    /// Demandé, et non montré d'office : un indice qu'on n'a pas
+    /// réclamé est une réponse soufflée. Remis à zéro à chaque étape
+    /// chargée — c'est l'étape qu'on cherche, pas la séance.
+    indice_montré: bool,
     /// La calculatrice est-elle ouverte, et sur quoi ?
     ///
     /// L'expression survit à la fermeture de la fenêtre : on la rouvre
@@ -1772,6 +1778,44 @@ enum FileDialogKind {
 /// Le premier mot d'une ligne est l'instruction, sauf s'il porte le
 /// deux-points d'une étiquette. Ce qui a une fiche devient un renvoi ;
 /// le reste est ignoré sans bruit.
+/// Les mnémoniques d'un programme, dans l'ordre et sans doublon.
+///
+/// À PART DE [`sheets_used`], et la distinction compte : celui-ci
+/// dédoublonne par FICHE — `and`, `or` et `xor` partagent la leur, et
+/// la liste n'en garde qu'un. C'est juste pour un renvoi au manuel, et
+/// faux pour un indice : « la solution emploie `or` » n'est pas dit si
+/// le programme contient déjà un `xor`. On dédoublonne donc par NOM.
+fn mnemoniques(source: &str) -> Vec<&'static str> {
+    let mut vus: Vec<&'static str> = Vec::new();
+    for ligne in source.lines() {
+        let ligne = ligne.split(';').next().unwrap_or("").trim();
+        // LE PREMIER MOT SEULEMENT : c'est lui l'instruction. Les
+        // suivants sont des opérandes, et `byte`, `word` ou un nom
+        // d'étiquette qui ressemble à une instruction ne doivent pas
+        // entrer dans un indice.
+        let Some(mot) = ligne.split_whitespace().next() else {
+            continue;
+        };
+        let mot = mot.trim_end_matches(',');
+        if mot.ends_with(':') || mot.starts_with('%') {
+            continue;
+        }
+        let Some(entry) = namsdec_doc::lookup(mot) else {
+            continue;
+        };
+        let nom = entry
+            .names
+            .iter()
+            .find(|nom| nom.eq_ignore_ascii_case(mot))
+            .copied()
+            .unwrap_or(entry.names[0]);
+        if !vus.contains(&nom) {
+            vus.push(nom);
+        }
+    }
+    vus
+}
+
 fn sheets_used(source: &str) -> Vec<&'static str> {
     let mut vus: Vec<&'static str> = Vec::new();
     for ligne in source.lines() {
@@ -2236,6 +2280,7 @@ impl Default for NamsdecApp {
             exercises: false,
             show_exercises: false,
             show_solution: false,
+            indice_montré: false,
             show_calculator: false,
             calc_input: String::new(),
             calculator_was_open: false,

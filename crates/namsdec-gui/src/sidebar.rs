@@ -585,6 +585,7 @@ impl NamsdecApp {
             // En gris et sans pastille : ce ne sont pas des conditions
             // qui tiennent ou qui manquent, ce sont des conditions
             // qu'on n'a pas encore éprouvées. Aucun verdict n'est posé.
+            self.indice_ui(ui);
             if let Some(cibles) = self.exercise_targets() {
                 ui.add_space(4.0);
                 ui.colored_label(theme.dim, s.goal_ahead);
@@ -603,6 +604,7 @@ impl NamsdecApp {
             return;
         };
         let débutant = self.niveau() == namsdec_re::Niveau::Débutant;
+        self.indice_ui(ui);
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(theme.dim, s.goal_label);
@@ -749,6 +751,71 @@ impl NamsdecApp {
         })
         .response
         .on_hover_text(s.par_hint);
+    }
+
+    /// L'indice : le bouton tant qu'on ne l'a pas demandé, son texte
+    /// ensuite.
+    ///
+    /// DEUX PALIERS D'AIDE, ET C'ÉTAIT LE MANQUE : entre la consigne du
+    /// trou et le programme entier, il n'y avait rien. On relisait la
+    /// consigne, on ne trouvait pas, et le seul recours mettait fin à
+    /// l'exercice. L'indice dit où chercher sans dire quoi écrire.
+    ///
+    /// LES INSTRUCTIONS SONT CLIQUABLES : chacune ouvre sa fiche. C'est
+    /// le chemin le plus court entre une étape du parcours et les cent
+    /// quatre-vingt-neuf fiches du manuel, qui existaient sans que rien
+    /// n'y mène depuis un exercice.
+    pub(crate) fn indice_ui(&mut self, ui: &mut egui::Ui) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some((écrit, manquantes)) = self.exercise_hint() else {
+            return;
+        };
+        // LE BOUTON EST AILLEURS — avec les autres gestes de l'étape,
+        // dans la rangée du titre. Posé ici, il coûtait une ligne à la
+        // bande, et le budget sortait par le bas : mesuré par
+        // `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne`. Ce
+        // qui reste ici est l'indice lui-même, qui ne paraît qu'une
+        // fois demandé — et la zone, elle, défile.
+        if !self.indice_montré {
+            return;
+        }
+        let mut fiche = None;
+        ui.add_space(4.0);
+        if let Some(écrit) = écrit {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.colored_label(theme.accent, s.exercise_hint);
+                ui.colored_label(theme.text, écrit);
+            });
+        }
+        if !manquantes.is_empty() {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 6.0;
+                ui.colored_label(theme.dim, s.exercise_hint_uses);
+                for mot in &manquantes {
+                    // PAR `cliquable` : le trait au repos et la main au
+                    // survol viennent avec. Un texte qui se clique sans
+                    // le dire ne sert qu'à celui qui savait déjà — et
+                    // le banc le refuse, à juste titre.
+                    if cliquable(ui, egui::Label::new(egui::RichText::new(*mot).monospace()))
+                        .on_hover_text(s.help_open_sheet)
+                        .clicked()
+                    {
+                        fiche = Some(*mot);
+                    }
+                }
+                // CE QUE L'INDICE NE DIT PAS : il nomme ce que la
+                // solution LIVRÉE emploie, et il y a mille façons
+                // d'écrire une boucle. Le taire ferait passer un indice
+                // pour un verdict.
+                ui.colored_label(theme.dim, format!("({})", s.exercise_hint_yours));
+            });
+        }
+        if let Some(mot) = fiche {
+            self.open_help(mot);
+            self.show_help = true;
+        }
     }
 
     /// Combien d'instructions ont tourné depuis le départ.

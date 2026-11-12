@@ -1841,6 +1841,23 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "la lecture ne peut pas tenir sur cent étapes&nbsp;: le programme livré "
          "n'atteint pas le but, et la solution l'atteint — dans le budget annoncé."),
         ("p",
+         "<b>Un indice d'abord, la solution ensuite.</b> Entre la consigne du trou et le "
+         "programme entier il n'y avait rien&nbsp;: on relisait la consigne, on ne "
+         "trouvait pas, et le seul recours mettait fin à l'exercice. Le bouton "
+         "<b>Un indice</b> dit où chercher sans dire quoi écrire — et il ne se montre "
+         "que si on le demande."),
+        ("p",
+         "Pour quatre-vingts étapes, namsdec le <b>calcule</b>&nbsp;: il compare la "
+         "solution à ce que vous avez tapé et nomme les instructions qui manquent "
+         "encore. <b>Elles sont cliquables</b> — chacune ouvre sa fiche, ce qui est le "
+         "chemin le plus court entre une étape du parcours et les fiches du manuel. "
+         "L'indice <b>s'affine à mesure qu'on écrit</b>&nbsp;: ce qu'on a déjà trouvé "
+         "n'est plus proposé. Et il dit ce qu'il est&nbsp;: « la solution livrée "
+         "emploie », pas « il faut écrire » — il y a mille façons d'écrire une boucle. "
+         "Les vingt et une étapes dont le trou ne demande aucune instruction nouvelle — "
+         "une valeur à trouver, un ordre à remettre — portent un indice <b>écrit</b>, "
+         "et un contrôle vérifie qu'aucun ne recopie une ligne de la solution."),
+        ("p",
          "<b>La solution se demande, et la regarder n'efface rien.</b> Le bouton "
          "<b>La solution</b> — dans la bande de l'exercice comme dans la fenêtre des "
          "exercices — ouvre le programme entier à côté du vôtre, en lecture seule, avec "

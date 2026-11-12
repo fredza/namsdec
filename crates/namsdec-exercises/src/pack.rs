@@ -38,6 +38,11 @@
 //! VÉRIFIER l'exercice — la solution doit atteindre le but, le départ
 //! ne doit pas l'atteindre — et de montrer la réponse à qui la demande.
 //!
+//! `hint` est un coup de pouce, entre la consigne et la solution : il
+//! dit où chercher sans dire quoi écrire. Facultatif — namsdec en
+//! calcule un tout seul quand le trou demande des instructions que le
+//! tampon n'a pas encore.
+//!
 //! `par` est le budget : le nombre d'instructions exécutées qu'il faut
 //! tenir. Facultatif lui aussi — il n'a de sens qu'avec un but.
 //!
@@ -136,6 +141,11 @@ struct ExerciseFile {
     /// ce qui reste vrai d'une série qu'on découvre.
     #[serde(default)]
     level: Option<String>,
+    /// Un indice : ce qu'on dit à qui cherche encore. Facultatif —
+    /// namsdec en calcule un tout seul quand le trou demande des
+    /// instructions que le tampon n'a pas.
+    #[serde(default)]
+    hint: Option<TextField>,
     /// La question d'un exercice de lecture. Facultative.
     #[serde(default)]
     question: Option<TextField>,
@@ -205,6 +215,7 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
                 .solution
                 .filter(|programme| !programme.trim().is_empty()),
             goal: exercise.goal,
+            hint: exercise.hint.map(Into::into),
             par: exercise.par,
             level: exercise
                 .level

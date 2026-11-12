@@ -181,6 +181,21 @@ pub struct Exercise {
     pub par: Option<u64>,
     /// Le palier auquel il appartient.
     pub level: Level,
+    /// UN COUP DE POUCE, entre la consigne et la solution.
+    ///
+    /// Sans lui, l'aide est tout ou rien : on relit la consigne, on ne
+    /// trouve pas, et le seul recours est le programme entier — ce qui
+    /// met fin à l'exercice. Un indice dit où chercher sans dire quoi
+    /// écrire.
+    ///
+    /// Facultatif, et pour une raison mesurée : quatre-vingts des cent
+    /// une étapes en ont un SANS QU'ON L'ÉCRIVE — « la solution livrée
+    /// emploie `add`, `dec`, `jnz` », calculé en comparant la solution
+    /// à ce qu'on a tapé. Ce champ sert aux vingt et une autres, dont
+    /// le trou ne demande aucune instruction nouvelle : une valeur à
+    /// trouver, un ordre à remettre, une répétition à voir. Ce sont les
+    /// plus subtiles, et c'est là qu'un indice compte le plus.
+    pub hint: Option<Text>,
     /// La question d'un exercice de LECTURE, et sa réponse.
     ///
     /// `None` pour les cent huit exercices d'écriture : on y répond en

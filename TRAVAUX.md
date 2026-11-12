@@ -5420,6 +5420,20 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
   boucle infinie — et c'est un contrôle plus ancien, plus exigeant que
   le mien, qui l'a dit.
 
+- `[x]` **Un indice, entre la consigne et la solution** — 12 novembre
+  2026 (A 9.93). Après les trous, l'aide restait tout ou rien : la
+  consigne, puis le programme entier — qui met fin à l'exercice.
+  L'indice est le palier qui manquait. **Il se calcule** pour 80 étapes
+  (les instructions que la solution emploie et que le tampon n'a pas),
+  **s'affine** à mesure qu'on écrit, et **mène aux fiches** : chaque
+  instruction nommée ouvre la sienne. Les 21 étapes dont le trou ne
+  demande aucune instruction nouvelle ont un indice écrit, et un
+  contrôle vérifie qu'aucun ne recopie une ligne de la solution.
+
+  **Mesuré puis laissé** : les énoncés. Médiane de 334 caractères,
+  aucun trop court, tous reliés à une fiche — il n'y avait rien à
+  corriger, et réécrire au jugé aurait coûté la clarté qu'ils ont.
+
 ---
 
 ## Comment cette liste se tient

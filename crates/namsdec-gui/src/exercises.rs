@@ -183,6 +183,7 @@ impl NamsdecApp {
             self.saved_source = exercise.starter_code.clone();
             self.set_source(exercise.starter_code.clone());
             self.aller_au_trou();
+            self.indice_montré = false;
             self.current_file = None;
             self.assemble_state = None;
             self.emulator = None;
@@ -195,6 +196,7 @@ impl NamsdecApp {
         self.saved_source = exercise.starter_code.clone();
         self.set_source(exercise.starter_code.clone());
         self.aller_au_trou();
+        self.indice_montré = false;
         // La réponse d'avant n'est pas celle de celui-ci : la garder
         // ferait dire « juste » à une question qu'on n'a pas lue.
         self.question_answer.clear();
@@ -271,6 +273,44 @@ impl NamsdecApp {
             }
         }
         out
+    }
+
+    /// L'INDICE de l'étape en cours : ce qu'on dit à qui cherche
+    /// encore, sans lui donner le programme.
+    ///
+    /// Deux sources, et la première est écrite : l'exercice peut porter
+    /// son propre indice (`hint`). Faute de quoi, namsdec en CALCULE
+    /// un — les instructions que la solution emploie et que le tampon
+    /// n'a pas encore. Mesuré le 12 novembre 2026 : quatre-vingts des
+    /// cent une étapes en ont un de cette façon, sans qu'on ait rien à
+    /// écrire, et il est toujours juste puisqu'il se lit dans la
+    /// solution.
+    ///
+    /// COMPARÉ AU TAMPON, et non au sujet livré : l'indice s'affine à
+    /// mesure qu'on écrit, et ce qu'on a déjà trouvé n'est pas répété.
+    ///
+    /// Rend les instructions, à charge pour l'interface de les rendre
+    /// cliquables : chacune a sa fiche, et c'est le chemin le plus
+    /// court entre une étape du parcours et les cent quatre-vingt-neuf
+    /// fiches du manuel.
+    pub(crate) fn exercise_hint(&self) -> Option<(Option<String>, Vec<&'static str>)> {
+        let id = self.current_exercise.as_deref()?;
+        let exercice = namsdec_exercises::find(&self.exercise_packs, id)?;
+        let écrit = exercice
+            .hint
+            .as_ref()
+            .map(|texte| texte.get(self.lang.code()).to_owned());
+        let manquantes = match exercice.solution.as_deref() {
+            Some(solution) => {
+                let déjà = mnemoniques(&self.source);
+                mnemoniques(solution)
+                    .into_iter()
+                    .filter(|mot| !déjà.contains(mot))
+                    .collect()
+            }
+            None => Vec::new(),
+        };
+        (écrit.is_some() || !manquantes.is_empty()).then_some((écrit, manquantes))
     }
 
     /// La solution de l'étape en cours, s'il y en a une.
