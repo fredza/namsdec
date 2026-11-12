@@ -31,6 +31,13 @@
 //! « structures », « mastery » —, et le parcours les traverse dans cet
 //! ordre.
 //!
+//! `solution` est le programme complet, celui qui atteint le but. Le
+//! `code`, lui, est celui qu'on donne à l'élève : il lui manque ce
+//! qu'on vient apprendre à écrire, marqué par une ligne
+//! « ; À FAIRE : … ». Les deux ensemble permettent à namsdec de
+//! VÉRIFIER l'exercice — la solution doit atteindre le but, le départ
+//! ne doit pas l'atteindre — et de montrer la réponse à qui la demande.
+//!
 //! `par` est le budget : le nombre d'instructions exécutées qu'il faut
 //! tenir. Facultatif lui aussi — il n'a de sens qu'avec un but.
 //!
@@ -110,6 +117,12 @@ struct ExerciseFile {
     /// Le programme de départ. Nommé `code` et non `starter_code` :
     /// c'est un fichier qu'un humain écrit à la main.
     code: String,
+    /// Le programme complet, celui qui atteint le but. Facultatif dans
+    /// le format — une série de démonstrations n'en a pas —, mais un
+    /// exercice livré avec namsdec qui pose un but en a un, et un
+    /// contrôle l'exécute.
+    #[serde(default)]
+    solution: Option<String>,
     /// Le but, en conditions — `["rax == 15"]`. Facultatif : une série
     /// écrite avant que cela existe reste lisible, et un exercice qui
     /// se regarde n'a pas de but à vérifier.
@@ -188,6 +201,9 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
             title: exercise.title.into(),
             description: exercise.description.into(),
             starter_code: exercise.code,
+            solution: exercise
+                .solution
+                .filter(|programme| !programme.trim().is_empty()),
             goal: exercise.goal,
             par: exercise.par,
             level: exercise

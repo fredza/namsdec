@@ -277,6 +277,26 @@ impl NamsdecApp {
 
         ui.separator();
 
+        // CE QU'ON FAIT DE LA SÉANCE PRÉCÉDENTE, au lancement.
+        //
+        // La question se pose aussi « ne plus demander » : il faut donc
+        // un endroit pour revenir dessus, sans quoi un clic un peu vif
+        // sur cette case serait sans retour.
+        ui.label(s.session_restore);
+        ui.horizontal(|ui| {
+            for quoi in Reprise::ALL {
+                if ui
+                    .selectable_label(self.session_restore == quoi, quoi.label(s))
+                    .clicked()
+                {
+                    self.session_restore = quoi;
+                }
+            }
+        });
+        ui.weak(s.session_restore_hint);
+
+        ui.separator();
+
         // L'ADRESSE DE DON SE RÈGLE ICI, et nulle part dans le binaire.
         //
         // Elle était une constante, et valait `https://example.com/…` —

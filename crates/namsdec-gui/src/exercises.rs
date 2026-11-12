@@ -182,6 +182,7 @@ impl NamsdecApp {
             self.current_exercise = Some(id.to_owned());
             self.saved_source = exercise.starter_code.clone();
             self.set_source(exercise.starter_code.clone());
+            self.aller_au_trou();
             self.current_file = None;
             self.assemble_state = None;
             self.emulator = None;
@@ -193,6 +194,7 @@ impl NamsdecApp {
         self.current_exercise = Some(id.to_owned());
         self.saved_source = exercise.starter_code.clone();
         self.set_source(exercise.starter_code.clone());
+        self.aller_au_trou();
         // La réponse d'avant n'est pas celle de celui-ci : la garder
         // ferait dire « juste » à une question qu'on n'a pas lue.
         self.question_answer.clear();
@@ -202,6 +204,169 @@ impl NamsdecApp {
         self.diagnostics.clear();
         self.breakpoint_lines.clear();
         self.status = Status::Idle;
+    }
+
+    /// Pose le curseur sur le TROU de l'exercice qu'on vient d'ouvrir,
+    /// et y amène la vue.
+    ///
+    /// Un exercice s'ouvre sur vingt lignes dont une seule est à
+    /// écrire — « ; À FAIRE : … ». Sans cela, on lit l'énoncé, on
+    /// regarde le programme, et l'on cherche OÙ. Le curseur y est
+    /// maintenant : le premier caractère tapé part au bon endroit.
+    ///
+    /// `reprise_ligne` et non `goto_line` : celui-ci est un GESTE — il
+    /// passe en Insertion et prend le clavier —, ce qui serait une
+    /// surprise sur une étape qu'on vient seulement d'ouvrir. On amène
+    /// la vue, on pose le curseur, et l'on ne change pas de mode.
+    pub(crate) fn aller_au_trou(&mut self) {
+        let Some(position) = self.source.find("À FAIRE :") else {
+            self.reprise_ligne = None;
+            return;
+        };
+        let ligne = self.source[..position].lines().count().max(1) as u32;
+        self.reprise_ligne = (ligne > 1).then_some(ligne);
+        self.cursor_pos = (ligne as usize, 1);
+        self.cursor_byte = ligne_début(&self.source, ligne.saturating_sub(1) as usize).unwrap_or(0);
+    }
+
+    /// Ce qu'il reste à écrire, lu dans le tampon lui-même.
+    ///
+    /// Les consignes « ; À FAIRE : … » du programme, rendues en clair.
+    /// La bande les répète SOUS l'énoncé, et c'est un retour vivant :
+    /// elles disparaissent à mesure qu'on les remplace par du code. On
+    /// sait donc, sans rien lancer, ce qui reste — et l'énoncé n'a plus
+    /// à être relu pour s'en souvenir.
+    ///
+    /// Lu dans la SOURCE et non dans l'exercice : c'est ce qu'on a sous
+    /// les yeux qui fait foi, pas ce qui a été livré.
+    pub(crate) fn consignes_du_trou(&self) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut dans_une_consigne = false;
+        for ligne in self.source.lines() {
+            let nu = ligne.trim_start();
+            let Some(commentaire) = nu.strip_prefix(';') else {
+                dans_une_consigne = false;
+                continue;
+            };
+            let commentaire = commentaire.trim_start();
+            if let Some(consigne) = commentaire
+                .strip_prefix("À FAIRE :")
+                .or_else(|| commentaire.strip_prefix("À faire :"))
+            {
+                out.push(consigne.trim().to_owned());
+                dans_une_consigne = true;
+            } else if dans_une_consigne {
+                // La suite de la consigne : les lignes de continuation
+                // sont alignées sous elle, et n'ont pas de nouveau
+                // titre. Une ligne de commentaire ORDINAIRE arrête la
+                // reprise — elle parle d'autre chose.
+                if commentaire.is_empty() || !ligne.contains("   ") {
+                    dans_une_consigne = false;
+                    continue;
+                }
+                if let Some(dernière) = out.last_mut() {
+                    dernière.push(' ');
+                    dernière.push_str(commentaire.trim());
+                }
+            }
+        }
+        out
+    }
+
+    /// La solution de l'étape en cours, s'il y en a une.
+    ///
+    /// Une démonstration et un exercice de lecture n'en ont pas : il n'y
+    /// a pas de programme à écrire, et montrer « la solution » d'un
+    /// programme déjà complet n'aurait aucun sens.
+    pub(crate) fn exercise_solution(&self) -> Option<&str> {
+        let id = self.current_exercise.as_deref()?;
+        namsdec_exercises::find(&self.exercise_packs, id)?
+            .solution
+            .as_deref()
+    }
+
+    /// La fenêtre qui montre le programme entier.
+    ///
+    /// EN LECTURE SEULE, ET SANS RIEN REMPLACER. Un bouton qui poserait
+    /// la solution dans l'éditeur écraserait ce qu'on vient d'écrire —
+    /// c'est-à-dire exactement le travail qu'on venait montrer. On la
+    /// lit, on la copie si l'on veut, et l'on garde le sien sous les
+    /// yeux.
+    pub(crate) fn solution_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_solution {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(solution) = self.exercise_solution().map(str::to_owned) else {
+            // Demandée là où il n'y en a pas : on le dit, plutôt que
+            // d'ouvrir une fenêtre vide.
+            self.show_solution = false;
+            self.status = Status::Note(|s| s.exercise_solution_none);
+            return;
+        };
+        let budget = self
+            .current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .and_then(|exercice| exercice.par);
+        let mut fermer = false;
+        let mut copier = false;
+        let fenêtre = egui::Window::new(s.exercise_solution_title)
+            .id(egui::Id::new("exercise_solution"))
+            .collapsible(false)
+            .resizable(true)
+            .default_size([520.0, 420.0])
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(default_window_pos(ctx, "exercise_solution"));
+        fenêtre.title_bar(false).show(ctx, |ui| {
+            if chrome::window_head(ui, theme, s, s.exercise_solution_title) {
+                fermer = true;
+            }
+            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+            ui.colored_label(theme.dim, s.exercise_solution_intro);
+            if let Some(budget) = budget {
+                ui.colored_label(
+                    theme.dim,
+                    format!(
+                        "{} {budget} {}",
+                        s.exercise_solution_cost, s.bytes_instructions
+                    ),
+                );
+            }
+            ui.add_space(6.0);
+            // La place qui reste, et non une fraction de l'écran : une
+            // zone qui se croit plus haute que sa fenêtre ne défile pas,
+            // elle déborde.
+            let reste = (ui.available_height() - 36.0).max(80.0);
+            egui::ScrollArea::vertical()
+                .max_height(reste)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(&solution).monospace().color(theme.text),
+                        )
+                        .selectable(true),
+                    );
+                });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if framed_button(ui, theme, s.exercise_solution_copy).clicked() {
+                    copier = true;
+                }
+                if framed_button(ui, theme, s.dialog_close).clicked() {
+                    fermer = true;
+                }
+            });
+        });
+        if copier {
+            ctx.copy_text(solution);
+            self.status = Status::Note(|s| s.exercise_solution_copied);
+        }
+        if fermer || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.show_solution = false;
+        }
     }
 
     /// L'exercice en cours est-il une DÉMONSTRATION ?

@@ -128,6 +128,7 @@ impl NamsdecApp {
         let mut open = self.show_exercises;
         let mut fermer_ok = false;
         let mut load = None;
+        let mut solution = false;
         let mut fiche: Option<&'static str> = None;
         let fenêtre_exercises_window = egui::Window::new(s.exercises_title)
             // L'identifiant a changé de version, et il le fallait :
@@ -206,6 +207,15 @@ impl NamsdecApp {
                                 .clicked()
                         {
                             load = Some(suivant_id.clone());
+                        }
+                        // La solution, au même endroit que les deux
+                        // autres gestes de l'étape en cours.
+                        if exercise.solution.is_some()
+                            && framed_button(ui, theme, s.exercise_solution)
+                                .on_hover_text(s.exercise_solution_hint)
+                                .clicked()
+                        {
+                            solution = true;
                         }
                     });
                     // Le but et la progression de l'exercice en cours,
@@ -506,6 +516,9 @@ impl NamsdecApp {
         if let Some(id) = load {
             self.load_exercise(&id);
             open = false;
+        }
+        if solution {
+            self.show_solution = true;
         }
         if let Some(name) = fiche {
             self.open_help(name);

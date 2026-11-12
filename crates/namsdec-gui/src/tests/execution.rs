@@ -3142,6 +3142,10 @@ fn the_breakpoints_of_a_source_come_back_next_time() {
     let mut app = NamsdecApp {
         source: programme.to_owned(),
         current_file: Some(chemin.clone()),
+        // Rouvrir sans demander : depuis le 11 novembre 2026, le défaut
+        // est de poser la question, qui a ses propres contrôles. Celui-ci
+        // parle des points d'arrêt.
+        session_restore: Reprise::Toujours,
         ..Default::default()
     };
     app.breakpoint_lines.insert(5);

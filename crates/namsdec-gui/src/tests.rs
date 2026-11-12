@@ -407,6 +407,36 @@ fn builtin_pack() -> namsdec_exercises::Pack {
     namsdec_exercises::builtin_pack_in(&packs).expect("la série livrée est lisible")
 }
 
+/// Le programme qu'on ÉPROUVE pour un exercice : sa solution quand il
+/// en a une, son code sinon.
+///
+/// Depuis le 11 novembre 2026, le code livré d'un exercice d'écriture a
+/// un TROU — c'est ce qui en fait un exercice. L'exécuter ne prouve donc
+/// plus rien de ce que l'exercice promet : il manque précisément la
+/// ligne qu'on vient apprendre à écrire. C'est la solution qui porte la
+/// promesse, et c'est elle que l'émulateur doit éprouver.
+fn programme_éprouvé(exercice: &namsdec_exercises::Exercise) -> &str {
+    exercice
+        .solution
+        .as_deref()
+        .unwrap_or(&exercice.starter_code)
+}
+
+/// Charge une étape du parcours et met SA SOLUTION dans l'éditeur.
+///
+/// Les contrôles qui vérifient ce qu'un exercice FAIT — la copie est
+/// complète, la macro a bien été dépliée trois fois — exécutaient son
+/// code livré. Celui-ci a un trou depuis le 11 novembre 2026 : ils
+/// mesuraient alors un programme amputé, et constataient précisément
+/// l'absence de ce que l'exercice demande d'écrire.
+fn charge_la_solution(app: &mut NamsdecApp, id: &str) {
+    app.load_exercise_now(id);
+    let pack = builtin_pack();
+    let exercice = namsdec_exercises::find(std::slice::from_ref(&pack), id)
+        .unwrap_or_else(|| panic!("l'étape {id} existe"));
+    app.set_source(programme_éprouvé(exercice).to_owned());
+}
+
 /// Une application qui connaît la série livrée.
 ///
 /// `NamsdecApp::default()` n'en charge aucune — c'est le démarrage qui

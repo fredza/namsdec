@@ -11953,3 +11953,171 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      au MÊME endroit, fait croire à egui que la souris bouge encore — et
      une souris qui bouge n'ouvre aucune infobulle. On le pose une fois,
      puis on laisse courir les soixante images du délai.
+
+9.91 [FAIT] LA SÉANCE PRÉCÉDENTE SE REDEMANDE
+
+     Demandé le 11 novembre 2026 : « le fichier déjà ouvert lors de la
+     précédente ouverture doit être redemandé à être ou ne pas être
+     ouvert ».
+
+     CE QUI SE FAISAIT. namsdec rouvrait d'autorité le fichier, les
+     onglets et le binaire de la veille, avec les points d'arrêt, les
+     arguments, la vue et la ligne qu'on lisait. C'est commode quand on
+     reprend le même travail, et c'est faux dès qu'on ouvre namsdec
+     pour autre chose : on tombait sur vingt mille lignes de
+     désassemblage d'hier, qu'il fallait d'abord fermer — et fermer un
+     binaire chargé n'est pas un geste évident quand on venait juste
+     écrire quatre lignes.
+
+     TROIS RÉPONSES, PARCE QU'IL Y EN A TROIS. `Reprise` : demander
+     (le défaut), rouvrir sans demander, ne pas rouvrir. Le réglage
+     part dans `settings.json` comme les autres, et se reprend aux
+     Préférences, page Général. Un fichier de réglages écrit par une
+     version antérieure n'a pas le champ et reçoit donc « demander » :
+     c'est la bonne réponse pour qui n'a jamais choisi.
+
+     CE QUE LA QUESTION DIT, et pas une chose de moins : le nom de ce
+     qu'on rouvrirait, SON CHEMIN COMPLET dessous — deux `crackme` dans
+     deux dossiers portent le même nom, et l'on ne reprend pas un
+     travail qu'on n'a pas reconnu —, et combien d'AUTRES fichiers
+     reviendraient avec. « Reprendre main.asm » devant sept onglets en
+     cache six.
+
+     ET ELLE PEUT CESSER DE SE POSER. Une question posée à chaque
+     lancement devient un clic de plus avant de travailler : la case
+     « ne plus demander » retient CE QU'ON VIENT DE RÉPONDRE — cochée
+     avec « Reprendre » elle règle « rouvrir », cochée avec « Repartir
+     à neuf » elle règle « ne pas rouvrir ». Sans elle, le réglage ne
+     bouge pas. Échap et la pastille valent « repartir à neuf » : rien
+     n'est perdu, le fichier est sur le disque et reste dans les
+     récents.
+
+     UN SEUL CHEMIN DE REPRISE. `reprendre_la_séance` est appelée soit
+     au démarrage quand on a réglé « rouvrir », soit à la réponse
+     « Reprendre ». Deux chemins pour la même reprise finiraient par en
+     donner deux versions.
+
+     LE CONTRÔLE QUI CLIQUE A TROUVÉ CE QUE L'AUTRE N'AURAIT PAS VU.
+     La case « ne plus demander » était une variable locale de la
+     fenêtre, recalculée à chaque image : on la cochait, et elle se
+     décochait toute seule à l'image suivante. Un contrôle qui aurait
+     appelé la méthode de décision serait passé au vert. Celui qui
+     clique par `egui_kittest` est tombé dessus du premier coup. La
+     case vit maintenant dans `ReprisePossible`, qui dure autant que la
+     question.
+
+     QUATRE CONTRÔLES : la question est posée et montre ce qu'il faut
+     (aux deux modes — l'Établi n'a ni menus ni onglets, et c'est là
+     qu'une question oubliée laisserait un écran vide sans
+     explication) ; rien à reprendre ne pose aucune question ;
+     « Reprendre » rouvre vraiment et retient ; « Repartir à neuf »
+     n'ouvre rien et retient aussi. Les cinq contrôles qui éprouvaient
+     la reprise elle-même règlent désormais « rouvrir » explicitement :
+     ils parlent de la reprise, pas de la question.
+
+9.92 [FAIT] QUATRE-VINGT-DIX-SEPT EXERCICES NE DEMANDAIENT RIEN
+
+     Demandé le 11 novembre 2026 : « augmente la qualité des exercices,
+     ils devraient être interactifs et l'UI n'est pas respectée ».
+
+     LA MESURE, D'ABORD, ET ELLE TRANCHE. Un relevé qui assemble et
+     exécute les cent dix-sept étapes du parcours : sur les CENT UNE
+     qui posent un but, QUATRE-VINGT-DIX-SEPT l'atteignaient déjà
+     telles qu'elles étaient livrées. On ouvrait l'étape, on cliquait
+     « Exécuter », la pastille passait au vert — sans avoir écrit une
+     ligne. C'étaient des démonstrations commentées présentées comme
+     des devoirs, et rien, nulle part, ne le disait. « Pas
+     interactifs » était un euphémisme : il n'y avait pas d'exercice.
+
+     CE QUE CHAQUE ÉTAPE PORTE MAINTENANT. Un TROU — à l'endroit de ce
+     qu'elle vient apprendre, une ligne « ; À FAIRE : … » à la place du
+     code — et une SOLUTION, le programme entier, rangée dans le
+     fichier de la série à côté du sujet. Les deux ensemble permettent
+     à la machine de vérifier ce qu'aucun relecteur ne tiendrait sur
+     cent étapes :
+
+       — le sujet s'assemble (un exercice ne s'ouvre pas sur une
+         erreur rouge) ;
+       — le sujet N'ATTEINT PAS le but (sans quoi il redeviendrait une
+         démonstration sans qu'on le voie) ;
+       — le sujet REND LA MAIN ;
+       — la solution atteint le but, en exactement `par` instructions,
+         puisque le budget est par définition celui de la solution
+         livrée.
+
+     Une solution écrite à la main dans un fichier JSON est une
+     affirmation ; passée à l'épreuve de l'émulateur, c'est un fait.
+
+     TROIS BUTS ÉTAIENT FAUX, et le relevé les a sortis au passage :
+     `hexa_affichage`, `table_ascii` et `afficher_signe` demandaient
+     « rax == 0x3c » à l'arrêt d'un programme qui finit par
+     « mov rax, 60 ; syscall ». Ce 60 est le numéro de l'appel `exit`,
+     pas un résultat : le but était vrai quoi qu'on écrive, et il
+     l'aurait été d'un programme vide. Ils mesurent maintenant ce que
+     le programme a PRODUIT — l'octet écrit, le nombre d'octets rendu
+     par `write`. `majuscules` était du même ordre : il comptait les
+     octets écrits, que la transformation ne change pas.
+
+     ET « zero » NE POUVAIT PAS SE RATER : son but — RAX, RBX et RCX à
+     zéro — est vrai AVANT le premier pas, puisqu'un registre neuf vaut
+     zéro. Les trois registres sont salis d'abord : il y a maintenant
+     quelque chose à nettoyer.
+
+     HUIT SQUELETTES NE RENDAIENT PLUS LA MAIN, et c'est la leçon de
+     forme de la séance : le trou avait emporté le CORPS de la boucle
+     en laissant le saut de retour. Le programme de départ tournait
+     sans fin. D'où la règle : UN TROU DANS UNE BOUCLE EMPORTE LA
+     BOUCLE ENTIÈRE, étiquette et saut compris — le squelette tombe
+     alors sur la suite et s'arrête. Attrapés par l'invariant, puis par
+     `every_program_we_ship_is_a_complete_program`, qui était plus
+     exigeant que lui : « ne tourne plus » ne suffit pas, l'exécution
+     s'interrompt aussi sur sa propre borne. L'invariant demande
+     désormais la même chose que lui — arrêté, en faute, ou en attente
+     d'entrée.
+
+     CE QUE L'INTERFACE AJOUTE :
+
+       — LE CURSEUR SE POSE SUR LE TROU à l'ouverture, et la vue l'y
+         amène. Vingt lignes dont une à écrire : chercher OÙ est le
+         seul moment de l'exercice qui n'apprend rien ;
+       — LA BANDE DIT CE QU'IL RESTE À ÉCRIRE, lu dans le tampon
+         lui-même, et la mention S'EFFACE à mesure qu'on remplace la
+         consigne par du code. C'est le seul retour qui vaille avant
+         d'exécuter — le but, lui, ne dit rien tant que rien n'a
+         tourné ;
+       — LA SOLUTION SE DEMANDE. Un bouton dans la bande et dans la
+         fenêtre, une fenêtre en lecture seule à côté du programme
+         qu'on écrit, avec ce qu'elle coûte. Elle ne remplace rien et
+         ne retire aucun score : « demander une aide ne doit pas coûter
+         un aveu » (A 9.89). Les démonstrations et les étapes de
+         lecture n'ont pas ce bouton — leur programme est complet.
+
+     L'UI, ENFIN, ET C'EST LA SECONDE MOITIÉ DE LA DEMANDE. Le but
+     s'écrivait « rax == 0xf » au mode DÉBUTANT, pendant que la bande du
+     bas, trois centimètres plus bas, disait « RCX 3 -> 2 ». Trois
+     règles de l'application n'étaient pas tenues sur cette ligne-là :
+     registres en majuscules, nombres en décimal sous le million
+     (A 9.87), et rien d'écrit dans une syntaxe qu'on n'a pas encore
+     apprise. Elle se lit maintenant « RAX vaut 15 ». Au mode avancé,
+     rien ne change : c'est la syntaxe qu'on tape soi-même dans un
+     point d'arrêt conditionnel, et la réécrire ferait croire à une
+     autre grammaire.
+
+     DEUX MESURES ONT CORRIGÉ L'AJOUT LUI-MÊME. La consigne écrite en
+     entier prenait quatre lignes de bande : à 800x520 il ne restait
+     PLUS QU'UNE ligne de programme visible, et le budget sortait par
+     le bas. Elle tient sur une ligne tronquée, relisible au survol —
+     elle est de toute façon sous les yeux, dans le code, là où le
+     curseur vient de se poser. Et la bande passe de 190 à 210 pixels,
+     non par instinct mais parce que le contrôle a dit combien il
+     manquait : « Instructions : 0 / 4 » peint sur dix-huit pixels dont
+     trois visibles.
+
+     QUATORZE CONTRÔLES ONT DÛ CHANGER, et c'est normal : ils
+     exécutaient le code livré pour vérifier ce que l'exercice promet.
+     Celui-ci a un trou ; c'est la SOLUTION qui porte la promesse. Deux
+     aides communes (`programme_éprouvé`, `charge_la_solution`) le
+     disent une fois pour toutes. Un quinzième a été retourné :
+     `every_goal_is_readable_and_on_the_right_side` portait la liste
+     des quatre-vingt-dix-sept étapes « atteintes d'emblée ». Elle
+     disait vrai, et c'était le défaut.

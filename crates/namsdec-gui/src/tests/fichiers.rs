@@ -111,8 +111,13 @@ fn the_last_file_is_reopened_at_startup() {
     let path = dir.path().join("travail.asm");
     std::fs::write(&path, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
 
+    // « Rouvrir sans demander » : depuis le 11 novembre 2026, le défaut
+    // est de POSER la question — ce contrôle-ci parle de la reprise
+    // elle-même, et la règle à « toujours » pour l'éprouver. La question
+    // a ses propres contrôles.
     let settings = Settings {
         current_file: Some(path.display().to_string()),
+        session_restore: Reprise::Toujours.id().to_owned(),
         ..Default::default()
     };
     let app = NamsdecApp::from_settings(settings);
@@ -125,6 +130,7 @@ fn the_last_file_is_reopened_at_startup() {
     std::fs::write(&path, "section .text\n    nop\n").unwrap();
     let app = NamsdecApp::from_settings(Settings {
         current_file: Some(path.display().to_string()),
+        session_restore: Reprise::Toujours.id().to_owned(),
         ..Default::default()
     });
     assert!(app.source.contains("nop"));
@@ -418,7 +424,14 @@ fn recently_opened_files_come_back_in_the_menu() {
     let mut chemins = Vec::new();
     for index in 0..3 {
         let chemin = dir.path().join(format!("p{index}.asm"));
-        std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+        // Un marqueur qui n'est PAS dans le programme d'exemple : celui-ci
+        // contient « hlt », et l'assertion « le tampon est neuf » passait
+        // pour la mauvaise raison.
+        std::fs::write(
+            &chemin,
+            "global _start\nsection .text\n_start:\n    mov rax, 0xdeca\n",
+        )
+        .unwrap();
         app.open_file(chemin.clone());
         chemins.push(chemin);
     }
@@ -568,7 +581,11 @@ fn the_open_files_come_back_next_time() {
         std::fs::write(chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
     }
 
-    let mut app = NamsdecApp::default();
+    // La reprise sans question : voir `the_last_file_is_reopened_at_startup`.
+    let mut app = NamsdecApp {
+        session_restore: Reprise::Toujours,
+        ..Default::default()
+    };
     app.open_file(un.clone());
     app.open_file(deux.clone());
     let écrit = serde_json::to_string(&app.settings_snapshot()).unwrap();
@@ -738,7 +755,14 @@ fn l_onglet_d_un_binaire_porte_son_nom() {
 fn a_file_changed_on_disk_is_noticed_and_never_silently_overwritten() {
     let dir = tempfile::tempdir().unwrap();
     let chemin = dir.path().join("travail.asm");
-    std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+    // Un marqueur qui n'est PAS dans le programme d'exemple : celui-ci
+    // contient « hlt », et l'assertion « le tampon est neuf » passait
+    // pour la mauvaise raison.
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    mov rax, 0xdeca\n",
+    )
+    .unwrap();
 
     let mut app = NamsdecApp::default();
     app.open_file(chemin.clone());
@@ -823,7 +847,11 @@ fn a_binary_session_comes_back_at_the_next_launch() {
 
     // Une séance : on ouvre le binaire, on pose des repères, on règle
     // des arguments.
-    let mut app = NamsdecApp::default();
+    // La reprise sans question : voir `the_last_file_is_reopened_at_startup`.
+    let mut app = NamsdecApp {
+        session_restore: Reprise::Toujours,
+        ..Default::default()
+    };
     app.open_file_now(binaire.clone());
     assert!(
         app.assemble_state.is_some(),
@@ -881,7 +909,11 @@ fn a_changed_binary_drops_its_marks_and_says_so() {
     let binaire = dossier.path().join(NOM_FABRIQUÉ);
     std::fs::write(&binaire, &octets).unwrap();
 
-    let mut app = NamsdecApp::default();
+    // La reprise sans question : voir `the_last_file_is_reopened_at_startup`.
+    let mut app = NamsdecApp {
+        session_restore: Reprise::Toujours,
+        ..Default::default()
+    };
     app.open_file_now(binaire.clone());
     app.breakpoint_lines.insert(12);
     let enregistré = app.settings_snapshot();
@@ -972,6 +1004,7 @@ fn every_setting_that_is_written_is_read_back() {
         version: settings::SETTINGS_VERSION,
         theme: namsdec_theme::TOKYO_NIGHT.id.to_owned(),
         language: "en".to_owned(),
+        session_restore: Reprise::Toujours.id().to_owned(),
         show_toolbar: false,
         show_rails: false,
         show_sidebar: false,
@@ -1380,4 +1413,215 @@ fn the_shortcuts_tab_shows_both_sets_side_by_side() {
         1,
         "et elle n'est écrite qu'une fois : {textes:?}"
     );
+}
+
+/// Au lancement, la séance précédente est REDEMANDÉE, non reprise
+/// d'autorité.
+///
+/// Demandé le 11 novembre 2026 : « le fichier déjà ouvert lors de la
+/// précédente ouverture doit être redemandé à être ou ne pas être
+/// ouvert ». Rouvrir d'office est commode quand on reprend le même
+/// travail, et faux dès qu'on ouvre namsdec pour autre chose — on
+/// tombait sur le désassemblage d'hier, qu'il fallait d'abord fermer.
+#[test]
+fn la_séance_précédente_est_redemandée_au_lancement() {
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("hier.asm");
+    // Un marqueur qui n'est PAS dans le programme d'exemple : celui-ci
+    // contient « hlt », et l'assertion « le tampon est neuf » passait
+    // pour la mauvaise raison.
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    mov rax, 0xdeca\n",
+    )
+    .unwrap();
+
+    // Le défaut, sans rien régler : on demande.
+    let mut app = NamsdecApp::from_settings(Settings {
+        current_file: Some(chemin.display().to_string()),
+        ..Default::default()
+    });
+    assert_eq!(app.session_restore, Reprise::Demander);
+    assert!(
+        app.current_file.is_none(),
+        "rien n'est rouvert avant la réponse"
+    );
+    assert!(
+        !app.source.contains("0xdeca"),
+        "et le tampon est celui d'un lancement neuf"
+    );
+    let reprise = app.reprise.as_ref().expect("la question est posée");
+    assert_eq!(reprise.quoi, chemin);
+
+    // Et elle est à l'écran : le nom, son chemin complet, les deux
+    // réponses.
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    for attendu in [
+        s.session_resume_title,
+        "hier.asm",
+        s.session_resume_yes,
+        s.session_resume_no,
+        s.session_resume_remember,
+    ] {
+        assert!(
+            painted.contains(attendu),
+            "« {attendu} » manque : {painted}"
+        );
+    }
+    assert!(
+        painted.contains(&chemin.display().to_string()),
+        "le chemin complet doit être lisible sans survol : {painted}"
+    );
+
+    // ET AU MODE DÉBUTANT, qui n'a ni menus ni barre d'onglets : c'est
+    // là qu'une question oubliée laisserait un écran vide sans
+    // explication.
+    app.debutant = true;
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.session_resume_title),
+        "l'Établi pose la même question : {painted}"
+    );
+
+    // ET ELLE TIENT SUR LE PLUS PETIT ÉCRAN QUE NAMSDEC ACCEPTE.
+    // Une question dont les boutons passent sous le bord ne se répond
+    // pas — et c'est la première chose qu'on voit au lancement.
+    app.debutant = false;
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let petit = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(800.0, 520.0));
+    for _ in 0..3 {
+        let input = egui::RawInput {
+            screen_rect: Some(petit),
+            ..Default::default()
+        };
+        ctx.run_ui(input, |ui| app.draw(ui)).textures_delta.clear();
+    }
+    let posée = egui::AreaState::load(&ctx, egui::Id::new("session_resume"))
+        .expect("la question est une fenêtre posée")
+        .rect();
+    assert!(
+        petit.contains_rect(posée),
+        "la question sort de l'écran de 800x520 : {posée:?}"
+    );
+}
+
+/// Rien à reprendre, pas de question.
+///
+/// Un fichier déplacé ou supprimé entre deux séances produirait une
+/// question à laquelle répondre « oui » ne donnerait rien — et un premier
+/// lancement n'a rien à reprendre du tout.
+#[test]
+fn sans_séance_précédente_aucune_question() {
+    let dossier = tempfile::tempdir().unwrap();
+    let app = NamsdecApp::from_settings(Settings {
+        current_file: Some(
+            dossier
+                .path()
+                .join("jamais-écrit.asm")
+                .display()
+                .to_string(),
+        ),
+        ..Default::default()
+    });
+    assert!(app.reprise.is_none(), "rien à rouvrir, rien à demander");
+    let neuve = NamsdecApp::from_settings(Settings::default());
+    assert!(neuve.reprise.is_none(), "un premier lancement non plus");
+}
+
+/// « Reprendre » rouvre vraiment, et « ne plus demander » retient la
+/// réponse qu'on vient de donner.
+///
+/// Le clic, et non l'appel de la méthode : c'est la seule façon de
+/// savoir que le bouton est atteignable et fait ce qu'il annonce.
+#[test]
+fn reprendre_rouvre_le_fichier_et_retient_la_réponse() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("hier.asm");
+    // Un marqueur qui n'est PAS dans le programme d'exemple : celui-ci
+    // contient « hlt », et l'assertion « le tampon est neuf » passait
+    // pour la mauvaise raison.
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    mov rax, 0xdeca\n",
+    )
+    .unwrap();
+
+    let app = NamsdecApp::from_settings(Settings {
+        current_file: Some(chemin.display().to_string()),
+        ..Default::default()
+    });
+    let s = strings(app.lang);
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+
+    harness.get_by_label(s.session_resume_remember).click();
+    harness.run();
+    harness.get_by_label(s.session_resume_yes).click();
+    harness.run();
+
+    let app = harness.state();
+    assert_eq!(
+        app.current_file.as_deref(),
+        Some(chemin.as_path()),
+        "le fichier d'hier est rouvert : {:?}",
+        app.status
+    );
+    assert!(app.source.contains("0xdeca"), "avec son contenu");
+    assert!(app.reprise.is_none(), "et la question ne reste pas posée");
+    assert_eq!(
+        app.session_restore,
+        Reprise::Toujours,
+        "« ne plus demander » retient CE qu'on vient de répondre"
+    );
+    // Le réglage part sur le disque comme les autres.
+    assert_eq!(
+        app.settings_snapshot().session_restore,
+        Reprise::Toujours.id()
+    );
+}
+
+/// « Repartir à neuf » n'ouvre rien, et coché, ne redemande plus.
+#[test]
+fn repartir_à_neuf_laisse_un_programme_neuf() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let dossier = tempfile::tempdir().unwrap();
+    let chemin = dossier.path().join("hier.asm");
+    // Un marqueur qui n'est PAS dans le programme d'exemple : celui-ci
+    // contient « hlt », et l'assertion « le tampon est neuf » passait
+    // pour la mauvaise raison.
+    std::fs::write(
+        &chemin,
+        "global _start\nsection .text\n_start:\n    mov rax, 0xdeca\n",
+    )
+    .unwrap();
+
+    let app = NamsdecApp::from_settings(Settings {
+        current_file: Some(chemin.display().to_string()),
+        ..Default::default()
+    });
+    let s = strings(app.lang);
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+
+    harness.get_by_label(s.session_resume_remember).click();
+    harness.run();
+    harness.get_by_label(s.session_resume_no).click();
+    harness.run();
+
+    let app = harness.state();
+    assert!(app.current_file.is_none(), "rien n'a été rouvert");
+    assert!(!app.source.contains("0xdeca"));
+    assert!(app.reprise.is_none());
+    assert_eq!(app.session_restore, Reprise::Jamais);
 }

@@ -86,6 +86,7 @@ impl NamsdecApp {
             sidebar_tab_height: settings.sidebar_tab_height.map(|h| h as f32),
             show_re_tab: settings.re_tab,
             debutant: settings.debutant,
+            session_restore: Reprise::by_id(&settings.session_restore),
             prevoir: settings.prevoir,
             program_args: settings.program_args.clone(),
             program_env: settings.program_env.clone(),
@@ -128,12 +129,19 @@ impl NamsdecApp {
             ..Default::default()
         };
         app.ensure_explorer_root();
-        app.reopen_last_file();
-        // Après les sources, et hors de `reopen_last_file` : celle-ci
-        // rend la main dès qu'il n'y a pas de source à rouvrir, ce qui
-        // est précisément le cas quand on travaillait un binaire —
-        // `current_file` reste vide pour lui.
-        app.restore_binary_session();
+        // LA SÉANCE PRÉCÉDENTE NE REVIENT PLUS D'AUTORITÉ.
+        //
+        // Elle le faisait, et c'était commode quand on reprend le même
+        // travail ; c'était faux dès qu'on ouvre namsdec pour autre
+        // chose — on tombait sur le désassemblage d'hier, qu'il fallait
+        // d'abord fermer. Demandé le 11 novembre 2026. Les trois
+        // réponses sont dans `Reprise` ; « demander » est le défaut, et
+        // la question se pose à la première image.
+        match app.session_restore {
+            Reprise::Jamais => {}
+            Reprise::Toujours => app.reprendre_la_séance(),
+            Reprise::Demander => app.reprise = app.reprise_possible(),
+        }
         // En dernier, et volontairement : deux des fenêtres reprises
         // dépendent d'un module dont l'état vient d'être posé plus haut,
         // et l'une d'elles — le désassemblage — n'a de sens qu'une fois
@@ -176,6 +184,163 @@ impl NamsdecApp {
                 ouvre(self);
             }
         }
+    }
+
+    /// Ce que la séance précédente avait laissé ouvert, s'il en reste
+    /// quelque chose à rouvrir AUJOURD'HUI.
+    ///
+    /// Les chemins sont vérifiés sur le disque : un fichier déplacé ou
+    /// supprimé entre deux séances n'a pas à produire une question à
+    /// laquelle répondre « oui » ne donnerait rien.
+    ///
+    /// Le binaire d'abord quand il y en a un : c'est le travail le plus
+    /// long à refaire — retrouver le fichier, le recharger, reposer les
+    /// points d'arrêt —, et c'est donc lui qu'on nomme.
+    pub(crate) fn reprise_possible(&self) -> Option<ReprisePossible> {
+        let binaire = self
+            .saved_settings
+            .open_binary
+            .as_deref()
+            .map(PathBuf::from)
+            .filter(|chemin| chemin.is_file());
+        let source = self
+            .saved_settings
+            .current_file()
+            .filter(|chemin| chemin.is_file());
+        let autres = self
+            .saved_settings
+            .open_files
+            .iter()
+            .map(PathBuf::from)
+            .filter(|chemin| chemin.is_file() && Some(chemin) != source.as_ref())
+            .count();
+        let quoi = binaire.or(source)?;
+        Some(ReprisePossible {
+            quoi,
+            autres,
+            retenir: false,
+        })
+    }
+
+    /// La question du lancement : reprend-on la séance précédente ?
+    ///
+    /// TROIS CHOSES Y SONT DITES, et pas une de moins : ce qu'on
+    /// rouvrirait (son nom, et son chemin complet dessous — deux
+    /// `crackme` dans deux dossiers portent le même nom), combien
+    /// d'autres fichiers reviendraient avec, et qu'on peut ne plus être
+    /// interrogé. Une question posée au lancement doit pouvoir cesser de
+    /// l'être, sans quoi elle devient un clic de plus avant de
+    /// travailler.
+    ///
+    /// Échap vaut « Repartir à neuf » : rien n'est perdu — le fichier
+    /// est sur le disque, et il reste dans les récents.
+    pub(crate) fn reprise_window_ui(&mut self, ctx: &egui::Context) {
+        let Some(reprise) = self.reprise.clone() else {
+            return;
+        };
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut réponse: Option<bool> = None;
+        let mut retenir = reprise.retenir;
+        egui::Window::new(s.session_resume_title)
+            .id(egui::Id::new("session_resume"))
+            .collapsible(false)
+            .resizable(false)
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(ctx.viewport_rect().center())
+            .title_bar(false)
+            .show(ctx, |ui| {
+                // La pastille de fermeture vaut « Repartir à neuf » :
+                // c'est ce que fermer la question veut dire, et une
+                // pastille qui ne ferme rien serait un piège.
+                if chrome::window_head(ui, theme, s, s.session_resume_title) {
+                    réponse = Some(false);
+                }
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                ui.set_max_width(420.0);
+                ui.label(s.session_resume_question);
+                ui.add_space(8.0);
+                let nom = reprise
+                    .quoi
+                    .file_name()
+                    .map(|nom| nom.to_string_lossy().into_owned())
+                    .unwrap_or_else(|| reprise.quoi.display().to_string());
+                ui.label(egui::RichText::new(nom).strong().monospace());
+                // LE CHEMIN COMPLET, SOUS LE NOM. On ne reprend pas un
+                // travail qu'on n'a pas reconnu, et le nom seul ne dit
+                // pas d'où il vient.
+                ui.label(
+                    egui::RichText::new(reprise.quoi.display().to_string())
+                        .color(theme.dim)
+                        .size(11.0),
+                );
+                if reprise.autres > 0 {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "+ {} {}",
+                            reprise.autres, s.session_resume_others
+                        ))
+                        .color(theme.dim),
+                    );
+                }
+                ui.add_space(10.0);
+                ui.checkbox(&mut retenir, s.session_resume_remember);
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    let reprendre = egui::Button::new(
+                        egui::RichText::new(s.session_resume_yes).color(theme.bg),
+                    )
+                    .fill(theme.accent);
+                    if ui.add(reprendre).clicked() {
+                        réponse = Some(true);
+                    }
+                    if framed_button(ui, theme, s.session_resume_no).clicked() {
+                        réponse = Some(false);
+                    }
+                });
+            });
+        if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            réponse = Some(false);
+        }
+        let Some(reprendre) = réponse else {
+            // La case cochée doit le rester : la fenêtre se redessine à
+            // chaque image, et une case qui se recalcule à chaque fois se
+            // décoche toute seule.
+            if let Some(posée) = self.reprise.as_mut() {
+                posée.retenir = retenir;
+            }
+            return;
+        };
+        // LE CHOIX RETENU EST CELUI QU'ON VIENT DE FAIRE, et non une
+        // troisième valeur : cocher la case puis « Reprendre » règle
+        // « rouvrir », cocher puis « Repartir à neuf » règle « ne pas
+        // rouvrir. » Sans la case, le réglage ne bouge pas.
+        if retenir {
+            self.session_restore = if reprendre {
+                Reprise::Toujours
+            } else {
+                Reprise::Jamais
+            };
+        }
+        self.reprise = None;
+        if reprendre {
+            self.reprendre_la_séance();
+        }
+    }
+
+    /// Rouvre ce que la séance précédente avait laissé : les sources,
+    /// puis le binaire, puis les repères posés dessus.
+    ///
+    /// Un seul endroit, appelé soit au démarrage — quand on a réglé
+    /// « rouvrir » —, soit à la réponse « Reprendre ». Deux chemins pour
+    /// la même reprise finiraient par en donner deux versions.
+    pub(crate) fn reprendre_la_séance(&mut self) {
+        self.reopen_last_file();
+        // Après les sources, et hors de `reopen_last_file` : celle-ci
+        // rend la main dès qu'il n'y a pas de source à rouvrir, ce qui
+        // est précisément le cas quand on travaillait un binaire —
+        // `current_file` reste vide pour lui.
+        self.restore_binary_session();
     }
 
     /// Rouvre le fichier sur lequel on travaillait au lancement précédent,
@@ -486,6 +651,7 @@ impl NamsdecApp {
                 Lang::Fr => "fr".to_owned(),
                 Lang::En => "en".to_owned(),
             },
+            session_restore: self.session_restore.id().to_owned(),
             open_binary: self.binary_path.as_ref().map(|p| p.display().to_string()),
             open_binary_len: self
                 .binary_path

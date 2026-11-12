@@ -125,7 +125,38 @@ pub struct Exercise {
     /// Ce qu'on cherche à comprendre, et le but à atteindre.
     pub description: Text,
     /// Le programme de départ, à charger dans l'éditeur.
+    ///
+    /// IL LUI MANQUE QUELQUE CHOSE, et c'est tout le sujet. Mesuré le
+    /// 11 novembre 2026 : sur cent une étapes qui posent un but,
+    /// QUATRE-VINGT-DIX-SEPT l'atteignaient déjà telles qu'elles sont
+    /// livrées. On chargeait l'étape, on cliquait « Exécuter », la
+    /// pastille passait au vert — sans avoir rien écrit. C'étaient des
+    /// démonstrations commentées présentées comme des devoirs.
+    ///
+    /// Un exercice qui pose un but laisse donc un trou : une ligne
+    /// « ; À FAIRE : … » à la place de ce qu'on vient apprendre à
+    /// écrire. Ce qui n'a rien à faire écrire le dit en n'ayant pas de
+    /// but — l'interface l'annonce alors comme une démonstration.
     pub starter_code: String,
+    /// Le programme COMPLET, celui qui atteint le but.
+    ///
+    /// Trois choses en dépendent, et c'est pourquoi il est obligatoire
+    /// dès qu'il y a un trou :
+    ///
+    /// - un contrôle l'exécute et vérifie qu'il atteint vraiment le but,
+    ///   dans le budget annoncé. Une solution écrite à la main dans un
+    ///   fichier JSON est une affirmation ; passée à l'épreuve de
+    ///   l'émulateur, c'est un fait ;
+    /// - le même contrôle vérifie que le programme de DÉPART, lui, ne
+    ///   l'atteint pas. C'est ce qui empêche un exercice de redevenir
+    ///   une démonstration sans qu'on le voie ;
+    /// - l'interface peut la montrer quand on la demande. Chercher sans
+    ///   jamais pouvoir regarder la réponse n'apprend rien à qui est
+    ///   bloqué.
+    ///
+    /// `None` pour une démonstration ou un exercice de lecture : il n'y
+    /// a pas de programme à écrire.
+    pub solution: Option<String>,
     /// Le but, en conditions vérifiables — `rax == 15`, `rdx == 3`.
     ///
     /// Toutes doivent tenir à l'arrêt du programme. La grammaire est

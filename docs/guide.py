@@ -1824,6 +1824,31 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "encore », au lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le "
          "reste, d'une session à l'autre." % (avec_but, total_exos)),
         ("p",
+         "<b>Chaque étape a quelque chose à écrire.</b> Le programme livré est "
+         "incomplet&nbsp;: à l'endroit de ce qu'on vient apprendre, une ligne "
+         "<font face='Courier'>; À FAIRE :</font> dit ce qu'il faut mettre à la place. "
+         "Le curseur s'y pose à l'ouverture — on n'a pas à chercher OÙ —, et la bande de "
+         "l'exercice répète cette consigne sous l'énoncé. <b>Elle s'efface à mesure "
+         "qu'on écrit</b>&nbsp;: c'est le seul retour qui vaille avant d'exécuter, le "
+         "but ne disant rien tant que rien n'a tourné."),
+        ("note",
+         "Il n'en a pas toujours été ainsi, et la mesure est nette&nbsp;: le "
+         "11 novembre 2026, <b>97 des 101 étapes qui posent un but l'atteignaient déjà "
+         "telles qu'elles étaient livrées</b>. On ouvrait l'étape, on cliquait "
+         "« Exécuter », la pastille passait au vert — sans avoir écrit une ligne. "
+         "C'étaient des démonstrations commentées présentées comme des devoirs. Chacune "
+         "a maintenant son trou, et un contrôle l'EXÉCUTE pour vérifier deux choses que "
+         "la lecture ne peut pas tenir sur cent étapes&nbsp;: le programme livré "
+         "n'atteint pas le but, et la solution l'atteint — dans le budget annoncé."),
+        ("p",
+         "<b>La solution se demande, et la regarder n'efface rien.</b> Le bouton "
+         "<b>La solution</b> — dans la bande de l'exercice comme dans la fenêtre des "
+         "exercices — ouvre le programme entier à côté du vôtre, en lecture seule, avec "
+         "ce qu'il coûte en instructions. Il ne remplace pas ce que vous avez écrit, et "
+         "ne retire aucun score&nbsp;: demander une aide ne doit pas coûter un aveu. "
+         "Les démonstrations et les étapes de lecture n'ont pas ce bouton — leur "
+         "programme est déjà complet."),
+        ("p",
          "<b>La cible se lit avant de commencer.</b> Tant que rien n'a tourné, les "
          "conditions sont montrées en gris et <b>sans verdict</b>&nbsp;: ce ne sont pas "
          "des conditions qui tiennent ou qui manquent, ce sont des conditions qu'on n'a "
@@ -1894,6 +1919,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "affiché quand on chargeait un binaire sans rapport, comme si l'exercice portait "
          "sur lui. Les exercices ont désormais leur fenêtre, ouverte quand on en fait un, "
          "fermée sinon."),
+        ("p",
+         "<b>Au mode débutant, le but se lit en toutes lettres</b>&nbsp;: "
+         "<font face='Courier'>rax == 0xf</font> s'y écrit « RAX vaut 15 » — registre en "
+         "majuscules, comparaison en mots, nombre en décimal, comme la bande du bas qui "
+         "dit déjà « RCX 3 -&gt; 2 ». Au mode avancé la condition reste telle que l'exercice "
+         "l'a écrite&nbsp;: c'est la syntaxe qu'on tape soi-même dans un point d'arrêt "
+         "conditionnel, et la réécrire ferait croire à une autre grammaire."),
         ("p",
          "Un but manqu\u00e9 dit <b>laquelle</b> de ses conditions manque, et ce que "
          "l\u2019expression vaut \u00e0 la place — <font face='Courier'>rax == 0xf</font> "
@@ -3359,7 +3391,22 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
 
         ("h2", "Reprendre son travail"),
         ("p",
-         "namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
+         "<b>On vous le demande d'abord.</b> Au lancement, si la séance précédente avait "
+         "laissé quelque chose d'ouvert, namsdec pose la question avant de rouvrir quoi que "
+         "ce soit : le nom de ce qu'il rouvrirait, son chemin complet dessous, et le nombre "
+         "d'autres fichiers qui reviendraient avec. Deux réponses — <b>Reprendre</b> ou "
+         "<b>Repartir à neuf</b> — et une case <b>Ne plus demander</b>, qui retient la "
+         "réponse qu'on vient de donner. Échap vaut « repartir à neuf » : rien n'est perdu, "
+         "le fichier est sur le disque et reste dans les récents. Ce choix se reprend aux "
+         "Préférences, page Général, « Au lancement, la séance précédente » : <i>Demander</i>, "
+         "<i>Rouvrir</i> ou <i>Ne pas rouvrir</i>."),
+        ("p",
+         "La question existe parce que l'inverse était faux : namsdec rouvrait d'autorité. "
+         "C'est commode quand on reprend le même travail, et pénible dès qu'on ouvre "
+         "namsdec pour autre chose — on tombait sur le désassemblage de la veille, qu'il "
+         "fallait d'abord fermer."),
+        ("p",
+         "Une fois qu'on a dit oui, namsdec rouvre ce qu'on avait : les fichiers sources et leurs onglets, le "
          "<b>binaire</b> ouvert, ses points d'arrêt, ses zones surveillées, les arguments "
          "et variables d'environnement du programme, l'onglet latéral qu'on regardait, et "
          "la <b>vue</b> qu'on avait choisie dans la rangée — l'établi se retrouve là où "

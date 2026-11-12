@@ -315,6 +315,19 @@ pub struct Settings {
     /// Dernier dossier ouvert dans l'explorateur, pour le retrouver au
     /// lancement suivant.
     pub explorer_root: Option<String>,
+    /// Ce qu'on fait, au lancement, du travail de la séance précédente :
+    /// « ask », « always » ou « never ».
+    ///
+    /// « ask » par défaut, et c'est un changement assumé : namsdec
+    /// rouvrait d'autorité le fichier et le binaire qu'on avait quittés.
+    /// Commode quand on reprend le même travail, faux dès qu'on ouvre
+    /// namsdec pour autre chose — on tombe alors sur vingt mille lignes
+    /// de désassemblage d'hier, qu'il faut d'abord fermer. Un fichier de
+    /// réglages d'une version antérieure n'a pas ce champ, et reçoit
+    /// donc la question lui aussi : c'est la bonne réponse pour qui n'a
+    /// jamais choisi.
+    #[serde(default = "demander_par_défaut")]
+    pub session_restore: String,
     /// Dernier fichier ouvert dans l'éditeur. Le **chemin**, jamais le
     /// contenu : le fichier source vit sur le disque, où l'utilisateur
     /// peut l'éditer avec autre chose, et en recopier une version dans les
@@ -491,6 +504,7 @@ impl Default for Settings {
             central_view: None,
             open_windows: Vec::new(),
             explorer_root: None,
+            session_restore: demander_par_défaut(),
             current_file: None,
             current_file_mtime: None,
             open_files: Vec::new(),
@@ -908,6 +922,11 @@ pub fn shortcuts_to_strings(bindings: &KeyBindings) -> BTreeMap<String, String> 
 /// vidage qu'on vient de poser quelque part.
 fn fixe_par_défaut() -> String {
     "fixed".to_owned()
+}
+
+/// Au lancement, on demande : voir `session_restore`.
+fn demander_par_défaut() -> String {
+    "ask".to_owned()
 }
 
 fn pseudo_par_défaut() -> String {

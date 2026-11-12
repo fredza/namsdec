@@ -93,7 +93,15 @@ const LIGNE_MAX: f32 = 190.0;
 ///
 /// Sur un écran étroit, l'énoncé prend plus de lignes et la bande
 /// défile : c'est à cela que servent sa barre et sa poignée.
-const EXERCICE_DEFAUT: f32 = 190.0;
+///
+/// DEUX CENT DIX DEPUIS LE 11 NOVEMBRE 2026, et pour la même raison
+/// qu'elle en faisait 190 : une ligne s'est ajoutée au contenu — « À
+/// écrire », la consigne du trou —, et la mesure a montré le budget
+/// coupé par le bas, « Instructions : 0 / 4 » peint sur dix-huit pixels
+/// dont trois visibles. Ce n'est pas un ajustement d'instinct : c'est
+/// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` qui a dit
+/// combien il manquait.
+const EXERCICE_DEFAUT: f32 = 210.0;
 
 /// Ce qu'elle prend au moins, quand on tire sa poignée vers le haut.
 ///
@@ -865,7 +873,12 @@ impl NamsdecApp {
         let suivant = self.exercise_after(&id);
 
         let mut choisir = false;
+        let mut montrer_la_solution = false;
         let mut aller: Option<String> = None;
+        // Y a-t-il une solution à montrer ? Une démonstration et une
+        // étape de lecture n'en ont pas : le bouton ne paraît pas
+        // plutôt que de s'afficher mort.
+        let solution = self.exercise_solution().is_some();
         // LE TITRE RESTE HORS DE LA ZONE QUI DÉFILE. Les deux gestes
         // qu'il porte — choisir une autre étape, passer à la suivante —
         // ne doivent pas descendre hors de vue quand l'énoncé est long :
@@ -888,6 +901,18 @@ impl NamsdecApp {
                     .clicked()
                 {
                     choisir = true;
+                }
+                // LA SOLUTION SE DEMANDE, et la demander ne coûte rien :
+                // c'est la règle que le parcours s'est donnée avec
+                // « Montrer » (A 9.89) — « demander une aide ne doit pas
+                // coûter un aveu ». Elle ne remplace rien dans
+                // l'éditeur : on la lit à côté de son propre programme.
+                if solution
+                    && small_framed_button(ui, theme, s.exercise_solution)
+                        .on_hover_text(s.exercise_solution_hint)
+                        .clicked()
+                {
+                    montrer_la_solution = true;
                 }
                 ui.add_space(8.0);
                 // CE QUI EST FAIT DU PARCOURS, et non de cette étape :
@@ -944,11 +969,52 @@ impl NamsdecApp {
                 // la bande du bas, et pour la même raison : un texte
                 // qui montre son balisage apprend à ne plus le lire.
                 ui.label(prose(ui, theme, &énoncé));
+                // CE QU'IL RESTE À ÉCRIRE, lu dans le tampon.
+                //
+                // Les consignes du programme — « ; À FAIRE : … » —
+                // répétées ici, et elles s'effacent à mesure qu'on les
+                // remplace par du code. C'est le seul retour qui marche
+                // AVANT d'exécuter : le but, lui, ne dit rien tant que
+                // rien n'a tourné.
+                //
+                // UNE SEULE LIGNE, ET TRONQUÉE. Écrite en entier, elle
+                // prenait jusqu'à quatre lignes de bande — et à
+                // 800x520 il ne restait PLUS QU'UNE ligne de programme
+                // visible au lieu de deux, tandis que le budget sortait
+                // par le bas. Deux contrôles l'ont dit du premier coup
+                // (A 9.86 : « un écran où l'on ne voit pas une ligne du
+                // programme qu'on demande d'écrire est un écran
+                // cassé »). La consigne entière est de toute façon sous
+                // les yeux, dans le code, à la ligne où le curseur
+                // vient de se poser ; ici on en donne le début, et le
+                // survol rend le reste.
+                let consignes = self.consignes_du_trou();
+                if let Some(première) = consignes.first() {
+                    let combien = consignes.len();
+                    ui.add_space(2.0);
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 6.0;
+                        ui.colored_label(theme.dim, s.exercise_todo);
+                        // Deux trous dans la même étape : le dire, sans
+                        // quoi on croit n'en avoir qu'un.
+                        if combien > 1 {
+                            ui.colored_label(theme.dim, format!("({combien})"));
+                        }
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(première).color(theme.warn))
+                                .truncate(),
+                        )
+                        .on_hover_text(consignes.join("\n"));
+                    });
+                }
                 self.goal_ui(ui);
             });
 
         if choisir {
             self.show_exercises = true;
+        }
+        if montrer_la_solution {
+            self.show_solution = true;
         }
         if let Some(suivant_id) = aller {
             self.load_exercise(&suivant_id);

@@ -79,6 +79,14 @@ impl Condition {
         &self.left
     }
 
+    /// Ce qu'on compare, et comment, et à quoi — les trois morceaux.
+    ///
+    /// Sert à RÉÉCRIRE une condition en clair : « RAX vaut 15 » plutôt
+    /// que « rax == 0xf ». Voir `condition_lisible`.
+    pub fn parts(&self) -> (&str, Comparison, &str) {
+        (&self.left, self.comparison, &self.right)
+    }
+
     /// Ce que les deux côtés valent en ce moment.
     ///
     /// `None` quand l'un des deux ne se calcule pas encore — un registre

@@ -5379,6 +5379,47 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
   endroit, fait croire à egui que la souris bouge encore — et une souris
   qui bouge n'ouvre aucune infobulle.
 
+- `[x]` **La séance précédente se redemande** — 11 novembre 2026
+  (A 9.91). namsdec rouvrait d'autorité le fichier et le binaire de la
+  veille. Au lancement, il pose maintenant la question : le nom de ce
+  qu'il rouvrirait, son **chemin complet** dessous, et combien d'autres
+  fichiers reviendraient avec. **Reprendre** ou **Repartir à neuf**, et
+  une case **Ne plus demander** qui retient la réponse qu'on vient de
+  donner. Le réglage — *Demander*, *Rouvrir*, *Ne pas rouvrir* — se
+  reprend aux Préférences, page Général.
+
+  **Le contrôle qui clique a trouvé ce que l'autre n'aurait pas vu** :
+  la case « ne plus demander » était une variable locale de la fenêtre,
+  recalculée à chaque image — on la cochait, elle se décochait toute
+  seule à l'image suivante. Un contrôle appelant la méthode de décision
+  serait passé au vert ; celui qui clique par `egui_kittest` est tombé
+  dessus du premier coup.
+
+- `[x]` **Quatre-vingt-dix-sept exercices ne demandaient rien** —
+  11 novembre 2026 (A 9.92). Mesuré en exécutant les cent dix-sept
+  étapes : sur les 101 qui posent un but, **97 l'atteignaient déjà
+  telles qu'elles étaient livrées**. On ouvrait l'étape, on cliquait
+  « Exécuter », la pastille passait au vert — sans avoir écrit une
+  ligne.
+
+  Chacune a maintenant un **trou** (« ; À FAIRE : … ») et une
+  **solution** rangée à côté dans la série. Un invariant exécute les
+  deux : le sujet s'assemble, rend la main et n'atteint pas le but ; la
+  solution l'atteint, dans le budget annoncé. **Trois buts étaient
+  faux** — « rax == 0x3c » mesuré juste après `mov rax, 60` — et un
+  quatrième était vrai avant le premier pas.
+
+  **L'interface** : le curseur se pose sur le trou, la bande dit ce
+  qu'il reste à écrire et l'efface à mesure, et la solution se demande
+  sans rien effacer ni coûter de score. **Et le but se lit en toutes
+  lettres au mode débutant** — « RAX vaut 15 » et non « rax == 0xf »,
+  comme la bande du bas qui dit déjà « RCX 3 → 2 ».
+
+  **La leçon de forme** : un trou dans une boucle emporte la boucle
+  entière, saut de retour compris. Huit squelettes partaient sinon en
+  boucle infinie — et c'est un contrôle plus ancien, plus exigeant que
+  le mien, qui l'a dit.
+
 ---
 
 ## Comment cette liste se tient

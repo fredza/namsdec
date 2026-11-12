@@ -693,6 +693,14 @@ struct NamsdecApp {
     /// `current_file` reste vide pour un binaire, exprès. Celui-ci sert
     /// à le retrouver au lancement suivant, et à rien d'autre.
     binary_path: Option<PathBuf>,
+    /// Ce qu'on fait, au lancement, du travail de la séance
+    /// précédente : réglage, donc enregistré — voir `Reprise`.
+    session_restore: Reprise,
+    /// La question posée au lancement, tant qu'on n'y a pas répondu.
+    ///
+    /// Vide dans tous les autres cas : une fois répondu, la séance est
+    /// reprise ou oubliée, et cette fenêtre ne revient pas de la séance.
+    reprise: Option<ReprisePossible>,
     /// Les noms et commentaires du binaire ouvert, et son empreinte.
     ///
     /// L'empreinte est celle du contenu : un fichier déplacé ou renommé
@@ -1186,6 +1194,14 @@ struct NamsdecApp {
     exercises: bool,
     /// La fenêtre qui liste les exercices.
     show_exercises: bool,
+    /// La fenêtre qui montre la solution de l'étape en cours.
+    ///
+    /// Chercher sans jamais pouvoir regarder la réponse n'apprend rien à
+    /// qui est bloqué : la solution est là, elle se demande, et la
+    /// regarder ne retire aucun score — c'est la règle que le parcours
+    /// s'est donnée le 10 novembre 2026 avec « Montrer » (A 9.89),
+    /// « demander une aide ne doit pas coûter un aveu ».
+    show_solution: bool,
     /// La calculatrice est-elle ouverte, et sur quoi ?
     ///
     /// L'expression survit à la fermeture de la fenêtre : on la rouvre
@@ -1968,6 +1984,31 @@ boucle:
     hlt                 ; arrête la machine en laissant les registres lisibles
 ";
 
+/// Ce que la séance précédente avait laissé ouvert, tant qu'on n'a pas
+/// dit si on le reprend.
+///
+/// Les chemins, et rien d'autre : ils sont déjà dans les réglages, et
+/// c'est là qu'on ira les chercher si la réponse est oui. On ne garde
+/// ici que de quoi POSER la question — nommer ce qu'on rouvrirait, et
+/// dire combien d'onglets reviendraient avec.
+#[derive(Clone)]
+struct ReprisePossible {
+    /// Ce qu'on nomme dans la question : le fichier source, ou le
+    /// binaire quand c'est lui qu'on travaillait.
+    quoi: PathBuf,
+    /// Combien d'AUTRES fichiers reviendraient avec. « Reprendre
+    /// `main.asm` » devant sept onglets en cache six.
+    autres: usize,
+    /// « Ne plus demander » est-il coché ?
+    ///
+    /// Tenu ici et non dans la fenêtre : celle-ci est redessinée à
+    /// chaque image, et une case dont l'état se recalcule à chaque fois
+    /// se décoche toute seule à l'image suivante. Le premier jet le
+    /// faisait, et le contrôle qui CLIQUE l'a montré — celui qui
+    /// appelait la méthode ne l'aurait jamais vu.
+    retenir: bool,
+}
+
 /// Ce qu'on s'apprête à faire, et qui effacerait le tampon.
 ///
 /// Gardé de côté le temps de demander : un programme qu'on vient
@@ -2194,6 +2235,7 @@ impl Default for NamsdecApp {
             debutant: false,
             exercises: false,
             show_exercises: false,
+            show_solution: false,
             show_calculator: false,
             calc_input: String::new(),
             calculator_was_open: false,
@@ -2279,6 +2321,8 @@ impl Default for NamsdecApp {
             next_detail_addr: None,
             console_input: String::new(),
             binary_path: None,
+            session_restore: Reprise::Demander,
+            reprise: None,
             notes: notes::Notes::default(),
             notes_fingerprint: None,
             program_args: String::new(),
@@ -2755,7 +2799,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 23] {
+    fn window_states(&self) -> [(&'static str, bool); 25] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -2781,7 +2825,12 @@ impl NamsdecApp {
             ("analysis_window", self.show_analysis),
             ("calculator_window", self.show_calculator),
             ("exercises_window_v2", self.exercises && self.show_exercises),
+            (
+                "exercise_solution",
+                self.exercises && self.show_solution && self.exercise_solution().is_some(),
+            ),
             ("unsaved_changes", self.pending.is_some()),
+            ("session_resume", self.reprise.is_some()),
             ("command_palette", self.command_palette.is_some()),
             (INPUT_DIALOG, self.show_input_dialog),
             (PATCHES_WINDOW, self.show_patches),
@@ -3788,10 +3837,16 @@ impl NamsdecApp {
             self.calculator_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
+                self.solution_window_ui(&ctx);
             }
             self.command_palette_ui(&ctx);
             self.patches_window_ui(&ctx);
             self.unsaved_window_ui(&ctx);
+            // La question du lancement, juste devant celle qui protège
+            // un travail non enregistré : elle est posée avant que l'on
+            // ait pu écrire quoi que ce soit, et elle est la seule
+            // raison pour laquelle l'écran est vide.
+            self.reprise_window_ui(&ctx);
             // En dernier : c'est la seule fenêtre qui réclame une
             // réponse, elle passe donc devant toutes les autres.
             self.input_dialog_ui(&ctx);

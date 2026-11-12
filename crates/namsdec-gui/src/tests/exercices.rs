@@ -174,8 +174,9 @@ fn an_installed_pack_joins_the_built_in_one() {
     assert!(!app.source.contains("add rax"), "c'est bien le mien");
     app.load_exercise("namsdec/boucle");
     assert!(
-        app.source.contains("add rax, rcx"),
-        "et celui d'origine aussi"
+        app.source.contains("Une boucle qui compte"),
+        "et celui d'origine aussi : {}",
+        app.source
     );
 
     // Retirée, elle disparaît de la liste et du disque.
@@ -318,18 +319,24 @@ fn the_new_steps_of_the_course_keep_their_promise() {
         app
     }
     let pack = builtin_pack();
-    let code = |id: &str| pack.by_id(id).expect("l'étape existe").starter_code.clone();
+    // DEUX LECTURES, ET ELLES NE DISENT PAS LA MÊME CHOSE depuis le
+    // 11 novembre 2026 : le code LIVRÉ a un trou — c'est ce qui en fait
+    // un exercice —, la SOLUTION est le programme entier. Ce qui est
+    // promis se vérifie sur la seconde ; ce que l'élève voit en
+    // ouvrant, sur la première.
+    let fini = |id: &str| programme_éprouvé(pack.by_id(id).expect("l'étape existe")).to_owned();
+    let livré = |id: &str| pack.by_id(id).expect("l'étape existe").starter_code.clone();
 
     // L'ordre des octets : le premier en mémoire est celui de poids
     // faible, le dernier celui de poids fort.
-    let app = exécute(&code("boutisme"));
+    let app = exécute(&fini("boutisme"));
     let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
     assert_eq!(regs.get64(Reg64::Rax), 0x1122334455667788);
     assert_eq!(regs.get64(Reg64::Rcx), 0x88);
     assert_eq!(regs.get64(Reg64::Rdx), 0x11);
 
     // Signé ou non : sur la même comparaison, `ja` saute et `jg` non.
-    let app = exécute(&code("signe"));
+    let app = exécute(&fini("signe"));
     let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
     assert_eq!(
         regs.get64(Reg64::Rcx),
@@ -340,7 +347,7 @@ fn the_new_steps_of_the_course_keep_their_promise() {
 
     // La division part sur un refus — c'est l'énoncé —, et la
     // correction que l'énoncé demande donne le quotient et le reste.
-    let app = exécute(&code("division"));
+    let app = exécute(&livré("division"));
     assert!(
         matches!(app.status, Status::Error(_)),
         "le quotient ne tient pas dans 64 bits : {:?}",
@@ -352,7 +359,7 @@ fn the_new_steps_of_the_course_keep_their_promise() {
         unreachable!()
     };
     assert!(message.contains("moitié haute du dividende"), "{message}");
-    let corrigé = code("division").replace("mov rdx, 99", "xor rdx, rdx");
+    let corrigé = fini("division");
     let app = exécute(&corrigé);
     let regs = &app.emulator.as_ref().expect("chargé").cpu().regs;
     assert_eq!(regs.get64(Reg64::Rax), 7, "le quotient de 45 par 6");
@@ -570,7 +577,7 @@ fn the_exercises_deliver_what_they_promise() {
             .unwrap_or_else(|| panic!("l'exercice {id} existe"));
 
         let mut app = NamsdecApp {
-            source: exercise.starter_code.clone(),
+            source: programme_éprouvé(exercise).to_owned(),
             ..Default::default()
         };
         app.do_assemble();
@@ -944,6 +951,12 @@ fn an_exercise_says_whether_its_goal_is_reached() {
     );
     assert!(!atteint, "le programme n'a pas encore tourné");
 
+    // LA SOLUTION DANS L'ÉDITEUR : le programme livré a un trou, et
+    // c'est la boucle elle-même. Ce qu'on vérifie ici, c'est que le
+    // verdict passe au vert quand le travail est fait.
+    charge_la_solution(&mut app, "namsdec/boucle");
+    app.do_assemble();
+
     // Il tourne, et le but est atteint : 5+4+3+2+1 = 15.
     app.do_run();
     for _ in 0..50 {
@@ -968,184 +981,45 @@ fn an_exercise_says_whether_its_goal_is_reached() {
     );
 }
 
-/// Chaque but annoncé se lit, et le programme livré est du bon côté :
-/// une démonstration l'atteint d'emblée, un travail ne l'atteint pas.
+/// Chaque but annoncé SE LIT, et il porte sur un registre que le
+/// programme touche.
 ///
-/// Un but qu'aucune exécution ne satisfait ferait mentir le verdict ; un
-/// but déjà atteint dans un exercice à faire ne demanderait rien. Les
-/// deux listes disent donc, noir sur blanc, ce que chaque étape attend
-/// de celui qui la fait.
+/// Un but qu'on ne sait pas analyser ne dira jamais « atteint », quoi
+/// qu'on écrive, et personne ne saura pourquoi.
+///
+/// CE CONTRÔLE PORTAIT AUSSI DEUX LISTES — quatre-vingt-dix-sept
+/// « démonstrations » dont le but était atteint d'emblée, quatre
+/// « à faire » qui demandaient un geste. Elles disaient la vérité, et
+/// c'était le défaut : quatre-vingt-dix-sept étapes du parcours
+/// n'avaient rien à faire faire. Elles ont toutes un trou maintenant, et
+/// c'est `chaque_exercice_a_quelque_chose_a_faire_et_une_solution_qui_marche`
+/// qui le tient — en EXÉCUTANT les deux versions, plutôt qu'en tenant
+/// une liste de noms à jour à la main.
 #[test]
 fn every_goal_is_readable_and_on_the_right_side() {
-    for exercise in &builtin_pack().exercises {
+    let pack = builtin_pack();
+    let mut avec_but = 0;
+    for exercise in &pack.exercises {
         for texte in &exercise.goal {
+            let condition = condition::parse(texte)
+                .unwrap_or_else(|| panic!("{} : « {texte} » ne se lit pas", exercise.id));
+            // Le côté gauche nomme ce qu'on interroge : un registre, ou
+            // une adresse. Un but qui compare deux constantes serait vrai
+            // ou faux pour toujours.
+            let gauche = condition.left().to_lowercase();
             assert!(
-                condition::parse(texte).is_some(),
-                "{} : « {texte} » ne se lit pas",
+                gauche.chars().any(|c| c.is_ascii_alphabetic()),
+                "{} : « {texte} » n'interroge rien",
                 exercise.id
             );
+            avec_but += 1;
         }
     }
-    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
-        return;
-    }
-    // Ce que le programme livré fait déjà : on le regarde tourner et on
-    // comprend ce qui s'est passé.
-    const DÉMONSTRATIONS: [&str; 97] = [
-        "constantes",
-        "rotations",
-        "setcc",
-        "not_neg",
-        "division_signee",
-        "immediats",
-        "tableau_octets",
-        "memmove",
-        "remplir",
-        "bit_scan",
-        "adc_128",
-        "table_conversion",
-        "padding",
-        "concatener",
-        "premier_mot",
-        "recursion_terminale",
-        "tri_insertion",
-        "recherche_binaire",
-        "liste_chainee",
-        "transposee",
-        "simd_somme",
-        "flottants_conversion",
-        "table_ascii",
-        "afficher_signe",
-        "hexadecimal",
-        "incrementer",
-        "test_and",
-        "xchg_bswap",
-        "masques",
-        "min_max",
-        "pair_impair",
-        "occurrences",
-        "inverser_tableau",
-        "borne",
-        "puissances",
-        "somme_moyenne",
-        "longueur_chaine",
-        "inverser_chaine",
-        "compter_mots",
-        "pile_inverse",
-        "args_pile",
-        "pointeur_fonction",
-        "alignement",
-        "hexa_affichage",
-        "xor_chiffrement",
-        "somme_controle",
-        "canari",
-        "flottants_masque",
-        "boucle",
-        "lire_nombre",
-        "structure",
-        "tri",
-        "bits",
-        "memoire",
-        "tableau",
-        "chaine",
-        "appels",
-        "multiplier",
-        "boutisme",
-        "signe",
-        "chaines",
-        "cadre",
-        "tas",
-        "flottants",
-        "afficher",
-        "donnees",
-        "adresses",
-        "macros",
-        "recursion",
-        "echange",
-        "decalages",
-        "branchements",
-        "simd",
-        "zero",
-        "compteur",
-        "tailles",
-        "recherche",
-        "comparer_chaines",
-        "drapeaux",
-        "negatif",
-        "compter_bits",
-        "matrice",
-        "sans_branche",
-        "fibonacci",
-        "pile_locale",
-        "majuscules",
-        // La rétro-ingénierie : on regarde d'abord, et ce qu'on
-        // regarde tourne déjà. Seul `re_derouler` demande un geste.
-        "re_entete",
-        "re_chaines",
-        "re_position_adresse",
-        "re_comparaison",
-        "re_table_sauts",
-        "re_chaines_cachees",
-        "re_antidebogage",
-        "re_int3",
-        "re_entropie",
-        "re_gadget",
-        "re_un_octet",
-    ];
-    // Ce qu'il reste à faire : le but n'est pas atteint tant qu'on n'a
-    // pas écrit ce qui manque.
-    const À_FAIRE: [&str; 4] = ["pile", "division", "convention", "re_derouler"];
-
-    for (id, attendu) in DÉMONSTRATIONS
-        .iter()
-        .map(|id| (*id, true))
-        .chain(À_FAIRE.iter().map(|id| (*id, false)))
-    {
-        let mut app = NamsdecApp {
-            exercises: true,
-            exercise_packs: vec![builtin_pack()],
-            ..Default::default()
-        };
-        app.load_exercise(&format!("namsdec/{id}"));
-        app.do_assemble();
-        app.do_run();
-        for _ in 0..200 {
-            if !app.running {
-                break;
-            }
-            app.tick_run(&egui::Context::default());
-        }
-        let (conditions, atteint) = app
-            .exercise_goal()
-            .unwrap_or_else(|| panic!("{id} : aucun but"));
-        assert_eq!(
-            atteint,
-            attendu,
-            "{id} : {:?} — attendu {}",
-            conditions
-                .iter()
-                .map(|l| l.texte.as_str())
-                .collect::<Vec<_>>(),
-            if attendu {
-                "atteint d'emblée"
-            } else {
-                "à atteindre soi-même"
-            }
-        );
-    }
-
-    // Et chaque exercice du parcours est dans l'une des deux listes, ou
-    // n'a pas de but : personne n'est oublié en chemin.
-    for exercise in &builtin_pack().exercises {
-        let classé = DÉMONSTRATIONS.contains(&exercise.id.as_str())
-            || À_FAIRE.contains(&exercise.id.as_str());
-        assert_eq!(
-            classé,
-            !exercise.goal.is_empty(),
-            "{} : un but non classé, ou un classement sans but",
-            exercise.id
-        );
-    }
+    assert!(
+        avec_but > 100,
+        "{avec_but} conditions relevées : le contrôle regarde-t-il encore \
+         le parcours ?"
+    );
 }
 
 /// Un exercice réussi le reste : la pastille s'allume, le compte monte,
@@ -1166,7 +1040,9 @@ fn a_solved_exercise_stays_solved() {
     };
     assert!(app.exercises_done.is_empty(), "rien de fait au départ");
 
-    app.load_exercise("namsdec/boucle");
+    // Résolu, puisque c'est de cela qu'on parle : le sujet livré a un
+    // trou, et un exercice qu'on n'a pas fait ne se note pas.
+    charge_la_solution(&mut app, "namsdec/boucle");
     app.do_assemble();
     app.do_run();
     for _ in 0..50 {
@@ -1225,7 +1101,9 @@ fn the_five_new_steps_do_what_they_show() {
             exercise_packs: vec![builtin_pack()],
             ..Default::default()
         };
-        app.load_exercise(&format!("namsdec/{id}"));
+        // La solution, non le sujet : ce contrôle regarde ce que le
+        // programme FAIT.
+        charge_la_solution(&mut app, &format!("namsdec/{id}"));
         app.do_assemble();
         assert!(
             matches!(app.status, Status::AssembleOk),
@@ -1300,7 +1178,9 @@ fn the_five_later_steps_do_what_they_show() {
             exercise_packs: vec![builtin_pack()],
             ..Default::default()
         };
-        app.load_exercise(&format!("namsdec/{id}"));
+        // La solution, non le sujet : ce contrôle regarde ce que le
+        // programme FAIT.
+        charge_la_solution(&mut app, &format!("namsdec/{id}"));
         app.do_assemble();
         assert!(
             matches!(app.status, Status::AssembleOk),
@@ -1392,42 +1272,19 @@ fn every_budget_is_one_a_program_can_hold() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
     }
-    // Les deux exercices à faire : le budget vise la solution que
-    // l'énoncé demande, et la voici.
-    let corrections: [(&str, &str, &str); 4] = [
-        // La valeur que l'énoncé demande de trouver :
-        // ((0x1234 ^ 0x5a5a) + 7) * 3.
-        ("re_derouler", "mov rax, 0", "mov rax, 55647"),
-        ("division", "mov rdx, 99", "xor rdx, rdx"),
-        ("pile", "    hlt", "    xchg rax, rbx\n    hlt"),
-        // La fonction honnête : elle met RBX de côté et le rend.
-        (
-            "convention",
-            "triche:\n    mov rbx, 99",
-            "triche:\n    push rbx\n    mov rbx, 99",
-        ),
-    ];
-
-    // Tous les exercices, et non les seuls budgétés : un exercice qui
-    // n'atteint pas son propre but est un exercice faux, budget ou non.
+    // LA SOLUTION VIENT DU PACK, et non plus d'une table de
+    // corrections tenue ici.
+    //
+    // Quatre exercices avaient un trou, et ce contrôle portait leur
+    // correction en dur : « re_derouler → mov rax, 55647 ». Depuis le
+    // 11 novembre 2026 ils en ont CENT UN, et chacun livre sa solution
+    // dans le fichier de la série — où un contrôle l'exécute pour
+    // vérifier qu'elle tient. Recopier ici cent une corrections aurait
+    // fait deux vérités à tenir d'accord.
     for exercise in &builtin_pack().exercises {
         let budget = exercise.par.unwrap_or(u64::MAX);
-        let mut source = exercise.starter_code.clone();
-        for (id, avant, après) in corrections {
-            if exercise.id == id {
-                source = source.replace(avant, après);
-            }
-        }
-        // La deuxième moitié de la correction de « convention » : le
-        // `pop` qui rend ce que le `push` a mis de côté.
-        if exercise.id == "convention" {
-            source = source.replace(
-                "    add rax, rbx\n    ret",
-                "    add rax, rbx\n    pop rbx\n    ret",
-            );
-        }
         let mut app = NamsdecApp {
-            source,
+            source: programme_éprouvé(exercise).to_owned(),
             ..Default::default()
         };
         app.do_assemble();
@@ -1491,7 +1348,9 @@ fn the_score_of_an_exercise_is_what_it_costs() {
         exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
-    app.load_exercise("namsdec/boucle");
+    // La SOLUTION livrée : le sujet, lui, a un trou — il n'atteint pas
+    // le but, et un but non atteint ne marque aucun score.
+    charge_la_solution(&mut app, "namsdec/boucle");
     jouer(&mut app);
     let livrée = app.exercises_best.get("namsdec/boucle").copied();
     assert_eq!(livrée, Some(18), "le coût de la solution livrée");
@@ -1511,7 +1370,7 @@ _start:
     assert_eq!(mieux, Some(2), "le meilleur descend");
 
     // Une tentative plus longue ne remonte pas le score.
-    app.source = builtin_pack().by_id("boucle").unwrap().starter_code.clone();
+    charge_la_solution(&mut app, "namsdec/boucle");
     jouer(&mut app);
     assert_eq!(app.exercises_best.get("namsdec/boucle").copied(), Some(2));
 
@@ -1533,7 +1392,7 @@ fn the_cost_is_shown_next_to_the_goal() {
         exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
-    app.load_exercise("namsdec/boucle");
+    charge_la_solution(&mut app, "namsdec/boucle");
     app.do_assemble();
     app.do_run();
     for _ in 0..200 {
@@ -1650,9 +1509,9 @@ fn a_goal_true_before_running_scores_nothing() {
         exercise_packs: vec![builtin_pack()],
         ..Default::default()
     };
-    // « Mettre à zéro » : son but est vrai dès le départ, registres
-    // neufs.
-    app.load_exercise("namsdec/zero");
+    // « Mettre à zéro » : sa solution atteint le but, mais tant que
+    // rien n'a TOURNÉ, rien n'est noté.
+    charge_la_solution(&mut app, "namsdec/zero");
     app.do_assemble();
     paint(&mut app);
     assert!(
@@ -1670,19 +1529,19 @@ fn a_goal_true_before_running_scores_nothing() {
         app.tick_run(&egui::Context::default());
     }
     paint(&mut app);
-    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(7));
 
     // Et remettre à zéro ne vient pas écraser ce score par un zéro.
     app.dispatch(Action::Reset);
     paint(&mut app);
-    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(7));
 
     // Un programme arrêté en cours de route ne compte pas non plus : le
     // but est peut-être atteint, mais le programme n'est pas fini.
     app.dispatch(Action::Reset);
     app.do_step();
     paint(&mut app);
-    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(4));
+    assert_eq!(app.exercises_best.get("namsdec/zero").copied(), Some(7));
 }
 
 /// « Étape suivante » saute ce qui est déjà réussi, et la fenêtre sait
@@ -3014,9 +2873,11 @@ fn la_bande_de_l_exercice_porte_l_enonce_et_le_but() {
         tout.contains(&début),
         "l'énoncé de l'étape doit rester à l'écran, la fenêtre fermée — peint : {tout:.400}"
     );
+    // En toutes lettres : la bande de l'Établi est le mode débutant.
     assert!(
-        tout.contains("rax == 2") && tout.contains("rbx == 1"),
-        "les deux conditions du but doivent être peintes, chacune avec sa pastille"
+        tout.contains("RAX vaut 2") && tout.contains("RBX vaut 1"),
+        "les deux conditions du but doivent être peintes, chacune avec sa \
+         pastille — peint : {tout:.400}"
     );
     assert!(
         tout.contains(s.goal_reached),
@@ -3204,6 +3065,14 @@ fn au_plus_petit_ecran_l_etabli_montre_encore_du_code() {
         // Un programme assez long pour que la place soit le seul
         // facteur, et des lignes qu'on sait reconnaître.
         app.source = (1..=30).map(|n| format!("    nop ; ligne {n}\n")).collect();
+        // LA VUE REPART EN HAUT, et c'est la source posée ici qui
+        // l'exige : charger une étape amène la vue sur son TROU (voir
+        // `aller_au_trou`), et ce programme-ci n'est pas celui de
+        // l'étape — la ligne visée n'y désigne plus rien. Sans cela, on
+        // mesurait une vue défilée au hasard, dont la première ligne
+        // est coupée par le haut : une ligne de moins, pour une raison
+        // qui n'a rien à voir avec la place que prennent les bandes.
+        app.reprise_ligne = None;
         app.show_exercises = false;
 
         let mut lignes = 0;
@@ -3440,13 +3309,22 @@ fn le_constat_du_but_suit_la_langue_du_niveau() {
             sortie.textures_delta.clear();
         }
 
-        assert!(
-            peints.contains("rax == 2"),
-            "la condition reste telle que l'exercice l'a écrite"
-        );
+        // LA CONDITION SUIT LE NIVEAU, ELLE AUSSI, depuis le
+        // 11 novembre 2026. Elle restait « rax == 2 » des deux côtés —
+        // c'était le texte de l'auteur, et c'était l'argument. Mais au
+        // mode DÉBUTANT, trois règles de l'application s'y trouvaient
+        // enfreintes d'un coup : registres en majuscules, nombres en
+        // décimal sous le million (A 9.87), et rien d'écrit dans une
+        // syntaxe qu'on n'a pas encore apprise. Au mode avancé, rien ne
+        // change : c'est celle qu'on tape dans un point d'arrêt
+        // conditionnel.
         if débutant {
             assert!(
-                peints.contains("rax vaut 12"),
+                peints.contains("RAX vaut 2"),
+                "la condition se lit en toutes lettres : {peints:.600}"
+            );
+            assert!(
+                peints.contains("RAX vaut 12"),
                 "et le constat se dit en décimal, comme la bande du dernier pas : {peints:.600}"
             );
         } else {
@@ -3504,7 +3382,7 @@ fn la_cible_de_l_exercice_se_lit_avant_le_premier_essai() {
     }
 
     assert!(
-        peints.contains("rax == 2") && peints.contains("rbx == 1"),
+        peints.contains("RAX vaut 2") && peints.contains("RBX vaut 1"),
         "les deux conditions doivent se lire avant d'avoir rien lancé : {peints:?}"
     );
     assert!(
@@ -3605,4 +3483,341 @@ fn la_bande_du_resultat_porte_sa_rangee_de_saisie() {
         "la bande du résultat doit porter ce qu'elle porte :\n  {}",
         manquants.join("\n  ")
     );
+}
+
+/// UN EXERCICE QUI POSE UN BUT A QUELQUE CHOSE À FAIRE.
+///
+/// MESURÉ LE 11 NOVEMBRE 2026, ET C'EST LA RAISON DE CE CONTRÔLE : sur
+/// les cent une étapes qui posent un but, QUATRE-VINGT-DIX-SEPT
+/// l'atteignaient déjà telles qu'elles étaient livrées. On chargeait
+/// l'étape, on cliquait « Exécuter », la pastille passait au vert — sans
+/// avoir écrit une ligne. C'étaient des démonstrations commentées
+/// présentées comme des devoirs, et rien ne le disait.
+///
+/// TROIS CHOSES SONT VÉRIFIÉES, et chacune par l'ÉMULATEUR plutôt que
+/// par la forme du texte :
+///
+/// 1. le programme de départ s'assemble. Un exercice qui s'ouvre sur une
+///    erreur rouge n'invite personne à chercher ;
+/// 2. il n'atteint PAS le but. C'est ce qui empêche un exercice de
+///    redevenir une démonstration sans qu'on le voie ;
+/// 3. la solution, elle, l'atteint — et en exactement `par`
+///    instructions, puisque le budget est par définition celui de la
+///    solution livrée.
+///
+/// Une solution écrite à la main dans un fichier JSON est une
+/// affirmation ; passée à l'épreuve de l'émulateur, c'est un fait.
+///
+/// Sans nasm, le contrôle s'abstient : il n'y a alors rien à assembler,
+/// et crier l'absence d'un outil n'apprend rien sur les exercices.
+#[test]
+fn chaque_exercice_a_quelque_chose_a_faire_et_une_solution_qui_marche() {
+    if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+        return;
+    }
+    let packs = [builtin_pack()];
+    // Ce que l'émulateur dit d'un programme : s'assemble-t-il, le but
+    // est-il atteint, et combien d'instructions ont tourné.
+    let essaie = |programme: &str, id: &str| -> (bool, bool, u64) {
+        let mut app = NamsdecApp {
+            source: programme.to_owned(),
+            exercises: true,
+            exercise_packs: vec![builtin_pack()],
+            current_exercise: Some(id.to_owned()),
+            ..Default::default()
+        };
+        app.do_assemble();
+        if !matches!(app.status, Status::AssembleOk) {
+            return (false, false, 0);
+        }
+        app.do_run();
+        let ctx = egui::Context::default();
+        // Une boucle bornée : un exercice dont la solution ne rend pas
+        // la main est un défaut comme un autre, et il doit se voir ici
+        // plutôt que figer la suite.
+        for _ in 0..400 {
+            if !app.running {
+                break;
+            }
+            app.tick_run(&ctx);
+        }
+        let exécutées = app.emulator.as_ref().map(|e| e.executed()).unwrap_or(0);
+        // RENDRE LA MAIN, au sens où l'entend
+        // `every_program_we_ship_is_a_complete_program` : s'être arrêté,
+        // avoir buté sur une faute, ou attendre une entrée. « Ne tourne
+        // plus » ne suffit pas — l'exécution s'interrompt aussi sur sa
+        // propre borne, et un programme qui tourne sans fin passait
+        // alors pour sage.
+        let rendu = app.emulator.as_ref().is_some_and(|e| e.cpu().halted)
+            || matches!(app.status, Status::Error(_) | Status::WaitingForInput);
+        (
+            rendu,
+            matches!(app.exercise_goal(), Some((_, true))),
+            exécutées,
+        )
+    };
+
+    let mut travail = 0;
+    for exercice in &packs[0].exercises {
+        // Les démonstrations et les exercices de lecture n'ont rien à
+        // écrire : ils se regardent, ou se répondent.
+        if exercice.goal.is_empty() || exercice.question.is_some() {
+            assert!(
+                exercice.solution.is_none(),
+                "{} n'a rien à écrire et porte pourtant une solution",
+                exercice.id
+            );
+            continue;
+        }
+        travail += 1;
+        let id = namsdec_exercises::full_id(&packs[0], exercice);
+
+        // RENDRE LA MAIN FAIT PARTIE DU CONTRAT, et c'est ce qui
+        // manquait : huit squelettes creusés le 11 novembre 2026
+        // partaient en boucle sans fin, parce que le trou avait emporté
+        // le corps de la boucle en laissant le saut de retour. Un
+        // exercice qui, au premier « Exécuter », ne s'arrête jamais
+        // n'apprend rien — il fait douter de l'outil. Un trou dans une
+        // boucle emporte donc la boucle entière.
+        let (fini, atteint, _) = essaie(&exercice.starter_code, &id);
+        assert!(
+            fini,
+            "{} ne s'assemble pas, ou ne rend jamais la main, tel qu'il \
+             est livré : un exercice ne s'ouvre ni sur une erreur ni sur \
+             une boucle sans fin",
+            exercice.id
+        );
+        assert!(
+            !atteint,
+            "{} atteint son but SANS QU'ON AIT RIEN ÉCRIT : ce n'est pas \
+             un exercice, c'est une démonstration. Creusez-y un trou, ou \
+             retirez-lui son but.",
+            exercice.id
+        );
+
+        let solution = exercice
+            .solution
+            .as_deref()
+            .unwrap_or_else(|| panic!("{} a un but et pas de solution", exercice.id));
+        let (fini, atteint, coût) = essaie(solution, &id);
+        assert!(
+            fini,
+            "la solution de {} ne s'assemble pas, ou ne rend pas la main",
+            exercice.id
+        );
+        assert!(
+            atteint,
+            "la solution de {} n'atteint pas son propre but",
+            exercice.id
+        );
+        if let Some(budget) = exercice.par {
+            assert_eq!(
+                coût, budget,
+                "{} : le budget annoncé est {budget}, la solution livrée \
+                 en coûte {coût}. Le budget EST celui de la solution.",
+                exercice.id
+            );
+        }
+    }
+    assert!(
+        travail >= 100,
+        "le parcours n'a plus que {travail} étapes à faire : le relevé \
+         regarde-t-il encore quelque chose ?"
+    );
+}
+
+/// Le trou se voit, et il dit quoi faire.
+///
+/// Un programme amputé sans un mot est une panne, pas un exercice : on
+/// relit trois fois en cherchant l'erreur. La ligne « ; À FAIRE : » est
+/// la seule chose qui distingue les deux, et c'est elle que l'énoncé
+/// prolonge.
+#[test]
+fn chaque_trou_dit_ce_qu_il_attend() {
+    let pack = builtin_pack();
+    for exercice in &pack.exercises {
+        if exercice.solution.is_none() {
+            continue;
+        }
+        // LE DEUX-POINTS FAIT PARTIE DU MARQUEUR : « À FAIRE DANS
+        // NAMSDEC », en tête de plusieurs étapes de lecture, dit où
+        // regarder dans l'application et n'est pas un trou. Les
+        // confondre ferait passer pour annoncé un trou qui ne l'est
+        // pas.
+        let dit = exercice.starter_code.contains("À FAIRE :")
+            || exercice.starter_code.contains("À faire :");
+        assert!(
+            dit,
+            "{} a un trou que rien n'annonce : il manque une ligne \
+             « ; À FAIRE : … »",
+            exercice.id
+        );
+        // Et la solution, elle, n'en porte plus : une solution qui dit
+        // encore « à faire » est une solution qu'on n'a pas finie.
+        let solution = exercice.solution.as_deref().unwrap_or_default();
+        assert!(
+            !solution.contains("À FAIRE :") && !solution.contains("À faire :"),
+            "la solution de {} porte encore une consigne",
+            exercice.id
+        );
+    }
+}
+
+/// En ouvrant une étape, le curseur est SUR LE TROU, et la bande dit ce
+/// qu'il reste à écrire.
+///
+/// Un exercice s'ouvre sur une vingtaine de lignes dont une seule est à
+/// écrire. Sans ces deux repères, on lit l'énoncé, on regarde le
+/// programme, et l'on cherche OÙ — ce qui est le seul moment de
+/// l'exercice qui n'apprend rien.
+#[test]
+fn en_ouvrant_une_etape_le_curseur_est_sur_le_trou() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/boucle");
+
+    let ligne_du_trou = app
+        .source
+        .lines()
+        .position(|l| l.contains("À FAIRE :"))
+        .expect("l'étape a un trou")
+        + 1;
+    assert_eq!(
+        app.cursor_pos.0, ligne_du_trou,
+        "le curseur doit être sur la consigne : {:?}",
+        app.cursor_pos
+    );
+    assert_eq!(
+        app.reprise_ligne,
+        Some(ligne_du_trou as u32),
+        "et la vue doit l'y amener"
+    );
+
+    // La bande répète la consigne, en clair et sans son point-virgule.
+    let consignes = app.consignes_du_trou();
+    assert_eq!(consignes.len(), 1, "{consignes:?}");
+    assert!(
+        consignes[0].starts_with("le corps de la boucle"),
+        "{consignes:?}"
+    );
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.exercise_todo),
+        "la bande annonce ce qu'il reste à écrire : {painted}"
+    );
+
+    // ET ELLE S'EFFACE QUAND LE TRAVAIL EST FAIT : c'est ce qui en fait
+    // un retour vivant plutôt qu'un rappel de l'énoncé.
+    let fini = builtin_pack()
+        .by_id("boucle")
+        .and_then(|e| e.solution.clone())
+        .expect("une solution");
+    app.set_source(fini);
+    assert!(app.consignes_du_trou().is_empty());
+    let painted = paint(&mut app);
+    assert!(
+        !painted.contains(s.exercise_todo),
+        "plus rien à écrire, plus de mention : {painted}"
+    );
+}
+
+/// La solution se demande, et la regarder n'efface rien.
+///
+/// Chercher sans jamais pouvoir regarder la réponse n'apprend rien à qui
+/// est bloqué. Elle s'ouvre à côté — le programme qu'on a écrit reste
+/// dans l'éditeur, et aucun score n'est retiré.
+#[test]
+fn la_solution_se_demande_et_n_efface_rien() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/boucle");
+    let s = strings(app.lang);
+
+    // Le bouton est dans la bande de l'Établi.
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.exercise_solution),
+        "la bande porte le bouton : {painted}"
+    );
+
+    // Ce qu'on a écrit de son côté, avant de demander.
+    app.set_source("mon travail".to_owned());
+    app.show_solution = true;
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.exercise_solution_title),
+        "la fenêtre s'ouvre : {painted}"
+    );
+    assert!(
+        painted.contains("dec rcx"),
+        "et montre le programme entier : {painted}"
+    );
+    assert_eq!(app.source, "mon travail", "sans toucher à l'éditeur");
+
+    // Une démonstration n'en a pas : le bouton ne paraît pas.
+    app.show_solution = false;
+    app.load_exercise_now("namsdec/registres");
+    assert!(app.exercise_solution().is_none());
+    let painted = paint(&mut app);
+    assert!(
+        !painted.contains(s.exercise_solution),
+        "rien à écrire, rien à montrer : {painted}"
+    );
+}
+
+/// Le but se lit en toutes lettres au mode débutant, et en syntaxe de
+/// point d'arrêt au mode avancé.
+///
+/// Relevé à l'écran le 11 novembre 2026 : la bande du bas disait
+/// « RCX 3 → 2 » pendant que le but, trois centimètres plus haut,
+/// disait « rax == 0xf ». Deux façons d'écrire la même chose sur un même
+/// écran — et c'est le mode qui se veut le plus clair qui portait la
+/// plus obscure.
+#[test]
+fn le_but_se_lit_en_toutes_lettres_au_mode_debutant() {
+    // La réécriture, seule : majuscules, opérateur en mots, décimal.
+    assert_eq!(
+        condition_lisible("rax == 0xf", true, Lang::Fr),
+        "RAX vaut 15"
+    );
+    assert_eq!(
+        condition_lisible("rbx != 0x10", true, Lang::Fr),
+        "RBX n'est pas 16"
+    );
+    assert_eq!(condition_lisible("rax == 0xf", true, Lang::En), "RAX is 15");
+    // Au mode avancé, la condition reste celle qu'on taperait dans un
+    // point d'arrêt conditionnel.
+    assert_eq!(
+        condition_lisible("rax == 0xf", false, Lang::Fr),
+        "rax == 0xf"
+    );
+    // Une expression ne se traduit pas : la calculer ferait dire au but
+    // autre chose que ce que son auteur a écrit.
+    assert_eq!(
+        condition_lisible("[rsp] == rbx + 1", true, Lang::Fr),
+        "[RSP] vaut rbx + 1"
+    );
+    // Et ce qui ne se lit pas est laissé tel quel, plutôt que perdu.
+    assert_eq!(condition_lisible("", true, Lang::Fr), "");
+
+    // À l'écran : la cible de l'étape, avant même d'avoir rien lancé.
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/boucle");
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains("RAX vaut 15"),
+        "le but doit se lire en clair : {painted}"
+    );
+    assert!(
+        !painted.contains("rax == 0xf"),
+        "et pas dans les deux écritures à la fois : {painted}"
+    );
+
+    // Au mode avancé, la fenêtre des exercices montre la syntaxe.
+    app.debutant = false;
+    app.show_exercises = true;
+    let painted = paint(&mut app);
+    assert!(painted.contains("rax == 0xf"), "{painted}");
 }

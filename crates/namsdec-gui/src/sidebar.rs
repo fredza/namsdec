@@ -588,10 +588,15 @@ impl NamsdecApp {
             if let Some(cibles) = self.exercise_targets() {
                 ui.add_space(4.0);
                 ui.colored_label(theme.dim, s.goal_ahead);
+                let débutant = self.niveau() == namsdec_re::Niveau::Débutant;
                 for cible in cibles {
                     ui.horizontal_wrapped(|ui| {
                         ui.add_space(16.0);
-                        ui.colored_label(theme.dim, egui::RichText::new(cible).monospace());
+                        ui.colored_label(
+                            theme.dim,
+                            egui::RichText::new(condition_lisible(&cible, débutant, self.lang))
+                                .monospace(),
+                        );
                     });
                 }
             }
@@ -641,7 +646,8 @@ impl NamsdecApp {
                 }
                 ui.colored_label(
                     if ligne.tenue { theme.good } else { theme.text },
-                    egui::RichText::new(&ligne.texte).monospace(),
+                    egui::RichText::new(condition_lisible(&ligne.texte, débutant, self.lang))
+                        .monospace(),
                 );
                 if let Some((gauche, valeur)) = &ligne.constat {
                     // LE CONSTAT SUIT LA MÊME RÈGLE QUE LE DERNIER
@@ -657,10 +663,20 @@ impl NamsdecApp {
                     // L'A ÉCRITE (`rax == 0xf`) : c'est son texte, pas
                     // le nôtre, et la réécrire ferait dire à l'énoncé
                     // autre chose que ce que son auteur a tapé.
+                    // LE MÊME NOM QUE DANS LA CONDITION, à la même
+                    // casse : celle-ci s'écrit « RAX vaut 15 » au
+                    // niveau débutant, et le constat disait « rax vaut
+                    // 0 » juste à côté. Deux écritures du même registre
+                    // sur une seule ligne.
+                    let nom = if débutant {
+                        gauche.to_uppercase()
+                    } else {
+                        gauche.clone()
+                    };
                     ui.colored_label(
                         theme.warn,
                         egui::RichText::new(format!(
-                            "{gauche} {} {}",
+                            "{nom} {} {}",
                             s.goal_is,
                             nombre_lisible(*valeur, débutant)
                         ))
@@ -725,7 +741,10 @@ impl NamsdecApp {
             );
             ui.colored_label(theme.dim, format!("/ {budget}"));
             if let Some(meilleur) = meilleur {
-                ui.colored_label(theme.dim, format!("{} {meilleur}", s.par_best));
+                // Le point médian sépare, comme partout ailleurs dans
+                // l'application : « 0 / 13 meilleur 13 » se lisait
+                // comme une seule suite de nombres.
+                ui.colored_label(theme.dim, format!("·  {} {meilleur}", s.par_best));
             }
         })
         .response
@@ -4380,6 +4399,64 @@ pub(crate) fn nombre_lisible(valeur: u64, débutant: bool) -> String {
     } else {
         format!("{valeur:#x}")
     }
+}
+
+/// Une condition de but, écrite pour être LUE au niveau débutant.
+///
+/// « rax == 0xf » devient « RAX vaut 15 ». Trois choses changent, et
+/// chacune parce que le reste de l'interface la dit déjà ainsi :
+///
+/// - le registre en MAJUSCULES, comme le bandeau, la bande du dernier
+///   pas et toutes les infobulles ;
+/// - l'opérateur en toutes lettres, comme « ZF veut dire “c'était
+///   zéro” » ;
+/// - le nombre en décimal sous le million, comme « RCX 3 → 2 » de la
+///   bande du bas (A 9.87).
+///
+/// Relevé à l'écran le 11 novembre 2026 : la bande du bas disait
+/// « RCX 3 → 2 » pendant que le but, trois centimètres plus haut,
+/// disait « rax == 0xf ». Deux façons d'écrire la même chose sur un
+/// même écran, et c'est le mode qui se veut le plus clair qui portait
+/// la plus obscure.
+///
+/// AU MODE AVANCÉ, RIEN NE CHANGE : la condition s'y lit telle que
+/// l'exercice l'a écrite, dans la grammaire des points d'arrêt — c'est
+/// celle qu'on tape soi-même dans le champ d'un point d'arrêt
+/// conditionnel, et la réécrire ferait croire à une autre syntaxe.
+pub(crate) fn condition_lisible(texte: &str, débutant: bool, lang: Lang) -> String {
+    if !débutant {
+        return texte.to_owned();
+    }
+    let Some(condition) = condition::parse(texte) else {
+        return texte.to_owned();
+    };
+    let (gauche, comparaison, droite) = condition.parts();
+    let fr = lang == Lang::Fr;
+    let mot = match (comparaison, fr) {
+        (condition::Comparison::Equal, true) => "vaut",
+        (condition::Comparison::Equal, false) => "is",
+        (condition::Comparison::NotEqual, true) => "n'est pas",
+        (condition::Comparison::NotEqual, false) => "is not",
+        (condition::Comparison::Less, true) => "est plus petit que",
+        (condition::Comparison::Less, false) => "is less than",
+        (condition::Comparison::LessOrEqual, true) => "vaut au plus",
+        (condition::Comparison::LessOrEqual, false) => "is at most",
+        (condition::Comparison::Greater, true) => "est plus grand que",
+        (condition::Comparison::Greater, false) => "is greater than",
+        (condition::Comparison::GreaterOrEqual, true) => "vaut au moins",
+        (condition::Comparison::GreaterOrEqual, false) => "is at least",
+    };
+    // Le côté droit est réécrit en décimal quand c'est un NOMBRE écrit
+    // en hexadécimal. Une expression — « rbx + 1 », « [rsp] » — est
+    // laissée telle quelle : la traduire demanderait de la calculer, et
+    // ce que le but annonce doit rester ce que l'auteur a écrit.
+    let droite_lisible = match crate::calc::eval_with(droite, None, None) {
+        Ok(valeur) if droite.starts_with("0x") || droite.starts_with("0b") => {
+            nombre_lisible(valeur, true)
+        }
+        _ => droite.to_owned(),
+    };
+    format!("{} {mot} {droite_lisible}", gauche.to_uppercase())
 }
 
 /// Le nom plein d'un indicateur, et ce qu'il raconte.

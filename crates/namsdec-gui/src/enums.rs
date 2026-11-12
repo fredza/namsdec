@@ -786,3 +786,52 @@ impl VueCentrale {
         !matches!(self, VueCentrale::Source)
     }
 }
+
+/// Ce qu'on fait, au lancement, du travail de la séance précédente.
+///
+/// namsdec rouvrait d'autorité le fichier et le binaire qu'on avait
+/// quittés. C'est commode quand on reprend le même travail, et c'est
+/// faux dès qu'on ouvre namsdec pour autre chose : on tombe sur
+/// vingt mille lignes de désassemblage d'hier, qu'il faut d'abord
+/// fermer. Demandé le 11 novembre 2026 — « le fichier déjà ouvert lors
+/// de la précédente ouverture doit être redemandé à être ou ne pas être
+/// ouvert ».
+///
+/// Trois réponses, parce qu'il y en a trois : demander à chaque fois,
+/// reprendre sans rien demander, ne jamais reprendre. Les deux
+/// dernières se posent depuis la question elle-même — « ne plus
+/// demander » — et se reprennent aux Préférences.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reprise {
+    /// La question est posée au lancement : c'est le défaut.
+    Demander,
+    Toujours,
+    Jamais,
+}
+
+impl Reprise {
+    pub(crate) const ALL: [Reprise; 3] = [Reprise::Demander, Reprise::Toujours, Reprise::Jamais];
+
+    pub(crate) fn label(self, s: &Strings) -> &'static str {
+        match self {
+            Reprise::Demander => s.session_restore_ask,
+            Reprise::Toujours => s.session_restore_always,
+            Reprise::Jamais => s.session_restore_never,
+        }
+    }
+
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            Reprise::Demander => "ask",
+            Reprise::Toujours => "always",
+            Reprise::Jamais => "never",
+        }
+    }
+
+    pub(crate) fn by_id(id: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .find(|quoi| quoi.id() == id)
+            .unwrap_or(Reprise::Demander)
+    }
+}
