@@ -2128,8 +2128,14 @@ fn les_menus_se_graduent_sans_se_contredire() {
         textes.into_iter().map(|(t, _)| t).collect()
     };
     let établi = écrit_au_mode_simple();
+    // « Ouvrir » S'ÉCRIT COURT DANS CETTE BARRE, et c'est la place qui
+    // l'impose : six gestes et sept portes sur une rangée, et
+    // « Ouvrir un fichier… » faisait se recouvrir les deux groupes à
+    // 1600 pixels (16 novembre 2026). Le mot entier reste au survol et
+    // dans le menu Fichier du mode avancé. Ce qu'on vérifie ici est
+    // qu'une PORTE existe, non qu'elle porte le libellé long.
     for porte in [
-        s.file_open_file,
+        s.file_open_short,
         s.action_save,
         s.menu_help,
         s.exercises_open,

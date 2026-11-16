@@ -972,15 +972,29 @@ quelquepart:
 /// la dernière instruction a produit.
 #[test]
 fn a_register_is_set_by_hand() {
-    // Ce qu'on tape : de l'hexadécimal, comme ce qu'on lit à l'écran.
-    assert_eq!(parse_register_value("1f"), Some(0x1f));
-    assert_eq!(parse_register_value("0x1F"), Some(0x1f));
-    assert_eq!(parse_register_value("dead_beef"), Some(0xdeadbeef));
+    // AU MODE AVANCÉ, de l'hexadécimal — comme ce qu'on lit à l'écran.
+    assert_eq!(parse_register_value("1f", false), Some(0x1f));
+    assert_eq!(parse_register_value("0x1F", false), Some(0x1f));
+    assert_eq!(parse_register_value("dead_beef", false), Some(0xdeadbeef));
     // Un moins donne le complément à deux : « mets -1 » est la façon
     // dont on le pense.
-    assert_eq!(parse_register_value("-1"), Some(u64::MAX));
-    assert_eq!(parse_register_value(""), None);
-    assert_eq!(parse_register_value("zz"), None);
+    assert_eq!(parse_register_value("-1", false), Some(u64::MAX));
+    assert_eq!(parse_register_value("", false), None);
+    assert_eq!(parse_register_value("zz", false), None);
+
+    // AU NIVEAU DÉBUTANT, ce qu'on tape est lu comme ce qu'on lit : le
+    // volet y écrit « 55 » en clair, et le champ s'ouvre de même. Lire
+    // 0x55 sous une saisie de « 55 » serait comprendre autre chose que
+    // ce qu'on montre — relevé le 16 novembre 2026 en même temps que
+    // le focus qui empêchait toute validation.
+    assert_eq!(parse_register_value("55", true), Some(55));
+    assert_eq!(parse_register_value("10", true), Some(10));
+    // Et `0x` tranche des deux côtés : c'est le préfixe qui dit la
+    // base, et celui qui l'écrit sait ce qu'il demande.
+    assert_eq!(parse_register_value("0x55", true), Some(0x55));
+    assert_eq!(parse_register_value("-1", true), Some(u64::MAX));
+    // Ce qui n'est pas un nombre décimal n'en devient pas un.
+    assert_eq!(parse_register_value("ff", true), None);
 
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
         return;
@@ -2592,4 +2606,130 @@ fn les_legendes_du_volet_tiennent_en_deux_lignes() {
             );
         }
     }
+}
+
+/// POSER UN REGISTRE À LA MAIN MARCHE VRAIMENT — éprouvé en cliquant,
+/// en tapant et en validant.
+///
+/// Le contrôle d'à côté vérifiait la LECTURE de ce qu'on tape, et il
+/// passait au vert pendant que le geste entier ne faisait rien : le
+/// champ redemandait le focus à chaque image, si bien qu'il ne le
+/// perdait jamais — et `lost_focus()`, qui valide la saisie, n'arrivait
+/// jamais non plus. « La modification des registres n'est pas
+/// effective » (16 novembre 2026).
+///
+/// C'est la même leçon que la case « ne plus demander » du 11 novembre :
+/// un contrôle qui appelle la méthode serait passé au vert ; celui qui
+/// clique tombe dessus du premier coup.
+#[test]
+fn un_registre_se_pose_vraiment_a_la_main() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+    use namsdec_core::{Cpu, Memory};
+
+    const BASE: u64 = 0x40_0000;
+    let mut mem = Memory::new(BASE, 0x1000);
+    mem.load(BASE, &[0xf4]).expect("un hlt se charge");
+    let mut cpu = Cpu::new(mem);
+    cpu.regs.rip = BASE;
+    cpu.regs.set64(Reg64::Rcx, 5);
+    let app = NamsdecApp {
+        debutant: true,
+        emulator: Some(Box::new(namsdec_emu::Emulator::new(cpu))),
+        ..Default::default()
+    };
+
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+
+    // La valeur se clique : au niveau débutant elle s'écrit en clair,
+    // et c'est ce texte-là qu'on vise.
+    let cible = format!("{:>16}", 5);
+    harness.get_by_label(cible.as_str()).click();
+    harness.run();
+    assert!(
+        harness.state().editing_register.is_some(),
+        "le champ s'ouvre sur la valeur cliquée"
+    );
+
+    // ON TAPE VRAIMENT, et c'est le sujet : « fais pour que le registre
+    // soit enregistré par Entrée ». Poser la chaîne dans l'état de
+    // l'application sauterait le chemin du clavier, c'est-à-dire
+    // exactement ce qui ne marchait pas — le champ reprenait le focus
+    // à chaque image, et les frappes allaient quelque part sans que la
+    // validation n'arrive jamais.
+    //
+    // Le champ s'ouvre sur la valeur d'aujourd'hui (« 5 ») : on
+    // l'efface d'un retour arrière avant d'écrire la nouvelle.
+    harness.key_press(egui::Key::Backspace);
+    harness.run();
+    harness
+        .input_mut()
+        .events
+        .push(egui::Event::Text("12".to_owned()));
+    harness.run();
+    harness.key_press(egui::Key::Enter);
+    harness.run();
+    harness.run();
+
+    let app = harness.state();
+    assert!(
+        app.editing_register.is_none(),
+        "le champ se referme une fois validé"
+    );
+    assert_eq!(
+        app.emulator
+            .as_ref()
+            .map(|e| e.cpu().regs.get64(Reg64::Rcx)),
+        Some(12),
+        "ET LA VALEUR EST POSÉE — en décimal, comme le volet l'écrit"
+    );
+}
+
+/// LE NOM DU FICHIER DONNE SON CHEMIN AU PRESSE-PAPIERS.
+///
+/// Demandé le 16 novembre 2026 : « tronquer le nom du fichier ouvert
+/// […] avec une infobulle donnant le chemin complet et l'enregistrer
+/// dans le presse-papier ». L'infobulle MONTRE le chemin depuis le
+/// 11 novembre ; elle ne le donne pas, et on le recopiait en le lisant.
+#[test]
+fn le_nom_du_fichier_copie_son_chemin() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let chemin = std::path::PathBuf::from("/tmp/un-dossier-assez-long/mon-programme.asm");
+    let app = NamsdecApp {
+        debutant: true,
+        current_file: Some(chemin.clone()),
+        ..Default::default()
+    };
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1400.0, 900.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+
+    // Le nom est abrégé s'il est long, et c'est lui qu'on clique.
+    let abrégé = crate::etabli::nom_abrégé("mon-programme.asm", crate::etabli::NOM_MAX);
+    harness.get_by_label(abrégé.as_str()).click();
+    harness.run();
+
+    // Ce que l'application a mis dans le presse-papiers : le statut le
+    // dit aussi, et c'est lui qu'on lit — la commande de copie est
+    // consommée par le dos d'egui dès la frame suivante.
+    // LA NOTE EST LA PREUVE : `path_copied` n'est posé QUE par la
+    // branche qui vient d'appeler `copy_text` avec le chemin complet.
+    // La commande de copie elle-même est consommée par le dos d'egui à
+    // la frame suivante, et ne se relit pas d'ici.
+    let app = harness.state();
+    let note = match &app.status {
+        Status::Note(texte) => texte(strings(app.lang)),
+        autre => panic!("le clic doit répondre : {autre:?}"),
+    };
+    assert_eq!(
+        note,
+        strings(app.lang).path_copied,
+        "le clic met le chemin complet dans le presse-papiers"
+    );
 }

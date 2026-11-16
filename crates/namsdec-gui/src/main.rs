@@ -1215,6 +1215,21 @@ struct NamsdecApp {
     /// réclamé est une réponse soufflée. Remis à zéro à chaque étape
     /// chargée — c'est l'étape qu'on cherche, pas la séance.
     indice_montré: bool,
+    /// Le champ d'édition d'un registre a-t-il déjà reçu le focus ?
+    ///
+    /// Redemandé à chaque image, le focus est repris aussitôt après
+    /// avoir été perdu, et `lost_focus()` — qui valide la saisie —
+    /// n'arrive jamais : on tapait une valeur, on appuyait sur Entrée,
+    /// et rien ne se passait.
+    editing_register_focused: bool,
+    /// L'étape en cours doit repartir de son programme de départ.
+    ///
+    /// Relevé pendant le rendu de la bande, appliqué après : la rangée
+    /// emprunte `self` en lecture pour se peindre, et recommencer
+    /// l'écrit.
+    recommencer: bool,
+    /// La question « tout remettre à zéro ? » est-elle posée ?
+    show_exercises_reset: bool,
     /// La calculatrice est-elle ouverte, et sur quoi ?
     ///
     /// L'expression survit à la fermeture de la fenêtre : on la rouvre
@@ -2329,6 +2344,9 @@ impl Default for NamsdecApp {
             show_exercises: false,
             show_solution: false,
             indice_montré: false,
+            editing_register_focused: false,
+            recommencer: false,
+            show_exercises_reset: false,
             show_calculator: false,
             calc_input: String::new(),
             calculator_was_open: false,
@@ -2898,7 +2916,7 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 25] {
+    fn window_states(&self) -> [(&'static str, bool); 26] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
@@ -2924,6 +2942,10 @@ impl NamsdecApp {
             ("analysis_window", self.show_analysis),
             ("calculator_window", self.show_calculator),
             ("exercises_window_v2", self.exercises && self.show_exercises),
+            (
+                "exercises_reset",
+                self.exercises && self.show_exercises_reset,
+            ),
             (
                 "exercise_solution",
                 self.exercises && self.show_solution && self.exercise_solution().is_some(),
@@ -3936,6 +3958,7 @@ impl NamsdecApp {
             self.calculator_window_ui(&ctx);
             if self.exercises {
                 self.exercises_window_ui(&ctx);
+                self.exercises_reset_window_ui(&ctx);
                 self.solution_window_ui(&ctx);
             }
             self.command_palette_ui(&ctx);
@@ -4092,6 +4115,70 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
         }
     }
     job
+}
+
+/// La même prose, mais dont les instructions MÈNENT À LEUR FICHE.
+///
+/// **Le défaut qu'elle corrige.** Un énoncé écrit « `xchg` le fait en
+/// une instruction » : le mot est peint en violet, c'est-à-dire comme
+/// du code, et il ne dit pas ce qu'il fait. Relevé le 16 novembre
+/// 2026 : « dans l'énoncé, une instruction ne dit pas ce qu'elle
+/// fait ». Les cent quatre-vingt-neuf fiches existaient, l'indice y
+/// menait depuis le 12 novembre, et l'énoncé — qu'on lit AVANT
+/// l'indice — n'y menait pas.
+///
+/// **Pourquoi une fonction à part et non `prose`.** Un `LayoutJob` est
+/// un texte : il se peint d'un bloc et ne reçoit pas de clic. Rendre un
+/// mot cliquable demande un widget par morceau, donc une rangée qui
+/// enveloppe — ce qui coûte un peu de finesse dans le retour à la
+/// ligne, et c'est pourquoi `prose` reste employée partout où rien
+/// n'est à cliquer.
+///
+/// **Seuls les mnémoniques connus se cliquent.** `section .text` ou
+/// `0x3c` entre accents graves restent du code inerte : un trait sous
+/// ce qui ne mène nulle part est une promesse de plus (A 9.89).
+fn prose_avec_fiches(
+    ui: &mut egui::Ui,
+    theme: &'static Theme,
+    lang: Lang,
+    text: &str,
+) -> Option<String> {
+    let mut demandée = None;
+    ui.horizontal_wrapped(|ui| {
+        // Le blanc entre deux widgets est celui d'un espace : sans
+        // cela, « `xchg` le fait » se lit « xchg  le fait » ou
+        // « xchgle fait » selon le thème.
+        ui.spacing_mut().item_spacing.x = 3.0;
+        for (index, part) in text.split('`').enumerate() {
+            if part.is_empty() {
+                continue;
+            }
+            if index % 2 == 0 {
+                ui.label(prose(ui, theme, part));
+                continue;
+            }
+            // Un morceau de code : cliquable s'il nomme une
+            // instruction, inerte sinon.
+            let premier = part.split_whitespace().next().unwrap_or_default();
+            let fiche = namsdec_doc::lookup(&premier.to_ascii_lowercase())
+                .filter(|entry| entry.kind == namsdec_doc::Kind::Instruction);
+            let texte = egui::RichText::new(part).monospace().color(theme.mnemonic);
+            match fiche {
+                Some(_) => {
+                    if cliquable(ui, egui::Label::new(texte))
+                        .on_hover_text(strings(lang).help_open_sheet)
+                        .clicked()
+                    {
+                        demandée = Some(premier.to_ascii_lowercase());
+                    }
+                }
+                None => {
+                    ui.label(texte);
+                }
+            }
+        }
+    });
+    demandée
 }
 
 /// Pose un morceau de prose en rendant ses `*emphases*` simples.

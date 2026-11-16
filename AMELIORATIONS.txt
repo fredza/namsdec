@@ -12549,3 +12549,209 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      pendant que la capture montrait « RBX vaut 1 — il vaut 2 » tranché
      par le bas. Il assemble et exécute maintenant le programme de
      l'étape, comme le banc.
+
+9.99 [FAIT] TROIS CHOSES COURTES SUR TROIS LIGNES, DANS UNE BANDE QUI
+     FAIT DEUX MILLE PIXELS
+
+     Relevé à l'écran le 16 novembre 2026, une flèche sur le bloc
+     « Détail » de la bande du bas : « où se trouve le pointeur de la
+     souris pas moyen d'avoir tout sur une ligne ».
+
+     CE QU'ON VOYAIT. Quatre lignes empilées, chacune portant quelques
+     caractères : le titre du repli, les octets de l'instruction
+     (`b9 05 00 00 00`), le titre de sa fiche (« Copier une valeur »),
+     puis l'opérande résolu (`ecx 0x00000000`). Le tout occupait un
+     quart de la largeur et quatre lignes de hauteur — et le titre
+     « Détail » lui-même finissait ROGNÉ PAR LE HAUT, parce que la
+     bande de la ligne courante ne défile pas : ce qui dépasse est
+     coupé, en silence.
+
+     POURQUOI C'ÉTAIT EMPILÉ, ET POURQUOI C'ÉTAIT JUSTE AVANT. Ce
+     bandeau a été dessiné pour le PANNEAU LATÉRAL du mode avancé, qui
+     fait trois cents pixels : à cette largeur, trois éléments côte à
+     côte ne tiennent pas, et la grille des opérandes aligne ses
+     colonnes d'une ligne à l'autre. L'Établi a repris le même bandeau
+     dans une bande qui fait toute la largeur de la fenêtre, et c'est
+     là que la mise en page cesse d'être la bonne.
+
+     LE SEUIL EST UNE LARGEUR, ET NON LE NIVEAU. Sept cents pixels :
+     au-delà, les octets, la fiche et les opérandes tiennent sur une
+     rangée ; en deçà, chacun garde sa ligne et la grille ses colonnes.
+     Le panneau du mode avancé peut être tiré large, et il en profite ;
+     la bande de l'Établi sur un petit écran ne se retrouve pas avec
+     une rangée qui déborde.
+
+     LES TROIS COULEURS DE LA GRILLE SONT GARDÉES, et le premier jet
+     les avait perdues : tout écrit dans une seule étiquette, « short
+     0000000000400021h 0x400021 boucle » se lisait comme un bloc
+     indistinct, là où la grille séparait l'opérande écrit, sa valeur
+     et le nom qu'elle porte. La rangée perd les colonnes, elle n'a pas
+     à perdre ce qu'elles disaient — et c'est un blanc plus large entre
+     deux opérandes qu'entre les morceaux d'un même qui remplace la
+     ligne de la grille.
+
+     DEUX FONCTIONS SONT SORTIES DE LEUR LAYOUT pour que cela soit
+     possible : `encoding_items_ui` et `fiche_item_ui`. Une fonction
+     qui ouvre sa propre rangée ne peut pas être posée dans celle d'un
+     autre, et c'est tout ce qui empêchait de les mettre côte à côte.
+
+     ET LA SCÈNE A TROUVÉ UN DÉFAUT QU'ON NE CHERCHAIT PAS. À 800x520,
+     avec le détail déplié devant un saut conditionnel, la bande de la
+     ligne courante PEINT SON CONTENU SUR LA ZONE DU CODE : l'adresse
+     de la prochaine instruction tombait sur « CE QUE J'AI ÉCRIT ».
+     Cette bande est bornée (`LIGNE_MAX`) et ne défile pas ; ce qui
+     dépasse ne se coupe pas, il déborde.
+
+     DEUX REMÈDES ESSAYÉS ET RENDUS, ce qui vaut d'être noté puisque
+     les deux paraissaient évidents. Une zone défilante : posée dans un
+     panneau qui s'ajuste à son contenu, elle ne sait pas quelle
+     hauteur demander, n'en montre que la moitié, et le bloc « Dernier
+     pas » disparaît — c'est la deuxième fois que cette idée échoue au
+     même endroit, et le contrôle de la prévision l'a dit en trois
+     secondes. Borner le dessin au rectangle du panneau : il ne borne
+     rien, puisque le panneau se donne la hauteur qu'il veut.
+
+     CE QUI MARCHE : LE DÉTAIL NE SE DÉPLIE PAS DANS UNE BANDE QUI NE
+     PEUT PAS LE PORTER. En dessous de sept cents pixels de fenêtre,
+     il reste replié, le chevron le dit au survol — « pas assez de
+     place ici pour le déplier : il se peindrait sur le code » — et le
+     clic ne fait rien plutôt que de faire du dégât. L'état mémorisé
+     n'est PAS touché : agrandir la fenêtre le rouvre tout seul.
+
+     ET LA MESURE EST CELLE DE LA FENÊTRE, non `available_height` :
+     dans un panneau qui s'ajuste, celle-ci rend ce qui reste à
+     l'instant où on la demande, c'est-à-dire presque rien puisque le
+     contenu n'est pas encore posé. Le premier jet repliait donc le
+     détail sur un écran de 1100 de haut comme sur un de 520 — et la
+     capture l'a montré avant même qu'un contrôle n'ait à le dire.
+
+     ET UNE SCÈNE DE BANC POUR UN ÉTAT QUE RIEN NE MONTRAIT. Le repli
+     ne s'ouvre de lui-même que devant un appel, un saut conditionnel
+     ou un `syscall` : aucune scène ne le montrait ouvert devant une
+     instruction ordinaire, c'est-à-dire dans le cas le plus courant.
+     « établi / le détail de l'instruction » le montre, et il a fallu y
+     décocher « prévoir avant d'avancer » — ce réglage retient tout ce
+     bloc tant qu'on n'a pas avancé, ce qui est son objet, et c'est de
+     l'autre côté du réglage que la remarque a été faite.
+
+9.100 [FAIT] SEPT DEMANDES D'UN SEUL MESSAGE, ET CE QUE LE BANC EN A DIT
+
+     Demandé le 16 novembre 2026, capture à l'appui. Sept points, et un
+     huitième qui était une question : « la modification des registres
+     n'est pas effective et sert à quoi pour l'apprentissage ».
+
+     LA MODIFICATION DES REGISTRES NE MARCHAIT PAS, ET POUR DEUX
+     RAISONS QUI SE CUMULAIENT. Le champ redemandait le focus À CHAQUE
+     IMAGE : il le reprenait aussitôt après l'avoir perdu, et
+     `lost_focus()` — qui est la condition de validation — n'arrivait
+     jamais. On tapait, on appuyait sur Entrée, rien ne se passait. Et
+     même validé, le champ aurait menti : il s'ouvrait toujours en
+     hexadécimal SANS préfixe, si bien qu'au niveau débutant, où le
+     volet écrit « 55 » en clair, retaper « 55 » posait 0x55 —
+     c'est-à-dire 85. Un champ qui comprend autre chose que ce qu'il
+     montre est pire qu'un champ qui refuse.
+
+     À QUOI CELA SERT, puisque la question est posée : à éprouver une
+     hypothèse sans réécrire le programme. « Et si RCX valait 1 ? » se
+     répond en une seconde, le pas suivant part de là, et le pas en
+     arrière le défait comme le reste. C'est le `set $rax = …` de gdb.
+     Cela sert aussi à ATTEINDRE UN CAS qu'on n'arrive pas à provoquer
+     — une retenue, un débordement signé — sans écrire dix lignes pour
+     l'amener.
+
+     UN CONTRÔLE QUI CLIQUE ET QUI TAPE, et c'est la troisième fois
+     qu'il trouve ce qu'un contrôle qui appelle ne voyait pas.
+     `a_register_is_set_by_hand` vérifiait la LECTURE de ce qu'on tape,
+     et il était vert pendant que le geste entier ne faisait rien.
+     `un_registre_se_pose_vraiment_a_la_main` fait le chemin ENTIER :
+     il clique la valeur, efface d'un retour arrière, frappe « 12 »
+     par des évènements de texte, appuie sur Entrée — et lit le
+     registre. Poser la chaîne dans l'état de l'application aurait
+     sauté le clavier, c'est-à-dire précisément ce qui ne marchait pas.
+     Éprouvé en remettant le défaut : il tombe dès qu'on redemande le
+     focus à chaque image.
+
+     L'INDICE SE CACHE COMME IL SE MONTRE. Le bouton disparaissait une
+     fois l'indice demandé ; or on cache un indice pour la même raison
+     qu'on le demande — retrouver la place et l'envie de chercher
+     soi-même —, et un geste qui ne se défait pas est un geste qu'on
+     hésite à faire (A 9.89).
+
+     RECOMMENCER, ET TOUT REMETTRE À ZÉRO. Pour revenir au programme de
+     départ d'une étape, il fallait fermer l'onglet, répondre « ne pas
+     enregistrer » à une question qui parle de fichier alors qu'il n'y
+     en a pas, puis recharger l'étape depuis la liste : trois gestes et
+     une inquiétude pour revenir à un programme qu'on n'a jamais perdu.
+     « Recommencer » le fait, et GARDE la réussite et le meilleur score
+     — refaire plus court est précisément ce que le budget encourage.
+     « Tout remettre à zéro… », dans la fenêtre du parcours, efface les
+     réussites, les scores et les brouillons : les trois points
+     annoncent la question, parce que cela ne se défait pas.
+
+     LE NOM DU FICHIER DONNE SON CHEMIN. L'infobulle le MONTRAIT depuis
+     le 11 novembre ; on le recopiait en le lisant. Un clic le met dans
+     le presse-papiers, et l'infobulle dit ce que le clic en fera.
+
+     L'ÉNONCÉ MÈNE AUX FICHES. « `xchg` le fait en une instruction » :
+     le mot était peint en violet, c'est-à-dire comme du code, et il ne
+     disait pas ce qu'il faisait. Les cent quatre-vingt-neuf fiches
+     existaient, l'indice y menait depuis le 12 novembre — et l'énoncé,
+     qu'on lit AVANT l'indice, n'y menait pas. Il a fallu une fonction
+     à part : un `LayoutJob` est un texte, il se peint d'un bloc et ne
+     reçoit pas de clic.
+
+     ET LA DOC INTEL, QUI N'EXISTE PAS EN FRANÇAIS. Vérifié : Intel ne
+     publie son manuel qu'en anglais, et aucune traduction officielle
+     n'existe. Le français, ici, ce SONT les fiches de namsdec. Chaque
+     fiche d'instruction porte donc en bas un lien vers la page de
+     `felixcloutier.com` — le volume 2 du manuel Intel mis en ligne par
+     mnémonique, la même source que Compiler Explorer emploie —, ouvert
+     dans le navigateur : namsdec n'en a pas, et une fiche de trente
+     pages n'a rien à faire dans une fenêtre d'aide.
+
+     LES POINTS D'ARRÊT DISENT CE QU'ILS VALENT. Un point d'arrêt se
+     pose pour répondre à « que vaut RCX ici ? », et la liste n'en
+     disait rien : un numéro de ligne et un champ de condition. Chaque
+     point montre maintenant les registres QUE SA LIGNE NOMME — les
+     seize seraient le volet de la machine, en moins bien placé — et le
+     nombre de passages, qui vient du compteur de la bande de chaleur.
+
+     « JUSQU'AU CURSEUR », LE GESTE QUI MANQUAIT ENTRE LES DEUX AUTRES.
+     Le mode simple avait l'exécution entière et le pas à pas, et rien
+     au milieu : pour voir ce qu'il y a à la ligne 30, trente pas — ou
+     poser un point d'arrêt, c'est-à-dire savoir ce qu'est un point
+     d'arrêt.
+
+     ET LA BARRE EST PLEINE, CE QUE LE BANC A DIT DE DEUX FAÇONS LE
+     MÊME JOUR. Posé dans la rangée des gestes, ce sixième bouton
+     faisait se recouvrir « Réinitialiser » et « Ouvrir un fichier… »
+     À 1600 PIXELS — bien au-dessus du seuil de coupure en deux
+     rangées, qu'il aurait fallu monter si haut que des écrans
+     ordinaires y auraient perdu une rangée. Le second invariant disait
+     la même chose autrement : deux boutons de hauteurs différentes à
+     vingt pixels l'un de l'autre, les gestes faisant vingt-cinq pixels
+     et les portes vingt-sept. Le geste est donc allé SUR LA FRISE, qui
+     est la ligne de l'exécution et porte déjà « Regarder tourner… », et
+     « Ouvrir un fichier… » s'écrit court dans cette barre. La leçon
+     vaut pour la suite : ce qu'on veut ajouter à cette barre doit en
+     déloger autre chose.
+
+     TROIS DÉFAUTS ANCIENS SORTIS PAR UNE SCÈNE NEUVE. La vue des
+     points d'arrêt n'avait jamais été mesurée AVEC des points d'arrêt :
+     son bouton de suppression s'appelait « x » — une minuscule, et un
+     libellé qui ne dit pas ce qu'il retire —, ce que le contrôle des
+     capitales n'avait jamais eu sous les yeux. Le même relevé a trouvé
+     mon « 1 passage(s) », et l'œil a trouvé le troisième : un point
+     médian de séparation qui flottait en tête de ligne quand aucun
+     registre ne le précédait.
+
+     CINQ AUTRES REFUS DU BANC, tous justes : une fenêtre sans
+     identifiant explicite (elle aurait perdu sa place en changeant de
+     langue) et absente de la table des fenêtres ; `indice_montré`
+     devenu une bascule d'interface sans être déclaré — il n'appartient
+     pas à `settings.json`, il appartient à l'ÉTAPE, et il est entré
+     dans la liste des états de séance avec sa raison ; et trois
+     « mains promises pour rien », dont deux étaient un faux positif que
+     j'avais créé en nommant ma fonction `prose_cliquable` — le relevé
+     lit les lignes qui contiennent « cliquable( », et une signature en
+     était une. Renommée `prose_avec_fiches`.

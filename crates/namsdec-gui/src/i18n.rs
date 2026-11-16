@@ -35,6 +35,17 @@ pub struct Strings {
 
     pub file_open_folder: &'static str,
     pub file_open_file: &'static str,
+    /// Le même geste, écrit court pour la barre de l'Établi.
+    ///
+    /// Elle porte six gestes à gauche et sept portes à droite : à 1600
+    /// pixels, « Ouvrir un fichier… » faisait se recouvrir les deux
+    /// groupes. Le mot entier reste au survol et dans le menu Fichier
+    /// du mode avancé, qui a la place.
+    pub file_open_short: &'static str,
+    /// Ce que « jusqu'au curseur » fait, au survol.
+    /// Le même geste, écrit court pour la frise de l'Établi.
+    pub run_to_cursor_short: &'static str,
+    pub run_to_cursor_hint: &'static str,
     // Filtres du sélecteur de fichiers natif
     pub filter_asm: &'static str,
     pub filter_binary: &'static str,
@@ -305,6 +316,15 @@ pub struct Strings {
     pub help_results: &'static str,
     pub help_index_count: &'static str,
     pub help_open_sheet: &'static str,
+    /// Le renvoi au manuel d'Intel, au bas d'une fiche d'instruction.
+    /// Combien de fois on est passé par la ligne d'un point d'arrêt.
+    pub breakpoints_passes: &'static str,
+    /// La même, à partir de deux : aucun compte à un ne porte un
+    /// pluriel, et « 1 passage(s) » est une parenthèse qui dit qu'on
+    /// n'a pas voulu choisir.
+    pub breakpoints_passes_plural: &'static str,
+    pub help_intel_manual: &'static str,
+    pub help_intel_manual_hint: &'static str,
     pub help_flags: &'static str,
     pub help_no_flags: &'static str,
     pub help_example: &'static str,
@@ -653,6 +673,22 @@ pub struct Strings {
     /// condition par condition.
     pub exercise_check_failed: &'static str,
     pub exercise_hint_hint: &'static str,
+    /// Le même bouton, quand l'indice est à l'écran : il se referme.
+    pub exercise_hint_hide: &'static str,
+    /// Le bouton qui remet l'étape dans l'état où on l'a trouvée.
+    /// Sous le chemin, dans l'infobulle du nom : ce qu'un clic en fait.
+    pub path_copy_hint: &'static str,
+    /// Et ce qu'il dit une fois fait.
+    pub path_copied: &'static str,
+    pub exercise_restart: &'static str,
+    pub exercise_restart_hint: &'static str,
+    pub exercise_restarted: &'static str,
+    /// Le bouton qui efface tout ce que le parcours a retenu, et la
+    /// question qu'il pose avant de le faire.
+    pub exercises_reset_all: &'static str,
+    pub exercises_reset_all_hint: &'static str,
+    pub exercises_reset_confirm: &'static str,
+    pub exercises_reset_done: &'static str,
     pub exercise_hint_uses: &'static str,
     pub exercise_hint_yours: &'static str,
     pub file_new: &'static str,
@@ -721,7 +757,10 @@ pub struct Strings {
     pub breakpoints_line: &'static str,
     pub breakpoints_condition_hint: &'static str,
     pub breakpoints_condition_bad: &'static str,
+    /// Le bouton qui retire un point d'arrêt — son libellé, puis ce
+    /// qu'il retire au survol.
     pub breakpoints_remove: &'static str,
+    pub breakpoints_remove_hint: &'static str,
     pub vectors_open: &'static str,
     pub vectors_title: &'static str,
     pub vectors_hint: &'static str,
@@ -1389,6 +1428,9 @@ pub struct Strings {
     pub about_description: &'static str,
     pub next_instruction_detail: &'static str,
     pub next_instruction_detail_hint: &'static str,
+    /// Pourquoi le détail refuse de s'ouvrir : la bande n'a pas de quoi
+    /// le porter, et il se peindrait sur le code.
+    pub next_instruction_detail_cramped: &'static str,
     pub heat_legend: &'static str,
     pub heat_legend_hint: &'static str,
     /// La même unité au singulier. Sur un programme où la ligne la plus
@@ -1456,6 +1498,9 @@ const FR: Strings = Strings {
 
     file_open_folder: "Ouvrir un dossier…",
     file_open_file: "Ouvrir un fichier…",
+    file_open_short: "Ouvrir…",
+    run_to_cursor_short: "Jusqu'au curseur",
+    run_to_cursor_hint: "Exécute jusqu'à la ligne où est le curseur, et s'arrête là — sans avoir à poser un point d'arrêt.",
     filter_asm: "Source assembleur",
     filter_binary: "Binaire",
     filter_all: "Tous les fichiers",
@@ -1658,6 +1703,10 @@ const FR: Strings = Strings {
     help_results: "fiches",
     help_index_count: "mnémoniques, tous présents",
     help_open_sheet: "Ouvrir la fiche",
+    breakpoints_passes: "{} passage",
+    breakpoints_passes_plural: "{} passages",
+    help_intel_manual: "Le manuel d'Intel (en anglais) :",
+    help_intel_manual_hint: "Ouvre la page de cette instruction dans le navigateur — le volume 2 du manuel Intel, dont il n'existe pas de version française.",
     help_flags: "Indicateurs écrits :",
     help_no_flags: "aucun",
     help_example: "Exemple",
@@ -1915,6 +1964,16 @@ déclenchera jamais.",
     exercise_check_passed: "Réussi.",
     exercise_check_failed: "Pas encore — voyez ce qui manque au-dessus.",
     exercise_hint_hint: "Un coup de pouce, sans le programme. Le demander ne retire aucun score.",
+    exercise_hint_hide: "Cacher l'indice",
+    path_copy_hint: "Cliquer pour copier ce chemin.",
+    path_copied: "Chemin copié dans le presse-papiers.",
+    exercise_restart: "Recommencer",
+    exercise_restart_hint: "Remettre cette étape dans l'état où vous l'avez trouvée. Ce qui est réussi le reste.",
+    exercise_restarted: "Étape remise à son programme de départ.",
+    exercises_reset_all: "Tout remettre à zéro…",
+    exercises_reset_all_hint: "Effacer les réussites, les scores et les brouillons des cent dix-sept étapes.",
+    exercises_reset_confirm: "Effacer les réussites et les scores de toutes les étapes ? Les programmes enregistrés dans des fichiers ne sont pas touchés ; ce que le parcours a retenu, si.",
+    exercises_reset_done: "Le parcours est remis à zéro.",
     exercise_hint_uses: "La solution livrée emploie :",
     exercise_hint_yours: "la vôtre peut employer autre chose",
     file_new: "Nouveau programme",
@@ -1980,7 +2039,8 @@ déclenchera jamais.",
     breakpoints_line: "ligne",
     breakpoints_condition_hint: "condition (facultative)",
     breakpoints_condition_bad: "condition illisible",
-    breakpoints_remove: "Retirer ce point d'arrêt",
+    breakpoints_remove: "Retirer",
+    breakpoints_remove_hint: "Retirer ce point d'arrêt",
     vectors_open: "Registres étendus (SSE, AVX, x87)…",
     vectors_title: "Registres étendus",
     vectors_hint: "Les seize registres vectoriels et la pile x87, dans une fenêtre où ils tiennent en entier.",
@@ -2450,6 +2510,7 @@ déclenchera jamais.",
     about_license: "Licence MIT",
     next_instruction_detail: "Détail",
     next_instruction_detail_hint: "La fiche, les opérandes résolus, les arguments d'un appel. S'ouvre de lui-même devant un appel, un saut conditionnel ou un appel système.",
+    next_instruction_detail_cramped: "Pas assez de place ici pour le déplier : il se peindrait sur le code. Agrandissez la fenêtre, ou tirez le haut de cette bande.",
     heat_legend: "Chaleur :",
     heat_legend_hint: "passages par ligne",
     heat_legend_hint_one: "passage par ligne",
@@ -2496,6 +2557,9 @@ const EN: Strings = Strings {
 
     file_open_folder: "Open Folder…",
     file_open_file: "Open File…",
+    file_open_short: "Open…",
+    run_to_cursor_short: "To the cursor",
+    run_to_cursor_hint: "Runs up to the line the cursor is on, and stops there — no breakpoint needed.",
     filter_asm: "Assembly source",
     filter_binary: "Binary",
     filter_all: "All files",
@@ -2698,6 +2762,10 @@ const EN: Strings = Strings {
     help_results: "sheets",
     help_index_count: "mnemonics, all present",
     help_open_sheet: "Open the sheet",
+    breakpoints_passes: "{} pass",
+    breakpoints_passes_plural: "{} passes",
+    help_intel_manual: "Intel's manual:",
+    help_intel_manual_hint: "Opens this instruction's page in the browser — volume 2 of the Intel manual.",
     help_flags: "Flags written:",
     help_no_flags: "none",
     help_example: "Example",
@@ -2954,6 +3022,16 @@ other is there to compare — that is how gaps and clashes become visible.",
     exercise_check_passed: "Done.",
     exercise_check_failed: "Not yet — see what is missing above.",
     exercise_hint_hint: "A nudge, without the program. Asking for it costs no score.",
+    exercise_hint_hide: "Hide the hint",
+    path_copy_hint: "Click to copy this path.",
+    path_copied: "Path copied to the clipboard.",
+    exercise_restart: "Start over",
+    exercise_restart_hint: "Put this step back as you found it. What is solved stays solved.",
+    exercise_restarted: "Step put back to its starting program.",
+    exercises_reset_all: "Reset everything…",
+    exercises_reset_all_hint: "Erase the solved marks, the scores and the drafts of all the steps.",
+    exercises_reset_confirm: "Erase the solved marks and scores of every step? Programs saved to files are untouched; what the course remembers is not.",
+    exercises_reset_done: "The course is back to zero.",
     exercise_hint_uses: "The shipped solution uses:",
     exercise_hint_yours: "yours may use something else",
     file_new: "New program",
@@ -3019,7 +3097,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     breakpoints_line: "line",
     breakpoints_condition_hint: "condition (optional)",
     breakpoints_condition_bad: "unreadable condition",
-    breakpoints_remove: "Remove this breakpoint",
+    breakpoints_remove: "Remove",
+    breakpoints_remove_hint: "Remove this breakpoint",
     vectors_open: "Extended registers (SSE, AVX, x87)…",
     vectors_title: "Extended registers",
     vectors_hint: "The sixteen vector registers and the x87 stack, in a window that fits them whole.",
@@ -3488,6 +3567,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     about_license: "MIT License",
     next_instruction_detail: "Detail",
     next_instruction_detail_hint: "The sheet, the resolved operands, a call's arguments. Opens by itself before a call, a conditional jump or a system call.",
+    next_instruction_detail_cramped: "Not enough room here to open it: it would paint over the code. Make the window larger, or drag the top of this band.",
     heat_legend: "Heat:",
     heat_legend_hint: "passes per line",
     heat_legend_hint_one: "pass per line",

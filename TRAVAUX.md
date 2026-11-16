@@ -5525,6 +5525,54 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
   `hlt` seul, donc un but sans constat — il mesurait deux lignes de
   moins que ce qu'on voit.
 
+- `[x]` **Le détail de l'instruction tenait sur quatre lignes pour un
+  quart de la largeur** — 16 novembre 2026 (A 9.99). Relevé à l'écran,
+  une flèche sur ce bloc : « pas moyen d'avoir tout sur une ligne ».
+  Les octets, la fiche et les opérandes résolus s'empilaient, et le
+  titre du repli finissait rogné par le haut — une mise en page faite
+  pour le panneau latéral de 300 pixels, reprise telle quelle dans une
+  bande qui fait la largeur de la fenêtre. **Le seuil est une largeur**
+  (700 px), pas un niveau : au-delà, une rangée ; en deçà, les lignes
+  et la grille.
+
+  **Et la scène de banc neuve a trouvé un défaut qu'on ne cherchait
+  pas** : à 800×520, le détail déplié fait peindre la bande **sur la
+  zone du code**. Une zone défilante et un clip ont été essayés et
+  rendus (le premier fait disparaître « Dernier pas », le second ne
+  borne rien) ; le détail reste donc replié sous 700 pixels de fenêtre,
+  le chevron dit pourquoi, et agrandir la fenêtre le rouvre.
+
+- `[x]` **Sept demandes d'un seul message** — 16 novembre 2026
+  (A 9.100). La **modification des registres** ne marchait pas (focus
+  redemandé à chaque image, donc jamais de validation) et mentait
+  (champ hexadécimal sous un volet décimal) ; l'**indice** se montrait
+  sans pouvoir se cacher ; il n'y avait pas de quoi **recommencer** une
+  étape ni **remettre le parcours à zéro** ; le **nom du fichier** ne
+  donnait pas son chemin ; l'**énoncé** ne menait pas aux fiches ; les
+  **points d'arrêt** ne disaient pas ce qu'ils valent ; et « **jusqu'au
+  curseur** » n'avait pas de bouton au mode simple.
+
+  **Il n'existe pas de manuel Intel en français** — vérifié : le
+  français, ici, ce sont les 189 fiches de namsdec. Chaque fiche
+  d'instruction porte donc un lien vers `felixcloutier.com`, le volume 2
+  du manuel mis en ligne par mnémonique.
+
+  **La barre de l'Établi est pleine** : un sixième geste y faisait se
+  recouvrir les deux groupes à 1600 px, et le banc l'a dit de deux
+  façons le même jour. Le geste est allé sur la frise, et « Ouvrir un
+  fichier… » s'y écrit court.
+
+  **Une scène neuve a sorti trois défauts anciens** : la vue des points
+  d'arrêt n'avait jamais été mesurée avec des points d'arrêt — son
+  bouton s'appelait « x ».
+
+  Retenu par `un_registre_se_pose_vraiment_a_la_main` (qui clique, tape
+  et valide), `l_indice_se_cache_comme_il_se_montre`,
+  `recommencer_rend_le_programme_de_depart`,
+  `remettre_le_parcours_a_zero_efface_ce_qu_il_retenait`,
+  `le_nom_du_fichier_copie_son_chemin`, `l_enonce_mene_aux_fiches`, et
+  la scène `vue / points d'arrêt posés`.
+
 ---
 
 ## Comment cette liste se tient

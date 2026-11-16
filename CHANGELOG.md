@@ -133,6 +133,32 @@ chemin dans les deux sens.
   annoncée** — mesuré sur les 117 étapes, une seule manquait à l'appel
   (`rep`), et un contrôle le garantit désormais.
 
+**Le détail de l'instruction tient sur une ligne** (16 novembre)
+- Les octets, la fiche et les opérandes résolus s'empilaient sur trois
+  lignes pour un quart de la largeur, dans une bande qui fait celle de
+  la fenêtre — et le titre du repli finissait rogné. Ils tiennent sur
+  une rangée dès que la place le permet ; le panneau latéral, étroit,
+  garde ses lignes et sa grille.
+- Sur un petit écran, le repli **reste fermé** plutôt que de peindre
+  par-dessus le code, et le chevron dit pourquoi.
+
+**Sept retours d'écran, en une passe** (16 novembre)
+- **Poser un registre à la main marche enfin** : le champ reprenait le
+  focus à chaque image, si bien qu'Entrée ne validait jamais. Et au mode
+  débutant il s'ouvre désormais en décimal, comme le volet l'écrit —
+  taper « 55 » posait 0x55.
+- **L'indice se cache** : le bouton bascule au lieu de disparaître.
+- **Recommencer** remet une étape dans l'état où on l'a trouvée, sans
+  retirer la réussite ni le meilleur score.
+- **Tout remettre à zéro** efface réussites, scores et brouillons du
+  parcours — avec une question avant.
+- **Le nom du fichier copie son chemin** d'un clic.
+- **L'énoncé mène aux fiches** : les instructions qu'il cite s'ouvrent
+  d'un clic, et chaque fiche renvoie au manuel Intel en ligne.
+- **Les points d'arrêt disent ce qu'ils valent** : les registres de leur
+  ligne, et le nombre de passages.
+- **« Jusqu'au curseur »** arrive au mode simple, sur la frise.
+
 ## 0.3.0-beta.1 — 4 et 5 novembre 2026
 
 Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :

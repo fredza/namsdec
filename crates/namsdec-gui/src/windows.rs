@@ -1145,19 +1145,110 @@ impl NamsdecApp {
                     );
                     ui.colored_label(theme.bad, s.breakpoints_condition_bad);
                 }
-                if framed_button(ui, theme, "x")
-                    .on_hover_text(s.breakpoints_remove)
+                // « RETIRER », ET NON « x ».
+                //
+                // Un bouton encadré ouvre son libellé par une capitale,
+                // comme toutes les commandes de l'application — et « x »
+                // ne dit pas ce qu'il retire. Le défaut était là depuis
+                // toujours ; aucune scène ne montrait cette vue AVEC des
+                // points d'arrêt, et le contrôle des capitales n'avait
+                // donc jamais eu ce bouton sous les yeux (16 novembre
+                // 2026).
+                if framed_button(ui, theme, s.breakpoints_remove)
+                    .on_hover_text(s.breakpoints_remove_hint)
                     .clicked()
                 {
                     retirer = Some(ligne);
                 }
             });
+            // CE QUE VALENT LES REGISTRES DE CETTE LIGNE-LÀ.
+            //
+            // Demandé le 16 novembre 2026 : « si il y a des points
+            // d'arrêt tu pourras afficher la valeur dedans ». Un point
+            // d'arrêt se pose pour répondre à « que vaut RCX ici ? »,
+            // et la liste n'en disait rien : elle donnait un numéro de
+            // ligne et un champ de condition.
+            //
+            // LES REGISTRES QUE LA LIGNE ÉCRIT OU LIT, et eux seuls :
+            // les seize à chaque point d'arrêt seraient le volet de la
+            // machine, en moins bien placé. `add rax, rcx` montre RAX
+            // et RCX, ce qui est exactement la question qu'on se pose
+            // en s'arrêtant là.
+            //
+            // ET LE NOMBRE DE PASSAGES, qui vient du même compteur que
+            // la bande de chaleur : un point d'arrêt dans une boucle
+            // ne dit pas la même chose au premier tour qu'au
+            // millième.
+            self.breakpoint_values_ui(ui, ligne);
         }
         if let Some(ligne) = retirer {
             self.breakpoint_lines.remove(&ligne);
             self.breakpoint_conditions.remove(&ligne);
             self.sync_breakpoints();
         }
+    }
+
+    /// Ce que valent, ici et maintenant, les registres que la ligne
+    /// nomme.
+    ///
+    /// Rien n'est deviné : les mots de la ligne source sont comparés aux
+    /// noms des seize registres, et l'on lit la machine. Une ligne sans
+    /// registre — une étiquette, un `hlt` — ne dit donc rien, ce qui est
+    /// la bonne réponse.
+    fn breakpoint_values_ui(&mut self, ui: &mut egui::Ui, ligne: u32) {
+        let theme = self.theme;
+        let s = strings(self.lang);
+        let Some(emulator) = &self.emulator else {
+            return;
+        };
+        let débutant = self.niveau() == namsdec_re::Niveau::Débutant;
+        let texte = crate::labels::source_line(&self.source, ligne).to_ascii_lowercase();
+        let nommés: Vec<(&'static str, u64)> = REGISTERS
+            .iter()
+            .filter(|(nom, _)| {
+                texte
+                    .split(|c: char| !c.is_ascii_alphanumeric())
+                    .any(|mot| mot == nom.to_ascii_lowercase())
+            })
+            .map(|&(nom, reg)| (nom, emulator.cpu().regs.get64(reg)))
+            .collect();
+        let passages = self.line_visits().get(&ligne).copied().unwrap_or(0);
+        let vide = nommés.is_empty();
+        if nommés.is_empty() && passages == 0 {
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.add_space(16.0);
+            ui.spacing_mut().item_spacing.x = 10.0;
+            for (nom, valeur) in nommés {
+                ui.colored_label(
+                    theme.dim,
+                    egui::RichText::new(format!(
+                        "{nom} {}",
+                        crate::sidebar::nombre_lisible(valeur, débutant)
+                    ))
+                    .monospace(),
+                );
+            }
+            if passages > 0 {
+                // LE POINT MÉDIAN SÉPARE, IL N'OUVRE PAS. Collé au
+                // libellé, il flottait en tête de ligne devant une
+                // ligne sans registre — « · 1 passage », sans rien
+                // avant. Vu sur la première capture de cette vue.
+                if !vide {
+                    ui.colored_label(theme.dim, "·");
+                }
+                // AUCUN COMPTE À UN NE PORTE UN PLURIEL : « 1
+                // passage(s) » est une parenthèse qui dit qu'on n'a pas
+                // voulu choisir.
+                let phrase = if passages > 1 {
+                    s.breakpoints_passes_plural
+                } else {
+                    s.breakpoints_passes
+                };
+                ui.colored_label(theme.dim, phrase.replacen("{}", &passages.to_string(), 1));
+            }
+        });
     }
 
     /// La fenêtre d'analyse : tous les modules de rétro-ingénierie, avec

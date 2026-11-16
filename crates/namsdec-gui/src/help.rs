@@ -121,6 +121,49 @@ impl NamsdecApp {
         ui.weak(s.exercises_packs_hint);
     }
 
+    /// La question posée avant d'effacer ce que le parcours a retenu.
+    ///
+    /// **Une boîte, et non un clic direct** : cent dix-sept étapes de
+    /// réussites et de meilleurs scores ne se perdent pas sur un geste
+    /// de travers. C'est la règle de l'application pour tout ce qui ne
+    /// se défait pas — et c'est pourquoi le bouton qui l'ouvre porte
+    /// trois points.
+    pub(crate) fn exercises_reset_window_ui(&mut self, ctx: &egui::Context) {
+        if !self.show_exercises_reset {
+            return;
+        }
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut réponse = None;
+        let mut ouverte = true;
+        egui::Window::new(s.exercises_reset_all)
+            // Un identifiant explicite : le titre change avec la
+            // langue, et la fenêtre perdrait sa position en passant à
+            // l'anglais.
+            .id(egui::Id::new("exercises_reset"))
+            .open(&mut ouverte)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.set_max_width(420.0);
+                ui.label(prose(ui, theme, s.exercises_reset_confirm));
+                ui.add_space(8.0);
+                réponse = dialog_bar(ui, theme, s.exercises_reset_all, Some(s.dialog_cancel));
+            });
+        match réponse {
+            Some(Answer::Ok) => {
+                self.reinitialiser_le_parcours();
+                self.show_exercises_reset = false;
+            }
+            Some(_) => self.show_exercises_reset = false,
+            // La croix vaut « annuler » : refermer une question n'est
+            // pas y répondre oui, surtout celle-ci.
+            None if !ouverte => self.show_exercises_reset = false,
+            None => {}
+        }
+    }
+
     pub(crate) fn exercises_window_ui(&mut self, ctx: &egui::Context) {
         let s = strings(self.lang);
         let theme = self.theme;
@@ -130,7 +173,11 @@ impl NamsdecApp {
         let mut load = None;
         let mut solution = false;
         let mut montrer_l_indice = false;
-        let indice = !self.indice_montré && self.exercise_hint().is_some();
+        // Demandé pendant le rendu, posé après : la question se pose
+        // dans sa propre fenêtre, à la frame suivante.
+        let mut remettre_a_zero = false;
+        // Une bascule, comme dans la bande : voir là-bas.
+        let indice = self.exercise_hint().is_some();
         let mut fiche: Option<&'static str> = None;
         let fenêtre_exercises_window = egui::Window::new(s.exercises_title)
             // L'identifiant a changé de version, et il le fallait :
@@ -224,9 +271,17 @@ impl NamsdecApp {
                         // La solution, au même endroit que les deux
                         // autres gestes de l'étape en cours.
                         if indice
-                            && framed_button(ui, theme, s.exercise_hint)
-                                .on_hover_text(s.exercise_hint_hint)
-                                .clicked()
+                            && framed_button(
+                                ui,
+                                theme,
+                                if self.indice_montré {
+                                    s.exercise_hint_hide
+                                } else {
+                                    s.exercise_hint
+                                },
+                            )
+                            .on_hover_text(s.exercise_hint_hint)
+                            .clicked()
                         {
                             montrer_l_indice = true;
                         }
@@ -337,6 +392,21 @@ impl NamsdecApp {
                                     barre_progression(ui, theme, faits, total, 220.0);
                                     if faits == total && total > 0 {
                                         ui.colored_label(theme.good, s.exercises_level_done);
+                                    }
+                                    // TOUT REMETTRE À ZÉRO, à côté de ce
+                                    // qu'on remet à zéro : la barre dit
+                                    // ce qui est fait, le bouton l'efface.
+                                    //
+                                    // Les trois points disent qu'une
+                                    // question suit : ceci ne se défait
+                                    // pas, et un clic de travers ne doit
+                                    // pas coûter cent dix-sept étapes.
+                                    if faits > 0
+                                        && framed_button(ui, theme, s.exercises_reset_all)
+                                            .on_hover_text(s.exercises_reset_all_hint)
+                                            .clicked()
+                                    {
+                                        remettre_a_zero = true;
                                     }
                                 });
                                 // LE CARNET DES NOTIONS, sous la barre.
@@ -588,8 +658,11 @@ impl NamsdecApp {
             self.load_exercise(&id);
             open = false;
         }
+        if remettre_a_zero {
+            self.show_exercises_reset = true;
+        }
         if montrer_l_indice {
-            self.indice_montré = true;
+            self.indice_montré = !self.indice_montré;
         }
         if solution {
             self.show_solution = true;
@@ -1150,6 +1223,34 @@ impl NamsdecApp {
                     egui::Label::new(egui::RichText::new(entry.example).monospace())
                         .wrap_mode(egui::TextWrapMode::Extend),
                 );
+
+                // LE MANUEL D'INTEL, POUR CELUI QUI VEUT LE TEXTE DE
+                // RÉFÉRENCE.
+                //
+                // Demandé le 16 novembre 2026 : « rechercher dans la
+                // doc Intel (de préférence en français et en anglais) ».
+                // Le français, c'est CETTE fiche : Intel ne publie son
+                // manuel qu'en anglais, et les cent quatre-vingt-neuf
+                // fiches de namsdec sont écrites dans les deux langues
+                // de l'application. L'anglais, c'est le volume 2 du
+                // manuel, dont `felixcloutier.com` donne la page de
+                // chaque instruction — c'est la même référence que
+                // Compiler Explorer emploie pour ses propres liens.
+                //
+                // Il s'ouvre dans le navigateur, hors de l'application :
+                // namsdec n'a pas de navigateur, et une fiche de trente
+                // pages n'a rien à faire dans une fenêtre d'aide.
+                if entry.kind == namsdec_doc::Kind::Instruction {
+                    ui.add_space(8.0);
+                    ui.horizontal_wrapped(|ui| {
+                        ui.colored_label(theme.dim, s.help_intel_manual);
+                        ui.hyperlink_to(
+                            egui::RichText::new(entry.names[0]).monospace(),
+                            format!("https://www.felixcloutier.com/x86/{}", entry.names[0]),
+                        )
+                        .on_hover_text(s.help_intel_manual_hint);
+                    });
+                }
 
                 // Les renvois : les mots que la fiche cite et qui ont
                 // eux-mêmes une fiche. Une notion s'apprend en tirant

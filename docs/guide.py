@@ -941,6 +941,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "ligne, un registre ou une étiquette dans une opérande. Tab accepte, les flèches "
          "choisissent, Échap referme."),
 
+        ("h2", "Déboguer au mode simple"),
+        ("p",
+         "Trois gestes mènent l'exécution, et ils se lisent dans cet ordre&nbsp;: "
+         "<b>Pas à pas</b> avance d'une instruction, <b>Pas en arrière</b> la défait, et "
+         "<b>Exécuter</b> va jusqu'au bout ou jusqu'au premier point d'arrêt. Entre le pas "
+         "et la course entière, <b>Jusqu'au curseur</b> — sur la frise, à côté de "
+         "« Regarder tourner… » — exécute jusqu'à la ligne où est le curseur et s'arrête "
+         "là&nbsp;: « va jusque-là et montre-moi » est le geste qu'on fait vingt fois par "
+         "heure en apprenant, et il évite d'avoir à poser un point d'arrêt pour cela."),
+        ("p",
+         "<b>Un point d'arrêt dit ce qu'il vaut.</b> Dans la vue <b>Points d'arrêt</b>, "
+         "chaque ligne marquée montre les registres <i>que sa ligne nomme</i> et leur "
+         "valeur à cet instant, plus le nombre de passages — celui-là même que la bande "
+         "de chaleur peint dans la gouttière. On pose un point d'arrêt pour répondre à "
+         "« que vaut RCX ici ? »&nbsp;; la réponse est maintenant à côté de la question."),
+        ("p",
+         "<b>Et une valeur se pose à la main.</b> Cliquer la valeur d'un registre dans le "
+         "volet de la machine ouvre un champ&nbsp;: ce qu'on y écrit remplace le contenu "
+         "du registre, Entrée valide, Échap annule. C'est le <font face='Courier'>set "
+         "$rax = …</font> d'un débogueur, et il sert à éprouver une hypothèse sans "
+         "réécrire le programme — « et si RCX valait 1&nbsp;? » —, ou à atteindre un cas "
+         "qu'on n'arrive pas à provoquer autrement, une retenue, un débordement signé. Le "
+         "pas en arrière le défait comme le reste. <b>Au mode débutant, le champ s'ouvre "
+         "en décimal</b>, comme le volet l'écrit&nbsp;; au-dessus, en hexadécimal. "
+         "<font face='Courier'>0x</font> tranche des deux côtés."),
+
         ("h2", "Les corrections proposées"),
         ("p",
          "nasm répond « operation size not specified » et s'arrête. Celui qui apprend "
@@ -1054,7 +1080,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "octets découpés par champs, la fiche de l’instruction, et l’adresse "
          "effective qu’un calcul désigne avec l’octet qui s’y trouve. Deux lignes "
          "dépliées et le reste à un clic : c’est ce qu’on lit à chaque pas, et "
-         "le bandeau doit tenir sans rien couper. Le repli s’ouvre de lui-même devant "
+         "le bandeau doit tenir sans rien couper. <b>Les trois tiennent sur une seule "
+         "rangée dès que la place le permet</b> — au-delà de sept cents pixels, "
+         "c'est-à-dire toujours dans la bande de l'Établi, qui fait la largeur de la "
+         "fenêtre : empilés, ils y prenaient trois lignes pour un quart de la largeur, "
+         "et le titre du repli finissait rogné par le haut. Dans le panneau latéral, "
+         "étroit, ils gardent leurs lignes et la grille qui aligne les opérandes. "
+         "Le repli s’ouvre de lui-même devant "
          "un appel, un saut conditionnel ou un appel système. Devant un <b>binaire "
          "ouvert</b>, la section entière part repliée : une instruction y porte deux "
          "lignes de plus, et ce qu’on lit d’abord est le listing et les registres. "
@@ -1904,6 +1936,26 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "assembler, exécuter, puis remarquer qu'une pastille avait changé de couleur. "
          "Un parcours dont chaque vérification exige de connaître la chaîne de "
          "compilation n'est pas interactif."),
+        ("p",
+         "<b>Deux autres gestes de l'étape.</b> <b>Recommencer</b>, à côté de "
+         "« Vérifier », remet le programme de départ — ce qu'on avait écrit est "
+         "jeté, brouillon compris, mais la réussite et le meilleur score restent&nbsp;: "
+         "refaire plus court est précisément ce que le budget encourage. Et "
+         "<b>Un indice</b> est une bascule&nbsp;: le même bouton le cache, parce qu'on "
+         "cache un indice pour la même raison qu'on le demande."),
+        ("p",
+         "<b>L'énoncé mène aux fiches.</b> Les instructions qu'il cite — celles qui sont "
+         "peintes comme du code — s'ouvrent d'un clic sur leur fiche. C'est le chemin le "
+         "plus court entre « <font face='Courier'>xchg</font> le fait en une "
+         "instruction » et ce que <font face='Courier'>xchg</font> fait, et il vaut au "
+         "moment où l'on LIT l'énoncé, avant même d'avoir demandé un indice. Chaque fiche "
+         "d'instruction porte en bas un lien vers <b>le manuel d'Intel</b> en ligne, qui "
+         "s'ouvre dans le navigateur&nbsp;: Intel ne publie son manuel qu'en anglais, et "
+         "la version française, ce sont ces fiches-ci."),
+        ("p",
+         "<b>Et tout le parcours se remet à zéro</b>, depuis la fenêtre des "
+         "exercices&nbsp;: réussites, scores et brouillons des cent dix-sept étapes. Une "
+         "question est posée avant, parce que cela ne se défait pas."),
         ("note",
          "<b>Le verdict ne se donne pas tout seul.</b> Une course lancée à la main reste "
          "muette&nbsp;: on exécute aussi pour regarder tourner, et un jugement qu'on n'a "

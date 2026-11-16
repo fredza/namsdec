@@ -602,6 +602,67 @@ impl NamsdecApp {
 }
 
 impl NamsdecApp {
+    /// Remet l'étape en cours dans l'état où on l'a trouvée.
+    ///
+    /// **Pourquoi un geste pour cela.** On essaie une idée, on la rate,
+    /// on efface une ligne de trop — et il n'y avait pas de chemin de
+    /// retour : il fallait fermer l'onglet, répondre « ne pas
+    /// enregistrer » à une question qui parle de fichier alors qu'il
+    /// n'y en a pas, puis recharger l'étape depuis la liste. Trois
+    /// gestes et une inquiétude pour revenir à un programme qu'on n'a
+    /// jamais perdu.
+    ///
+    /// **Ce qui repart à zéro** : le texte, le brouillon mémorisé, la
+    /// machine, les diagnostics, l'indice, la réponse d'une étape de
+    /// lecture et le verdict. **Ce qui reste** : la réussite déjà
+    /// acquise et le meilleur score — on ne retire pas ce qu'on a
+    /// compris, et recommencer pour faire plus court est précisément ce
+    /// que le budget encourage.
+    pub(crate) fn recommencer_l_exercice(&mut self) {
+        let Some(id) = self.current_exercise.clone() else {
+            return;
+        };
+        let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, &id) else {
+            return;
+        };
+        let départ = exercise.starter_code.clone();
+        // Le brouillon aussi : sans cela, fermer l'onglet puis revenir
+        // rendrait le travail qu'on vient justement de jeter.
+        self.exercise_drafts.remove(&id);
+        self.saved_source = départ.clone();
+        self.set_source(départ);
+        self.aller_au_trou();
+        self.indice_montré = false;
+        self.question_answer.clear();
+        self.verification_demandee = false;
+        self.assemble_state = None;
+        self.emulator = None;
+        self.diagnostics.clear();
+        self.status = Status::Note(|s| s.exercise_restarted);
+    }
+
+    /// Efface tout ce que le parcours a retenu : réussites et scores.
+    ///
+    /// **Demandé pour une raison qui se comprend d'elle-même** : on
+    /// prête l'application, on la montre, ou l'on veut refaire les cent
+    /// dix-sept étapes depuis le début sans que les pastilles vertes
+    /// disent déjà la réponse.
+    ///
+    /// **Les brouillons partent avec**, et c'est la même idée : garder
+    /// le programme à moitié écrit d'une étape qu'on vient de déclarer
+    /// jamais faite serait garder la seule chose qui prouve le
+    /// contraire.
+    ///
+    /// Rien n'est demandé à l'utilisateur ici : la confirmation est
+    /// posée par l'interface qui appelle, parce que ceci ne se défait
+    /// pas.
+    pub(crate) fn reinitialiser_le_parcours(&mut self) {
+        self.exercises_done.clear();
+        self.exercises_best.clear();
+        self.exercise_drafts.clear();
+        self.status = Status::Note(|s| s.exercises_reset_done);
+    }
+
     /// Assembler, exécuter, et répondre — en un seul geste.
     ///
     /// **Ce qu'il fallait savoir avant.** Pour apprendre si l'on avait

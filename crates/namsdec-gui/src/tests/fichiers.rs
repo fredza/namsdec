@@ -1250,7 +1250,18 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
 
     // Les bascules qui ne SONT pas des réglages : à inscrire ici avec la
     // raison, plutôt que d'élargir les motifs jusqu'à ne plus rien voir.
-    const EPHEMERES: [(&str, &str); 2] = [
+    const EPHEMERES: [(&str, &str); 3] = [
+        (
+            "indice_montré",
+            "il appartient à l'ÉTAPE qu'on est en train de faire, et non \
+             à l'utilisateur : il repart à zéro à chaque chargement \
+             d'exercice (A 9.93, « c'est l'étape qu'on cherche, pas la \
+             séance »). Il est entré ici le 16 novembre 2026, le jour où \
+             le bouton est devenu une BASCULE — jusque-là l'interface ne \
+             savait que montrer l'indice, et le relevé ne voyait pas de \
+             bascule à garder. Le retenir dans `settings.json` rouvrirait \
+             l'indice d'une étape qu'on n'a pas encore ouverte.",
+        ),
         (
             "show_exercises",
             "même cas que la calculatrice, et entrée ici le même jour que \

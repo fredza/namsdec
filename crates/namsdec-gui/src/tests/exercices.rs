@@ -4517,3 +4517,128 @@ fn le_carnet_des_notions_suit_les_etapes_reussies() {
     assert_eq!(après, trié, "le carnet se lit dans l'ordre");
     assert!(après.len() > notions.len(), "il grandit : {après:?}");
 }
+
+/// L'INDICE SE CACHE COMME IL SE MONTRE.
+///
+/// « Quand on clique sur indice plus moyen de le cacher » (16 novembre
+/// 2026). Le bouton disparaissait une fois l'indice demandé — or on
+/// cache un indice pour la même raison qu'on le demande : retrouver la
+/// place et l'envie de chercher soi-même. C'est la famille des trois
+/// gestes qui ne se défaisaient pas (A 9.89).
+#[test]
+fn l_indice_se_cache_comme_il_se_montre() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    let s = strings(app.lang);
+
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.exercise_hint),
+        "le bouton propose l'indice"
+    );
+    assert!(
+        !peint.contains(s.exercise_hint_hide),
+        "et ne propose pas encore de le cacher"
+    );
+
+    app.indice_montré = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.exercise_hint_hide),
+        "l'indice montré, le bouton propose de le cacher :\n{peint:.400}"
+    );
+    assert!(
+        !peint.contains(&format!("|{}|", s.exercise_hint)),
+        "et ne propose plus de le demander deux fois"
+    );
+}
+
+/// RECOMMENCER REND L'ÉTAPE TELLE QU'ON L'A TROUVÉE — et ne retire pas
+/// ce qu'on a compris.
+#[test]
+fn recommencer_rend_le_programme_de_depart() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    let départ = app.source.clone();
+
+    // On écrit, on assemble, on réussit.
+    charge_la_solution(&mut app, "namsdec/echange");
+    assert_ne!(app.source, départ, "la solution n'est pas le départ");
+    app.exercises_done.insert("namsdec/echange".to_owned());
+    app.exercises_best.insert("namsdec/echange".to_owned(), 4);
+    app.indice_montré = true;
+    app.do_assemble();
+
+    app.recommencer_l_exercice();
+    assert_eq!(app.source, départ, "le programme de départ est rendu");
+    assert!(!app.indice_montré, "l'indice se referme");
+    assert!(app.emulator.is_none(), "et la machine repart de rien");
+    assert!(
+        !app.exercise_drafts.contains_key("namsdec/echange"),
+        "le brouillon s'en va avec : sans cela, fermer l'onglet puis \
+         revenir rendrait le travail qu'on vient de jeter"
+    );
+    // CE QU'ON A COMPRIS RESTE : recommencer pour faire plus court est
+    // précisément ce que le budget encourage.
+    assert!(app.exercises_done.contains("namsdec/echange"));
+    assert_eq!(app.exercises_best.get("namsdec/echange"), Some(&4));
+}
+
+/// TOUT REMETTRE À ZÉRO EFFACE CE QUE LE PARCOURS A RETENU, ET RIEN
+/// D'AUTRE.
+#[test]
+fn remettre_le_parcours_a_zero_efface_ce_qu_il_retenait() {
+    let mut app = app_with_exercises();
+    app.exercises_done.insert("namsdec/echange".to_owned());
+    app.exercises_done.insert("namsdec/zero".to_owned());
+    app.exercises_best.insert("namsdec/echange".to_owned(), 4);
+    app.exercise_drafts
+        .insert("namsdec/zero".to_owned(), "mov rax, 1\n".to_owned());
+    app.source = "mon programme à moi\n".to_owned();
+
+    app.reinitialiser_le_parcours();
+
+    assert!(app.exercises_done.is_empty(), "les réussites s'effacent");
+    assert!(app.exercises_best.is_empty(), "les scores aussi");
+    assert!(app.exercise_drafts.is_empty(), "et les brouillons");
+    assert_eq!(
+        app.source, "mon programme à moi\n",
+        "mais pas ce qu'on a sous les yeux"
+    );
+    assert!(app.notions_vues().is_empty(), "le carnet repart de rien");
+}
+
+/// L'ÉNONCÉ MÈNE AUX FICHES : une instruction qu'il nomme s'ouvre d'un
+/// clic.
+///
+/// « Dans l'énoncé, une instruction ne dit pas ce qu'elle fait »
+/// (16 novembre 2026). Les cent quatre-vingt-neuf fiches existaient, et
+/// l'indice y menait depuis le 12 novembre — mais l'énoncé, qu'on lit
+/// AVANT l'indice, n'y menait pas.
+#[test]
+fn l_enonce_mene_aux_fiches() {
+    use egui_kittest::Harness;
+    use egui_kittest::kittest::Queryable;
+
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+    // L'énoncé de cette étape nomme `xchg` et `xor` entre accents
+    // graves : ce sont eux que la bande peint en violet.
+    let mut harness = Harness::builder()
+        .with_size(egui::Vec2::new(1600.0, 1000.0))
+        .build_ui_state(|ui, app: &mut NamsdecApp| app.draw(ui), app);
+    harness.run();
+    harness.get_by_label("xchg").click();
+    harness.run();
+
+    let app = harness.state();
+    assert!(app.show_help, "la fenêtre d'aide s'ouvre");
+    assert_eq!(
+        app.help.as_ref().map(|(mot, _)| mot.as_str()),
+        Some("xchg"),
+        "sur la fiche de l'instruction qu'on a cliquée"
+    );
+}

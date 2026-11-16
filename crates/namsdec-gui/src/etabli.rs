@@ -353,7 +353,22 @@ impl NamsdecApp {
                     .fill(theme.panel)
                     .inner_margin(egui::Margin::symmetric(14, 8)),
             )
-            .show(ui, |ui| self.etabli_ligne_ui(ui));
+            .show(ui, |ui| {
+                // CE QUI DÉPASSE DÉFILE, AU LIEU DE DÉBORDER SUR LE
+                // VOISIN.
+                //
+                // Le panneau prend la hauteur de ce qu'il porte, borné
+                // à [`LIGNE_MAX`] — et quand le contenu demande plus,
+                // il se peignait PAR-DESSUS la zone du code : à
+                // 800x520, l'adresse de la prochaine instruction
+                // tombait sur « CE QUE J'AI ÉCRIT ». Il faut le
+                // détail déplié ET un saut conditionnel pour y
+                // arriver, c'est-à-dire l'état que la scène
+                // « établi / le détail de l'instruction » a amené au
+                // banc le 16 novembre 2026.
+                //
+                self.etabli_ligne_ui(ui);
+            });
 
         if !self.etabli_machine_detachee {
             // Le volet de la machine : assez large pour les registres, et
@@ -439,7 +454,16 @@ impl NamsdecApp {
         // recouvrir de nouveau à 800 px. Le seuil suit ce que la barre
         // PORTE, et il est à remonter chaque fois qu'on y ajoute
         // quelque chose — ce que `panels_do_not_overlap` dit tout seul.
-        const UNE_SEULE_RANGÉE: f32 = 1100.0;
+        //
+        // ET LE 16 NOVEMBRE 2026 A MONTRÉ LA LIMITE DE CE SEUIL. Un
+        // sixième geste — « jusqu'au curseur » — faisait se recouvrir
+        // les deux groupes À 1600 PIXELS, c'est-à-dire bien au-dessus
+        // du seuil : le monter aurait fait passer en trois rangées des
+        // écrans qui n'en demandaient pas. Le geste est allé sur la
+        // frise, et « Ouvrir un fichier… » s'écrit court ici. La leçon
+        // est que cette barre est PLEINE : ce qu'on veut y ajouter doit
+        // en déloger autre chose.
+        const UNE_SEULE_RANGÉE: f32 = 1200.0;
         if ui.available_width() >= UNE_SEULE_RANGÉE {
             ui.horizontal(|ui| {
                 self.etabli_identite_ui(ui);
@@ -529,24 +553,44 @@ impl NamsdecApp {
         } else {
             abrégé.clone()
         };
-        let étiquette = ui.label(
-            egui::RichText::new(marque)
-                .color(theme.dim)
-                .monospace()
-                .size(13.0),
-        );
+        // LE NOM SE CLIQUE, ET LE CLIC COPIE LE CHEMIN.
+        //
+        // Demandé le 16 novembre 2026, dans la même phrase que
+        // l'abrègement et l'infobulle : « tronquer le nom du fichier
+        // ouvert […] avec une infobulle donnant le chemin complet et
+        // l'enregistrer dans le presse-papier ». C'est le geste qu'on
+        // fait pour coller un chemin dans un terminal, et il n'avait
+        // aucune porte : l'infobulle le MONTRE, elle ne le donne pas —
+        // on le recopiait à la main, en le lisant.
+        //
+        // Cliquable seulement quand il y a quelque chose à copier : un
+        // tampon neuf n'a pas de chemin, et un trait sous un nom qui ne
+        // mène à rien est une promesse de plus (A 9.89).
+        let chemin = self.chemin_du_tampon();
+        let texte = egui::RichText::new(marque)
+            .color(theme.dim)
+            .monospace()
+            .size(13.0);
         // AU SURVOL, LE CHEMIN COMPLET — et le nom entier quand il n'y
         // a pas de chemin (un tampon neuf, un exercice). Deux `crackme`
         // rangés dans deux dossiers portent le même nom ; seule
         // l'infobulle dit lequel on a ouvert.
-        match self.chemin_du_tampon() {
+        match &chemin {
             Some(chemin) => {
-                étiquette.on_hover_text(chemin.display().to_string());
+                let complet = chemin.display().to_string();
+                let réponse = crate::cliquable(ui, egui::Label::new(texte))
+                    .on_hover_text(format!("{complet}\n{}", s.path_copy_hint));
+                if réponse.clicked() {
+                    ui.ctx().copy_text(complet);
+                    self.status = Status::Note(|s| s.path_copied);
+                }
             }
-            None if abrégé != nom => {
-                étiquette.on_hover_text(&nom);
+            None => {
+                let étiquette = ui.label(texte);
+                if abrégé != nom {
+                    étiquette.on_hover_text(&nom);
+                }
             }
-            None => {}
         }
     }
 
@@ -632,7 +676,14 @@ impl NamsdecApp {
         if framed_button(ui, theme, s.action_save).clicked() {
             self.dispatch(Action::Save);
         }
-        if framed_button(ui, theme, s.file_open_file).clicked() {
+        // ÉCRIT COURT : la barre porte six gestes et sept portes, et à
+        // 1600 pixels les deux groupes se rejoignaient — « Réinitialiser »
+        // peint sur « Ouvrir un fichier… », dit par le banc le
+        // 16 novembre 2026. Le mot entier est au survol.
+        if framed_button(ui, theme, s.file_open_short)
+            .on_hover_text(s.file_open_file)
+            .clicked()
+        {
             self.dispatch(Action::OpenFile);
         }
     }
@@ -757,6 +808,39 @@ impl NamsdecApp {
                     {
                         self.show_scene = true;
                     }
+                    // JUSQU'AU CURSEUR : le geste de débogage qui
+                    // manquait au mode simple.
+                    //
+                    // Il avait l'exécution entière et le pas à pas, et
+                    // rien entre les deux : pour voir ce qu'il y a à la
+                    // ligne 30, il fallait trente pas — ou poser un
+                    // point d'arrêt, c'est-à-dire savoir ce qu'est un
+                    // point d'arrêt. « Va jusque-là et montre-moi » est
+                    // le geste qu'on fait vingt fois par heure en
+                    // apprenant.
+                    //
+                    // SUR LA FRISE, ET NON DANS LA BARRE : la barre
+                    // porte cinq gestes et sept portes, et un sixième
+                    // geste faisait se recouvrir les deux groupes dès
+                    // 1600 pixels — dit par le banc de deux façons le
+                    // même jour. La frise est la ligne de l'exécution,
+                    // et « Regarder tourner… » y est déjà pour la même
+                    // raison : ce sont deux façons de regarder la
+                    // machine avancer.
+                    ui.add_space(10.0);
+                    ui.add_enabled_ui(self.can_execute(), |ui| {
+                        // ÉCRIT COURT SUR LA FRISE, qui porte déjà le
+                        // message d'état, le bouton de la Scène et RIP.
+                        // Le libellé entier — celui du menu du mode
+                        // avancé — est au survol.
+                        if small_framed_button(ui, theme, s.run_to_cursor_short)
+                            .on_hover_text(s.run_to_cursor_hint)
+                            .on_disabled_hover_text(s.why_program_finished)
+                            .clicked()
+                        {
+                            self.dispatch(Action::RunToCursor);
+                        }
+                    });
                 }
                 // Le message dans ce qui reste, et aligné à gauche :
                 // `status_message_ui` mesure ce qu'il voulait, et pose
@@ -927,6 +1011,18 @@ impl NamsdecApp {
                 }
                 None => {}
             }
+            // RECOMMENCER APRÈS VÉRIFIER, et c'est l'ordre dans lequel
+            // on les fait : on demande si c'est juste, et l'on repart
+            // du début si cela ne l'est pas. Ce sont les deux gestes de
+            // l'étape elle-même ; la rangée du titre, elle, porte la
+            // navigation du parcours.
+            ui.add_space(6.0);
+            if small_framed_button(ui, theme, s.exercise_restart)
+                .on_hover_text(s.exercise_restart_hint)
+                .clicked()
+            {
+                self.recommencer = true;
+            }
         });
         vérifier
     }
@@ -993,11 +1089,21 @@ impl NamsdecApp {
 
         let mut choisir = false;
         let mut vérifier = false;
+        let mut fiche_demandée: Option<String> = None;
         let mut montrer_l_indice = false;
         let mut montrer_la_solution = false;
         // Un indice à donner ? Il disparaît quand il n'a plus rien à
         // dire — tout ce que la solution emploie est écrit.
-        let indice = !self.indice_montré && self.exercise_hint().is_some();
+        // LE BOUTON EST UNE BASCULE, et non une porte à sens unique.
+        //
+        // Il disparaissait une fois l'indice demandé : « quand on
+        // clique sur indice plus moyen de le cacher » (16 novembre
+        // 2026). Or on cache un indice pour la même raison qu'on le
+        // demande — retrouver la place et l'envie de chercher soi-même
+        // —, et un geste qui ne se défait pas est un geste qu'on
+        // hésite à faire. C'est la règle déjà posée pour « Montrer »
+        // (A 9.89) : trois gestes qui ne se défaisaient pas.
+        let indice = self.exercise_hint().is_some();
         let mut aller: Option<String> = None;
         // Y a-t-il une solution à montrer ? Une démonstration et une
         // étape de lecture n'en ont pas : le bouton ne paraît pas
@@ -1061,9 +1167,17 @@ impl NamsdecApp {
                 // « Un indice », puis « La solution » — l'ordre dans
                 // lequel on les demande.
                 if indice
-                    && small_framed_button(ui, theme, s.exercise_hint)
-                        .on_hover_text(s.exercise_hint_hint)
-                        .clicked()
+                    && small_framed_button(
+                        ui,
+                        theme,
+                        if self.indice_montré {
+                            s.exercise_hint_hide
+                        } else {
+                            s.exercise_hint
+                        },
+                    )
+                    .on_hover_text(s.exercise_hint_hint)
+                    .clicked()
                 {
                     montrer_l_indice = true;
                 }
@@ -1156,7 +1270,15 @@ impl NamsdecApp {
                 // 2026 sur l'étape 5. Même traitement que la fiche de
                 // la bande du bas, et pour la même raison : un texte
                 // qui montre son balisage apprend à ne plus le lire.
-                ui.label(prose(ui, theme, &énoncé));
+                // L'ÉNONCÉ MÈNE AUX FICHES : une instruction qu'il
+                // nomme s'ouvre d'un clic. C'est le chemin le plus
+                // court entre « `xchg` le fait en une instruction » et
+                // ce que `xchg` fait — et c'est au moment de LIRE
+                // l'énoncé qu'on se pose la question, avant même
+                // d'avoir demandé un indice.
+                if let Some(mnémonique) = prose_avec_fiches(ui, theme, self.lang, &énoncé) {
+                    fiche_demandée = Some(mnémonique);
+                }
                 // CE QU'IL RESTE À ÉCRIRE, lu dans le tampon.
                 //
                 // Les consignes du programme — « ; À FAIRE : … » —
@@ -1205,11 +1327,18 @@ impl NamsdecApp {
         if vérifier {
             self.verifier_l_exercice();
         }
+        if std::mem::take(&mut self.recommencer) {
+            self.recommencer_l_exercice();
+        }
+        if let Some(mnémonique) = fiche_demandée {
+            self.open_help(&mnémonique);
+            self.show_help = true;
+        }
         if choisir {
             self.show_exercises = true;
         }
         if montrer_l_indice {
-            self.indice_montré = true;
+            self.indice_montré = !self.indice_montré;
         }
         if montrer_la_solution {
             self.show_solution = true;

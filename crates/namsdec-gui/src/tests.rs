@@ -1186,6 +1186,37 @@ fn scènes() -> Vec<Scène> {
                 app.debutant = true;
             }),
         ));
+        // L'ÉTABLI, LE DÉTAIL DE L'INSTRUCTION DÉPLIÉ.
+        //
+        // Relevé à l'écran le 16 novembre 2026, une flèche sur ce
+        // bloc : « pas moyen d'avoir tout sur une ligne ». Les octets,
+        // le titre de la fiche et les opérandes résolus s'y
+        // empilaient — trois lignes pour trois choses courtes, dans
+        // une bande qui n'en a que quelques-unes et dont le titre
+        // « Détail » finissait rogné par le haut.
+        //
+        // Le repli ne s'ouvre de lui-même que devant un appel, un saut
+        // conditionnel ou un `syscall` : aucune scène ne le montrait
+        // ouvert devant une instruction ordinaire, c'est-à-dire dans
+        // le cas le plus courant.
+        if marche {
+            scènes.push((
+                "établi / le détail de l'instruction".to_owned(),
+                None,
+                Box::new(|app: &mut NamsdecApp| {
+                    démarre(app);
+                    app.debutant = true;
+                    app.next_detail_open = true;
+                    // LA RÉPONSE MONTRÉE, et non retenue : « prévoir
+                    // avant d'avancer » cache tout ce bloc tant qu'on
+                    // n'a pas avancé, et c'est son objet. Le détail ne
+                    // se regarde donc que de l'autre côté du réglage,
+                    // qui se décoche aux Préférences — c'est l'écran
+                    // d'où vient la remarque du 16 novembre 2026.
+                    app.prevoir = false;
+                }),
+            ));
+        }
         // LES DEUX BANDES DE L'ÉTABLI SORTIES DANS LEUR FENÊTRE.
         //
         // Seulement en marche, et c'est le sujet : on détache une bande
@@ -1423,6 +1454,30 @@ fn scènes() -> Vec<Scène> {
                         app.show_decompiler_module = true;
                     }
                     app.montrer_vue(vue);
+                }),
+            ));
+        }
+        // LA VUE DES POINTS D'ARRÊT, AVEC DES POINTS D'ARRÊT POSÉS.
+        //
+        // La scène ordinaire montre la vue VIDE : `breakpoint_lines`
+        // n'a rien, et c'est l'état d'invitation qu'on mesure. Depuis
+        // le 16 novembre 2026, chaque point d'arrêt porte en plus ce
+        // que valent les registres de sa ligne et combien de fois on y
+        // est passé — et rien de tout cela n'était mesuré, faute d'un
+        // point d'arrêt à montrer.
+        if marche {
+            scènes.push((
+                "vue / points d'arrêt posés".to_owned(),
+                None,
+                Box::new(|app: &mut NamsdecApp| {
+                    démarre(app);
+                    app.debutant = true;
+                    // Deux lignes du programme du banc : l'une nomme
+                    // deux registres, l'autre un seul.
+                    app.breakpoint_lines.insert(11);
+                    app.breakpoint_lines.insert(12);
+                    app.sync_breakpoints();
+                    app.montrer_vue(VueCentrale::Breakpoints);
                 }),
             ));
         }

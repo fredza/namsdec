@@ -29,6 +29,20 @@ const FLAG_BITS: [(&str, RFlags); 7] = [
     ("OF", RFlags::OF),
 ];
 
+/// La hauteur de fenêtre en dessous de laquelle le détail de
+/// l'instruction ne se déplie pas, au mode simple.
+///
+/// La bande de la ligne courante y est bornée (`LIGNE_MAX`) et ne
+/// défile pas : ce qui dépasse se peint sur la zone du code. Mesuré à
+/// 800x520 — le plus petit écran que l'application accepte —, où
+/// quatre lignes de détail et le verdict d'un saut conditionnel font
+/// tomber l'adresse de la prochaine instruction sur « CE QUE J'AI
+/// ÉCRIT ».
+///
+/// Sept cents : au-dessus, les cinq bandes et le volet tiennent, et le
+/// détail avec eux.
+const DÉTAIL_MINIMUM: f32 = 700.0;
+
 impl NamsdecApp {
     pub(crate) fn sidebar_ui(&mut self, ui: &mut egui::Ui) {
         // RE est masqué par défaut (activable dans Préférences > Modules) :
@@ -1229,31 +1243,60 @@ impl NamsdecApp {
     /// un opcode qui dit « mov », un octet d'adressage qui dit « de RBX
     /// vers RAX ».
     fn encoding_ui(&self, ui: &mut egui::Ui, instr: &namsdec_disasm::Decoded, window: &[u8]) {
-        let s = strings(self.lang);
-        let theme = self.theme;
-        let champs = namsdec_disasm::fields_of(instr, window);
-        if champs.is_empty() {
+        if namsdec_disasm::fields_of(instr, window).is_empty() {
             return;
         }
-        let bytes = window;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            for (range, field) in champs {
-                let (couleur, explication) = match field {
-                    namsdec_disasm::Field::Prefix(prefix) => (theme.warn, prefix_hint(s, prefix)),
-                    namsdec_disasm::Field::OpCode => (theme.accent, s.field_opcode),
-                    namsdec_disasm::Field::Addressing => (theme.good, s.field_addressing),
-                    namsdec_disasm::Field::Immediate => (theme.changed, s.field_immediate),
-                };
-                let texte = bytes[range]
-                    .iter()
-                    .map(|b| format!("{b:02x}"))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                ui.colored_label(couleur, egui::RichText::new(texte).monospace())
-                    .on_hover_text(explication);
-            }
+            self.encoding_items_ui(ui, instr, window);
         });
+    }
+
+    /// Les octets eux-mêmes, SANS leur rangée.
+    ///
+    /// À part depuis le 16 novembre 2026, parce qu'ils se peignent
+    /// désormais à deux endroits : sur leur propre ligne dans le
+    /// panneau latéral, qui est étroit, et au milieu d'une rangée dans
+    /// la bande de l'Établi, qui fait toute la largeur de la fenêtre.
+    /// Une fonction qui ouvre son propre layout ne peut pas être posée
+    /// dans celui d'un autre.
+    fn encoding_items_ui(&self, ui: &mut egui::Ui, instr: &namsdec_disasm::Decoded, window: &[u8]) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        for (range, field) in namsdec_disasm::fields_of(instr, window) {
+            let (couleur, explication) = match field {
+                namsdec_disasm::Field::Prefix(prefix) => (theme.warn, prefix_hint(s, prefix)),
+                namsdec_disasm::Field::OpCode => (theme.accent, s.field_opcode),
+                namsdec_disasm::Field::Addressing => (theme.good, s.field_addressing),
+                namsdec_disasm::Field::Immediate => (theme.changed, s.field_immediate),
+            };
+            let texte = window[range]
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            ui.colored_label(couleur, egui::RichText::new(texte).monospace())
+                .on_hover_text(explication);
+        }
+    }
+
+    /// Le titre de la fiche de cette instruction, cliquable.
+    ///
+    /// Rend le mnémonique quand on a cliqué : la fiche s'ouvre une fois
+    /// les emprunts du bandeau relâchés.
+    fn fiche_item_ui(&self, ui: &mut egui::Ui, text: &str) -> Option<String> {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();
+        let entry = namsdec_doc::lookup(mnemonic)?;
+        // Et le titre mène à la fiche : on s'arrête sur une instruction
+        // parce qu'on ne la comprend pas, et le curseur de l'éditeur,
+        // lui, est resté où on l'avait laissé.
+        let étiquette = egui::Label::new(
+            egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
+        );
+        let titre = crate::cliquable(ui, étiquette).on_hover_text(s.help_open_sheet);
+        titre.clicked().then(|| mnemonic.to_owned())
     }
 
     /// La ligne qui mène aux registres étendus.
@@ -1461,6 +1504,38 @@ impl NamsdecApp {
         // un `call` le rouvrirait à la frame suivante.
         self.next_detail_addr = Some(rip);
         let mut détail = self.next_detail_open;
+        // LE DÉTAIL NE SE DÉPLIE PAS DANS UNE BANDE QUI NE PEUT PAS LE
+        // PORTER.
+        //
+        // Dans l'Établi, cette section vit dans une bande bornée
+        // (`LIGNE_MAX`) qui ne défile pas : ce qui dépasse se peint
+        // PAR-DESSUS la zone du code. Mesuré à 800x520 le 16 novembre
+        // 2026, l'adresse de la prochaine instruction tombait sur
+        // « CE QUE J'AI ÉCRIT ».
+        //
+        // Les deux autres voies ont été essayées et rendues : une zone
+        // défilante ne sait pas quelle hauteur demander dans un panneau
+        // qui s'ajuste — elle montre la moitié de ce qu'elle a et le
+        // bloc « Dernier pas » disparaît —, et borner le dessin au
+        // rectangle du panneau ne borne rien, puisque le panneau se
+        // donne la hauteur qu'il veut.
+        //
+        // L'ÉTAT MÉMORISÉ N'EST PAS TOUCHÉ : le repli se rouvre de
+        // lui-même dès que la fenêtre a la place, et l'infobulle du
+        // chevron dit pourquoi il refuse ici.
+        //
+        // LA MESURE EST CELLE DE LA FENÊTRE, et non `available_height`
+        // : dans un panneau qui s'ajuste à son contenu, celle-ci rend
+        // ce qui reste à l'instant où on la demande — c'est-à-dire
+        // presque rien, puisque le contenu n'est pas encore posé. Le
+        // premier jet repliait donc le détail sur un écran de 1600 de
+        // haut comme sur un de 520, et la capture l'a montré tout de
+        // suite.
+        let à_l_étroit =
+            détail && self.debutant && ui.ctx().viewport_rect().height() < DÉTAIL_MINIMUM;
+        if à_l_étroit {
+            détail = false;
+        }
         // Le chevron dit déjà que la rangée se déplie ; la main et le
         // trait au survol le disent de la même façon que partout
         // ailleurs, ce qui évite d'avoir à connaître cette façon-là.
@@ -1472,9 +1547,15 @@ impl NamsdecApp {
             .response
             .interact(egui::Sense::click())
             .on_hover_cursor(egui::CursorIcon::PointingHand)
-            .on_hover_text(s.next_instruction_detail_hint);
+            .on_hover_text(if à_l_étroit {
+                s.next_instruction_detail_cramped
+            } else {
+                s.next_instruction_detail_hint
+            });
         souligne_au_survol(ui, &entête);
-        let ouvert = entête.clicked();
+        // Et le clic ne ment pas : à l'étroit, il n'y a rien à ouvrir,
+        // et le chevron l'a dit au survol.
+        let ouvert = entête.clicked() && !à_l_étroit;
         if ouvert {
             détail = !détail;
             self.next_detail_open = détail;
@@ -1486,29 +1567,87 @@ impl NamsdecApp {
             return;
         }
 
-        // Les octets, découpés par rôle : un préfixe n'est pas un
-        // opcode, et une instruction x86 se lit comme une suite de
-        // champs. C'est ce qu'on apprend en lisant un manuel Intel, et
-        // ce qu'aucun désassembleur ne montre.
-        self.encoding_ui(ui, &instr, window);
-
-        // La fiche de l'instruction, en une ligne : « Copier une valeur ».
-        // Le reste est sous F1 — ici, c'est le rappel qui évite d'y aller.
-        let mnemonic = text.split([' ', '\t']).next().unwrap_or_default();
-        if let Some(entry) = namsdec_doc::lookup(mnemonic) {
-            // Et le titre mène à la fiche : on s'arrête sur une
-            // instruction parce qu'on ne la comprend pas, et le curseur
-            // de l'éditeur, lui, est resté où on l'avait laissé.
-            if crate::cliquable(
-                ui,
-                egui::Label::new(
-                    egui::RichText::new(entry.title.get(self.lang.code())).color(theme.dim),
-                ),
-            )
-            .on_hover_text(s.help_open_sheet)
-            .clicked()
-            {
-                fiche = Some(mnemonic.to_owned());
+        // TROIS CHOSES COURTES, ET UNE SEULE LIGNE QUAND IL Y A LA
+        // PLACE.
+        //
+        // Les octets, le titre de la fiche et les opérandes résolus se
+        // peignaient l'un SOUS l'autre, chacun sur sa ligne. C'est la
+        // bonne mise en page dans le panneau latéral du mode avancé,
+        // qui fait trois cents pixels — et c'en est une mauvaise dans
+        // la bande de l'Établi, qui fait toute la largeur de la
+        // fenêtre : relevé à l'écran le 16 novembre 2026, une flèche
+        // sur ce bloc, « pas moyen d'avoir tout sur une ligne ».
+        // « b9 05 00 00 00 », « Copier une valeur » et
+        // « ecx 0x00000000 » tenaient sur un quart de la largeur et
+        // prenaient trois lignes d'une bande qui n'en a que quelques
+        // unes — au point que son titre « Détail » était rogné par le
+        // haut.
+        //
+        // LE SEUIL EST UNE LARGEUR, et non le niveau : c'est la place
+        // qui décide, et le panneau du mode avancé peut être tiré large
+        // lui aussi.
+        let en_ligne = ui.available_width() >= 700.0;
+        // Les opérandes résolus, relevés AVANT la rangée : ils en font
+        // partie quand il y a la place, et gardent leur grille sinon.
+        let lignes = namsdec_emu::explain::operands(cpu, &instr);
+        let symbols = self
+            .assemble_state
+            .as_ref()
+            .map(|state| state.output.symbols.as_slice())
+            .unwrap_or_default();
+        if en_ligne {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().item_spacing.x = 10.0;
+                self.encoding_items_ui(ui, &instr, window);
+                if let Some(mnémonique) = self.fiche_item_ui(ui, &text) {
+                    fiche = Some(mnémonique);
+                }
+                // CHAQUE OPÉRANDE EN UN SEUL MORCEAU : « ecx
+                // 0x00000000 », et le nom de l'adresse quand elle en a
+                // un. La grille sépare ces trois colonnes pour les
+                // aligner d'une ligne à l'autre ; sur une rangée
+                // unique, il n'y a rien à aligner, et trois étiquettes
+                // par opérande se liraient comme six choses.
+                for (rang, ligne) in lignes.iter().enumerate() {
+                    // LES TROIS COULEURS DE LA GRILLE SONT GARDÉES.
+                    //
+                    // Premier jet : tout en une seule étiquette, d'une
+                    // seule couleur — et « short 0000000000400021h
+                    // 0x400021 boucle » se lisait comme un bloc, là où
+                    // la grille distinguait l'opérande écrit, sa valeur
+                    // et le nom qu'elle porte. La rangée perd les
+                    // colonnes, elle n'a pas à perdre ce qu'elles
+                    // disaient.
+                    //
+                    // Un blanc plus large entre deux opérandes qu'entre
+                    // les morceaux d'un même : c'est ce blanc qui
+                    // remplace la ligne de la grille.
+                    if rang > 0 {
+                        ui.add_space(6.0);
+                    }
+                    ui.colored_label(
+                        theme.dim,
+                        egui::RichText::new(ligne.text.clone()).monospace(),
+                    );
+                    ui.label(egui::RichText::new(ligne.value.clone()).monospace());
+                    if let Some(nom) = ligne
+                        .addr
+                        .and_then(|addr| named_at(&self.notes, symbols, addr))
+                    {
+                        ui.colored_label(theme.accent, egui::RichText::new(nom).monospace());
+                    }
+                }
+            });
+        } else {
+            // Les octets, découpés par rôle : un préfixe n'est pas un
+            // opcode, et une instruction x86 se lit comme une suite de
+            // champs. C'est ce qu'on apprend en lisant un manuel Intel,
+            // et ce qu'aucun désassembleur ne montre.
+            self.encoding_ui(ui, &instr, window);
+            // La fiche de l'instruction, en une ligne. Le reste est sous
+            // F1 — ici, c'est le rappel qui évite d'y aller.
+            if let Some(mnémonique) = self.fiche_item_ui(ui, &text) {
+                fiche = Some(mnémonique);
             }
         }
 
@@ -1568,27 +1707,23 @@ impl NamsdecApp {
             });
         }
 
-        let lines = namsdec_emu::explain::operands(cpu, &instr);
-        if lines.is_empty() {
-            // La fiche demandée s'ouvre quand même : elle ne dépend pas
-            // des opérandes.
+        if lignes.is_empty() || en_ligne {
+            // Rien à aligner — ou tout est déjà dit sur la rangée. La
+            // fiche demandée s'ouvre quand même : elle ne dépend pas des
+            // opérandes.
+            ui.separator();
             self.open_requested_sheet(fiche);
             return;
         }
         // Les étiquettes du programme, pour nommer les adresses : le
         // désassembleur ne connaît que des nombres, et « tampon+2 » se
         // relit dans le source, pas « 0x401002 ».
-        let symbols = self
-            .assemble_state
-            .as_ref()
-            .map(|state| state.output.symbols.as_slice())
-            .unwrap_or_default();
         egui::Grid::new("next_instruction_grid")
             .num_columns(3)
             .min_col_width(0.0)
             .striped(true)
             .show(ui, |ui| {
-                for line in lines {
+                for line in lignes {
                     ui.colored_label(theme.dim, egui::RichText::new(line.text).monospace());
                     ui.label(egui::RichText::new(line.value).monospace());
                     let named = line
@@ -1974,6 +2109,8 @@ impl NamsdecApp {
         let mut éditer: Option<&'static str> = None;
         let mut poser: Option<(&'static str, u64)> = None;
         let mut annuler = false;
+        // Le champ qui vient de s'ouvrir a-t-il reçu le focus ?
+        let mut focaliser = false;
         // Sortie de `self` le temps du rendu : la grille a besoin de
         // l'écrire, et elle lit `self` par ailleurs.
         let mut edition = self.editing_register.take();
@@ -2117,13 +2254,27 @@ impl NamsdecApp {
                                     .font(egui::TextStyle::Monospace)
                                     .desired_width(pair * 0.62),
                             );
-                            champ.request_focus();
+                            // LE FOCUS SE DEMANDE UNE FOIS, PAS À
+                            // CHAQUE IMAGE.
+                            //
+                            // Redemandé à chaque frame, il est REPRIS
+                            // aussitôt après avoir été perdu — et
+                            // `lost_focus()`, qui est la condition de
+                            // validation, n'arrive jamais. On tapait
+                            // une valeur, on appuyait sur Entrée, et
+                            // rien ne se passait : « la modification
+                            // des registres n'est pas effective »
+                            // (relevé à l'écran le 16 novembre 2026).
+                            if !self.editing_register_focused {
+                                champ.request_focus();
+                                focaliser = true;
+                            }
                             if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                                 annuler = true;
                             } else if champ.lost_focus()
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter))
                             {
-                                poser = parse_register_value(saisie).map(|v| (name, v));
+                                poser = parse_register_value(saisie, débutant).map(|v| (name, v));
                                 annuler = true;
                             }
                         }
@@ -2234,13 +2385,32 @@ impl NamsdecApp {
                 .as_ref()
                 .map(|e| register_value_by_name(e.cpu(), name))
                 .unwrap_or(0);
-            self.editing_register = Some((name, format!("{valeur:x}")));
+            // LE CHAMP S'OUVRE DANS LA LANGUE DU NIVEAU.
+            //
+            // Il était toujours en hexadécimal, et sans préfixe : au
+            // niveau débutant, où le volet écrit « 55 » en clair,
+            // retaper « 55 » posait 0x55 — c'est-à-dire 85. Un champ
+            // qui comprend autre chose que ce qu'il montre est pire
+            // qu'un champ qui refuse.
+            self.editing_register = Some((
+                name,
+                if self.debutant && valeur < 1_000_000 {
+                    valeur.to_string()
+                } else {
+                    format!("{valeur:x}")
+                },
+            ));
+            self.editing_register_focused = false;
         }
         if let Some((name, valeur)) = poser {
             self.set_register(name, valeur);
         }
+        if focaliser {
+            self.editing_register_focused = true;
+        }
         if annuler {
             self.editing_register = None;
+            self.editing_register_focused = false;
         }
     }
 
@@ -4162,18 +4332,27 @@ pub(crate) fn register_value_by_name(cpu: &namsdec_core::Cpu, name: &str) -> u64
 /// affichée : on recopie ce qu'on voit. Un `-` devant donne le
 /// complément à deux, parce que « mets -1 » est la façon dont on le
 /// pense.
-pub(crate) fn parse_register_value(saisie: &str) -> Option<u64> {
+pub(crate) fn parse_register_value(saisie: &str, décimal: bool) -> Option<u64> {
     let saisie = saisie.trim().to_ascii_lowercase();
     let (négatif, chiffres) = match saisie.strip_prefix('-') {
         Some(reste) => (true, reste),
         None => (false, saisie.as_str()),
     };
-    let chiffres = chiffres.strip_prefix("0x").unwrap_or(chiffres);
+    // `0x` TRANCHE, QUEL QUE SOIT LE NIVEAU : c'est le préfixe qui dit
+    // la base, et celui qui l'écrit sait ce qu'il demande.
+    let (base, chiffres) = match chiffres.strip_prefix("0x") {
+        Some(reste) => (16, reste),
+        // AU NIVEAU DÉBUTANT, CE QU'ON TAPE EST LU COMME CE QU'ON LIT :
+        // le volet y écrit « 55 » en clair, et un champ qui rendrait
+        // 0x55 comprendrait autre chose que ce qu'il montre.
+        None if décimal => (10, chiffres),
+        None => (16, chiffres),
+    };
     let chiffres = chiffres.replace('_', "");
     if chiffres.is_empty() {
         return None;
     }
-    let value = u64::from_str_radix(&chiffres, 16).ok()?;
+    let value = u64::from_str_radix(&chiffres, base).ok()?;
     Some(if négatif {
         value.wrapping_neg()
     } else {
