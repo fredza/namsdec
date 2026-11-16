@@ -1015,8 +1015,22 @@ fn after_the_answer_the_dialog_shows_what_the_program_said() {
         "on ne propose plus d'envoyer à un programme terminé :\n{boîte}"
     );
 
-    // Relancer la referme : elle parlait de la course précédente.
+    // RELANCER UN PROGRAMME TERMINÉ NE FAIT RIEN, depuis A 9.96 : un
+    // geste que le bouton refuse (il est éteint) n'a pas à réussir par
+    // le raccourci, et une course qui ne peut exécuter aucune
+    // instruction n'a pas à poser son drapeau. La boîte reste donc ce
+    // qu'elle est — elle montre encore ce que le programme a répondu.
     app.do_run();
+    assert!(
+        !app.running,
+        "une course sur un programme terminé ne part pas"
+    );
+
+    // C'EST UNE VRAIE NOUVELLE COURSE QUI LA REFERME : elle parlait de
+    // la précédente.
+    app.do_reset();
+    app.do_run();
+    assert!(app.running, "la machine remise à zéro repart");
     assert!(!app.show_input_dialog, "une nouvelle course repart à zéro");
 }
 

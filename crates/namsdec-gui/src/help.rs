@@ -196,12 +196,23 @@ impl NamsdecApp {
                     // se suit, et aller à la suite ne doit pas demander
                     // de retrouver son rang dans une liste.
                     let suivante = self.exercise_after(&id);
+                    let précédente = self.exercise_before(&id);
                     ui.horizontal_wrapped(|ui| {
                         ui.colored_label(theme.dim, s.exercises_current);
                         ui.colored_label(theme.accent, format!("{rang}/{total}"));
                         ui.strong(exercise.title.get(lang));
                         if framed_button(ui, theme, s.exercises_resume).clicked() {
                             load = Some(id.clone());
+                        }
+                        // Le retour avant l'aller : c'est l'ordre du
+                        // parcours, et la fenêtre a la place de les
+                        // écrire tous les deux en toutes lettres.
+                        if let Some((précédent_id, titre)) = &précédente
+                            && framed_button(ui, theme, s.exercises_previous)
+                                .on_hover_text(titre)
+                                .clicked()
+                        {
+                            load = Some(précédent_id.clone());
                         }
                         if let Some((suivant_id, titre)) = &suivante
                             && framed_button(ui, theme, s.exercises_next)
@@ -328,6 +339,57 @@ impl NamsdecApp {
                                         ui.colored_label(theme.good, s.exercises_level_done);
                                     }
                                 });
+                                // LE CARNET DES NOTIONS, sous la barre.
+                                //
+                                // « 12/117 » dit le chemin parcouru et
+                                // rien de ce qu'on y a appris. Or c'est
+                                // la seule question qui compte quand on
+                                // apprend : qu'est-ce que je sais
+                                // maintenant ? Les instructions des
+                                // étapes RÉUSSIES sont la réponse — on
+                                // ne retient pas une notion en ouvrant
+                                // un énoncé —, et chacune mène à sa
+                                // fiche : le carnet se relit.
+                                //
+                                // Replié par défaut : vingt-trois noms
+                                // en chasse fixe sous la barre
+                                // pousseraient la liste des étapes hors
+                                // de la fenêtre, et c'est elle qu'on
+                                // vient ouvrir.
+                                let notions = self.notions_vues();
+                                if !notions.is_empty() {
+                                    egui::CollapsingHeader::new(
+                                        egui::RichText::new(format!(
+                                            "{} ({})",
+                                            s.exercises_learned,
+                                            notions.len()
+                                        ))
+                                        .color(theme.dim),
+                                    )
+                                    .id_salt(format!("{}_notions", pack.id))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            egui::RichText::new(s.exercises_learned_hint)
+                                                .color(theme.dim)
+                                                .size(12.0),
+                                        );
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.spacing_mut().item_spacing.x = 8.0;
+                                            for nom in &notions {
+                                                let étiquette = egui::Label::new(
+                                                    egui::RichText::new(*nom)
+                                                        .monospace()
+                                                        .color(theme.mnemonic),
+                                                );
+                                                let notion = crate::cliquable(ui, étiquette)
+                                                    .on_hover_text(s.exercise_sheet_open);
+                                                if notion.clicked() {
+                                                    fiche = Some(nom);
+                                                }
+                                            }
+                                        });
+                                    });
+                                }
                                 ui.add_space(2.0);
                                 let mut palier = None;
                                 let cherché = self.exercise_query.to_lowercase();

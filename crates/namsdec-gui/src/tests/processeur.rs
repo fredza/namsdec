@@ -2345,3 +2345,251 @@ fn la_reponse_montree_se_recache() {
         "et la question se repose, telle qu'elle était"
     );
 }
+
+/// AU NIVEAU DÉBUTANT, LE VOLET DE LA MACHINE ÉCRIT LES NOMBRES EN
+/// CLAIR.
+///
+/// Le défaut tenait sur une seule capture, le 16 novembre 2026
+/// (`établi / un exercice de lecture`) : l'énoncé demande « Que vaut
+/// RAX à l'arrêt ? », la bonne réponse est 55, et le volet affichait
+/// `0000000000000037`. L'exercice portait sa propre réponse à l'écran,
+/// dans une écriture que celui qui apprend ne sait pas encore lire —
+/// pendant que la bande du bas disait déjà « RCX 3 → 2 ».
+#[test]
+fn at_beginner_level_registers_are_written_plainly() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rax, 55
+    hlt
+"
+        .to_owned(),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("55"),
+        "la valeur se lit en clair :\n{peint:.400}"
+    );
+    assert!(
+        !peint.contains("0000000000000037"),
+        "et pas en hexadécimal :\n{peint:.400}"
+    );
+    // L'ALIGNEMENT EST GARDÉ : seize colonnes, remplies d'espaces
+    // invisibles plutôt que des zéros estompés de l'hexadécimal. Sans
+    // lui, les colonnes de la grille dansent dès qu'une valeur passe
+    // de 9 à 10.
+    assert!(
+        peint.contains(&format!("{:>16}", 55)),
+        "aligné à droite comme l'hexadécimal qu'il remplace"
+    );
+    // UNE ADRESSE RESTE EN HEXADÉCIMAL : au-dessus du million, la
+    // règle de `nombre_lisible` rend la main à l'hexadécimal, et c'est
+    // ce que RSP et RIP montrent.
+    let rsp = app.emulator.as_ref().unwrap().cpu().regs.get64(Reg64::Rsp);
+    assert!(rsp >= 1_000_000, "la pile vit haut : {rsp:#x}");
+    assert!(
+        peint.contains(&format!("{rsp:016x}")),
+        "les adresses gardent l'hexadécimal :\n{peint:.400}"
+    );
+
+    // AU NIVEAU AVANCÉ, RIEN NE CHANGE : l'hexadécimal est la langue
+    // du métier, et c'est elle qu'on compare au vidage et à gdb.
+    app.debutant = false;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("0000000000000037"),
+        "le mode avancé garde ses seize chiffres :\n{peint:.400}"
+    );
+}
+
+/// LES HUIT REGISTRES HAUTS NE PRENNENT PAS LA MOITIÉ DU VOLET POUR NE
+/// RIEN DIRE.
+///
+/// R8 à R15 sont à zéro dans toutes les captures du mode simple, et
+/// occupent huit rangées sur dix-sept — pendant que la pile, en
+/// dessous, se défile faute de place. Vingt étapes du parcours sur cent
+/// dix-sept les emploient.
+#[test]
+fn the_high_registers_show_up_when_the_program_uses_them() {
+    let programme =
+        |corps: &str| format!("section .text\nglobal _start\n_start:\n    {corps}\n    hlt\n");
+    let mut app = NamsdecApp {
+        source: programme("mov rax, 1"),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+    // DANS LA GRILLE : le nom suivi de sa valeur. « R12 » tout court
+    // paraît ailleurs — la convention d'appel le range parmi les
+    // registres à rendre intacts —, et le chercher seul mesurerait
+    // autre chose que ce qu'on veut.
+    let dans_la_grille = |peint: &str, nom: &str| peint.contains(&format!("|{nom}|{:>16}|", 0));
+    let peint = paint(&mut app);
+    assert!(
+        !dans_la_grille(&peint, "R12"),
+        "repliés tant qu'ils n'ont rien à dire :\n{peint:.400}"
+    );
+    let s = strings(app.lang);
+    assert!(
+        peint.contains(s.registers_high_show),
+        "et la ligne qui les rend est là :\n{peint:.400}"
+    );
+
+    // ON LES DEMANDE : ils paraissent, et le réglage part dans
+    // `settings.json` comme tous les autres.
+    app.registres_hauts = true;
+    let peint = paint(&mut app);
+    assert!(dans_la_grille(&peint, "R12"), "demandés, ils sont là");
+    assert!(
+        serde_json::to_string(&app.settings_snapshot())
+            .unwrap()
+            .contains("\"registres_hauts\":true"),
+        "et le choix se retient"
+    );
+
+    // ET UN PROGRAMME QUI EN EMPLOIE UN LES DÉPLIE TOUS, SANS QU'ON
+    // DEMANDE RIEN : les huit ensemble, sinon la grille se
+    // réorganiserait registre par registre sous les yeux de celui qui
+    // avance d'un pas.
+    let mut app = NamsdecApp {
+        source: programme("mov r9, 3"),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&format!("|R9|{:>16}|", 3)) && dans_la_grille(&peint, "R12"),
+        "un seul en jeu, et les huit paraissent :\n{peint:.400}"
+    );
+    assert!(
+        !peint.contains(s.registers_high_show),
+        "et la ligne n'a plus rien à offrir"
+    );
+
+    // AU NIVEAU AVANCÉ, LES SEIZE SONT TOUJOURS LÀ : celui qui
+    // travaille veut ses registres à la même place d'une séance à
+    // l'autre, même vides.
+    let mut app = NamsdecApp {
+        source: programme("mov rax, 1"),
+        debutant: false,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&format!("|R12|{:016x}|", 0)),
+        "le mode avancé les montre toujours, en hexadécimal :\n{peint:.400}"
+    );
+}
+
+/// OÙ L'ON EN EST DANS LE TEMPS DU PROGRAMME.
+///
+/// La question que le mode simple ne traitait pas : on avançait pas à
+/// pas sans savoir combien de pas on avait faits, ni combien de fois la
+/// boucle avait tourné — alors que c'est la question même de plusieurs
+/// étapes du parcours.
+#[test]
+fn the_beginner_bench_says_how_far_the_program_has_got() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rcx, 3
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+"
+        .to_owned(),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    app.do_step();
+    app.do_step();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("Pas 2 depuis le début"),
+        "le compte des pas :\n{peint:.600}"
+    );
+    assert!(
+        !peint.contains("passage"),
+        "et rien sur les passages tant qu'on n'est passé qu'une fois :\n{peint:.600}"
+    );
+
+    // Deux tours de boucle : le `dec` a été exécuté deux fois, et c'est
+    // ce que dit la ligne.
+    app.do_step();
+    app.do_step();
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("passage 2 par cette ligne"),
+        "le tour de boucle :\n{peint:.600}"
+    );
+
+    // AU NIVEAU AVANCÉ, RIEN : la chronologie et sa barre répondent
+    // déjà à cette question, et une ligne de plus à chaque pas devant
+    // quelqu'un qui n'a rien demandé est du bruit.
+    app.debutant = false;
+    let peint = paint(&mut app);
+    assert!(
+        !peint.contains("depuis le début"),
+        "le mode avancé a sa chronologie :\n{peint:.600}"
+    );
+}
+
+/// LES LÉGENDES DU VOLET TIENNENT EN DEUX LIGNES.
+///
+/// La règle vient de A 9.87 et le guide la porte depuis : à trois
+/// lignes, la pile tombait sous la ligne de flottaison — une légende
+/// qui chasse ce qu'elle accompagne ne vaut pas mieux que pas de
+/// légende. Rien ne la retenait pourtant, et la phrase des registres
+/// est passée à QUATRE lignes le 16 novembre 2026, le jour où elle a
+/// dû dire que les nombres sont écrits en clair.
+#[test]
+fn les_legendes_du_volet_tiennent_en_deux_lignes() {
+    for lang in [Lang::Fr, Lang::En] {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            debutant: true,
+            lang,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        app.do_assemble();
+        let s = strings(lang);
+        let mut vues: Vec<(String, usize)> = Vec::new();
+        for _ in 0..3 {
+            vues.clear();
+            let mut sortie = ctx.run_ui(écran_du_banc(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                    let texte = t.galley.text();
+                    if texte == s.etabli_regs_legend || texte == s.etabli_flags_legend {
+                        vues.push((texte.to_owned(), t.galley.rows.len()));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        assert_eq!(vues.len(), 2, "les deux légendes sont peintes ({lang:?})");
+        for (texte, lignes) in vues {
+            assert!(
+                lignes <= 2,
+                "« {texte} » tient en {lignes} lignes, et la pile tombe sous le bord"
+            );
+        }
+    }
+}

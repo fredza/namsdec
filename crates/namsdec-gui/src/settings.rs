@@ -160,10 +160,29 @@ pub struct Settings {
     /// que celui-ci est faux. Voir `crate::prevision`.
     #[serde(default = "vrai")]
     pub prevoir: bool,
-    /// Le module des exercices. Éteint par défaut : quelqu'un qui écrit
-    /// son propre code n'a pas besoin qu'on lui propose des devoirs, et
-    /// rien n'apparaît tant qu'il ne le demande pas.
+    /// Les huit registres hauts (R8 à R15) sont-ils montrés au niveau
+    /// débutant alors qu'ils sont tous à zéro ?
+    ///
+    /// Faux par défaut : la grille montre ce que le programme touche, et
+    /// les huit paraissent d'eux-mêmes dès que l'un d'eux porte quelque
+    /// chose. Celui qui veut ses seize registres quand même le demande
+    /// une fois — et c'est un réglage, donc il le retrouve.
     #[serde(default)]
+    pub registres_hauts: bool,
+    /// Le module des exercices.
+    ///
+    /// **Allumé pour une installation neuve** depuis le 16 novembre
+    /// 2026, et pour la même raison que `debutant` : la première
+    /// ouverture doit montrer un outil qu'on peut lire, et le parcours
+    /// de cent dix-sept étapes est ce que namsdec a de plus
+    /// pédagogique. Relevé sur la capture du premier écran : le bouton
+    /// « Exercices… » y était GRISÉ, et le seul endroit qui disait où
+    /// l'allumer était un commentaire dans le programme de bienvenue.
+    ///
+    /// **Une configuration qui existe DÉJÀ garde la sienne** : son
+    /// propriétaire écrit son propre code, et un réglage neuf n'a pas à
+    /// lui proposer des devoirs (voir `migrate`, version < 3).
+    #[serde(default = "vrai")]
     pub exercises: bool,
     /// Les séries d'exercices qu'on ne veut pas voir, par identifiant.
     ///
@@ -459,7 +478,8 @@ impl Default for Settings {
             // c'est elle qui manque quand on découvre un binaire.
             flow_pseudo: false,
             completion: true,
-            exercises: false,
+            registres_hauts: false,
+            exercises: true,
             auto_indent: true,
             auto_pairs: true,
             hover_help: true,
@@ -613,6 +633,10 @@ impl Settings {
             // au-dessus, et elle vaut d'être redite : on hérite d'un
             // défaut, on ne se fait pas imposer un changement.
             self.debutant = false;
+            // Et le parcours d'exercices avec lui, devenu vrai par
+            // défaut le 16 novembre 2026 : une configuration d'avant
+            // le mode débutant n'a pas demandé de devoirs.
+            self.exercises = false;
         }
         self.version = SETTINGS_VERSION;
         self
@@ -1140,6 +1164,20 @@ mod tests {
         assert!(
             !migré.debutant,
             "une configuration d'avant garde l'interface entière"
+        );
+        // ET LE PARCOURS SUIT LA MÊME RÈGLE, depuis le 16 novembre
+        // 2026 : allumé pour une installation neuve — le bouton
+        // « Exercices… » du premier écran était gris, et la seule
+        // façon de l'apprendre était un commentaire dans le programme
+        // de bienvenue —, laissé éteint pour une configuration qui
+        // existait avant le mode débutant.
+        assert!(
+            Settings::default().exercises,
+            "une installation neuve ouvre sur le parcours"
+        );
+        assert!(
+            !migré.exercises,
+            "une configuration d'avant ne reçoit pas de devoirs"
         );
         assert_eq!(migré.version, SETTINGS_VERSION);
         // Et un fichier déjà à jour n'est pas retouché : ce qu'on a

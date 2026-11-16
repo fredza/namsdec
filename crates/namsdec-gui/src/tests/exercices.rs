@@ -76,7 +76,19 @@ fn asking_for_the_exercises_is_remembered() {
         "completion":true,"memory_format":"bytes","explorer_root":null,"current_file":null,
         "shortcuts":{}}"#;
     let settings: Settings = serde_json::from_str(older).expect("les anciens réglages se relisent");
-    assert!(!settings.exercises, "et le module reste éteint");
+    // ET LE MODULE RESTE ÉTEINT POUR CELUI-LÀ. Le parcours est allumé
+    // par défaut depuis le 16 novembre 2026 — une installation neuve
+    // doit trouver ce que namsdec a de plus pédagogique —, mais une
+    // configuration d'avant le mode débutant appartient à quelqu'un qui
+    // écrit son propre code : la migration le lui laisse (version < 3).
+    // Le champ absent prend le défaut ; c'est la migration qui décide
+    // ensuite, et elle est éprouvée dans `settings.rs`.
+    assert!(settings.exercises);
+    // Une installation neuve, elle, ouvre sur le parcours.
+    assert!(
+        Settings::default().exercises,
+        "le premier écran doit mener au parcours"
+    );
 }
 
 /// Charger un exercice met son programme dans l'éditeur, et rien de plus :
@@ -1829,6 +1841,95 @@ boucle:
     );
 }
 
+/// Fermer l'onglet d'une étape ne jette pas ce qu'on y avait écrit.
+///
+/// C'était le seul endroit du parcours où du travail disparaissait :
+/// l'onglet emportait le programme, et revenir à l'étape rendait le
+/// code de départ — c'est-à-dire exactement ce qu'on ne cherchait pas.
+/// Le brouillon est rangé en mémoire à la fermeture, et relu quand on
+/// redemande l'étape, pas avant.
+#[test]
+fn a_closed_step_keeps_what_was_written() {
+    let pack = builtin_pack();
+    let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
+    let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
+
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        ..Default::default()
+    };
+    app.load_exercise_now(&premier);
+    app.source.push_str("    ; mon essai\n");
+    app.load_exercise_now(&second);
+    assert_eq!(app.tabs.len(), 1, "le premier attend dans son onglet");
+
+    // On ferme l'onglet du premier — celui qui n'est pas à l'écran.
+    let rang = app
+        .exercise_tab_index(&premier)
+        .expect("le premier a son onglet");
+    app.close_tab_now(rang);
+    assert!(app.tabs.is_empty(), "il ne reste que l'étape courante");
+    assert!(
+        app.exercise_drafts.contains_key(&premier),
+        "le brouillon a été rangé : {:?}",
+        app.exercise_drafts.keys().collect::<Vec<_>>()
+    );
+
+    // Et y revenir le rend.
+    app.load_exercise_now(&premier);
+    assert_eq!(app.current_exercise.as_deref(), Some(premier.as_str()));
+    assert!(
+        app.source.contains("; mon essai"),
+        "ce qu'on avait écrit revient avec l'étape :\n{}",
+        app.source
+    );
+    // Il n'est écrit nulle part : l'étape porte sa marque de
+    // non-enregistré, comme elle la portait dans son onglet.
+    assert!(
+        app.buffer_modified(),
+        "un brouillon rendu n'est pas un fichier enregistré"
+    );
+}
+
+/// Une étape qu'on n'a pas touchée ne laisse pas de brouillon.
+///
+/// En garder un ferait croire, au retour, à un travail qu'on n'a pas
+/// fait — et il empêcherait une correction d'énoncé d'arriver jusqu'à
+/// l'éditeur : les séries sont des fichiers de données, elles changent
+/// sans qu'on recompile.
+#[test]
+fn an_untouched_step_leaves_no_draft() {
+    let pack = builtin_pack();
+    let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
+    let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
+
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        ..Default::default()
+    };
+    app.load_exercise_now(&premier);
+    app.load_exercise_now(&second);
+    let rang = app
+        .exercise_tab_index(&premier)
+        .expect("le premier a son onglet");
+    app.close_tab_now(rang);
+    assert!(
+        app.exercise_drafts.is_empty(),
+        "rien n'a été écrit, rien n'est gardé : {:?}",
+        app.exercise_drafts.keys().collect::<Vec<_>>()
+    );
+
+    // Le code de départ revient donc tel que la série le donne.
+    app.load_exercise_now(&premier);
+    assert_eq!(
+        app.source, pack.exercises[0].starter_code,
+        "l'étape rouvre sur le code de départ"
+    );
+    assert!(!app.buffer_modified(), "et il n'y a rien à enregistrer");
+}
+
 /// Chaque exercice a son onglet, et porte son nom.
 ///
 /// Trois onglets « sans titre » côte à côte ne disent rien ; le titre de
@@ -2017,9 +2118,18 @@ _start:
         peint.contains("rax == 0xf"),
         "la condition manquante :\n{peint}"
     );
+    // LE CONSTAT SE SÉPARE DE LA CONDITION, et ne répète plus le nom du
+    // registre : « rax == 0xf — il vaut 0xc ». Les deux phrases
+    // s'écrivaient à six pixels l'une de l'autre, en chasse fixe, et se
+    // lisaient comme une seule (capture du 16 novembre 2026, « RAX vaut
+    // 2 RAX vaut 1 »).
     assert!(
-        peint.contains(&format!("rax {} 0xc", s.goal_is)),
-        "et ce que rax vaut à la place :\n{peint}"
+        peint.contains(&format!("— {} 0xc", s.goal_actual)),
+        "et ce que rax vaut à la place, séparé :\n{peint}"
+    );
+    assert!(
+        !peint.contains(&format!("rax {} 0xc", s.goal_is)),
+        "sans répéter le registre que la condition vient de nommer :\n{peint}"
     );
 
     // Une fois le but atteint, plus de constat : répéter la valeur sous
@@ -2952,11 +3062,21 @@ fn la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne() {
         app.debutant = true;
         app.load_exercise_now(étape);
         app.show_exercises = false;
-        let mut mem = Memory::new(BASE, 0x1000);
-        mem.load(BASE, &[0xf4]).expect("un hlt se charge");
-        let mut cpu = Cpu::new(mem);
-        cpu.regs.rip = BASE;
-        app.emulator = Some(Box::new(namsdec_emu::Emulator::new(cpu)));
+        // LE PROGRAMME DE L'ÉTAPE, VRAIMENT EXÉCUTÉ.
+        //
+        // Un `hlt` seul posé à la main donnait une machine à
+        // interroger, mais pas le CONTENU qu'elle fait écrire : un but
+        // évalué porte, pour chaque condition qui manque, le constat de
+        // ce que le registre vaut à la place — deux lignes de plus
+        // qu'avec un programme qui n'a rien fait. La bande était donc
+        // mesurée plus courte qu'elle n'est, et la capture du
+        // 16 novembre 2026 a montré « RBX vaut 1 — il vaut 2 » tranché
+        // par le bas pendant que ce contrôle restait vert.
+        app.do_assemble();
+        for _ in 0..200 {
+            app.do_step();
+        }
+        let _ = (BASE, std::marker::PhantomData::<(Cpu, Memory)>);
 
         // La bande est en haut, sous la barre et la frise : on borne
         // la mesure à sa hauteur plutôt qu'à son contenu, pour ne pas
@@ -3323,13 +3443,16 @@ fn le_constat_du_but_suit_la_langue_du_niveau() {
                 peints.contains("RAX vaut 2"),
                 "la condition se lit en toutes lettres : {peints:.600}"
             );
+            // Et le constat se sépare de la condition sans répéter le
+            // registre : « RAX vaut 2 — il vaut 12 » (16 novembre
+            // 2026 ; les deux phrases se lisaient comme une seule).
             assert!(
-                peints.contains("RAX vaut 12"),
+                peints.contains("— il vaut 12"),
                 "et le constat se dit en décimal, comme la bande du dernier pas : {peints:.600}"
             );
         } else {
             assert!(
-                peints.contains("rax vaut 0xc"),
+                peints.contains("— il vaut 0xc"),
                 "au-dessus du niveau débutant, l'hexadécimal reste : {peints:.600}"
             );
         }
@@ -3926,4 +4049,471 @@ fn l_indice_se_demande_et_suit_ce_qu_on_a_deja_ecrit() {
     assert!(!app.indice_montré);
     let (_, manquantes) = app.exercise_hint().expect("un indice");
     assert_eq!(manquantes, vec!["loop"]);
+}
+
+/// Le parcours va dans LES DEUX SENS.
+///
+/// Il n'allait que dans un : « Étape suivante » dans la bande et dans
+/// la fenêtre, et rien pour revenir. Pour revoir l'étape qu'on venait
+/// de faire — comment on s'y était pris, ou pour la refaire plus
+/// court —, il fallait rouvrir la liste et y retrouver son rang.
+#[test]
+fn on_revient_a_l_etape_precedente() {
+    let mut app = app_with_exercises();
+    let pack = builtin_pack();
+    let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
+    let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
+    let troisième = namsdec_exercises::full_id(&pack, &pack.exercises[2]);
+
+    // LA PRÉCÉDENTE TOUT COURT, et non « la précédente non réussie » :
+    // on recule vers ce qu'on vient de faire, et sauter les étapes
+    // réussies ferait manquer celle qu'on cherche.
+    app.exercises_done.insert(second.clone());
+    assert_eq!(
+        app.exercise_before(&troisième).map(|(id, _)| id),
+        Some(second.clone()),
+        "même réussie, l'étape d'avant est l'étape d'avant"
+    );
+    // Le titre vient avec : c'est ce que le survol montre.
+    let (_, titre) = app.exercise_before(&second).expect("la première existe");
+    assert_eq!(titre, pack.exercises[0].title.get(app.lang.code()));
+    // Et le premier n'a rien avant lui : un parcours a un début.
+    assert_eq!(app.exercise_before(&premier), None);
+
+    // À L'ÉCRAN, aux deux endroits. Dans la bande de l'Établi, en
+    // flèche — la place y est comptée ; dans la fenêtre, en toutes
+    // lettres.
+    app.debutant = true;
+    app.load_exercise_now(&troisième);
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains('‹'),
+        "la bande porte le retour : {painted}"
+    );
+
+    app.debutant = false;
+    app.show_exercises = true;
+    let s = strings(app.lang);
+    let painted = paint(&mut app);
+    assert!(
+        painted.contains(s.exercises_previous),
+        "la fenêtre aussi : {painted}"
+    );
+}
+
+/// L'ÉTABLI DIT QUAND LA LISTE DES PROBLÈMES NE TIENT PAS DANS SA
+/// BANDE, ET IL MONTRE LA CORRECTION QU'IL SAIT PROPOSER.
+///
+/// Deux défauts vus sur la même capture, `établi / l'assemblage a
+/// échoué` (16 novembre 2026) : la dernière explication était tranchée
+/// par le milieu au bas de la bande — une ligne coupée ne ressemble pas
+/// à une liste qui continue, mais à un texte perdu —, et la correction
+/// que `fixes` sait écrire depuis longtemps n'avait aucune porte au
+/// mode simple, qui n'a pas la barre d'état où Alt+Entrée s'annonce.
+#[test]
+fn la_bande_des_problemes_dit_la_suite_et_propose_la_correction() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        // Deux fautes, et deux explications qui débordent.
+        source: "\
+section .text
+global _start
+_start:
+    mvo rax, rbx
+    mov rzx, 1
+    bougetoi rax, rbx
+    int 0x80
+    mov rdi, 0
+    syscall
+"
+        .to_owned(),
+        debutant: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    app.do_assemble();
+    assert!(
+        !app.diagnostics.is_empty(),
+        "nasm refuse : {:?}",
+        app.status
+    );
+
+    let s = strings(app.lang);
+    let mut peints = String::new();
+    // Quatre images : la mention paraît à partir de la seconde, le
+    // débordement n'étant connu qu'une fois la zone posée.
+    // AU PLUS PETIT ÉCRAN QUE L'APPLICATION ACCEPTE : c'est là que la
+    // bande manque de place, et un contrôle ne voit un défaut de place
+    // que si la place manque vraiment (A 9.85).
+    let petit = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 520.0),
+        )),
+        ..écran_du_banc()
+    };
+    for _ in 0..4 {
+        peints.clear();
+        let mut sortie = ctx.run_ui(petit.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                peints.push_str(t.galley.text());
+                peints.push('|');
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    assert!(
+        peints.contains(s.etabli_problemes_suite),
+        "ce qui est sous le pli se dit :\n{peints:.1200}"
+    );
+    // IL N'Y A PAS DE REGISTRE `rzx`, et nasm ne le dira jamais : il ne
+    // voit qu'un symbole inconnu, et répond « invalid combination of
+    // opcode and operands ».
+    assert!(
+        peints.contains("rzx"),
+        "le registre inventé est nommé :\n{peints:.1200}"
+    );
+    // ET LA CORRECTION DU MNÉMONIQUE SE POSE D'UN CLIC, là où elle ne
+    // s'annonçait que dans une barre d'état que ce mode n'a pas.
+    assert!(
+        peints.contains(s.fix_apply),
+        "la correction se propose sur place :\n{peints:.1200}"
+    );
+
+    // Et le bouton fait ce qu'Alt+Entrée fait.
+    let ligne = app
+        .diagnostics
+        .iter()
+        .find(|d| d.line > 0)
+        .map(|d| d.line as usize - 1)
+        .expect("une faute située");
+    let avant = app.source.clone();
+    let correction = fixes::propose(&app.source, ligne, s).expect("une correction");
+    app.poser_la_ligne(ligne, &correction.ligne);
+    assert_ne!(app.source, avant, "la ligne est réécrite");
+    assert!(
+        app.source.lines().nth(ligne) == Some(correction.ligne.as_str()),
+        "et c'est bien celle qu'on proposait"
+    );
+}
+
+/// LE PARCOURS A UNE PORTE QUI S'OUVRE.
+///
+/// Sur la capture du premier écran, « Exercices… » était GRISÉ, et le
+/// seul endroit qui disait où l'allumer était un commentaire dans le
+/// programme de bienvenue (« Préférences > Modules »). C'est le seul
+/// bouton de la barre qui mène au parcours, et il était éteint au
+/// moment où il sert le plus.
+#[test]
+fn le_bouton_du_parcours_allume_le_module_qu_il_demande() {
+    let mut app = NamsdecApp {
+        debutant: true,
+        exercises: false,
+        exercise_packs: vec![builtin_pack()],
+        ..Default::default()
+    };
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+
+    // Il se peint, et il n'est pas éteint.
+    let s = strings(app.lang);
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.exercises_open),
+        "le bouton est là :\n{peint:.300}"
+    );
+
+    // Le clic — simulé en appelant ce que le bouton fait — allume le
+    // module et ouvre la fenêtre, au lieu de renvoyer vers une
+    // préférence qu'on n'a pas encore ouverte.
+    app.exercises = true;
+    app.show_exercises = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("117") || peint.contains("Découverte"),
+        "et la fenêtre du parcours s'ouvre :\n{peint:.600}"
+    );
+    // Le choix se retient : c'est un réglage comme un autre.
+    assert!(
+        serde_json::to_string(&app.settings_snapshot())
+            .unwrap()
+            .contains("\"exercises\":true")
+    );
+}
+
+/// ON NE DEMANDE JAMAIS D'ÉCRIRE UNE NOTION QU'ON N'A NI VUE NI
+/// ANNONCÉE.
+///
+/// **C'est la règle de progression du parcours**, et elle n'était
+/// écrite nulle part : chaque étape pouvait, en toute discrétion,
+/// demander une instruction que les cinquante précédentes n'avaient
+/// jamais montrée et que rien dans son énoncé ne nommait. L'élève n'a
+/// alors que deux issues — la solution, qui met fin à l'exercice, ou
+/// l'abandon.
+///
+/// **Trois façons d'être en règle**, et c'est volontairement large :
+///
+/// - la notion a déjà servi dans une étape précédente, ou elle est
+///   écrite dans le programme de départ qu'on a sous les yeux ;
+/// - l'étape la NOMME dans son énoncé, ses commentaires ou son indice
+///   écrit — c'est ainsi qu'on introduit quelque chose ;
+/// - elle nomme sa FAMILLE : « `setcc` recopie l'indicateur » introduit
+///   `setz`, `sets`, `setc` et `seto` d'un coup, et c'est exactement ce
+///   que fait l'étape 8. La convention est celle d'Intel, et
+///   l'application l'emploie déjà.
+///
+/// **Mesuré le 16 novembre 2026 sur les cent dix-sept étapes** : vingt
+/// introduisent une notion dans leur trou, dix-huit la nommaient, une
+/// la nommait par sa famille, et UNE SEULE ne la nommait pas — `rep`,
+/// à l'étape `memmove`. Elle a reçu l'indice qui lui manquait.
+#[test]
+fn aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee() {
+    let pack = builtin_pack();
+    let mut vues: Vec<&'static str> = Vec::new();
+    let mut fautes: Vec<String> = Vec::new();
+
+    for (rang, exercise) in pack.exercises.iter().enumerate() {
+        let sujet = crate::exercises::instructions_du_programme(&exercise.starter_code);
+        let Some(solution) = exercise.solution.as_deref() else {
+            // Une démonstration ou une étape de lecture ne demande rien
+            // à écrire : tout ce qu'elle montre est sous les yeux.
+            for fiche in crate::exercises::instructions_du_programme(&exercise.starter_code) {
+                if !vues.contains(&fiche) {
+                    vues.push(fiche);
+                }
+            }
+            continue;
+        };
+        // CE QUE LE TROU DEMANDE : dans la solution, absent du sujet.
+        for fiche in crate::exercises::instructions_du_programme(solution) {
+            let à_écrire = !sujet.contains(&fiche);
+            if !à_écrire || vues.contains(&fiche) {
+                continue;
+            }
+            // Tout ce que l'étape donne à lire, dans les deux langues :
+            // un parcours suivi en anglais doit l'être aussi.
+            let mut lu = String::new();
+            for langue in ["fr", "en"] {
+                lu.push_str(exercise.description.get(langue));
+                lu.push(' ');
+                if let Some(indice) = &exercise.hint {
+                    lu.push_str(indice.get(langue));
+                    lu.push(' ');
+                }
+            }
+            lu.push_str(&exercise.starter_code);
+            let lu = lu.to_ascii_lowercase();
+            // La fiche entière : « je » s'annonce aussi bien par `jz`,
+            // puisque ce sont deux noms du même opcode.
+            let noms = namsdec_doc::lookup(fiche)
+                .map(|e| e.names)
+                .unwrap_or(&[] as &[&str]);
+            let nommée = noms.iter().any(|nom| mot_présent(&lu, nom));
+            // Ou sa famille : setcc, jcc, cmovcc.
+            let famille = ["set", "cmov", "j"].iter().find_map(|préfixe| {
+                fiche
+                    .strip_prefix(préfixe)
+                    .map(|_| format!("{préfixe}cc"))
+                    .filter(|f| lu.contains(f.as_str()))
+            });
+            if !nommée && famille.is_none() {
+                fautes.push(format!(
+                    "étape {} ({}) : il faut écrire « {fiche} », jamais rencontrée et nommée nulle part",
+                    rang + 1,
+                    exercise.id
+                ));
+            }
+        }
+        for fiche in crate::exercises::instructions_du_programme(solution) {
+            if !vues.contains(&fiche) {
+                vues.push(fiche);
+            }
+        }
+    }
+
+    assert!(
+        fautes.is_empty(),
+        "le parcours demande {} notion(s) qu'il n'a ni montrées ni annoncées :\n  {}",
+        fautes.len(),
+        fautes.join("\n  ")
+    );
+}
+
+/// Un mot entier, et non un morceau : `add` ne doit pas se reconnaître
+/// dans « adresse », ni `or` dans « ordre ».
+fn mot_présent(texte: &str, mot: &str) -> bool {
+    let borne = |c: char| !c.is_ascii_alphanumeric() && c != '_';
+    texte.match_indices(mot).any(|(i, _)| {
+        let avant = texte[..i].chars().next_back().is_none_or(borne);
+        let après = texte[i + mot.len()..].chars().next().is_none_or(borne);
+        avant && après
+    })
+}
+
+/// « EST-CE JUSTE ? » SE DEMANDE EN UN GESTE.
+///
+/// Il en fallait trois avant, dans le bon ordre, et il fallait savoir
+/// qu'il les fallait : assembler, exécuter, puis remarquer qu'une
+/// pastille a changé de couleur. Un parcours dont chaque vérification
+/// demande de connaître la chaîne de compilation n'est pas interactif.
+#[test]
+fn verifier_assemble_execute_et_rend_un_verdict() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/echange");
+
+    // Rien n'a encore été demandé : pas de verdict.
+    assert_eq!(app.verdict_de_la_verification(), None);
+    assert!(app.exercice_a_verifier(), "cette étape a un but");
+
+    // LE PROGRAMME LIVRÉ A UN TROU : vérifier doit donc répondre
+    // « pas encore », et ne rien noter comme réussi.
+    app.verifier_l_exercice();
+    // Les deux battements d'une image : nasm rend son résultat, puis la
+    // course avance. C'est ce que `draw` fait soixante fois par
+    // seconde, et le geste n'attend rien en bloquant la fenêtre.
+    for _ in 0..8000 {
+        app.tick_assemble();
+        app.tick_run(&egui::Context::default());
+        // Le fil de nasm a besoin de quelques millisecondes ; une image
+        // en dure seize. Sans cette pause, huit mille tours de boucle
+        // passent en moins d'une milliseconde et l'on conclurait que
+        // l'assemblage ne rend jamais rien.
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        if !app.running && !app.assembling() && app.emulator.is_some() {
+            break;
+        }
+    }
+    assert!(
+        app.emulator.is_some(),
+        "l'assemblage a eu lieu : {:?}",
+        app.status
+    );
+    assert_eq!(
+        app.verdict_de_la_verification(),
+        Some(false),
+        "le trou n'est pas rempli — {:?}",
+        app.exercise_goal()
+    );
+    assert!(!app.exercises_done.contains("namsdec/echange"));
+
+    // LA SOLUTION, ET LE MÊME GESTE : le verdict bascule.
+    charge_la_solution(&mut app, "namsdec/echange");
+    app.verifier_l_exercice();
+    for _ in 0..8000 {
+        app.tick_assemble();
+        app.tick_run(&egui::Context::default());
+        // Le fil de nasm a besoin de quelques millisecondes ; une image
+        // en dure seize. Sans cette pause, huit mille tours de boucle
+        // passent en moins d'une milliseconde et l'on conclurait que
+        // l'assemblage ne rend jamais rien.
+        std::thread::sleep(std::time::Duration::from_millis(1));
+        if !app.running && !app.assembling() && app.verdict_de_la_verification().is_some() {
+            break;
+        }
+    }
+    assert_eq!(
+        app.verdict_de_la_verification(),
+        Some(true),
+        "la solution atteint le but — {:?}",
+        app.exercise_goal()
+    );
+    // Et le carnet de bord l'inscrit : l'application appelle cette
+    // méthode à chaque image, c'est elle qui fait passer la pastille au
+    // vert — et c'est la MÊME règle que le verdict, depuis qu'ils
+    // partagent `exercice_reussi`.
+    app.note_goal_reached();
+    assert!(app.exercises_done.contains("namsdec/echange"));
+
+    // ET IL NE SUIT PAS D'UNE ÉTAPE À L'AUTRE : rendu sur la suivante,
+    // il dirait « Réussi » devant un programme qu'on n'a pas écrit.
+    app.load_exercise_now("namsdec/zero");
+    assert_eq!(app.verdict_de_la_verification(), None);
+}
+
+/// UNE ÉTAPE DE LECTURE SE RÉPOND AVANT DE S'EXÉCUTER.
+///
+/// C'est toute sa leçon — « lisez-le, répondez, puis exécutez : la
+/// machine tranchera ». Vérifier sans avoir répondu ferait tourner le
+/// programme, et le programme DONNE la réponse : RAX vaut 55 dans le
+/// volet avant qu'on ait eu l'occasion de se tromper. C'est la règle
+/// de `prevision`, au seul endroit où elle manquait.
+#[test]
+fn une_question_ne_se_verifie_pas_avant_d_avoir_repondu() {
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise_now("namsdec/prevoir_somme");
+    assert!(
+        app.exercise_question().is_some(),
+        "cette étape pose une question"
+    );
+    assert!(app.exercice_a_verifier(), "il y a quelque chose à vérifier");
+    assert!(
+        !app.verification_possible(),
+        "mais pas tant que le champ est vide"
+    );
+
+    app.question_answer = "55".to_owned();
+    assert!(
+        app.verification_possible(),
+        "une réponse écrite ouvre la vérification"
+    );
+
+    // UN EXERCICE D'ÉCRITURE, LUI, SE VÉRIFIE TOUT DE SUITE : il n'y a
+    // pas de réponse à souffler, et ce qu'on a écrit EST la réponse.
+    app.load_exercise_now("namsdec/echange");
+    assert!(app.verification_possible());
+
+    // ET UNE DÉMONSTRATION N'A RIEN À VÉRIFIER : le bouton dirait
+    // « vérifiez » devant un programme qu'on regarde tourner.
+    app.load_exercise_now("namsdec/registres");
+    assert!(app.exercise_is_demo());
+    assert!(!app.exercice_a_verifier());
+}
+
+/// LE CARNET NE COMPTE QUE CE QU'ON A RÉUSSI.
+///
+/// « 12/117 » dit le chemin parcouru et rien de ce qu'on y a appris.
+/// Le carnet répond à l'autre question — qu'est-ce que je sais
+/// maintenant — et il ne la flatte pas : ouvrir un énoncé n'apprend
+/// rien, et deux noms du même opcode ne font pas deux notions.
+#[test]
+fn le_carnet_des_notions_suit_les_etapes_reussies() {
+    let mut app = app_with_exercises();
+    assert!(
+        app.notions_vues().is_empty(),
+        "rien n'est acquis avant d'avoir rien fait"
+    );
+
+    // Ouvrir une étape ne suffit pas.
+    app.load_exercise_now("namsdec/echange");
+    assert!(app.notions_vues().is_empty(), "ouvrir n'est pas réussir");
+
+    // La réussir, oui — et le carnet porte alors ce que la solution
+    // emploie : `mov`, `xchg`, `hlt` et les directives qui ne sont pas
+    // des instructions n'y sont pas.
+    app.exercises_done.insert("namsdec/echange".to_owned());
+    let notions = app.notions_vues();
+    assert!(notions.contains(&"mov"), "{notions:?}");
+    assert!(notions.contains(&"xchg"), "{notions:?}");
+    assert!(
+        !notions.contains(&"global") && !notions.contains(&"section"),
+        "une directive n'est pas une instruction : {notions:?}"
+    );
+
+    // TRIÉ ET SANS DOUBLON, d'une étape à l'autre : deux étapes qui
+    // emploient `mov` ne l'inscrivent qu'une fois.
+    app.exercises_done.insert("namsdec/zero".to_owned());
+    let après = app.notions_vues();
+    assert_eq!(
+        après.iter().filter(|n| **n == "mov").count(),
+        1,
+        "{après:?}"
+    );
+    let mut trié = après.clone();
+    trié.sort_unstable();
+    assert_eq!(après, trié, "le carnet se lit dans l'ordre");
+    assert!(après.len() > notions.len(), "il grandit : {après:?}");
 }

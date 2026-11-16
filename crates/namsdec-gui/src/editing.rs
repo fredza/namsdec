@@ -199,6 +199,19 @@ impl NamsdecApp {
             return;
         };
         let index = cache.clé.index;
+        let nouvelle = correction.ligne.clone();
+        // Le curseur se pose au bout de la ligne réécrite : c'est là
+        // qu'on était, et c'est de là qu'on repart.
+        self.poser_la_ligne(index, &nouvelle);
+    }
+
+    /// Pose une ligne réécrite à la place de la ligne `index`.
+    ///
+    /// Le cœur de `apply_fix_if_confirmed`, sorti pour servir aussi à la
+    /// liste des problèmes : celle-ci montre la correction à côté de
+    /// l'erreur, et son bouton doit faire exactement ce que fait
+    /// Alt+Entrée — même écriture, même curseur, même message.
+    pub(crate) fn poser_la_ligne(&mut self, index: usize, nouvelle: &str) {
         let Some(début) = ligne_début(&self.source, index) else {
             return;
         };
@@ -206,10 +219,7 @@ impl NamsdecApp {
             + self.source[début..]
                 .find('\n')
                 .unwrap_or(self.source.len() - début);
-        let nouvelle = correction.ligne.clone();
-        self.source_mut().replace_range(début..fin, &nouvelle);
-        // Le curseur au bout de la ligne réécrite : c'est là qu'on
-        // était, et c'est de là qu'on repart.
+        self.source_mut().replace_range(début..fin, nouvelle);
         self.pending_cursor = Some(byte_to_char(&self.source, début + nouvelle.len()));
         self.status = Status::Note(|s| s.fix_applied);
         // Le cache parle d'une ligne qui n'existe plus.

@@ -4,6 +4,135 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.4.0-beta.1 — 10 au 16 novembre 2026
+
+Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :
+**le parcours demande enfin quelque chose, et le mode débutant est une
+interface à part entière**. Sur les 101 étapes qui posent un but, **97
+l'atteignaient telles qu'elles étaient livrées** — on ouvrait, on
+cliquait « Exécuter », la pastille passait au vert sans qu'on ait écrit
+une ligne. Chacune a maintenant un trou, un indice, une solution, et un
+chemin dans les deux sens.
+
+**Les exercices demandent d'écrire**
+- Chaque étape a son **trou** — « ; À FAIRE : … » —, et une **solution**
+  rangée à côté dans la série. Un invariant exécute les deux : le sujet
+  s'assemble, rend la main et n'atteint pas le but ; la solution
+  l'atteint, dans le budget annoncé.
+- Le curseur se pose sur le trou à l'ouverture, la bande dit ce qu'il
+  reste à écrire et **l'efface à mesure** qu'on le remplace.
+- La solution se demande sans rien effacer ni coûter de score.
+- **Trois buts étaient faux**, et un quatrième était vrai avant le
+  premier pas. Corrigés.
+- Au mode débutant, le but se lit en toutes lettres : « RAX vaut 15 »
+  et non « rax == 0xf ».
+
+**Un indice, entre la consigne et la solution**
+- L'aide était tout ou rien : la consigne, puis le programme entier —
+  qui met fin à l'exercice. L'indice est le palier qui manquait.
+- Il se **calcule** pour 80 étapes — les instructions que la solution
+  emploie et que le tampon n'a pas —, **s'affine** à mesure qu'on
+  écrit, et **mène aux fiches** : chaque instruction nommée ouvre la
+  sienne.
+- Il ne se montre pas tout seul : un indice qu'on n'a pas réclamé est
+  une réponse soufflée.
+
+**Le parcours va dans les deux sens, et garde ce qu'on y a écrit**
+- Un chevron `‹` dans la bande, « Étape précédente » en toutes lettres
+  dans la fenêtre. Il fallait auparavant rouvrir la liste et y retrouver
+  son rang.
+- **La précédente tout court**, et non « la précédente non réussie » :
+  on avance vers ce qu'on n'a pas fait, on recule vers ce qu'on vient de
+  faire.
+- **Revenir à une étape rend le programme qu'on y avait laissé**, même
+  si son onglet a été fermé : un brouillon par étape, gardé le temps de
+  la séance et relu au moment où l'on redemande l'étape.
+
+**Le mode simple est une disposition, et non un mode avancé amputé**
+- L'**Établi** est la disposition du débutant ; la **Scène** — un ruban
+  d'instructions, trois registres en gros chiffres, la fiche de
+  l'instruction qui vient — s'ouvre en fenêtre, aux deux niveaux.
+- Ce qui ne tient pas dans une bande **se détache en fenêtre** :
+  « Ce que fait la machine » et « Résultat » ont leur bouton.
+- Les trois pastilles de fenêtre, l'engrenage des préférences, la
+  calculatrice et une console visible sont revenus : la barre de menus
+  retirée avait emporté ce qu'elle portait.
+- **La ligne où est le curseur s'explique**, tant que rien ne tourne :
+  le mot, ce qu'il veut dire, la fiche entière à un clic. Une seule
+  bande explique à la fois — pendant un exercice, c'est la sienne.
+
+**Le titre dit ce qu'on lit**
+- Cent vingt lignes de désassemblage s'affichaient sous « namsdec sans
+  titre » : un binaire ouvert n'a pas de fichier d'enregistrement, et
+  les quatre endroits qui nomment le tampon lisaient ce champ-là seul.
+- Le survol donne le **chemin complet**, partout où le nom s'écrit, et
+  le titre du système porte le nom — l'alt-tab ne montrait que
+  « Namsdec ».
+
+**La séance précédente se redemande**
+- namsdec rouvrait d'autorité le fichier et le binaire de la veille. Il
+  pose maintenant la question au lancement — **Reprendre** ou
+  **Repartir à neuf** —, avec une case « Ne plus demander ».
+- Le réglage se reprend aux Préférences, page Général : *Demander*,
+  *Rouvrir*, *Ne pas rouvrir*.
+
+**Trois gestes qui ne se défaisaient pas**
+- « Montrer » donnait la réponse sans retour possible, le compteur de
+  problèmes ouvrait la console sans la refermer, et un trait soulignait
+  des notes qui ne mènent nulle part.
+- La cible d'un exercice se lit **avant** le premier essai, en gris et
+  sans verdict : on écrivait sans savoir où l'on allait.
+- Le nom du fichier s'abrège par le milieu dans la barre du haut, en
+  gardant son extension, et la rangée où l'on répond au programme n'est
+  plus poussée sous le bord de la fenêtre.
+
+**Le mode débutant, revu sur ses propres captures** (16 novembre)
+- Le volet de la machine **écrit les nombres en clair** : un exercice
+  demandait « Que vaut RAX à l'arrêt ? » — réponse 55 — pendant que le
+  volet affichait `0000000000000037`. Les adresses gardent
+  l'hexadécimal, et la légende le dit.
+- **R8 à R15 ne prennent plus la moitié du volet** quand ils sont vides :
+  ils paraissent dès que le programme en emploie un, et une ligne les
+  rend à la demande.
+- Un pas de plus après la fin du programme **n'invente plus
+  d'instruction** : le bloc « Dernier pas » annonçait `add [rax], al`,
+  lu dans les octets nuls qui suivent le `hlt`.
+- Le but d'un exercice **sépare ce qu'on veut de ce qu'on a** :
+  « RAX vaut 2 — il vaut 1 », là où les deux phrases se lisaient comme
+  une seule.
+- La liste des problèmes **dit quand elle continue plus bas**, au lieu
+  de couper sa dernière phrase en deux.
+- Le **parcours est allumé** pour une installation neuve, et son bouton
+  ne se grise plus : un clic allume le module et ouvre la fenêtre.
+- `mov rzx, 1` reçoit enfin son diagnostic : **il n'y a pas de registre
+  `rzx`**, et les quatre qui en sont proches sont nommés — sans qu'aucun
+  soit choisi d'office.
+- Les **corrections proposées se montrent sous l'erreur**, avec un
+  bouton : elles n'avaient de porte que par Alt+Entrée et la barre
+  d'état, que le mode simple n'a pas.
+- La cible d'un saut porte **le nom que la source lui donne** :
+  « jne boucle » au lieu de `jne short 0000000000400021h`.
+- La bande dit **où l'on en est** : le compte des pas depuis le début,
+  et le numéro de passage par la ligne courante dès le deuxième tour.
+
+**Les exercices répondent** (16 novembre)
+- Un bouton **Vérifier** assemble, exécute et conclut — « Réussi » ou
+  « Pas encore » : il fallait trois gestes et savoir qu'il les fallait.
+- Le verdict ne paraît **que si on l'a demandé** : on exécute aussi pour
+  regarder tourner, et un jugement qu'on n'a pas demandé en est un.
+- Une **étape de lecture ne se vérifie pas avant d'avoir répondu** :
+  l'exécuter donnerait la réponse. Le champ de réponse n'est plus
+  minuscule dans la bande.
+- **Le carnet des notions** : ce que les étapes réussies ont fait écrire
+  ou lire, chaque instruction ouvrant sa fiche. « 12/117 » disait le
+  chemin parcouru et rien de ce qu'on y avait appris.
+- **Une seule règle de réussite** entre la pastille et le verdict : deux
+  écritures auraient fini par donner un bouton qui félicite et une
+  pastille qui refuse.
+- Le parcours ne demande plus **aucune notion qu'il n'a ni montrée ni
+  annoncée** — mesuré sur les 117 étapes, une seule manquait à l'appel
+  (`rep`), et un contrôle le garantit désormais.
+
 ## 0.3.0-beta.1 — 4 et 5 novembre 2026
 
 Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :

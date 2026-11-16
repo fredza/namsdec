@@ -1019,7 +1019,11 @@ fn every_setting_that_is_written_is_read_back() {
         debutant: false,
         // Faux, pour la même raison.
         prevoir: false,
-        exercises: true,
+        // Faux aussi : le parcours est allumé par défaut depuis le
+        // 16 novembre 2026, et ce contrôle veut des valeurs qui ne
+        // soient pas celles d'origine.
+        exercises: false,
+        registres_hauts: true,
         auto_indent: false,
         auto_pairs: false,
         hover_help: false,

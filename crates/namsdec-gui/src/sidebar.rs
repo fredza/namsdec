@@ -489,11 +489,19 @@ impl NamsdecApp {
 
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 6.0;
-            // Étroit : une réponse est un nombre, pas une phrase, et un
-            // champ large dans un panneau de trois cents pixels
-            // mangerait la ligne entière.
+            // ÉTROIT DANS LE PANNEAU, PLUS LARGE DANS LA BANDE.
+            //
+            // Une réponse est un nombre, pas une phrase, et cent dix
+            // pixels suffisent dans un panneau de trois cents. Mais la
+            // bande de l'Établi fait toute la largeur de la fenêtre, et
+            // le même champ y paraissait minuscule à côté de sa
+            // question — au point qu'on cherchait où répondre (relevé
+            // sur `établi / un exercice de lecture`, 16 novembre 2026).
+            // Il prend donc une part de ce qu'il a, bornée des deux
+            // côtés.
+            let large = (ui.available_width() * 0.25).clamp(110.0, 260.0);
             let champ = egui::TextEdit::singleline(&mut self.question_answer)
-                .desired_width(110.0)
+                .desired_width(large)
                 .hint_text(s.question_answer)
                 .font(egui::TextStyle::Monospace);
             ui.add(champ).on_hover_text(s.question_field_hint);
@@ -646,10 +654,10 @@ impl NamsdecApp {
                         egui::Stroke::new(1.5, couleur),
                     );
                 }
+                let texte_condition = condition_lisible(&ligne.texte, débutant, self.lang);
                 ui.colored_label(
                     if ligne.tenue { theme.good } else { theme.text },
-                    egui::RichText::new(condition_lisible(&ligne.texte, débutant, self.lang))
-                        .monospace(),
+                    egui::RichText::new(texte_condition.clone()).monospace(),
                 );
                 if let Some((gauche, valeur)) = &ligne.constat {
                     // LE CONSTAT SUIT LA MÊME RÈGLE QUE LE DERNIER
@@ -675,15 +683,29 @@ impl NamsdecApp {
                     } else {
                         gauche.clone()
                     };
-                    ui.colored_label(
-                        theme.warn,
-                        egui::RichText::new(format!(
-                            "{nom} {} {}",
+                    // DEUX PHRASES COLLÉES N'EN FONT QU'UNE, ET ELLE
+                    // NE VEUT RIEN DIRE.
+                    //
+                    // Relevé sur la capture du 16 novembre 2026,
+                    // `établi / un exercice d'écriture` : la ligne se
+                    // lisait « RAX vaut 2 RAX vaut 1 ». La première
+                    // moitié est ce qu'on veut, la seconde ce qu'on a,
+                    // et rien ne le disait — pas même un blanc, les
+                    // deux étant en chasse fixe et à six pixels l'une
+                    // de l'autre. Un tiret sépare, et le registre ne
+                    // se répète plus quand c'est le même : « RAX vaut
+                    // 2 — il vaut 1 » se lit d'un trait.
+                    let répété = texte_condition.starts_with(&nom);
+                    let constat = if répété {
+                        format!("— {} {}", s.goal_actual, nombre_lisible(*valeur, débutant))
+                    } else {
+                        format!(
+                            "— {nom} {} {}",
                             s.goal_is,
                             nombre_lisible(*valeur, débutant)
-                        ))
-                        .monospace(),
-                    );
+                        )
+                    };
+                    ui.colored_label(theme.warn, egui::RichText::new(constat).monospace());
                 }
             });
         }
@@ -1059,6 +1081,35 @@ impl NamsdecApp {
             );
             ui.label(egui::RichText::new(text).monospace());
         });
+        // OÙ L'ON EN EST DANS LE TEMPS DU PROGRAMME.
+        //
+        // La question que rien ne traitait au mode simple. Le mode
+        // avancé a la chronologie et sa barre (`timeline.rs`) ; ici,
+        // on avançait pas à pas sans jamais savoir combien de pas on
+        // avait faits, ni combien de fois la boucle avait tourné —
+        // alors que c'est la question même de plusieurs étapes du
+        // parcours (« combien de tours, et que reste-t-il »).
+        //
+        // DEUX NOMBRES, ET AUCUN CALCUL : le compteur de pas de
+        // l'émulateur, et le nombre de passages qu'il tient par
+        // adresse — celui-là même qui peint la bande de chaleur dans
+        // la gouttière. Le second ne paraît qu'à partir du deuxième
+        // passage : devant du code droit, il dirait « passage 1 » à
+        // chaque ligne, et une information qui ne varie jamais n'en
+        // est pas une.
+        //
+        // LE PASSAGE EST CELUI DU PAS QU'ON VIENT DE FAIRE, à son
+        // adresse à lui : le compte est alors exact, là où celui de
+        // l'instruction À VENIR demanderait d'ajouter un.
+        if débutant {
+            let faits = emulator.executed();
+            let passages = emulator.visits().get(&addr).copied().unwrap_or(0);
+            let mut texte = s.last_step_count.replacen("{}", &faits.to_string(), 1);
+            if passages > 1 {
+                texte.push_str(&s.last_step_pass.replacen("{}", &passages.to_string(), 1));
+            }
+            ui.colored_label(theme.dim, egui::RichText::new(texte).size(12.0));
+        }
         // CE QUE ÇA DISAIT, et seulement si on avait eu à le prévoir.
         //
         // C'est la troisième étape du chemin — lire, prévoir, avancer,
@@ -1282,7 +1333,12 @@ impl NamsdecApp {
         let Some(instr) = namsdec_disasm::decode_one(window, rip) else {
             return;
         };
-        let text = namsdec_disasm::format_one(&instr);
+        // La même règle que le bloc « Dernier pas » : au niveau
+        // débutant, la cible d'un saut porte le nom que la source lui
+        // donne. Les deux blocs se lisent l'un sous l'autre dans la
+        // bande du bas ; deux écritures de la même adresse à deux
+        // lignes d'écart feraient croire à deux endroits.
+        let text = self.instruction_lisible(&instr, namsdec_disasm::format_one(&instr));
 
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
@@ -1842,6 +1898,42 @@ impl NamsdecApp {
         if éclat > 0.0 && !changed.is_empty() {
             ui.ctx().request_repaint();
         }
+        // ON MONTRE CE QUE LE PROGRAMME TOUCHE.
+        //
+        // Relevé sur les trois captures de l'Établi du 16 novembre
+        // 2026 : R8 à R15 y sont à zéro, alignés sur huit rangées,
+        // c'est-à-dire LA MOITIÉ du volet — pendant que la pile, en
+        // dessous, montre trois lignes et se défile de côté. Vingt
+        // étapes du parcours sur cent dix-sept les emploient ; les
+        // quatre-vingt-dix-sept autres paient huit lignes pour huit
+        // zéros.
+        //
+        // LA RÈGLE SE DIT EN UNE PHRASE, et c'est ce qui la rend
+        // tenable : les huit paraissent dès que l'un d'eux porte
+        // quelque chose. Aucune mémoire à tenir, rien à remettre à
+        // zéro entre deux courses, et la grille ne se réorganise qu'au
+        // moment où un registre entre en jeu.
+        //
+        // LES HUIT ENSEMBLE, et non celui-là seul : un bloc qui
+        // apparaîtrait registre par registre ferait danser la grille à
+        // chaque pas, et c'est elle qu'on regarde en avançant.
+        //
+        // AU NIVEAU DÉBUTANT SEULEMENT, et la ligne sous la grille les
+        // rend à la demande : celui qui travaille veut ses seize
+        // registres à la même place d'une séance à l'autre, même
+        // vides.
+        let débutant = self.debutant;
+        let hauts_en_jeu = REGISTERS[8..].iter().any(|(_, reg)| regs.get64(*reg) != 0)
+            || self
+                .regs_before
+                .as_ref()
+                .is_some_and(|avant| REGISTERS[8..].iter().any(|(_, reg)| avant.get64(*reg) != 0));
+        let hauts_montrés = !débutant || hauts_en_jeu || self.registres_hauts;
+        let visibles: &[(&'static str, Reg64)] = if hauts_montrés {
+            &REGISTERS
+        } else {
+            &REGISTERS[..8]
+        };
         // Dix-huit valeurs d'affilée, c'est haut. Le panneau élargi,
         // elles tiennent sur deux colonnes ou plus, et l'état du
         // processeur se lit d'un coup d'œil au lieu de défiler.
@@ -1863,7 +1955,7 @@ impl NamsdecApp {
             spacing,
             ui.available_height(),
             ligne,
-            REGISTERS.len(),
+            visibles.len(),
         );
         // Le reste de la largeur part dans les blancs entre colonnes :
         // la grille s'appuie alors sur les deux bords du panneau au lieu
@@ -1899,7 +1991,7 @@ impl NamsdecApp {
             .striped(true)
             .show(ui, |ui| {
                 let mut in_row = 0;
-                for (index, (name, value)) in REGISTERS
+                for (index, (name, value)) in visibles
                     .iter()
                     .map(|&(name, reg)| (name, regs.get64(reg)))
                     .chain(std::iter::once(("RIP", regs.rip)))
@@ -2051,7 +2143,7 @@ impl NamsdecApp {
                             } else {
                                 color
                             };
-                            let job = hex_job(ui, theme, value, encre);
+                            let job = valeur_job(ui, theme, value, encre, débutant);
                             let valeur =
                                 crate::cliquable(ui, egui::Label::new(job)).on_hover_ui(|ui| {
                                     ui.label(readings::of(lang, value));
@@ -2082,7 +2174,7 @@ impl NamsdecApp {
                     if in_row == pairs {
                         ui.end_row();
                         in_row = 0;
-                    } else if index != REGISTERS.len() {
+                    } else if index != visibles.len() {
                         // `allocate_space` et non `add_space` : dans une
                         // grille, la seconde avance un curseur qui
                         // n'existe pas (egui le refuse). Celle-ci réserve
@@ -2096,6 +2188,38 @@ impl NamsdecApp {
                     ui.end_row();
                 }
             });
+
+        // LA LIGNE QUI REND LES HUIT AUTRES.
+        //
+        // Un repli qui ne se défait pas est une amputation. Celui-ci se
+        // défait d'un clic, DIT COMBIEN il cache, et son choix est un
+        // réglage comme un autre : il vit dans `settings.json`, et la
+        // séance suivante rouvre sur ce qu'on avait voulu voir.
+        //
+        // Elle ne paraît pas quand les huit sont déjà là d'eux-mêmes :
+        // un repli qu'on ne peut plus demander n'aurait rien à offrir,
+        // et la ligne dirait le contraire de ce que montre la grille.
+        if débutant && !hauts_en_jeu {
+            ui.add_space(2.0);
+            let texte = if self.registres_hauts {
+                s.registers_high_hide
+            } else {
+                s.registers_high_show
+            };
+            if crate::cliquable(
+                ui,
+                egui::Label::new(egui::RichText::new(texte).color(theme.dim).size(12.0)),
+            )
+            .on_hover_text(s.registers_high_hint)
+            .clicked()
+            {
+                // L'enregistrement se fait tout seul : `settings.json`
+                // est réécrit à la frame suivante par
+                // `persist_settings_if_changed`, qui compare l'état
+                // courant à celui du fichier.
+                self.registres_hauts = !self.registres_hauts;
+            }
+        }
 
         if let Some(name) = clicked {
             if !self.watched_registers.remove(name) {
@@ -2414,7 +2538,13 @@ impl NamsdecApp {
                     };
                     ui.colored_label(colour, egui::RichText::new(repère).monospace())
                         .on_hover_text(format!("{addr:#018x}"));
-                    ui.label(hex_job(ui, theme, value, colour))
+                    // LA PILE SUIT LA MÊME RÈGLE QUE LES REGISTRES :
+                    // ce qu'on y pousse est le plus souvent un petit
+                    // nombre — un compteur sauvé, un argument —, et le
+                    // lire en hexadécimal au niveau débutant obligeait
+                    // à convertir ce que la grille d'à côté écrit déjà
+                    // en clair.
+                    ui.label(valeur_job(ui, theme, value, colour, self.debutant))
                         .on_hover_text(readings::of(lang, value));
                     // Le repère : d'abord ce que l'adresse *est* pour le
                     // processeur, puis ce que la valeur veut dire.
@@ -4085,6 +4215,55 @@ pub(crate) fn return_addresses(
         addr += 8;
     }
     trouvées
+}
+
+/// La valeur d'un registre, écrite comme le niveau la lit.
+///
+/// **Le défaut qu'elle corrige tenait sur une seule capture.**
+/// `établi / un exercice de lecture`, 16 novembre 2026 : l'énoncé
+/// demande « Que vaut RAX à l'arrêt ? », la bonne réponse est **55**,
+/// et le volet de la machine affichait `0000000000000037` — pendant
+/// que la bande du bas, quinze centimètres plus bas, disait déjà
+/// « RCX 3 → 2 » en clair. L'exercice portait donc sa propre réponse à
+/// l'écran, dans une écriture que celui qui apprend ne sait pas encore
+/// lire.
+///
+/// **La règle est celle de [`nombre_lisible`]**, et c'est tout
+/// l'intérêt : sous le million et au niveau débutant, le nombre en
+/// clair ; au-delà, les seize chiffres hexadécimaux. Deux endroits qui
+/// écrivent le même nombre l'écrivent pareil, ou l'un des deux ment.
+///
+/// **Aligné à droite sur la largeur de l'hexadécimal**, et non posé à
+/// gauche : les colonnes de la grille ne bougent pas quand une valeur
+/// passe de 9 à 10, et des nombres se lisent alignés par la droite,
+/// unités sous unités. Le remplissage est fait d'espaces, donc
+/// invisible — là où l'hexadécimal, lui, garde ses zéros estompés.
+///
+/// Ce qui reste en hexadécimal au niveau débutant se reconnaît alors à
+/// ces zéros de tête : ce sont les adresses — RSP, RIP, un pointeur —,
+/// et la légende du volet le dit en toutes lettres.
+pub(crate) fn valeur_job(
+    ui: &egui::Ui,
+    theme: &'static Theme,
+    value: u64,
+    colour: egui::Color32,
+    débutant: bool,
+) -> egui::text::LayoutJob {
+    if !débutant || value >= 1_000_000 {
+        return hex_job(ui, theme, value, colour);
+    }
+    let police = egui::TextStyle::Monospace.resolve(ui.style());
+    let mut job = egui::text::LayoutJob::default();
+    job.append(
+        &format!("{value:>16}"),
+        0.0,
+        egui::TextFormat {
+            font_id: police,
+            color: colour,
+            ..Default::default()
+        },
+    );
+    job
 }
 
 /// Seize chiffres hexadécimaux, les zéros de tête effacés.

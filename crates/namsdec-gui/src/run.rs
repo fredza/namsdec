@@ -158,6 +158,21 @@ impl NamsdecApp {
             return;
         }
         self.apply_assembled(rendu, démarré.elapsed());
+        // « VÉRIFIER » ATTENDAIT ICI SA MACHINE.
+        //
+        // Le geste unique du parcours — assembler, exécuter, répondre —
+        // ne peut pas enchaîner les deux actions d'affilée : au moment
+        // où la seconde partirait, nasm travaille encore et il n'y a
+        // pas d'émulateur. `dispatch` refuse alors `Run`, exactement
+        // comme il refuse le raccourci quand le bouton est gris — et
+        // le geste ne faisait qu'assembler, en silence.
+        //
+        // L'intention est donc POSÉE et consommée ici, au seul moment
+        // où la machine existe. Rien n'est attendu en bloquant la
+        // fenêtre : c'est ce que A 9.56 avait coûté à apprendre.
+        if std::mem::take(&mut self.executer_apres_assemblage) && self.emulator.is_some() {
+            self.do_run();
+        }
         // LE PANNEAU S'OUVRE ICI, et nulle part ailleurs : c'est le seul
         // endroit où les diagnostics viennent d'arriver. Posé après le
         // lancement, il montrait ceux de l'assemblage PRÉCÉDENT — une
@@ -881,6 +896,67 @@ impl NamsdecApp {
         self.re_registry.on_step(&ctx);
     }
 
+    /// Une instruction écrite comme la source l'a écrite.
+    ///
+    /// **Le défaut, vu sur la capture du 16 novembre 2026.** La bande
+    /// du bas annonçait `jne short 0000000000400021h` sur un programme
+    /// dont la ligne 17 dit `jnz boucle`. Le désassembleur a raison —
+    /// c'est bien là qu'on saute —, mais celui qui apprend vient
+    /// d'écrire un nom, et on lui rend une adresse de seize chiffres
+    /// qu'il doit retrouver lui-même dans le listing.
+    ///
+    /// **Le nom vient de la source, pas d'une table de symboles.** Un
+    /// `boucle:` de nasm n'est pas exporté : seul `_start` l'est. On
+    /// passe donc par la correspondance adresse → ligne que
+    /// l'assemblage a construite, puis par la ligne elle-même. Rien
+    /// n'est deviné : si l'adresse ne tombe pas exactement sur une
+    /// étiquette, le texte reste tel quel.
+    ///
+    /// **Au niveau débutant seulement.** Celui qui travaille veut
+    /// l'adresse : c'est elle qu'il compare au listing, au vidage et à
+    /// ce que dit gdb.
+    pub(crate) fn instruction_lisible(
+        &self,
+        instr: &namsdec_disasm::Decoded,
+        texte: String,
+    ) -> String {
+        if !self.debutant {
+            return texte;
+        }
+        use namsdec_disasm::OpKind;
+        if !matches!(
+            instr.op0_kind(),
+            OpKind::NearBranch16 | OpKind::NearBranch32 | OpKind::NearBranch64
+        ) {
+            return texte;
+        }
+        let cible = instr.near_branch_target();
+        let Some(state) = &self.assemble_state else {
+            return texte;
+        };
+        let Some(ligne) = state.addr_to_line.get(&cible).copied() else {
+            return texte;
+        };
+        let Some(nom) = crate::labels::label_at_line(&self.source, ligne) else {
+            return texte;
+        };
+        // Les trois écritures que les formateurs emploient pour une même
+        // adresse : seize chiffres suffixés, la forme courte suffixée, et
+        // la forme préfixée. On remplace celle qui est là.
+        for forme in [
+            format!("{cible:016X}h"),
+            format!("{cible:016x}h"),
+            format!("{cible:X}h"),
+            format!("{cible:x}h"),
+            format!("{cible:#x}"),
+        ] {
+            if texte.contains(&forme) {
+                return texte.replace(&forme, &nom);
+            }
+        }
+        texte
+    }
+
     /// Retient l'instruction que le pas qui commence va exécuter.
     ///
     /// Prise *avant* le pas : après, RIP a bougé, et l'instruction qu'on
@@ -889,12 +965,15 @@ impl NamsdecApp {
     /// sans le `dec rcx` qui l'a fait.
     pub(crate) fn remember_step(&mut self) {
         let lang = self.lang.code();
-        self.last_step = self.emulator.as_ref().and_then(|emulator| {
+        self.last_step = (|| {
+            let emulator = self.emulator.as_ref()?;
             let cpu = emulator.cpu();
             let rip = cpu.regs.rip;
             let window = cpu.mem.peek_bytes(rip, 16).ok()?;
             let instr = namsdec_disasm::decode_one(window, rip)?;
-            let texte = namsdec_disasm::format_one(&instr);
+            // LE NOM QUE LA SOURCE DONNE À LA CIBLE, quand elle en
+            // donne un : « jne boucle » plutôt que seize chiffres.
+            let texte = self.instruction_lisible(&instr, namsdec_disasm::format_one(&instr));
             // CE QUE L'INSTRUCTION ANNONÇAIT, pris ici et nulle part
             // ailleurs : c'est exactement ce que « prévoir avant
             // d'avancer » avait retenu, et après le pas l'instruction
@@ -909,7 +988,7 @@ impl NamsdecApp {
                 texte,
                 annonce,
             })
-        });
+        })();
     }
 
     /// Rend compte d'une erreur d'exécution : le message et, quand il y
@@ -932,8 +1011,53 @@ impl NamsdecApp {
         }
     }
 
+    /// UN PAS APRÈS LA FIN N'EN EST PAS UN, ET NE S'INVENTE PAS.
+    ///
+    /// Relevé sur deux scènes du banc le 16 novembre 2026 : le bloc
+    /// « Dernier pas » annonçait `0x40000b add [rax], al` — avec son
+    /// pseudo-code, « mémoire[RAX] = mémoire[RAX] + AL » — sur un
+    /// programme arrêté depuis longtemps. L'instruction n'avait jamais
+    /// été exécutée : [`remember_step`] décode SEIZE OCTETS À RIP, et
+    /// passé le `hlt` ces octets sont des zéros, que le désassembleur
+    /// lit comme un `add [rax], al` parfaitement valide. Suivait
+    /// « Rien n'a changé, sinon RIP », alors que RIP non plus n'avait
+    /// pas bougé.
+    ///
+    /// Le bouton, lui, est bien éteint ([`Self::can_execute`]) : c'est
+    /// par le RACCOURCI que le pas passait, et par les contrôles qui
+    /// avancent en boucle. Un geste refusé à la souris n'a pas à
+    /// réussir au clavier, et surtout pas à fabriquer une instruction.
+    ///
+    /// On le dit plutôt que de ne rien faire : « rien du tout est ce
+    /// qui ressemble le plus à une panne », et la phrase nomme le
+    /// geste qui repart — Réinitialiser.
+    fn refuse_apres_la_fin(&mut self) -> bool {
+        if !self.program_finished() {
+            return false;
+        }
+        // ET L'ÉTAT D'ARRÊT N'EST PAS ÉCRASÉ.
+        //
+        // « Arrêté (hlt) » et « terminé avec le code 15 » en disent
+        // plus que « le programme est terminé » : ils nomment COMMENT
+        // il s'est arrêté, et c'est ce qu'on cherche à lire après une
+        // course. Un appui de trop ne doit pas effacer cette
+        // réponse-là pour la remplacer par une plus vague.
+        //
+        // La phrase ne paraît donc que lorsque la barre parle d'autre
+        // chose — le dernier pas, une recherche, un enregistrement —,
+        // c'est-à-dire quand rien à l'écran ne dirait pourquoi la
+        // touche ne fait rien.
+        if !matches!(self.status, Status::Halted | Status::Exited { .. }) {
+            self.status = Status::Note(|s| s.why_program_finished);
+        }
+        true
+    }
+
     pub(crate) fn do_step(&mut self) {
         self.assurer_le_programme();
+        if self.refuse_apres_la_fin() {
+            return;
+        }
         self.remember_registers();
         self.remember_step();
         // Le conseil vaut pour l'erreur qui vient de se produire : au pas
@@ -966,6 +1090,12 @@ impl NamsdecApp {
     pub(crate) fn do_run(&mut self) {
         self.assurer_le_programme();
         if self.emulator.is_none() {
+            return;
+        }
+        // Même règle que le pas : une course sur un programme terminé
+        // n'exécute rien et poserait `running`, c'est-à-dire une
+        // boucle qui tourne pour ne rien faire.
+        if self.refuse_apres_la_fin() {
             return;
         }
         // La boîte de saisie parlait de la course précédente : elle se
@@ -1222,6 +1352,9 @@ impl NamsdecApp {
 
     pub(crate) fn do_step_over(&mut self) {
         self.assurer_le_programme();
+        if self.refuse_apres_la_fin() {
+            return;
+        }
         self.follow_execution();
         self.remember_registers();
         self.remember_step();

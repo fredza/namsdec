@@ -12182,3 +12182,370 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      caractères, aucun en dessous de 150, tous renvoyant à au moins une
      fiche — il n'y avait pas de manque à corriger, et réécrire au
      jugé aurait coûté la clarté qu'ils ont.
+
+9.94 [FAIT] LE PARCOURS N'ALLAIT QUE DANS UN SENS
+
+     Demandé le 12 novembre 2026 : « comment faire pour revenir à
+     l'exercice précédent ». La réponse honnête était : rouvrir la
+     liste et y retrouver son rang — ou espérer que l'étape d'avant
+     soit restée dans un onglet. Il n'y avait pas de chemin.
+
+     L'ASYMÉTRIE ÉTAIT LÀ DEPUIS LE DÉBUT : « Étape suivante » dans la
+     bande et dans la fenêtre, et rien en face. Un parcours se refait,
+     se relit, se compare — surtout celui-ci, dont le vrai exercice est
+     souvent de reprendre une étape réussie pour la faire plus courte.
+
+     LA PRÉCÉDENTE TOUT COURT, ET NON « LA PRÉCÉDENTE NON RÉUSSIE ».
+     Les deux sens ne servent pas à la même chose : on avance vers ce
+     qu'on n'a pas fait — c'est pourquoi `exercise_after` saute ce qui
+     est réussi —, et l'on recule vers ce qu'on vient de faire. Sauter
+     les étapes réussies en reculant ferait manquer exactement celle
+     qu'on cherche.
+
+     EN FLÈCHE DANS LA BANDE, EN TOUTES LETTRES DANS LA FENÊTRE, et
+     c'est la place qui tranche : à 800 pixels, cinq libellés dans la
+     rangée du titre la coupent en deux et la bande mange le code — ce
+     que deux contrôles disent tout de suite. Le chevron tient, et le
+     titre de l'étape est au survol, comme pour la suivante.
+
+9.95 [FAIT] L'ONGLET FERMÉ EMPORTAIT LE TRAVAIL
+
+     Demandé le 12 novembre 2026, dans le même mouvement que le
+     chevron : « en même temps que de passer à l'étape inférieure, la
+     charger en mémoire sur demande ». Le chevron venait d'ouvrir le
+     chemin du retour ; il restait à ce que le retour serve à quelque
+     chose.
+
+     LA PROMESSE AVAIT UNE CONDITION TACITE. « Revenir à une étape rend
+     ce qu'on y avait écrit » — vrai tant que son onglet est ouvert, et
+     faux dès qu'on l'a fermé. L'étape rouvrait alors sur son code de
+     départ, c'est-à-dire sur la seule chose qu'on ne cherchait pas :
+     on revient en arrière pour revoir comment on s'y était pris, ou
+     pour refaire plus court. C'était le dernier endroit du parcours
+     d'où du travail pouvait disparaître sans qu'on l'ait voulu — et il
+     ne se voyait qu'une fois dedans, puisque fermer un onglet modifié
+     pose déjà une question, à laquelle on répond « ne pas
+     enregistrer » parce qu'un exercice n'a pas de fichier.
+
+     UN BROUILLON PAR ÉTAPE, ET LA MÉMOIRE SUFFIT. `exercise_drafts`,
+     identifiant complet → ce qu'il y avait dans le tampon. Rangé par
+     `ranger_brouillon` au seul endroit où un tampon disparaît —
+     `close_tab_now`, qui est l'entonnoir unique des trois chemins de
+     fermeture —, relu par `load_exercise_now`. SUR DEMANDE au sens
+     propre : le brouillon n'est remis dans l'éditeur qu'au moment où
+     l'on redemande cette étape-là. Les cent seize autres ne coûtent
+     rien tant qu'on n'y retourne pas, et rien n'est reconstruit au
+     démarrage.
+
+     PAS SUR LE DISQUE, ET C'EST UN CHOIX. Les réglages de
+     l'utilisateur vont dans `settings.json` ; un brouillon n'en est
+     pas un. Un parcours qu'on reprend des jours plus tard se reprend
+     par son énoncé, pas par un demi-programme dont on a oublié
+     l'intention — et `settings.json` grossirait de cent dix-sept
+     programmes pour servir une fois.
+
+     UN BROUILLON QUI NE DIFFÈRE PAS DU DÉPART N'EN EST PAS UN. Il est
+     oublié plutôt que gardé, pour deux raisons qui vont dans le même
+     sens : au retour, il ferait croire à un travail qu'on n'a pas
+     fait ; et surtout, les séries sont des FICHIERS DE DONNÉES — une
+     correction d'énoncé n'a pas à recompiler, et un brouillon identique
+     au code de départ la bloquerait à l'écran. Un tampon vide non plus
+     n'est pas gardé.
+
+     `saved_source` RESTE LE CODE DE DÉPART, même quand un brouillon
+     est rendu. L'étape porte alors la marque du non-enregistré : c'est
+     ce qu'elle avait dans son onglet, et c'est ce qu'elle est — du
+     travail qui n'est écrit nulle part.
+
+     DEUX CONTRÔLES, LES DEUX ÉPROUVÉS EN REMETTANT LE DÉFAUT.
+     `a_closed_step_keeps_what_was_written` tombe dès qu'on retire
+     l'appel à `ranger_brouillon` ; `an_untouched_step_leaves_no_draft`
+     tombe dès que `garder_brouillon` range sans comparer au code de
+     départ. Un contrôle qui ne distingue pas les deux états qu'il
+     nomme ne regarde rien.
+
+9.96 [FAIT] CINQ CHOSES QUE L'ÉCRAN DISAIT DE TRAVERS
+
+     Demandé le 16 novembre 2026 : « avec ce que tu as appris depuis
+     une semaine, que me proposes-tu pour améliorer l'interface et les
+     fonctions de l'interface débutant ? » La réponse n'a pas été
+     cherchée dans le code : les dix scènes « établi » du banc ont été
+     rendues, et REGARDÉES. Neuf propositions en sont sorties, dont
+     cinq étaient des contradictions à l'écran — l'application disait
+     deux choses différentes de la même chose, au même moment.
+
+     LE VOLET PARLAIT HEXADÉCIMAL PENDANT QUE LA BANDE PARLAIT
+     FRANÇAIS. La capture `établi / un exercice de lecture` porte tout
+     le défaut : l'énoncé demande « Que vaut RAX à l'arrêt ? », la
+     bonne réponse est 55, et le volet de la machine affiche
+     `0000000000000037`. L'exercice portait donc sa propre réponse à
+     l'écran, dans une écriture que celui à qui il s'adresse ne sait
+     pas encore lire — alors que la bande du bas dit « RCX 3 → 2 »
+     depuis A 9.87. La règle de `nombre_lisible` s'applique maintenant
+     au volet et à la pile : sous le million et au niveau débutant, le
+     nombre en clair, ALIGNÉ À DROITE sur les seize colonnes de
+     l'hexadécimal — sans quoi les colonnes dansent quand une valeur
+     passe de 9 à 10. Ce qui reste en hexadécimal se reconnaît à ses
+     zéros de tête : ce sont les adresses, et la légende du volet le
+     dit en toutes lettres.
+
+     UN « DERNIER PAS » QUI N'AVAIT JAMAIS EU LIEU. Deux captures sur
+     dix annonçaient `0x40000b add [rax], al`, avec son pseudo-code —
+     « mémoire[RAX] = mémoire[RAX] + AL » — et « Rien n'a changé,
+     sinon RIP », sur un programme arrêté depuis longtemps.
+     `remember_step` décode seize octets à RIP ; passé le `hlt`, ces
+     octets sont des zéros, que le désassembleur lit comme un
+     `add [rax], al` parfaitement valide. Le bouton, lui, était bien
+     éteint : c'est par le RACCOURCI que le pas passait. Un geste
+     refusé à la souris n'a pas à réussir au clavier, et surtout pas à
+     fabriquer une instruction. `do_step`, `do_step_over` et `do_run`
+     refusent désormais après la fin — ET SANS ÉCRASER L'ÉTAT
+     D'ARRÊT : « Arrêté (hlt) » dit COMMENT le programme s'est arrêté,
+     là où « le programme est terminé » ne dit que le fait. La phrase
+     ne paraît que lorsque la barre parlait d'autre chose.
+
+     « RAX VAUT 2 RAX VAUT 1 », SUR UNE SEULE LIGNE. Le but d'un
+     exercice écrit la condition, puis le constat — ce qu'on veut,
+     puis ce qu'on a. Les deux étaient en chasse fixe, à six pixels
+     l'un de l'autre, et se lisaient comme une seule phrase qui ne
+     veut rien dire. Un tiret les sépare, et le registre ne se répète
+     plus quand c'est le même : « RAX vaut 2 — il vaut 1 ».
+
+     HUIT REGISTRES À ZÉRO PRENAIENT LA MOITIÉ DU VOLET. R8 à R15 sont
+     vides dans les trois captures, sur huit rangées — pendant que la
+     pile, en dessous, montre trois lignes et se défile. Vingt étapes
+     du parcours sur cent dix-sept les emploient. La règle tient en
+     une phrase : ON MONTRE CE QUE LE PROGRAMME TOUCHE, et les huit
+     paraissent ENSEMBLE dès que l'un d'eux porte quelque chose — un
+     bloc qui apparaîtrait registre par registre ferait danser la
+     grille à chaque pas. Une ligne cliquable les rend quand même, et
+     ce choix est un réglage : il part dans `settings.json`.
+
+     LA DERNIÈRE EXPLICATION ÉTAIT TRANCHÉE PAR LE MILIEU. Sur
+     `établi / l'assemblage a échoué`, deux erreurs expliquées et la
+     dernière phrase coupée en deux dans sa hauteur, au bas de la
+     bande. La zone défile bien, mais une ligne coupée ne ressemble
+     pas à une liste qui continue : elle ressemble à un texte perdu —
+     au moment précis où l'assembleur vient de refuser.
+
+     ET LA MENTION A FAILLI REFAIRE LE DÉFAUT QU'ELLE CORRIGEAIT.
+     Posée SOUS la zone défilante, elle prenait sa ligne sur ce qui
+     suit — c'est-à-dire sur la rangée où l'on répond au programme :
+     `la_bande_du_resultat_porte_sa_rangee_de_saisie` est tombé
+     aussitôt, « Entrée : » n'étant plus peint du tout. Réserver sa
+     hauteur n'y a rien changé (la phrase tombe sur deux lignes dans
+     une bande étroite, et le compte d'une ligne ne suffisait pas).
+     Elle est donc EN TÊTE DE LA ZONE, où elle ne coûte rien à la
+     bande : c'est la liste qui déborde qui lui fait de la place.
+
+     CE QUE LES CONTRÔLES RETIENNENT :
+     `at_beginner_level_registers_are_written_plainly` (le décimal, et
+     l'hexadécimal des adresses, et le mode avancé inchangé),
+     `a_finished_program_does_not_invent_one_more_step` (dix pas après
+     la fin, rien n'a bougé et l'arrêt garde son nom),
+     `the_high_registers_show_up_when_the_program_uses_them` (repli,
+     dépli demandé, dépli automatique, mode avancé inchangé),
+     `la_bande_des_problemes_dit_la_suite_et_propose_la_correction`
+     (au plus petit écran, qui est le seul endroit où la place
+     manque), et les deux contrôles d'exercices qui portaient l'ancien
+     constat, réécrits sur le nouveau.
+
+9.97 [FAIT] QUATRE PORTES QUI MANQUAIENT
+
+     La seconde moitié de la même demande. Les cinq premiers points
+     étaient des contradictions ; ces quatre-là sont des manques —
+     l'interface ne se trompait pas, elle se taisait.
+
+     LE PARCOURS ÉTAIT ÉTEINT AU PREMIER LANCEMENT. Sur la capture du
+     premier écran, « Exercices… » est GRISÉ. C'est le seul bouton de
+     la barre qui mène au parcours de cent dix-sept étapes, et le seul
+     endroit qui disait où l'allumer était un commentaire DANS LE
+     PROGRAMME DE BIENVENUE : « Préférences > Modules ». Pour une
+     application dont la vocation est d'apprendre, c'est la porte
+     principale qui était peinte sur le mur. Deux corrections, et les
+     deux comptent : le module est allumé POUR UNE INSTALLATION NEUVE
+     (comme `debutant`, et la migration laisse les configurations
+     existantes tranquilles — on hérite d'un défaut, on ne se fait pas
+     imposer un changement), et le bouton n'est plus jamais éteint :
+     un clic allume le module et ouvre la fenêtre.
+
+     `mov rzx, 1` N'AVAIT PAS DE DIAGNOSTIC. nasm répond « invalid
+     combination of opcode and operands », et l'explication que
+     namsdec posait dessous parlait de deux opérandes en mémoire et de
+     tailles qui ne correspondent pas — juste en général, faux pour
+     cette ligne-là. La cause tient en quatre mots : il n'y a pas de
+     registre `rzx`, et nasm ne le dira jamais, puisqu'il ne voit
+     qu'un symbole inconnu. Une septième règle rejoint donc `fixes`,
+     avec ce qu'on exige avant d'accuser : la FORME d'un registre,
+     rien de défini dans le programme (ni étiquette, ni `equ`, ni
+     macro, ni donnée — c'est la condition qui écarte `msg` et `buf`),
+     et UNE SEULE lettre d'écart. ON NE RÉÉCRIT QUE S'IL N'Y A QU'UN
+     CANDIDAT : `rzx` est à une lettre de `rax`, `rbx`, `rcx` ET
+     `rdx` ; en choisir un serait tirer au sort sous couvert de
+     correction. Les quatre sont nommés, et c'est la liste qui
+     enseigne.
+
+     ET LES CORRECTIONS N'AVAIENT AUCUNE PORTE AU MODE SIMPLE.
+     `fixes` sait réécrire six fautes depuis longtemps, et son seul
+     chemin était Alt+Entrée, annoncé dans la barre d'état — que
+     l'Établi n'a pas. La correction était donc calculée et jamais
+     montrée, à l'endroit exact où l'on est bloqué. Elle paraît
+     maintenant sous l'erreur, avec un bouton qui fait exactement ce
+     que fait Alt+Entrée : même écriture, même curseur, même message
+     (`poser_la_ligne`, sortie de `apply_fix_if_confirmed`).
+
+     « jne short 0000000000400021h » DEVANT UN PROGRAMME QUI DIT
+     « jnz boucle ». Le désassembleur a raison — c'est bien là qu'on
+     saute —, mais celui qui apprend vient d'écrire un nom, et on lui
+     rendait seize chiffres à retrouver dans le listing. Le nom vient
+     de la SOURCE et non d'une table de symboles : un `boucle:` de
+     nasm n'est pas exporté. On passe par la correspondance adresse →
+     ligne de l'assemblage, puis par `label_at_line`, qui remonte les
+     lignes vides et les commentaires — ils n'occupent aucun octet —
+     et S'ARRÊTE AU PREMIER CODE : au milieu d'un bloc, une adresse
+     n'a pas de nom, et lui donner celui du bloc serait mentir.
+
+     ON NE SAVAIT PAS OÙ L'ON EN ÉTAIT DANS LE TEMPS DU PROGRAMME. Le
+     mode avancé a la chronologie et sa barre ; l'Établi n'avait ni le
+     compte des pas, ni le nombre de tours de boucle — alors que c'est
+     la question même de plusieurs étapes du parcours (« combien de
+     tours, et que reste-t-il »). Deux nombres sous le dernier pas, et
+     aucun calcul : le compteur de l'émulateur, et son nombre de
+     passages par adresse — celui-là même qui peint la bande de
+     chaleur. Le passage est celui du pas QU'ON VIENT DE FAIRE, à son
+     adresse à lui : le compte est alors exact, là où celui de
+     l'instruction à venir demanderait d'ajouter un. Et il ne paraît
+     qu'à partir du deuxième passage : devant du code droit, il
+     dirait « passage 1 » à chaque ligne, et une information qui ne
+     varie jamais n'en est pas une.
+
+     DEUX CONTRÔLES DU BANC ONT REFUSÉ L'AJOUT, et les deux avaient
+     raison. `every_glyph_the_interface_writes_exists_in_its_font` a
+     arrêté « ᵉ » (l'ordinal de « 3ᵉ passage ») et « ↓ » : aucun des
+     deux n'est dans les polices embarquées, et les deux se seraient
+     peints en carré vide. `every_text_size_belongs_to_a_declared_set`
+     a arrêté quatorze textes de 11 points, taille qui n'existe pas
+     dans l'application.
+
+9.98 [FAIT] LE PARCOURS RÉPOND, ET IL N'AVANCE QUE SUR CE QU'IL A MONTRÉ
+
+     Demandé le 16 novembre 2026 : « saurais-tu m'améliorer
+     progressivement avec les notions vues la section exercices, il
+     faut qu'ils soient interactifs ». Deux demandes en une, et la
+     mesure les a séparées nettement : la progressivité était presque
+     acquise, l'interactivité ne l'était pas.
+
+     CE QUE LA MESURE A TROUVÉ, ET QUI A ÉVITÉ UN CHANTIER INUTILE.
+     Les cent dix-sept étapes ont été passées dans l'ordre, chacune
+     comparée à ce que les précédentes avaient employé : VINGT
+     introduisent une notion dans leur trou, dix-huit la nomment dans
+     leur énoncé, une la nomme par sa FAMILLE — « `setcc` recopie
+     l'indicateur », qui introduit `setz`, `sets`, `setc` et `seto`
+     d'un coup —, et UNE SEULE ne la nommait nulle part : `rep`, à
+     l'étape 43. Le parcours était donc progressif ; ce qui manquait
+     était la garantie qu'il le reste. Elle existe maintenant, et
+     c'est un contrôle :
+     `aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee`.
+     L'étape 43 a reçu l'indice qui lui manquait — quatre lignes dans
+     la série, pas une refonte.
+
+     « EST-CE JUSTE ? » DEMANDAIT TROIS GESTES ET UN SAVOIR. Assembler
+     (Ctrl+Maj+B), exécuter, puis remarquer qu'une pastille a changé de
+     couleur dans le titre de la bande. Un parcours dont chaque
+     vérification exige de connaître la chaîne de compilation n'est pas
+     interactif : c'est un manuel avec des devoirs. UN SEUL BOUTON fait
+     les trois et conclut en toutes lettres — « Réussi », « Pas encore
+     — voyez ce qui manque au-dessus ».
+
+     ET LE VERDICT NE SE DONNE PAS TOUT SEUL. Une course lancée à la
+     main reste muette : on exécute aussi pour regarder tourner, et un
+     jugement qu'on n'a pas demandé en est un. Le verdict ne paraît
+     donc qu'après « Vérifier », et il ne suit pas d'une étape à
+     l'autre.
+
+     UNE ÉTAPE DE LECTURE SE RÉPOND AVANT DE S'EXÉCUTER, et c'est toute
+     sa leçon. Vérifier sans avoir répondu ferait tourner le programme
+     — et le programme DONNE la réponse : RAX vaut 55 dans le volet
+     avant qu'on ait eu l'occasion de se tromper. Le bouton se grise
+     donc tant que le champ est vide, et dit pourquoi. C'est la règle
+     de `prevision`, au dernier endroit où elle manquait. Le champ, lui,
+     a cessé d'être minuscule : cent dix pixels dans un panneau de
+     trois cents, c'était juste ; dans une bande qui fait toute la
+     largeur de la fenêtre, on cherchait où répondre.
+
+     UNE SEULE RÈGLE DE RÉUSSITE, DEUX LECTEURS. `exercice_reussi`
+     porte les trois formes d'étape — répondre juste, regarder une
+     démonstration jusqu'au bout, atteindre toutes les conditions — et
+     l'exigence commune : avoir tourné jusqu'à l'arrêt. Le carnet de
+     bord l'inscrit, le verdict l'affiche. Écrite deux fois, cette
+     règle aurait fini par donner un bouton qui félicite et une
+     pastille qui refuse.
+
+     LE GESTE EST ASYNCHRONE, ET C'EST CE QUI L'A FAIT ÉCHOUER
+     D'ABORD. Enchaîner `Assemble` puis `Run` ne marche pas : nasm
+     travaille dans un fil, il n'y a pas encore de machine, et
+     `dispatch` refuse `Run` — exactement comme il refuse le raccourci
+     quand le bouton est gris. Le geste n'assemblait donc que, en
+     silence. L'exécution est maintenant une INTENTION, consommée par
+     `tick_assemble` au moment où la machine existe. Attendre en
+     bloquant la fenêtre aurait marché aussi, et c'est précisément ce
+     qu'on a passé une séance à retirer (A 9.56).
+
+     LE CARNET DES NOTIONS. « 12/117 » dit le chemin parcouru et rien
+     de ce qu'on y a appris, qui est la seule question qui compte quand
+     on apprend. Le carnet porte les instructions des étapes RÉUSSIES
+     — ouvrir un énoncé n'apprend rien —, par FICHE et non par nom :
+     `je` et `jz` sont deux noms du même opcode, et en compter deux
+     flatterait. Chacune ouvre sa fiche : le carnet se relit. Rien
+     n'est retenu en mémoire, il se recalcule de ce que
+     `settings.json` sait déjà.
+
+     TROIS FOIS LA MÊME LEÇON SUR LA PLACE, ET ELLE EST DITE :
+     un geste principal ne se cherche pas à la molette. Posé sous le
+     but, dans la zone qui défile, « Vérifier » était SOUS LE PLI dès
+     que l'énoncé faisait trois lignes — c'est-à-dire presque toujours
+     (capture à l'appui). Il est donc ancré au bas de la bande, et ce
+     qu'il prend est AJOUTÉ à la bande plutôt que retiré à ce qu'elle
+     montrait : sans cela le budget « Instructions : 3 / 4 » se
+     retrouvait tranché, cinq pixels peints sur dix-huit. Augmenter le
+     défaut de la bande n'y aurait rien fait — c'est la part de 22 %
+     qui la plafonne sur un grand écran.
+
+     ET À 800x520, LES DEUX VOIES ÉCHOUENT, ce que le banc a dit l'une
+     après l'autre. Ajouter les trente-trois pixels y coûte une ligne
+     de programme sur les deux qui restent
+     (`au_plus_petit_ecran_l_etabli_montre_encore_du_code`) ; ne pas
+     les ajouter fait peindre « Vérifier » PAR-DESSUS l'énoncé
+     (`panels_do_not_overlap_on_the_smallest_screen`). La rangée
+     redescend donc dans la zone qui défile à cette taille-là : on
+     garde la promesse où elle tient, plutôt que de casser la mise en
+     page du plus petit écran. C'est la règle que la bande du résultat
+     s'était déjà donnée pour sa rangée de saisie.
+
+     ET UNE SCÈNE DE BANC POUR L'ÉTAT QU'AUCUNE NE MONTRAIT. Les deux
+     scènes d'exercice exécutent leur programme À LA MAIN, ce qui laisse
+     le verdict muet — il ne juge que ce qu'on lui a demandé. La rangée
+     de « Vérifier » et sa réponse n'étaient donc mesurées nulle part.
+     « établi / un exercice vérifié » prend le vrai chemin : solution
+     chargée, geste demandé, nasm dans son fil, course partie quand la
+     machine existe. C'est l'état où la bande porte le plus de choses à
+     la fois — pastille du titre, deux conditions tenues, budget et
+     meilleur score, bouton et verdict —, et il passe les soixante-cinq
+     invariants du banc.
+
+     UN TROISIÈME CONTRÔLE A REFUSÉ LE CARNET : les noms des notions se
+     cliquaient onze lignes plus bas que leur `cliquable`, et
+     `what_turns_the_cursor_into_a_hand_really_answers_a_click` ne lit
+     que huit lignes — il a donc conclu, à juste titre, qu'une main
+     était promise pour rien. La réponse passe maintenant par une
+     variable, comme les douze autres textes cliquables.
+
+     UN DÉFAUT DE MESURE TROUVÉ EN CHEMIN, et il vaut plus que le
+     réglage qu'il a permis.
+     `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` posait un
+     `hlt` seul dans une machine fabriquée à la main : le but n'avait
+     alors rien à constater, et la bande était mesurée DEUX LIGNES plus
+     courte qu'elle ne l'est devant un vrai programme. Il restait vert
+     pendant que la capture montrait « RBX vaut 1 — il vaut 2 » tranché
+     par le bas. Il assemble et exécute maintenant le programme de
+     l'étape, comme le banc.

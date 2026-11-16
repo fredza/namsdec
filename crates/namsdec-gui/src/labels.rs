@@ -102,3 +102,58 @@ pub(crate) fn label_line(source: &str, name: &str) -> Option<u32> {
         rest.starts_with(':').then_some(index as u32 + 1)
     })
 }
+
+/// Le nom que la source donne à l'adresse arrivée sur la ligne `ligne`.
+///
+/// **Pourquoi il ne suffit pas de regarder la ligne elle-même.** Une
+/// étiquette se pose de deux façons : sur la ligne de l'instruction
+/// (`boucle: dec rcx`) ou sur la ligne d'avant, seule. Dans le second
+/// cas, l'adresse est celle de l'instruction, et son nom est au-dessus,
+/// éventuellement séparé par des lignes vides ou des commentaires —
+/// qui n'occupent aucun octet.
+///
+/// **Et il s'arrête au premier code rencontré.** Une ligne au milieu
+/// d'un bloc n'a pas de nom : la remonter jusqu'à l'étiquette du bloc
+/// donnerait à `dec rcx` le nom `boucle`, alors que `boucle` désigne la
+/// première instruction du bloc et pas celle-là. Nommer une adresse qui
+/// n'est pas celle de l'étiquette serait pire que ne rien nommer.
+///
+/// **Les étiquettes locales comptent** (`.boucle`) : [`source_labels`]
+/// les ignore, parce qu'un nom qui commence par un point ne dit rien
+/// hors de son contexte — mais ici le contexte est précisément la ligne
+/// qu'on regarde, et c'est ce nom-là que l'auteur a tapé.
+pub(crate) fn label_at_line(source: &str, ligne: u32) -> Option<String> {
+    if ligne == 0 {
+        return None;
+    }
+    let lignes: Vec<&str> = source.lines().collect();
+    let mut index = ligne as usize - 1;
+    loop {
+        let texte = lignes.get(index)?;
+        let code = texte.split(';').next().unwrap_or("").trim();
+        if !code.is_empty() {
+            if let Some(nom) = code.split_whitespace().next().and_then(|m| {
+                m.strip_suffix(':')
+                    .filter(|n| !n.is_empty() && n.chars().all(is_label_char))
+            }) {
+                return Some(nom.to_owned());
+            }
+            // Du code qui n'est pas une étiquette : l'adresse qu'on
+            // cherche appartient à ce code-là, et elle n'a pas de nom.
+            if index as u32 + 1 != ligne {
+                return None;
+            }
+            // Sauf sur la ligne de départ : son instruction est celle
+            // qu'on nomme, et son nom peut être juste au-dessus.
+        }
+        if index == 0 {
+            return None;
+        }
+        index -= 1;
+    }
+}
+
+/// Ce qui peut composer un nom d'étiquette chez NASM.
+fn is_label_char(c: char) -> bool {
+    c.is_alphanumeric() || "_$#@~.?".contains(c)
+}

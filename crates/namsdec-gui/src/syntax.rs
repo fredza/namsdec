@@ -248,7 +248,12 @@ impl Macros {
         }
     }
 
-    fn contient(&self, mot: &str) -> bool {
+    /// Ce mot est-il défini par `%macro` ou `%define` ?
+    ///
+    /// Vu du dehors depuis le 16 novembre 2026 : la règle du registre
+    /// douteux (`fixes`) doit pouvoir écarter ce que l'auteur a défini
+    /// lui-même avant d'accuser un nom de trois lettres.
+    pub(crate) fn contient(&self, mot: &str) -> bool {
         self.noms.contains(&mot.to_ascii_lowercase())
     }
 

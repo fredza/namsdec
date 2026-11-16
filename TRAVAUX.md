@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **10 novembre
-2026**, version 0.3.0-beta.1.
+Tenue à jour au fil des séances. Dernière mise à jour : **16 novembre
+2026**, version 0.4.0-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -5433,6 +5433,97 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
   **Mesuré puis laissé** : les énoncés. Médiane de 334 caractères,
   aucun trop court, tous reliés à une fiche — il n'y avait rien à
   corriger, et réécrire au jugé aurait coûté la clarté qu'ils ont.
+
+- `[x]` **Le parcours va dans les deux sens** — 12 novembre 2026
+  (A 9.94). « Étape suivante » existait des deux côtés, et rien en
+  face : pour revoir l'étape qu'on venait de faire, il fallait rouvrir
+  la liste. Un chevron `‹` dans la bande, « Étape précédente » en
+  toutes lettres dans la fenêtre. **La précédente tout court**, et non
+  « la précédente non réussie » : on avance vers ce qu'on n'a pas fait,
+  on recule vers ce qu'on vient de faire.
+
+- `[x]` **Revenir à une étape rend ce qu'on y avait écrit** — 12
+  novembre 2026 (A 9.95). Le chevron ne tenait sa promesse qu'à une
+  condition tacite : que l'onglet de l'étape soit encore ouvert. Fermé,
+  il emportait le programme, et l'étape rouvrait sur son code de départ
+  — précisément ce qu'on ne cherchait pas en revenant en arrière.
+  **Un brouillon par étape, gardé en mémoire** (`exercise_drafts`),
+  rangé quand l'onglet se ferme et **relu sur demande** : au moment où
+  l'on redemande cette étape-là, et pas avant. La séance seulement, et
+  non le disque — ce n'est pas un réglage. Un brouillon qui ne diffère
+  pas du code de départ n'en est pas un : il n'est pas gardé, sans quoi
+  une correction d'énoncé n'arriverait plus jusqu'à l'éditeur.
+  **Deux contrôles**, tous deux éprouvés en remettant le défaut :
+  `a_closed_step_keeps_what_was_written` et
+  `an_untouched_step_leaves_no_draft`.
+
+- `[x]` **Cinq choses que l'écran disait de travers** — 16 novembre 2026
+  (A 9.96). Les dix scènes « établi » du banc rendues puis regardées,
+  et cinq contradictions relevées : le volet de la machine écrivait
+  `0000000000000037` pendant qu'un exercice demandait « Que vaut RAX à
+  l'arrêt ? » (réponse : 55) ; le bloc « Dernier pas » annonçait une
+  instruction **jamais exécutée**, lue dans les octets nuls qui suivent
+  le `hlt` ; le but d'un exercice collait deux phrases en une (« RAX
+  vaut 2 RAX vaut 1 ») ; R8 à R15, tous à zéro, prenaient la moitié du
+  volet ; et la dernière explication d'erreur était tranchée par le
+  milieu au bas de sa bande.
+
+  Retenu par `at_beginner_level_registers_are_written_plainly`,
+  `a_finished_program_does_not_invent_one_more_step`,
+  `the_high_registers_show_up_when_the_program_uses_them`,
+  `la_bande_des_problemes_dit_la_suite_et_propose_la_correction`, et
+  les deux contrôles d'exercices qui portaient l'ancien constat.
+
+  **Le réglage neuf** : `registres_hauts` dans `settings.json`, pour
+  celui qui veut ses seize registres même vides.
+
+- `[x]` **Quatre portes qui manquaient** — 16 novembre 2026 (A 9.97).
+  Le parcours était **éteint au premier lancement** — bouton grisé, et
+  la seule indication était un commentaire dans le programme de
+  bienvenue : il est allumé pour une installation neuve, et le bouton
+  l'allume d'un clic. `mov rzx, 1` n'avait **aucun diagnostic** : une
+  septième règle de `fixes` nomme le registre qui n'existe pas et ses
+  voisins, sans jamais en choisir un quand plusieurs sont à égalité.
+  Les corrections de `fixes`, qui n'avaient de porte que par Alt+Entrée
+  et la barre d'état, **se montrent sous l'erreur** avec un bouton. Et
+  la bande dit enfin **où l'on en est** : le nom que la source donne à
+  la cible d'un saut (`jne boucle` au lieu de seize chiffres), le
+  compte des pas, et le numéro de passage par la ligne courante.
+
+  Retenu par `a_jump_target_is_named_as_the_source_named_it`,
+  `the_beginner_bench_says_how_far_the_program_has_got`,
+  `le_bouton_du_parcours_allume_le_module_qu_il_demande`, quatre
+  contrôles neufs dans `fixes` et le test de migration des réglages.
+
+- `[x]` **Le parcours répond, et il n'avance que sur ce qu'il a
+  montré** — 16 novembre 2026 (A 9.98). Deux demandes en une, et la
+  mesure les a séparées.
+
+  **La progressivité était presque acquise** : sur les cent dix-sept
+  étapes, vingt introduisent une notion dans leur trou, dix-huit la
+  nomment, une la nomme par sa famille (« `setcc` »), et **une seule**
+  ne la nommait nulle part — `rep`, à l'étape 43, qui a reçu son
+  indice. Ce qui manquait était la garantie que cela le reste :
+  `aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee`.
+
+  **L'interactivité, non.** Savoir si l'on avait réussi demandait trois
+  gestes et un savoir — assembler, exécuter, remarquer une pastille.
+  Un bouton **Vérifier** fait les trois et conclut en toutes lettres,
+  sans jamais juger une course qu'on n'a pas demandée. Une étape de
+  lecture se grise tant qu'on n'a pas répondu : l'exécuter donnerait la
+  réponse.
+
+  **Le carnet des notions** dit ce que les étapes réussies ont fait
+  écrire ou lire, par fiche, chacune cliquable : « 12/117 » disait le
+  chemin et rien de ce qu'on y avait appris.
+
+  Retenu par `verifier_assemble_execute_et_rend_un_verdict`,
+  `une_question_ne_se_verifie_pas_avant_d_avoir_repondu`,
+  `le_carnet_des_notions_suit_les_etapes_reussies` et l'invariant de
+  progression. Et un défaut de mesure corrigé :
+  `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` posait un
+  `hlt` seul, donc un but sans constat — il mesurait deux lignes de
+  moins que ce qu'on voit.
 
 ---
 

@@ -85,6 +85,11 @@ impl NamsdecApp {
             .unwrap_or_else(|| id.to_owned());
         self.exercise_packs.retain(|p| p.id != id);
         self.exercise_files.remove(id);
+        // Les brouillons de la série s'en vont avec elle : leurs étapes
+        // n'existent plus, et plus rien ne pourrait les rouvrir.
+        let préfixe = format!("{id}/");
+        self.exercise_drafts
+            .retain(|étape, _| !étape.starts_with(&préfixe));
         self.plugin_note = Some(PluginNote {
             ok: true,
             text: format!("{} — {name}", s.plugins_removed),
@@ -131,6 +136,84 @@ impl NamsdecApp {
         None
     }
 
+    /// L'exercice qui PRÉCÈDE `id` dans sa série : son identifiant et
+    /// son titre. `None` pour le premier — un parcours a un début.
+    ///
+    /// LA PRÉCÉDENTE TOUT COURT, et non « la précédente non réussie »
+    /// comme pour la suivante. Les deux sens ne servent pas à la même
+    /// chose : on avance vers ce qu'on n'a pas fait, on recule vers ce
+    /// qu'on vient de faire — pour revoir comment on s'y était pris, ou
+    /// pour refaire plus court. Sauter les étapes réussies en reculant
+    /// ferait manquer exactement celle qu'on cherche.
+    ///
+    /// Le parcours n'allait que dans un sens : « Étape suivante » dans
+    /// la bande et dans la fenêtre, et rien pour revenir. Il fallait
+    /// rouvrir la liste et y retrouver son rang — ou se souvenir que
+    /// l'étape d'avant était peut-être restée dans un onglet.
+    pub(crate) fn exercise_before(&self, id: &str) -> Option<(String, String)> {
+        for pack in &self.exercise_packs {
+            let Some(position) = pack
+                .exercises
+                .iter()
+                .position(|exercise| namsdec_exercises::full_id(pack, exercise) == id)
+            else {
+                continue;
+            };
+            let précédent = pack.exercises.get(position.checked_sub(1)?)?;
+            return Some((
+                namsdec_exercises::full_id(pack, précédent),
+                précédent.title.get(self.lang.code()).to_owned(),
+            ));
+        }
+        None
+    }
+
+    /// Range ce qu'une étape avait dans son tampon, avant que celui-ci
+    /// disparaisse — on ferme son onglet, ou le dernier fichier.
+    ///
+    /// `index` est un rang d'onglet au sens de `tab_labels`, l'onglet
+    /// courant compris. Si ce n'est pas une étape, il n'y a rien à
+    /// garder et la méthode ne fait rien.
+    pub(crate) fn ranger_brouillon(&mut self, index: usize) {
+        let (id, écrit) = if index == self.active_tab_index {
+            let Some(id) = self.current_exercise.clone() else {
+                return;
+            };
+            (id, self.source.clone())
+        } else {
+            let rang = if index < self.active_tab_index {
+                index
+            } else {
+                index - 1
+            };
+            let Some(tab) = self.tabs.get(rang) else {
+                return;
+            };
+            let Some(id) = tab.current_exercise.clone() else {
+                return;
+            };
+            (id, tab.source.clone())
+        };
+        self.garder_brouillon(id, écrit);
+    }
+
+    /// Garde `écrit` comme brouillon de l'étape `id` — ou l'oublie.
+    ///
+    /// UN BROUILLON QUI NE DIFFÈRE PAS DU CODE DE DÉPART N'EN EST PAS
+    /// UN : le garder ferait croire, au retour, à un travail qu'on n'a
+    /// pas fait, et il empêcherait une correction d'énoncé d'arriver
+    /// jusqu'à l'éditeur. Un tampon vide non plus — on a fermé une
+    /// étape à laquelle on n'avait rien laissé.
+    pub(crate) fn garder_brouillon(&mut self, id: String, écrit: String) {
+        let départ = namsdec_exercises::find(&self.exercise_packs, &id)
+            .map(|exercise| exercise.starter_code.as_str());
+        if écrit.trim().is_empty() || départ == Some(écrit.as_str()) {
+            self.exercise_drafts.remove(&id);
+            return;
+        }
+        self.exercise_drafts.insert(id, écrit);
+    }
+
     /// Le rang de l'exercice `id` dans sa série, le nombre d'étapes, et
     /// l'exercice lui-même.
     pub(crate) fn exercise_rank(
@@ -160,11 +243,31 @@ impl NamsdecApp {
         let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
             return;
         };
+        // LE VERDICT NE SUIT PAS D'UNE ÉTAPE À L'AUTRE. Il parle de la
+        // course qu'on vient de demander, et celle-ci appartient à
+        // l'étape qu'on quitte : rendu sur la suivante, il dirait
+        // « Réussi » devant un programme qu'on n'a pas encore écrit.
+        self.verification_demandee = false;
+        // Le code de départ est pris MAINTENANT : il appartient à la
+        // série, pas au tampon, et l'emprunter une seule fois évite de
+        // refaire `find` après chaque déplacement d'onglet.
+        let départ = exercise.starter_code.clone();
         // Déjà ouvert : on y retourne, avec ce qu'on y avait écrit.
         if let Some(rang) = self.exercise_tab_index(id) {
             self.go_to_tab(rang);
             return;
         }
+        // PLUS D'ONGLET, MAIS LE BROUILLON EST RESTÉ. C'est ici que se
+        // lit ce qu'on avait écrit la dernière fois qu'on a quitté
+        // cette étape — rangé en mémoire à la fermeture, relu sur
+        // demande, c'est-à-dire au moment où l'on revient. À défaut, le
+        // code de départ, comme pour une étape qu'on ouvre pour la
+        // première fois.
+        let écrit = self
+            .exercise_drafts
+            .get(id)
+            .cloned()
+            .unwrap_or_else(|| départ.clone());
         // Sinon un onglet à lui, sauf si le tampon courant est vierge :
         // on garde ainsi son propre programme à côté de l'exercice, et
         // l'on peut comparer deux étapes du parcours.
@@ -174,14 +277,13 @@ impl NamsdecApp {
             let insertion = self.active_tab_index.min(self.tabs.len());
             self.tabs.insert(insertion, courant);
             self.active_tab_index = insertion + 1;
-            // `find` a emprunté `self` : on le refait après le
-            // déplacement, sur un état stable.
-            let Some(exercise) = namsdec_exercises::find(&self.exercise_packs, id) else {
-                return;
-            };
             self.current_exercise = Some(id.to_owned());
-            self.saved_source = exercise.starter_code.clone();
-            self.set_source(exercise.starter_code.clone());
+            // `saved_source` reste le code de DÉPART, même quand on
+            // remet un brouillon : l'étape porte alors la marque du
+            // non-enregistré, ce qu'elle avait dans son onglet et ce
+            // qu'elle est — du travail qui n'est écrit nulle part.
+            self.saved_source = départ;
+            self.set_source(écrit);
             self.aller_au_trou();
             self.indice_montré = false;
             self.current_file = None;
@@ -193,8 +295,8 @@ impl NamsdecApp {
             return;
         }
         self.current_exercise = Some(id.to_owned());
-        self.saved_source = exercise.starter_code.clone();
-        self.set_source(exercise.starter_code.clone());
+        self.saved_source = départ;
+        self.set_source(écrit);
         self.aller_au_trou();
         self.indice_montré = false;
         // La réponse d'avant n'est pas celle de celui-ci : la garder
@@ -408,6 +510,179 @@ impl NamsdecApp {
             self.show_solution = false;
         }
     }
+}
+
+/// Les instructions qu'un programme ÉCRIT, par fiche et sans doublon.
+///
+/// Le premier mot de chaque ligne, une fois l'étiquette retirée et le
+/// commentaire coupé : c'est ce que le processeur exécutera. Les
+/// opérandes ne comptent pas — `mov rax, rbx` emploie `mov`, et `rbx`
+/// est un registre, pas une notion de ce parcours-là.
+///
+/// **Rendu par FICHE et non par nom** : `je` et `jz` sont deux noms du
+/// même opcode, et compter deux notions là où il y en a une donnerait
+/// un carnet qui flatte. C'est le premier nom de la fiche qui
+/// représente le groupe, comme partout ailleurs dans `namsdec-doc`.
+pub(crate) fn instructions_du_programme(code: &str) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    for ligne in code.lines() {
+        let ligne = ligne.split(';').next().unwrap_or("").trim();
+        if ligne.is_empty() {
+            continue;
+        }
+        // `boucle: dec rcx` porte bien une instruction.
+        let reste = match ligne.split_once(':') {
+            Some((étiquette, suite))
+                if !étiquette.contains(char::is_whitespace) && !étiquette.contains('[') =>
+            {
+                suite.trim()
+            }
+            _ => ligne,
+        };
+        let Some(mot) = reste.split_whitespace().next() else {
+            continue;
+        };
+        let mot = mot.to_ascii_lowercase();
+        if let Some(entrée) = namsdec_doc::lookup(&mot)
+            && entrée.kind == namsdec_doc::Kind::Instruction
+            && let Some(fiche) = entrée.names.first()
+            && !out.contains(fiche)
+        {
+            out.push(fiche);
+        }
+    }
+    out
+}
+
+impl NamsdecApp {
+    /// Les notions que le parcours a déjà fait écrire ou lire.
+    ///
+    /// **Ce que le carnet répond, et que rien ne répondait.** « Où
+    /// j'en suis » se lisait en une fraction — 12/117 —, qui dit le
+    /// chemin parcouru et rien de ce qu'on y a appris. Un débutant qui
+    /// a fait douze étapes connaît une vingtaine d'instructions ; il ne
+    /// le sait pas, ne peut pas les relire, et le parcours ne lui en
+    /// montre la trace nulle part.
+    ///
+    /// **Une étape réussie compte, les autres non.** On ne retient pas
+    /// une notion en ouvrant son énoncé : le carnet suit les étapes
+    /// dont le but a été atteint, ou dont la question a reçu la bonne
+    /// réponse. C'est exactement ce que mesure `exercises_done`.
+    ///
+    /// **La solution plutôt que le programme de départ**, quand il y en
+    /// a une : elle porte ce qu'on a eu à écrire, trou compris. Une
+    /// démonstration et une étape de lecture, elles, n'ont que leur
+    /// programme — et c'est bien celui-là qu'on a lu.
+    ///
+    /// Rien n'est retenu en mémoire : le carnet se recalcule des
+    /// étapes réussies, qui sont déjà dans `settings.json`. Un état de
+    /// plus serait un état de plus à tenir d'accord.
+    pub(crate) fn notions_vues(&self) -> Vec<&'static str> {
+        let mut out: Vec<&'static str> = Vec::new();
+        for pack in &self.exercise_packs {
+            for exercise in &pack.exercises {
+                let id = namsdec_exercises::full_id(pack, exercise);
+                if !self.exercises_done.contains(&id) {
+                    continue;
+                }
+                let programme = exercise
+                    .solution
+                    .as_deref()
+                    .unwrap_or(&exercise.starter_code);
+                for fiche in instructions_du_programme(programme) {
+                    if !out.contains(&fiche) {
+                        out.push(fiche);
+                    }
+                }
+            }
+        }
+        out.sort_unstable();
+        out
+    }
+}
+
+impl NamsdecApp {
+    /// Assembler, exécuter, et répondre — en un seul geste.
+    ///
+    /// **Ce qu'il fallait savoir avant.** Pour apprendre si l'on avait
+    /// réussi, il fallait trois gestes dans le bon ordre — Assembler,
+    /// Exécuter, puis regarder si la pastille du titre a changé — et
+    /// savoir qu'il les fallait. C'est beaucoup pour une question qui
+    /// tient en trois mots : « est-ce juste ? ». Un parcours dont
+    /// chaque vérification demande de connaître la chaîne de
+    /// compilation n'est pas un parcours interactif, c'est un manuel
+    /// avec des devoirs.
+    ///
+    /// **Rien de neuf n'est calculé** : ce sont les deux actions que la
+    /// barre porte déjà, dans l'ordre où on les ferait soi-même.
+    /// `do_run` attend l'assembleur de lui-même (`assurer_le_programme`),
+    /// et refuse quand l'assemblage a échoué — on reste alors devant
+    /// les erreurs, qui sont la réponse à ce moment-là.
+    ///
+    /// **Le drapeau sert au verdict** : il dit que la course en cours a
+    /// été demandée POUR VÉRIFIER, ce qui autorise la bande à conclure
+    /// franchement quand la machine s'arrête — « Réussi », et non une
+    /// pastille qu'il faut remarquer.
+    pub(crate) fn verifier_l_exercice(&mut self) {
+        self.verification_demandee = true;
+        // L'EXÉCUTION EST UNE INTENTION, et non l'appel suivant : nasm
+        // travaille dans un fil, et tant qu'il travaille il n'y a pas
+        // de machine à lancer. Elle est consommée par `tick_assemble`,
+        // au moment où la machine existe — voir là-bas.
+        self.executer_apres_assemblage = true;
+        self.dispatch(Action::Assemble);
+    }
+
+    /// Y a-t-il quelque chose à vérifier dans l'étape en cours ?
+    ///
+    /// Une démonstration n'a rien à réussir : le bouton y dirait
+    /// « vérifiez » devant un programme qu'on regarde tourner. Les deux
+    /// autres formes en ont : un but à atteindre, ou une question à
+    /// laquelle répondre.
+    pub(crate) fn exercice_a_verifier(&self) -> bool {
+        self.current_exercise.is_some() && !self.exercise_is_demo()
+    }
+
+    /// Peut-on vérifier MAINTENANT, et sinon pourquoi.
+    ///
+    /// **Une étape de lecture se répond avant de s'exécuter**, et c'est
+    /// toute sa leçon : « lisez-le, répondez, puis exécutez — la
+    /// machine tranchera ». Vérifier sans avoir répondu ferait tourner
+    /// le programme, et le programme DONNE la réponse — RAX vaut 55
+    /// dans le volet avant qu'on ait eu l'occasion de se tromper, et
+    /// se tromper est la seule façon de savoir qu'on n'avait pas
+    /// compris. C'est la règle de `prevision`, appliquée au seul
+    /// endroit où elle manquait encore.
+    ///
+    /// Le bouton se grise donc, et dit pourquoi : une commande éteinte
+    /// qui se tait passe pour cassée.
+    pub(crate) fn verification_possible(&self) -> bool {
+        match self.exercise_question() {
+            Some(_) => !self.question_answer.trim().is_empty(),
+            None => true,
+        }
+    }
+
+    /// Le verdict d'une vérification qui vient de se terminer.
+    ///
+    /// `None` tant qu'on n'a rien demandé, ou tant que la machine
+    /// tourne : un verdict rendu au milieu d'une course parlerait d'un
+    /// programme qui n'a pas fini sa phrase.
+    pub(crate) fn verdict_de_la_verification(&self) -> Option<bool> {
+        if !self.verification_demandee {
+            return None;
+        }
+        let emulator = self.emulator.as_ref()?;
+        if self.assembling()
+            || self.executer_apres_assemblage
+            || self.running
+            || emulator.executed() == 0
+            || !emulator.cpu().halted
+        {
+            return None;
+        }
+        Some(self.exercice_reussi())
+    }
 
     /// L'exercice en cours est-il une DÉMONSTRATION ?
     ///
@@ -462,33 +737,53 @@ impl NamsdecApp {
     /// Le critère n'est pas inventé pour l'occasion : c'est celui des
     /// autres, moins les conditions. Avoir exécuté quelque chose, et
     /// être allé jusqu'à l'arrêt.
+    /// L'étape en cours est-elle réussie, en l'état de la machine ?
+    ///
+    /// **Une seule vérité, et deux lecteurs** : le carnet de bord
+    /// ([`Self::note_goal_reached`]), qui l'inscrit une fois pour
+    /// toutes, et le verdict de « Vérifier », qui le dit à l'écran.
+    /// Écrire la règle deux fois aurait fini par donner un bouton qui
+    /// félicite et une pastille qui refuse.
+    ///
+    /// Les trois formes d'étape, et leur critère :
+    ///
+    /// - une étape de LECTURE se réussit en répondant juste. L'exécuter
+    ///   ne suffit pas : son programme marche déjà, puisqu'il est donné
+    ///   complet — sans cette règle, la pastille passait au vert au
+    ///   premier « Exécuter », c'est-à-dire en sautant exactement le
+    ///   geste que l'étape vient enseigner ;
+    /// - une DÉMONSTRATION se termine quand on l'a regardée tourner
+    ///   jusqu'au bout : il n'y a rien d'autre à y réussir ;
+    /// - les autres demandent que toutes les conditions du but tiennent.
+    ///
+    /// **Et dans les trois cas, le programme doit avoir tourné jusqu'à
+    /// son arrêt.** Un but atteint sans avoir rien exécuté n'est pas une
+    /// solution : « rax == 0 » est vrai avant le premier pas, et
+    /// remettre à zéro suffisait à s'attribuer un score de zéro
+    /// instruction — imbattable, et faux.
+    pub(crate) fn exercice_reussi(&self) -> bool {
+        let gagné = match self.exercise_question() {
+            Some((_, verdict)) => verdict.est_juste(),
+            None => self.exercise_is_demo() || matches!(self.exercise_goal(), Some((_, true))),
+        };
+        gagné
+            && self
+                .emulator
+                .as_ref()
+                .is_some_and(|e| e.executed() > 0 && e.cpu().halted)
+    }
+
     pub(crate) fn note_goal_reached(&mut self) {
         // UN EXERCICE DE LECTURE SE RÉUSSIT EN RÉPONDANT, et l'exécuter
         // ne suffit pas : son programme marche déjà, puisqu'il est
         // donné complet. Sans cette règle, la pastille passait au vert
         // au premier « Exécuter » — c'est-à-dire en sautant exactement
         // le geste que l'exercice vient enseigner.
-        if let Some((_, verdict)) = self.exercise_question() {
-            if !verdict.est_juste() {
-                return;
-            }
-        } else {
-            let démonstration = self.exercise_is_demo();
-            if !démonstration && !matches!(self.exercise_goal(), Some((_, true))) {
-                return;
-            }
-        }
-        // Un but atteint sans avoir rien exécuté n'est pas une
-        // solution : « rax == 0 » est vrai avant le premier pas, et
-        // remettre à zéro suffisait à s'attribuer un score de zéro
-        // instruction — imbattable, et faux. On exige que le programme
-        // ait tourné *et* qu'il soit allé jusqu'à son arrêt.
-        let Some(emulator) = &self.emulator else {
-            return;
-        };
-        if emulator.executed() == 0 || !emulator.cpu().halted {
+        if !self.exercice_reussi() {
             return;
         }
+        // Le programme a tourné jusqu'à son arrêt : `exercice_reussi`
+        // vient de l'exiger, et c'est lui qui porte la règle.
         let Some(id) = self.current_exercise.clone() else {
             return;
         };

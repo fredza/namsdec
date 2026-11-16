@@ -825,6 +825,10 @@
     "rax == 1",
     "rbx == 4"
    ],
+   "hint": {
+    "fr": "Le préfixe `rep` répète l'instruction de chaîne qui le suit, autant de fois que RCX l'indique — c'est lui qui transforme la copie d'un élément en copie d'un bloc.",
+    "en": "The `rep` prefix repeats the string instruction that follows it, as many times as RCX says — it is what turns a one-element copy into a block copy."
+   },
    "par": 13,
    "level": "practice",
    "solution": "; Copier des zones qui se chevauchent.\n;\n; But : à l'arrêt, RAX vaut 1 et RBX 4 — les quatre valeurs ont été\n; décalées d'une case vers la droite, sans qu'aucune ne soit perdue.\n;\n; Copier vers l'avant écrase ce qu'on n'a pas encore lu : à la\n; deuxième case, la source a déjà disparu sous la destination. C'est\n; exactement ce qui arrive quand on donne à `memcpy` des zones qui se\n; chevauchent, et c'est pourquoi la norme dit que le résultat n'est pas\n; défini.\n;\n; La parade tient en une instruction : `std` inverse le sens de\n; parcours, et l'on copie depuis la fin. `cld` le remet à l'endroit —\n; l'oublier laisse une bombe pour la prochaine instruction de chaîne.\n;\n; C'est toute la différence entre `memcpy` et `memmove`.\n\ndefault rel\nglobal _start\n\nsection .data\n    valeurs dq 1, 2, 3, 4, 0\n\nsection .text\n_start:\n    lea rsi, [valeurs + 3*8]        ; depuis la fin\n    lea rdi, [valeurs + 4*8]\n    mov rcx, 4\n    std                             ; on recule\n    rep movsq\n    cld                             ; et l'on remet le sens à l'endroit\n\n    lea rsi, [valeurs]\n    mov rax, [rsi]                  ; 1, intact\n    mov rbx, [rsi + 4*8]            ; 4, arrivé au bout\n    hlt\n"

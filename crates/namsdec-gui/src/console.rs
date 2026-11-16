@@ -832,6 +832,9 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let (lang, theme) = (self.lang, self.theme);
         let mut goto = None;
+        // Relevée dans la boucle, appliquée après : celle-ci emprunte
+        // `self.diagnostics` en lecture, et poser la ligne l'écrit.
+        let mut corriger: Option<(usize, String)> = None;
 
         // Ce que l'exécution a simplifié, s'il y a lieu, et en
         // TÊTE : c'est l'information que la barre d'état vient
@@ -844,6 +847,26 @@ impl NamsdecApp {
         // le programme qui parle, c'est namsdec, et mélanger
         // les deux voix dans un même flux est le plus sûr moyen
         // de faire douter de ce qu'on lit.
+        // CE QUI NE TIENT PAS DANS LA BANDE SE DIT EN TÊTE.
+        //
+        // Relevé sur `établi / l'assemblage a échoué`, 16 novembre
+        // 2026 : deux erreurs, chacune suivie de son explication, et
+        // la dernière phrase TRANCHÉE PAR LE MILIEU au bas de la
+        // bande. La zone défile bien, mais une ligne coupée en deux
+        // dans sa hauteur ne ressemble pas à une liste qui continue :
+        // elle ressemble à un texte perdu — au moment précis où
+        // l'assembleur vient de refuser.
+        //
+        // UNE MENTION, ET NON UN LIEN : on fait défiler la zone qu'on
+        // a sous les yeux, ou l'on tire la poignée de la bande. Un
+        // trait de « ce qui se clique » promettrait un geste que cette
+        // ligne ne rend pas (A 9.89).
+        if self.debutant && self.problemes_deborde {
+            ui.colored_label(
+                theme.warn,
+                egui::RichText::new(s.etabli_problemes_suite).size(12.0),
+            );
+        }
         self.simplifications_ui(ui);
         if self.diagnostics.is_empty() {
             ui.colored_label(theme.dim, s.no_diagnostics);
@@ -904,8 +927,58 @@ impl NamsdecApp {
             // une recherche —, et l'explication vient dessous.
             if let Some(explication) = nasm_errors::explain(lang, &d.message) {
                 ui.label(prose(ui, theme, explication));
-                ui.add_space(6.0);
             }
+            // CE QUE NASM NE PEUT PAS DIRE, ET QUE LA LIGNE DIT.
+            //
+            // Relevé le 16 novembre 2026 sur `mov rzx, 1` : nasm répond
+            // « invalid combination of opcode and operands », et
+            // l'explication générique parle de deux opérandes en
+            // mémoire — ce qui n'est pas le cas. La cause tient en
+            // quatre mots, et elle est dans la ligne, pas dans le
+            // message : il n'y a pas de registre `rzx`.
+            //
+            // LES CANDIDATS SONT NOMMÉS, ET ON N'EN CHOISIT PAS UN :
+            // `rzx` est à une lettre de quatre registres, et désigner
+            // le premier serait tirer au sort. La liste, elle,
+            // enseigne — on y reconnaît le sien.
+            if d.line > 0
+                && let Some((mot, proches)) =
+                    fixes::registre_inconnu(&self.source, d.line as usize - 1)
+            {
+                let liste = proches.join(", ");
+                ui.label(prose(
+                    ui,
+                    theme,
+                    &s.unknown_register_note
+                        .replacen("{}", &mot, 1)
+                        .replacen("{}", &liste, 1),
+                ));
+            }
+            // LA CORRECTION SE MONTRE OÙ L'ERREUR SE LIT.
+            //
+            // `fixes` sait réécrire six fautes depuis longtemps, et
+            // la seule porte était Alt+Entrée, annoncé dans la barre
+            // d'état du mode avancé — qui n'existe pas à l'Établi. Au
+            // mode simple, la correction était donc calculée et
+            // jamais montrée, à l'endroit exact où l'on est bloqué.
+            if d.line > 0
+                && let Some(correction) = fixes::propose(&self.source, d.line as usize - 1, s)
+            {
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.colored_label(theme.accent, &correction.titre);
+                    if small_framed_button(ui, theme, s.fix_apply)
+                        .on_hover_text(correction.ligne.trim())
+                        .clicked()
+                    {
+                        corriger = Some((d.line as usize - 1, correction.ligne.clone()));
+                    }
+                });
+            }
+            ui.add_space(6.0);
+        }
+        if let Some((index, ligne)) = corriger {
+            self.poser_la_ligne(index, &ligne);
         }
         goto
     }

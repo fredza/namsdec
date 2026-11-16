@@ -101,7 +101,28 @@ const LIGNE_MAX: f32 = 190.0;
 /// dont trois visibles. Ce n'est pas un ajustement d'instinct : c'est
 /// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` qui a dit
 /// combien il manquait.
+///
+/// LA RANGÉE DE « VÉRIFIER » S'AJOUTE À CE NOMBRE, elle ne s'y prend
+/// pas : voir [`EXERCICE_GESTES`]. Augmenter le défaut n'y aurait rien
+/// fait — c'est la part de ce qui reste qui plafonne la bande sur un
+/// grand écran, et elle ne connaît que le contenu.
 const EXERCICE_DEFAUT: f32 = 210.0;
+
+/// Ce que la rangée ancrée au bas de la bande réclame, quand elle est
+/// là.
+///
+/// « Vérifier » et son verdict ne défilent pas : ils sont le geste
+/// principal de l'étape, et un geste qu'on cherche à la molette n'en
+/// est pas un (capture du 16 novembre 2026, où le bouton était sous le
+/// pli dès que l'énoncé faisait trois lignes). Ce qu'ils prennent est
+/// donc AJOUTÉ à la bande plutôt que retiré à ce qu'elle montrait :
+/// sans cela, le budget « Instructions : 3 / 4 » se retrouvait tranché
+/// par le bas — cinq pixels peints sur dix-huit, et c'est le contrôle
+/// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` qui l'a dit.
+///
+/// Un bouton encadré fait vingt-sept pixels, et la rangée ses six de
+/// marge haute.
+const EXERCICE_GESTES: f32 = 33.0;
 
 /// Ce qu'elle prend au moins, quand on tire sa poignée vers le haut.
 ///
@@ -163,6 +184,27 @@ impl NamsdecApp {
         // pas besoin de cent soixante pixels, et l'on veut parfois voir
         // le but pendant qu'on lit beaucoup de code.
         if self.exercices_en_bande() {
+            // Ce que la rangée de « Vérifier » ajoutera, s'il y en a
+            // une : la bande grandit d'autant, au lieu de le prendre à
+            // ce qu'elle montrait déjà.
+            //
+            // ET SEULEMENT LÀ OÙ IL Y A LA PLACE. À 800x520, trente-trois
+            // pixels de plus coûtent UNE LIGNE DE PROGRAMME sur les deux
+            // qui restent, ce que `au_plus_petit_ecran_l_etabli_montre_
+            // encore_du_code` a dit du premier coup. Le seuil est celui
+            // qu'on connaît déjà : au-dessus de 860 pixels de place, la
+            // part de 22 % ne mord plus. En dessous, la rangée se prend
+            // sur la zone et le bas du but se coupe — comme la rangée de
+            // saisie du résultat, et pour la même raison : mieux vaut
+            // une promesse tenue sur les écrans ordinaires qu'une
+            // promesse qui casse la mise en page du plus petit.
+            self.etabli_exercice_gestes_ancres =
+                self.exercice_a_verifier() && ui.available_height() >= 860.0;
+            let gestes = if self.etabli_exercice_gestes_ancres {
+                EXERCICE_GESTES
+            } else {
+                0.0
+            };
             egui::Panel::top("etabli_exercice")
                 .resizable(true)
                 // UNE PART DE CE QUI RESTE, ET NON UN NOMBRE DE
@@ -194,10 +236,14 @@ impl NamsdecApp {
                 .default_size(
                     EXERCICE_DEFAUT
                         .min(ui.available_height() * 0.22)
-                        .max(EXERCICE_MIN),
+                        .max(EXERCICE_MIN)
+                        + gestes,
                 )
-                .min_size(EXERCICE_MIN)
-                .max_size(EXERCICE_MAX.min((ui.available_height() * 0.4).max(EXERCICE_MIN)))
+                .min_size(EXERCICE_MIN + gestes)
+                .max_size(
+                    (EXERCICE_MAX + gestes)
+                        .min((ui.available_height() * 0.4).max(EXERCICE_MIN + gestes)),
+                )
                 .frame(
                     egui::Frame::new()
                         .fill(theme.panel)
@@ -555,17 +601,33 @@ impl NamsdecApp {
         // commandes y mène encore, mais personne ne cherche une palette
         // le premier jour.
         //
-        // Grisé quand le module n'est pas là, et il dit où l'installer :
-        // une porte qu'on ne voit pas n'existe pas.
-        if self.exercises {
-            if framed_button(ui, theme, s.exercises_open).clicked() {
-                self.show_exercises = true;
-            }
-        } else {
-            ui.add_enabled_ui(false, |ui| {
-                framed_button(ui, theme, s.exercises_open)
-                    .on_disabled_hover_text(s.exercises_where);
-            });
+        // ET IL N'EST JAMAIS ÉTEINT.
+        //
+        // Il l'était quand le module ne tournait pas, avec une
+        // infobulle qui disait d'aller l'allumer dans Préférences ›
+        // Modules. Trois choses clochaient, et la capture du premier
+        // écran les montre ensemble : c'est le SEUL bouton de la barre
+        // qui mène au parcours, il est gris au premier lancement,
+        // c'est-à-dire au moment où il sert le plus, et son infobulle
+        // demande un détour par une fenêtre qu'on n'a pas encore
+        // ouverte — en supposant qu'on pense à survoler un bouton
+        // éteint.
+        //
+        // LE CLIC ALLUME LE MODULE ET OUVRE LA FENÊTRE. Le réglage
+        // part dans `settings.json` à la frame suivante, comme tous les
+        // autres : on ne le redemandera pas. C'est la règle qu'on
+        // s'applique ailleurs — une porte fermée qui s'ouvre vaut mieux
+        // qu'une porte peinte sur le mur.
+        if framed_button(ui, theme, s.exercises_open)
+            .on_hover_text(if self.exercises {
+                s.exercises_open_hint
+            } else {
+                s.exercises_turn_on
+            })
+            .clicked()
+        {
+            self.exercises = true;
+            self.show_exercises = true;
         }
         if framed_button(ui, theme, s.action_save).clicked() {
             self.dispatch(Action::Save);
@@ -813,6 +875,62 @@ impl NamsdecApp {
         namsdec_exercises::find(&self.exercise_packs, id).map(|_| id)
     }
 
+    /// La rangée de « Vérifier » : le geste, et le verdict.
+    ///
+    /// **Dessinée à part parce qu'elle se pose à deux endroits**, et
+    /// que c'est la place qui tranche. Là où il y a de quoi, elle est
+    /// ANCRÉE au bas de la bande : le geste principal d'un écran ne se
+    /// cherche pas à la molette, et posé dans la zone qui défile il
+    /// passait sous le pli dès que l'énoncé faisait trois lignes.
+    ///
+    /// **À 800x520, elle redescend dans la zone qui défile.** Les deux
+    /// autres voies y échouent, et la mesure le dit : ancrée, elle se
+    /// peint PAR-DESSUS l'énoncé (`panels_do_not_overlap_on_the_
+    /// smallest_screen`), et ajouter sa hauteur à la bande coûte une
+    /// ligne de programme sur les deux qui restent
+    /// (`au_plus_petit_ecran_l_etabli_montre_encore_du_code`). On
+    /// garde donc la promesse là où elle tient, plutôt que de casser la
+    /// mise en page du plus petit écran — c'est la règle que la bande
+    /// du résultat s'est déjà donnée pour sa rangée de saisie.
+    ///
+    /// Rend `true` quand on a demandé à vérifier.
+    fn etabli_exercice_gestes_ui(&mut self, ui: &mut egui::Ui) -> bool {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let mut vérifier = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 8.0;
+            let possible = self.verification_possible();
+            ui.add_enabled_ui(possible, |ui| {
+                if framed_button(ui, theme, s.exercise_check)
+                    .on_hover_text(s.exercise_check_hint)
+                    .on_disabled_hover_text(s.exercise_check_answer_first)
+                    .clicked()
+                {
+                    vérifier = true;
+                }
+            });
+            if !possible {
+                ui.colored_label(theme.dim, s.exercise_check_answer_first);
+            }
+            // LE VERDICT, ET SEULEMENT SI ON L'A DEMANDÉ.
+            //
+            // Une course lancée à la main reste muette : on exécute
+            // aussi pour regarder tourner, et un jugement qu'on n'a pas
+            // demandé en est un.
+            match self.verdict_de_la_verification() {
+                Some(true) => {
+                    ui.colored_label(theme.good, s.exercise_check_passed);
+                }
+                Some(false) => {
+                    ui.colored_label(theme.warn, s.exercise_check_failed);
+                }
+                None => {}
+            }
+        });
+        vérifier
+    }
+
     /// La bande de l'exercice : ce qu'on demande, et où l'on en est.
     ///
     /// TROIS CHOSES, ET DANS CET ORDRE. Le titre dit laquelle des cent
@@ -871,8 +989,10 @@ impl NamsdecApp {
         };
         let fait = self.exercises_done.contains(&id);
         let suivant = self.exercise_after(&id);
+        let précédent = self.exercise_before(&id);
 
         let mut choisir = false;
+        let mut vérifier = false;
         let mut montrer_l_indice = false;
         let mut montrer_la_solution = false;
         // Un indice à donner ? Il disparaît quand il n'a plus rien à
@@ -899,6 +1019,23 @@ impl NamsdecApp {
                         .clicked()
                 {
                     aller = Some(suivant_id.clone());
+                }
+                // ET LE RETOUR. La rangée va de droite à gauche : posé
+                // après, il se peint AVANT — on lit « Étape précédente,
+                // Étape suivante », dans l'ordre d'un parcours. Un
+                // chemin qui ne va que dans un sens oblige à rouvrir la
+                // liste pour revoir ce qu'on vient de faire.
+                //
+                // EN FLÈCHE SEULE, et c'est la place qui l'impose : à
+                // 800 pixels, cinq libellés dans cette rangée la
+                // coupent en deux et la bande mange le code. Le titre
+                // de l'étape est au survol, comme pour la suivante.
+                if let Some((précédent_id, titre_précédent)) = &précédent
+                    && small_framed_button(ui, theme, "‹")
+                        .on_hover_text(format!("{} — {titre_précédent}", s.exercises_previous))
+                        .clicked()
+                {
+                    aller = Some(précédent_id.clone());
                 }
                 if small_framed_button(ui, theme, s.etabli_exercise_pick)
                     .on_hover_text(s.exercises_title)
@@ -966,6 +1103,41 @@ impl NamsdecApp {
             });
         });
         ui.add_space(2.0);
+        // LE GESTE QUI RÉPOND À « EST-CE JUSTE ? », ET IL NE DÉFILE PAS.
+        //
+        // Il en fallait trois avant lui, dans le bon ordre, et il
+        // fallait savoir qu'il les fallait : assembler, exécuter, puis
+        // remarquer qu'une pastille a changé de couleur dans le titre.
+        // L'exercice était interactif pour qui connaissait déjà la
+        // chaîne de compilation.
+        //
+        // ANCRÉ AU BAS DE LA BANDE, et c'est la capture du 16 novembre
+        // 2026 qui l'a imposé : posé sous le but, dans la zone qui
+        // défile, il était SOUS LE PLI dès que l'énoncé faisait trois
+        // lignes — c'est-à-dire presque toujours. Le geste principal
+        // d'un écran ne se cherche pas à la molette. C'est la règle que
+        // la console s'est donnée pour sa rangée de saisie.
+        //
+        // PAS DANS LA RANGÉE DU TITRE non plus : elle porte la
+        // navigation, et à 800 pixels un sixième bouton la couperait en
+        // deux (A 9.94).
+        // ANCRÉE SEULEMENT SI LA BANDE A REÇU DE QUOI LA PORTER. La
+        // hauteur lui est ajoutée plus haut, et seulement au-dessus de
+        // 860 pixels de place : c'est la même condition, et la poser
+        // deux fois serait la poser mal.
+        let ancrée = self.exercice_a_verifier() && self.etabli_exercice_gestes_ancres;
+        if ancrée {
+            egui::Panel::bottom("etabli_exercice_gestes")
+                .frame(egui::Frame::new().inner_margin(egui::Margin {
+                    left: 0,
+                    right: 0,
+                    top: 6,
+                    bottom: 0,
+                }))
+                .show(ui, |ui| {
+                    vérifier |= self.etabli_exercice_gestes_ui(ui);
+                });
+        }
         // L'ÉNONCÉ ET LE BUT DÉFILENT ENSEMBLE, dans ce qui reste de la
         // bande. La hauteur est celle du panneau — réglée, non devinée
         // d'après le contenu —, et c'est ce qui permet à une zone
@@ -1024,8 +1196,15 @@ impl NamsdecApp {
                     });
                 }
                 self.goal_ui(ui);
+                if self.exercice_a_verifier() && !ancrée {
+                    ui.add_space(6.0);
+                    vérifier |= self.etabli_exercice_gestes_ui(ui);
+                }
             });
 
+        if vérifier {
+            self.verifier_l_exercice();
+        }
         if choisir {
             self.show_exercises = true;
         }
@@ -1284,17 +1463,63 @@ impl NamsdecApp {
             } else {
                 0.0
             };
+            // LA MENTION DE DÉBORDEMENT SE PAIE SUR LA ZONE QUI
+            // DÉBORDE, et sur rien d'autre.
+            //
+            // Posée après coup, elle prenait sa ligne sur ce qui
+            // suit — et ce qui suit est la rangée où l'on répond au
+            // programme : `la_bande_du_resultat_porte_sa_rangee_de_
+            // saisie` est tombé aussitôt, « Entrée : » n'étant plus
+            // peint du tout. Une mention qui dit « il y a la suite »
+            // en poussant autre chose dehors ne corrige rien, elle
+            // déplace.
+            //
+            // L'état de l'image précédente, et pas de va-et-vient :
+            // retirer une ligne à une zone qui déborde déjà ne la
+            // fait pas rentrer, donc la mention ne clignote pas.
             let place = (ui.available_height() - garde).max(40.0);
-            let aller = egui::ScrollArea::vertical()
+            let zone = egui::ScrollArea::vertical()
                 .id_salt("etabli_problemes")
                 .max_height(place)
                 .auto_shrink([false, true])
                 .min_scrolled_height(0.0)
-                .show(ui, |ui| self.problemes_ui(ui))
-                .inner;
-            if let Some(ligne) = aller {
+                .show(ui, |ui| self.problemes_ui(ui));
+            if let Some(ligne) = zone.inner {
                 self.goto_line = Some(ligne);
             }
+            // CE QUI EST SOUS LE PLI SE DIT, PARCE QUE C'EST LÀ QU'ON
+            // EST BLOQUÉ.
+            //
+            // Relevé sur `établi / l'assemblage a échoué`, 16 novembre
+            // 2026 : deux erreurs, chacune suivie de son explication,
+            // et la dernière phrase TRANCHÉE PAR LE MILIEU au bas de
+            // la bande — « jamais par autre chose. » coupée en deux
+            // dans sa hauteur. La zone défile bien, mais une ligne
+            // coupée ne ressemble pas à une liste qui continue : elle
+            // ressemble à un texte perdu, et c'est au moment précis où
+            // l'assembleur vient de refuser.
+            //
+            // UNE MENTION, ET NON UN LIEN. Rien ici ne mène ailleurs :
+            // on fait défiler la zone qu'on a sous les yeux, ou l'on
+            // tire la poignée de la bande. Un trait de « ce qui se
+            // clique » promettrait un geste que cette ligne ne rend
+            // pas (A 9.89).
+            // LA MENTION EST DANS LA ZONE, EN TÊTE, et pas sous elle.
+            //
+            // Sous la zone, elle prenait sa ligne sur ce qui suit — et
+            // ce qui suit est la rangée où l'on répond au programme :
+            // `la_bande_du_resultat_porte_sa_rangee_de_saisie` est
+            // tombé aussitôt, « Entrée : » n'étant plus peint du tout.
+            // Une mention qui annonce la suite en poussant la saisie
+            // hors de l'écran ne corrige rien, elle déplace. En tête
+            // de la zone, elle ne coûte rien à la bande : c'est la
+            // liste des problèmes qui lui fait de la place, et c'est
+            // elle qui déborde.
+            //
+            // Le débordement est celui de l'image précédente — on ne
+            // le connaît qu'une fois la zone posée. Il ne clignote
+            // pas : la mention grossit le contenu, qui débordait déjà.
+            self.problemes_deborde = zone.content_size.y - zone.inner_rect.height() > 1.0;
             if avec_sortie {
                 ui.add_space(4.0);
                 ui.separator();

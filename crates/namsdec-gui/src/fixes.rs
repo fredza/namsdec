@@ -366,6 +366,13 @@ pub fn propose(source: &str, index: usize, s: &Strings) -> Option<Correction> {
         return Some(correction);
     }
 
+    // 2 bis. Un opérande qui se donne pour un registre et n'en est pas
+    //    un. Après le mnémonique, parce qu'une ligne dont le verbe est
+    //    faux n'a pas d'opérandes à juger.
+    if let Some(correction) = registre_douteux(&vue, source, s) {
+        return Some(correction);
+    }
+
     // 3. `int 0x80` : l'appel système de Linux 32 bits, écrit dans du
     //    code 64 bits. Il n'échoue pas à l'assemblage — il échoue à
     //    l'exécution, ce qui est bien plus long à comprendre.
@@ -510,6 +517,121 @@ fn mnémonique_inconnu(vue: &Vue<'_>, source: &str, s: &Strings) -> Option<Corre
             .replacen("{}", mot, 1)
             .replacen("{}", &proche, 1),
     })
+}
+
+/// 2 bis. Un opérande qui se donne pour un registre et n'en est pas un.
+///
+/// **Le défaut qu'elle corrige, vu à l'écran le 16 novembre 2026.**
+/// `mov rzx, 1` fait répondre à nasm « invalid combination of opcode
+/// and operands », et l'explication que namsdec posait dessous parlait
+/// de deux opérandes en mémoire et de tailles qui ne correspondent
+/// pas — un diagnostic juste en général, et faux pour cette ligne-là. La
+/// vraie cause tient pourtant en quatre mots : **il n'y a pas de
+/// registre `rzx`**, et nasm ne le dira jamais, puisqu'il ne voit qu'un
+/// symbole qu'il ne connaît pas.
+///
+/// **Ce qu'on exige avant d'accuser**, parce qu'une correction qu'on ne
+/// sait pas justifier apprend le faux :
+///
+/// - le mot a la FORME d'un registre : deux à quatre caractères, des
+///   lettres et des chiffres, commençant par `r` ou `e` ;
+/// - il n'est pas un registre, pas un nombre, pas un mot-clé de taille ;
+/// - **il n'est défini nulle part dans le programme** — ni étiquette, ni
+///   constante, ni donnée. C'est la condition qui écarte `msg`, `buf` et
+///   tout ce que l'auteur a nommé lui-même ;
+/// - il est à **une seule lettre** d'un vrai registre.
+///
+/// **Et l'on ne réécrit que si un seul candidat répond.** `rzx` est à
+/// une lettre de `rax`, `rbx`, `rcx` ET `rdx` : en choisir un serait
+/// tirer au sort sous couvert de correction. Dans ce cas la ligne reste
+/// intacte et c'est [`registre_inconnu`] qui parle, en les nommant tous
+/// les quatre — c'est la liste qui enseigne, pas le choix.
+fn registre_douteux(vue: &Vue<'_>, source: &str, s: &Strings) -> Option<Correction> {
+    let (plage, _, candidats) = suspect_de_registre(vue, source)?;
+    let [seul] = candidats[..] else {
+        return None;
+    };
+    let mot = vue.mot(&plage);
+    let proche = if mot.chars().all(|c| c.is_uppercase() || !c.is_alphabetic()) {
+        seul.to_ascii_uppercase()
+    } else {
+        seul.to_owned()
+    };
+    Some(Correction {
+        ligne: vue.remplaçant(&plage, &proche),
+        titre: s
+            .fix_unknown_register
+            .replacen("{}", mot, 1)
+            .replacen("{}", &proche, 1),
+    })
+}
+
+/// Le mot d'une ligne qui se donne pour un registre sans en être un, et
+/// les vrais registres dont il est le plus proche.
+///
+/// Rendu pour la ligne entière plutôt que pour la correction : quand
+/// plusieurs registres sont à égale distance, il n'y a rien à réécrire,
+/// mais il y a tout à dire. C'est ce que lit la liste des problèmes.
+pub fn registre_inconnu(source: &str, index: usize) -> Option<(String, Vec<&'static str>)> {
+    let ligne = source.lines().nth(index)?;
+    let vue = Vue::lire(ligne);
+    let (plage, mot, candidats) = suspect_de_registre(&vue, source)?;
+    let _ = plage;
+    Some((mot, candidats))
+}
+
+/// Le travail commun aux deux : trouver l'opérande fautif.
+fn suspect_de_registre<'a>(
+    vue: &Vue<'a>,
+    source: &str,
+) -> Option<(std::ops::Range<usize>, String, Vec<&'static str>)> {
+    // Une ligne dont le mnémonique n'existe pas se juge d'abord sur son
+    // mnémonique : deux reproches à la fois sur une même ligne, et l'on
+    // ne sait plus lequel lire.
+    let mné = vue.mnémonique()?;
+    if !namsdec_disasm::is_mnemonic(&mné.to_ascii_lowercase()) {
+        return None;
+    }
+    let étiquettes = syntax::labels_of(source);
+    let macros = syntax::Macros::of(source);
+    for plage in &vue.ops {
+        let mot = vue.mot(plage);
+        // L'opérande nu, sans crochets ni taille : `[rzx]` cache le même
+        // mot que `rzx`, et c'est lui qu'on juge.
+        let nu = mot.trim_matches(|c: char| c == '[' || c == ']' || c.is_whitespace());
+        if nu.len() < 2 || nu.len() > 4 {
+            continue;
+        }
+        let bas = nu.to_ascii_lowercase();
+        if !bas.starts_with('r') && !bas.starts_with('e') {
+            continue;
+        }
+        if !bas.chars().all(|c| c.is_ascii_alphanumeric()) {
+            continue;
+        }
+        if est_un_registre(&bas)
+            || est_un_nombre(nu)
+            || TAILLES.contains(&bas.as_str())
+            || syntax::DIRECTIVES.contains(&bas.as_str())
+            || étiquettes.contains(nu)
+            || macros.contient(&bas)
+        {
+            continue;
+        }
+        // À UNE LETTRE, ET PAS DEUX. `rax` et `rdx` sont déjà à deux
+        // l'un de l'autre : tolérer deux ferait de n'importe quel nom de
+        // trois lettres un registre mal tapé.
+        let candidats: Vec<&'static str> = syntax::REGISTERS
+            .iter()
+            .copied()
+            .filter(|r| distance(&bas, r) == 1)
+            .collect();
+        if candidats.is_empty() {
+            continue;
+        }
+        return Some((plage.clone(), nu.to_owned(), candidats));
+    }
+    None
 }
 
 /// 6. L'écriture en mémoire dont rien ne dit la taille.
@@ -822,5 +944,87 @@ _start:
     #[test]
     fn a_line_past_the_end_is_not_a_crash() {
         assert_eq!(corrige("mov rax, 1\n", 42), None);
+    }
+
+    /// Un registre qui n'existe pas se nomme, et la ligne reste intacte
+    /// quand plusieurs vrais registres en sont également proches.
+    ///
+    /// C'est le cas vu à l'écran le 16 novembre 2026 : `mov rzx, 1`,
+    /// que nasm refuse avec « invalid combination of opcode and
+    /// operands » — un message qui ne nomme pas le coupable, et dont
+    /// l'explication générique parlait de deux opérandes en mémoire.
+    #[test]
+    fn a_register_that_does_not_exist_is_named() {
+        let source = "_start:\n    mov rzx, 1\n";
+        let (mot, proches) = registre_inconnu(source, 1).expect("rzx n'est pas un registre");
+        assert_eq!(mot, "rzx");
+        assert_eq!(
+            proches,
+            vec!["rax", "rbx", "rcx", "rdx"],
+            "les quatre à une lettre, et aucun choisi d'office"
+        );
+        assert_eq!(
+            corrige(source, 1),
+            None,
+            "quatre candidats à égalité : on ne réécrit pas"
+        );
+    }
+
+    /// Un seul candidat, et la ligne se réécrit.
+    #[test]
+    fn a_single_candidate_rewrites_the_line() {
+        // `rbpp` n'est à une lettre que de `rbp` — là où `rzx` l'est
+        // de quatre registres à la fois, les huit premiers partageant
+        // leurs deux dernières lettres.
+        let source = "_start:\n    mov rsp, rbpp\n";
+        assert_eq!(corrige(source, 1).as_deref(), Some("    mov rsp, rbp"));
+        assert!(
+            titre(source, 1).is_some_and(|t| t.contains("rbpp") && t.contains("rbp")),
+            "le titre nomme les deux : {:?}",
+            titre(source, 1)
+        );
+    }
+
+    /// CE QUE L'AUTEUR A NOMMÉ LUI-MÊME N'EST PAS UNE FAUTE.
+    ///
+    /// La moitié qui compte : une étiquette, une constante `equ`, une
+    /// macro ou une donnée portent des noms courts qui ressemblent à
+    /// des registres. Les accuser ferait de cette règle un bruit de
+    /// fond, et apprendrait le faux.
+    #[test]
+    fn what_the_program_defines_is_never_accused() {
+        for (source, ligne) in [
+            ("ret0:\n    jmp ret0\n", 1),
+            ("eax2 equ 4\n_start:\n    mov rax, eax2\n", 2),
+            ("%define rax1 7\n_start:\n    mov rax, rax1\n", 2),
+            ("msg db \"x\"\n_start:\n    mov rax, msg\n", 2),
+            // Un vrai registre, évidemment.
+            ("_start:\n    mov rax, rbx\n", 1),
+            // Et un nom qui ne ressemble à aucun registre.
+            ("_start:\n    mov rax, compteur\n", 1),
+        ] {
+            assert_eq!(
+                registre_inconnu(source, ligne).map(|(m, _)| m),
+                None,
+                "« {source} »"
+            );
+        }
+    }
+
+    /// Une ligne dont le mnémonique est déjà faux ne reçoit qu'un
+    /// reproche : le sien.
+    #[test]
+    fn a_wrong_mnemonic_comes_first() {
+        let source = "_start:\n    mvo rzx, 1\n";
+        assert_eq!(
+            registre_inconnu(source, 1).map(|(m, _)| m),
+            None,
+            "tant que le verbe est faux, les opérandes ne se jugent pas"
+        );
+        assert!(
+            titre(source, 1).is_some_and(|t| t.contains("mvo") && t.contains("mov")),
+            "c'est le verbe qu'on corrige d'abord : {:?}",
+            titre(source, 1)
+        );
     }
 }

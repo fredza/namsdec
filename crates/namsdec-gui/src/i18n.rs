@@ -136,6 +136,10 @@ pub struct Strings {
     pub goal_ahead: &'static str,
     /// Entre une expression et ce qu'elle vaut : « rax vaut 0xc ».
     pub goal_is: &'static str,
+    /// La même chose quand la condition vient de nommer le registre :
+    /// « RAX vaut 2 — il vaut 1 ». Le nom répété à deux mots d'écart
+    /// faisait lire deux phrases pour une.
+    pub goal_actual: &'static str,
     /// Ce que le programme a fait À LA PLACE, quand un but manque.
     /// La moitié qui ne se mesurait pas : quelle branche il a prise, où
     /// la boucle s'est arrêtée.
@@ -605,9 +609,16 @@ pub struct Strings {
     pub buffer_saved: &'static str,
     pub action_goto_label: &'static str,
     pub exercises_where: &'static str,
+    /// L'infobulle du bouton « Exercices… » de l'Établi, module allumé.
+    pub exercises_open_hint: &'static str,
+    /// La même, quand le module est encore éteint : le clic l'allume.
+    pub exercises_turn_on: &'static str,
     pub exercises_current: &'static str,
     pub exercises_resume: &'static str,
     pub exercises_next: &'static str,
+    /// L'étape d'avant : on recule pour revoir, ou pour refaire plus
+    /// court.
+    pub exercises_previous: &'static str,
     /// La solution d'une étape : le bouton, la fenêtre, et ce qu'elle
     /// dit avant de la montrer.
     pub exercise_solution: &'static str,
@@ -622,6 +633,25 @@ pub struct Strings {
     pub exercise_todo: &'static str,
     /// L'indice : le bouton, ce qu'il montre, et d'où il vient.
     pub exercise_hint: &'static str,
+    /// Le bouton qui assemble, exécute et répond : « est-ce juste ? »
+    /// Le carnet des notions : ce que les étapes réussies ont fait
+    /// écrire ou lire.
+    pub exercises_learned: &'static str,
+    /// Ce qu'il est, et ce qu'on en fait : chaque nom ouvre sa fiche.
+    pub exercises_learned_hint: &'static str,
+    /// Au survol d'une notion du carnet.
+    pub exercise_sheet_open: &'static str,
+    pub exercise_check: &'static str,
+    /// Ce qu'il fait, au survol.
+    pub exercise_check_hint: &'static str,
+    /// Le verdict, quand le but est atteint.
+    /// Pourquoi « Vérifier » attend, devant une étape de lecture :
+    /// exécuter donnerait la réponse.
+    pub exercise_check_answer_first: &'static str,
+    pub exercise_check_passed: &'static str,
+    /// Et quand il ne l'est pas : ce qui manque est écrit au-dessus,
+    /// condition par condition.
+    pub exercise_check_failed: &'static str,
     pub exercise_hint_hint: &'static str,
     pub exercise_hint_uses: &'static str,
     pub exercise_hint_yours: &'static str,
@@ -798,6 +828,11 @@ pub struct Strings {
     pub stack_above_hint: &'static str,
     pub last_step: &'static str,
     pub last_step_nothing: &'static str,
+    /// Combien de pas le programme a faits depuis le début.
+    pub last_step_count: &'static str,
+    /// Et combien de fois il est passé par cette ligne-là, à partir du
+    /// deuxième passage.
+    pub last_step_pass: &'static str,
     pub next_instruction: &'static str,
     pub next_instruction_done: &'static str,
     /// Le repli qui montre les seize registres vectoriels.
@@ -936,10 +971,18 @@ pub struct Strings {
     /// geste pour « oui, écris ce que tu proposes ».
     pub fix_hint: &'static str,
     pub fix_applied: &'static str,
+    /// Le bouton qui pose la correction, dans la liste des problèmes.
+    pub fix_apply: &'static str,
     pub fix_unclosed_bracket: &'static str,
     /// Trois messages à deux ou trois trous : le mot fautif d'abord, la
     /// proposition ensuite.
     pub fix_unknown_mnemonic: &'static str,
+    /// Un opérande qui se donne pour un registre et n'en est pas un,
+    /// quand un seul vrai registre en est proche.
+    pub fix_unknown_register: &'static str,
+    /// La phrase de la liste des problèmes quand plusieurs le sont :
+    /// « Il n'y a pas de registre « rzx ». Les plus proches : … »
+    pub unknown_register_note: &'static str,
     pub fix_unknown_label: &'static str,
     pub fix_register_width: &'static str,
     pub fix_int80: &'static str,
@@ -962,6 +1005,13 @@ pub struct Strings {
     pub memory_watch_hint: &'static str,
     /// Cliquer sur le nom d'un registre le surveille.
     pub register_watch_hint: &'static str,
+    /// La ligne sous la grille des registres, quand les huit hauts sont
+    /// repliés faute d'être employés.
+    pub registers_high_show: &'static str,
+    /// La même, quand on les a demandés.
+    pub registers_high_hide: &'static str,
+    /// Ce que le repli veut dire, au survol.
+    pub registers_high_hint: &'static str,
     pub register_unwatch_hint: &'static str,
     pub register_rip_hint: &'static str,
     pub watchpoints_title: &'static str,
@@ -1223,6 +1273,9 @@ pub struct Strings {
     /// sept sigles de deux, et pas un mot pour dire ce que c'est —
     /// dans le mode dont la règle est que chaque bande se présente
     /// elle-même, sans qu'on ait à survoler quoi que ce soit.
+    /// Sous la liste des problèmes, quand elle ne tient pas dans la
+    /// bande : ce qui reste est plus bas.
+    pub etabli_problemes_suite: &'static str,
     pub etabli_regs_legend: &'static str,
     pub etabli_flags_legend: &'static str,
     /// LA LIGNE OÙ EST LE CURSEUR, EXPLIQUÉE.
@@ -1473,6 +1526,7 @@ const FR: Strings = Strings {
     goal_not_yet: "pas encore",
     goal_ahead: "Ce qu'il faudra obtenir — on le saura en exécutant :",
     goal_is: "vaut",
+    goal_actual: "il vaut",
     goal_what_ran: "Ce que le programme a fait :",
     goal_loop_ran: "la boucle de la ligne {ligne} a tourné {tours} fois",
     goal_jump_always: "le saut de la ligne {ligne} a toujours été pris",
@@ -1836,9 +1890,12 @@ déclenchera jamais.",
     buffer_saved: "Rien à enregistrer",
     action_goto_label: "Aller à l'étiquette",
     exercises_where: "Le module des exercices n'est pas chargé : Préférences > Modules pour l'activer.",
+    exercises_open_hint: "Le parcours : cent dix-sept étapes, de la première instruction à la lecture d'un programme entier.",
+    exercises_turn_on: "Le parcours d'apprentissage, en cent dix-sept étapes. Un clic l'allume.",
     exercises_current: "En cours :",
     exercises_resume: "Reprendre",
     exercises_next: "Étape suivante",
+    exercises_previous: "Étape précédente",
     exercise_solution: "La solution",
     exercise_solution_hint: "Le programme entier, pour comparer avec le vôtre. La regarder n'efface rien et ne retire aucun score.",
     exercise_solution_title: "La solution",
@@ -1849,6 +1906,14 @@ déclenchera jamais.",
     exercise_solution_none: "Cette étape n'a pas de solution à montrer : il n'y a rien à écrire.",
     exercise_todo: "À écrire",
     exercise_hint: "Un indice",
+    exercises_learned: "Ce que vous avez vu",
+    exercises_learned_hint: "Les instructions des étapes réussies. Chacune ouvre sa fiche.",
+    exercise_sheet_open: "Ouvrir la fiche",
+    exercise_check: "Vérifier",
+    exercise_check_hint: "Assembler, exécuter, et dire si c'est juste — en un seul geste.",
+    exercise_check_answer_first: "Écrivez d'abord votre réponse : exécuter la donnerait.",
+    exercise_check_passed: "Réussi.",
+    exercise_check_failed: "Pas encore — voyez ce qui manque au-dessus.",
     exercise_hint_hint: "Un coup de pouce, sans le programme. Le demander ne retire aucun score.",
     exercise_hint_uses: "La solution livrée emploie :",
     exercise_hint_yours: "la vôtre peut employer autre chose",
@@ -1999,6 +2064,8 @@ déclenchera jamais.",
     stack_above_hint: "En grisé, au-dessus de RSP : déjà dépilé — les octets sont là, mais le prochain push les écrase.",
     last_step: "Dernier pas",
     last_step_nothing: "Rien n’a changé, sinon RIP.",
+    last_step_count: "Pas {} depuis le début",
+    last_step_pass: " — passage {} par cette ligne",
     next_instruction: "Prochaine instruction",
     next_instruction_done: "Le programme est terminé.",
     sse_registers: "Registres vectoriels (SSE et AVX)",
@@ -2099,8 +2166,11 @@ déclenchera jamais.",
     pattern_half_byte: "un octet fait deux chiffres :",
     fix_hint: "Alt : {}",
     fix_applied: "Ligne corrigée.",
+    fix_apply: "Corriger",
     fix_unclosed_bracket: "un crochet reste ouvert — le refermer ?",
     fix_unknown_mnemonic: "« {} » n'existe pas — écrire « {} » ?",
+    fix_unknown_register: "Il n'y a pas de registre « {} » — écrire « {} » ?",
+    unknown_register_note: "Il n'y a pas de registre « {} ». Les plus proches : {}.",
     fix_unknown_label: "aucune étiquette « {} » — « {} » ?",
     fix_register_width: "« {} » n'a pas la taille de « {} » — « {} » ?",
     fix_int80: "int 0x80 est l'appel système 32 bits — ici c'est syscall.",
@@ -2120,6 +2190,10 @@ déclenchera jamais.",
     memory_go_hint: "Afficher la mémoire à cette adresse (ou Entrée)",
     memory_watch_hint: "Surveiller ces huit octets : l'exécution s'arrêtera quand ils changeront",
     register_watch_hint: "Surveiller ce registre : l'exécution s'arrêtera quand il changera",
+    registers_high_show: "+ montrer R8 à R15 (tous à zéro)",
+    registers_high_hide: "− masquer R8 à R15",
+    registers_high_hint: "Les huit autres registres généraux. Ils paraissent d'eux-mêmes \
+                          dès que le programme en emploie un.",
     register_unwatch_hint: "Ne plus surveiller ce registre",
     register_rip_hint: "RIP ne se surveille pas : il change à chaque instruction.",
     watchpoints_title: "Zones surveillées",
@@ -2285,8 +2359,9 @@ déclenchera jamais.",
     etabli_cursor_sheet: "La fiche entière",
     etabli_cursor_hint: "Placez le curseur sur une instruction : cette bande dit ce \
                          qu'elle fait.",
-    etabli_regs_legend: "Ce que le processeur garde, en hexadécimal. Ce qui vient de \
-                         changer s'éclaire.",
+    etabli_problemes_suite: "La suite est plus bas : faites défiler, ou tirez le haut de cette bande.",
+    etabli_regs_legend: "Ce que le processeur garde : nombres en clair, adresses en \
+                         hexadécimal. Ce qui vient de changer s'éclaire.",
     etabli_flags_legend: "Sept oui/non du dernier calcul, que lit un saut conditionnel. \
                           ZF veut dire « c'était zéro ».",
     scene_title: "Regarder tourner",
@@ -2491,6 +2566,7 @@ const EN: Strings = Strings {
     goal_not_yet: "not yet",
     goal_ahead: "What has to come out — running will tell:",
     goal_is: "is",
+    goal_actual: "it is",
     goal_what_ran: "What the program did:",
     goal_loop_ran: "the loop on line {ligne} ran {tours} times",
     goal_jump_always: "the jump on line {ligne} was always taken",
@@ -2853,9 +2929,12 @@ other is there to compare — that is how gaps and clashes become visible.",
     buffer_saved: "Nothing to save",
     action_goto_label: "Go to label",
     exercises_where: "The exercises module is not loaded: Preferences > Modules to turn it on.",
+    exercises_open_hint: "The course: one hundred and seventeen steps, from a first instruction to reading a whole program.",
+    exercises_turn_on: "The learning course, in one hundred and seventeen steps. One click turns it on.",
     exercises_current: "In progress:",
     exercises_resume: "Resume",
     exercises_next: "Next step",
+    exercises_previous: "Previous step",
     exercise_solution: "Solution",
     exercise_solution_hint: "The whole program, to compare with yours. Looking at it erases nothing and costs no score.",
     exercise_solution_title: "Solution",
@@ -2866,6 +2945,14 @@ other is there to compare — that is how gaps and clashes become visible.",
     exercise_solution_none: "This step has no solution to show: there is nothing to write.",
     exercise_todo: "To write",
     exercise_hint: "A hint",
+    exercises_learned: "What you have seen",
+    exercises_learned_hint: "The instructions of the steps you solved. Each one opens its sheet.",
+    exercise_sheet_open: "Open the sheet",
+    exercise_check: "Check",
+    exercise_check_hint: "Assemble, run, and say whether it is right — in one go.",
+    exercise_check_answer_first: "Write your answer first: running would give it away.",
+    exercise_check_passed: "Done.",
+    exercise_check_failed: "Not yet — see what is missing above.",
     exercise_hint_hint: "A nudge, without the program. Asking for it costs no score.",
     exercise_hint_uses: "The shipped solution uses:",
     exercise_hint_yours: "yours may use something else",
@@ -3016,6 +3103,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     stack_above_hint: "Greyed, above RSP: already popped — the bytes are there, but the next push overwrites them.",
     last_step: "Last step",
     last_step_nothing: "Nothing changed but RIP.",
+    last_step_count: "Step {} since the start",
+    last_step_pass: " — pass {} through this line",
     next_instruction: "Next instruction",
     next_instruction_done: "The program has finished.",
     sse_registers: "Vector registers (SSE and AVX)",
@@ -3116,8 +3205,11 @@ other is there to compare — that is how gaps and clashes become visible.",
     pattern_half_byte: "a byte is two digits:",
     fix_hint: "Alt: {}",
     fix_applied: "Line corrected.",
+    fix_apply: "Fix",
     fix_unclosed_bracket: "a bracket is left open — close it?",
     fix_unknown_mnemonic: "“{}” does not exist — write “{}”?",
+    fix_unknown_register: "There is no register “{}” — write “{}”?",
+    unknown_register_note: "There is no register “{}”. The closest ones: {}.",
     fix_unknown_label: "no label “{}” — “{}”?",
     fix_register_width: "“{}” is not the size of “{}” — “{}”?",
     fix_int80: "int 0x80 is the 32-bit system call — here it is syscall.",
@@ -3137,6 +3229,10 @@ other is there to compare — that is how gaps and clashes become visible.",
     memory_go_hint: "Show memory at this address (or press Enter)",
     memory_watch_hint: "Watch these eight bytes: execution stops when they change",
     register_watch_hint: "Watch this register: execution stops when it changes",
+    registers_high_show: "+ show R8 to R15 (all zero)",
+    registers_high_hide: "− hide R8 to R15",
+    registers_high_hint: "The other eight general registers. They appear on their own as \
+                          soon as the program uses one.",
     register_unwatch_hint: "Stop watching this register",
     register_rip_hint: "RIP is not watched: it changes at every instruction.",
     watchpoints_title: "Watched areas",
@@ -3300,7 +3396,9 @@ other is there to compare — that is how gaps and clashes become visible.",
     etabli_cursor_line: "The line the cursor is on",
     etabli_cursor_sheet: "The whole sheet",
     etabli_cursor_hint: "Put the cursor on an instruction: this band says what it does.",
-    etabli_regs_legend: "What the processor keeps, in hex. Whatever just changed lights up.",
+    etabli_problemes_suite: "More below: scroll, or drag the top of this band.",
+    etabli_regs_legend: "What the processor keeps: numbers plainly, addresses in hex. \
+                         Whatever just changed lights up.",
     etabli_flags_legend: "Seven yes/no answers from the last computation, read by a \
                           conditional jump. ZF means \"it was zero\".",
     scene_title: "Watch it run",

@@ -88,6 +88,7 @@ impl NamsdecApp {
             debutant: settings.debutant,
             session_restore: Reprise::by_id(&settings.session_restore),
             prevoir: settings.prevoir,
+            registres_hauts: settings.registres_hauts,
             program_args: settings.program_args.clone(),
             program_env: settings.program_env.clone(),
             active_tab: settings
@@ -720,6 +721,7 @@ impl NamsdecApp {
             re_tab: self.show_re_tab,
             debutant: self.debutant,
             prevoir: self.prevoir,
+            registres_hauts: self.registres_hauts,
             decompiler_module: self.show_decompiler_module,
             installer_module: self.show_installer_module,
             decompiler: self.decompiler.clone(),

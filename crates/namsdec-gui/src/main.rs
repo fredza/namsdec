@@ -1167,6 +1167,13 @@ struct NamsdecApp {
     /// attend le pas, au niveau débutant seulement. Sans effet au
     /// niveau avancé, et le réglage le dit en se grisant.
     prevoir: bool,
+    /// Les huit registres hauts sont-ils montrés quand ils sont tous à
+    /// zéro ? Voir `Settings::registres_hauts` et `registers_ui`.
+    registres_hauts: bool,
+    /// La liste des problèmes de l'Établi débordait-elle de sa bande, à
+    /// l'image précédente ? Elle le dit alors en tête d'elle-même.
+    problemes_deborde: bool,
+
     /// La console a-t-elle déjà été ouverte pour la sortie de CE
     /// programme ?
     ///
@@ -1347,6 +1354,23 @@ struct NamsdecApp {
     exercises_done: BTreeSet<String>,
     /// Le meilleur compte d'instructions par exercice : le score.
     exercises_best: BTreeMap<String, u64>,
+    /// CE QU'ON AVAIT ÉCRIT À CHAQUE ÉTAPE, par identifiant complet.
+    ///
+    /// Un onglet garde son programme tant qu'il est ouvert ; fermé, il
+    /// l'emportait. Revenir à l'étape précédente rendait alors le code
+    /// de départ, c'est-à-dire précisément ce qu'on ne cherchait pas —
+    /// on y revient pour revoir comment on s'y était pris.
+    ///
+    /// EN MÉMOIRE, ET RELU SUR DEMANDE : le brouillon est rangé ici
+    /// quand l'étape quitte l'écran, et il n'est remis dans l'éditeur
+    /// qu'au moment où l'on redemande cette étape-là. Les autres ne
+    /// coûtent rien tant qu'on n'y retourne pas.
+    ///
+    /// La séance seulement, et non le disque : ce n'est pas un réglage,
+    /// et un parcours qu'on reprend des jours plus tard se reprend par
+    /// son énoncé. Un brouillon qui ne diffère pas du code de départ
+    /// n'en est pas un — il n'est pas gardé.
+    exercise_drafts: BTreeMap<String, String>,
     /// La légende de la barre de chaleur, sous l'éditeur.
     ///
     /// Utile le temps d'apprendre à lire les teintes, superflue ensuite :
@@ -1445,6 +1469,30 @@ struct NamsdecApp {
     /// L'exercice chargé en dernier — « où j'en étais » d'une session à
     /// l'autre.
     current_exercise: Option<String>,
+    /// La course en cours a-t-elle été demandée par « Vérifier » ?
+    ///
+    /// C'est ce qui autorise la bande de l'exercice à conclure
+    /// franchement quand la machine s'arrête — « Réussi », et non une
+    /// pastille qu'il faut remarquer. Une course lancée à la main reste
+    /// muette : on exécute aussi pour regarder, et un verdict qu'on n'a
+    /// pas demandé est un jugement.
+    verification_demandee: bool,
+    /// Une exécution attend la fin de l'assemblage en cours.
+    ///
+    /// C'est la moitié asynchrone du geste « Vérifier » : on ne peut
+    /// pas lancer une machine qui n'existe pas encore, et attendre en
+    /// bloquant la fenêtre est ce qu'on a passé une séance à retirer
+    /// (A 9.56). Consommée par `tick_assemble`.
+    executer_apres_assemblage: bool,
+    /// La rangée « Vérifier » de la bande de l'exercice est-elle ancrée
+    /// au bas de la bande ?
+    ///
+    /// Vrai là où la bande a reçu la hauteur de cette rangée en plus —
+    /// au-dessus de 860 pixels de place. En dessous, la rangée
+    /// redescend dans la zone qui défile : ancrée, elle se peindrait
+    /// par-dessus l'énoncé. Posé au moment où la bande se dispose, lu
+    /// quand elle se remplit.
+    etabli_exercice_gestes_ancres: bool,
     /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
     ///
     /// `None` est le défaut, et c'est délibéré : les réglages se
@@ -2315,6 +2363,7 @@ impl Default for NamsdecApp {
             recent_files: Vec::new(),
             exercises_done: BTreeSet::new(),
             exercises_best: BTreeMap::new(),
+            exercise_drafts: BTreeMap::new(),
             heat_legend: true,
             window_command: None,
             system_titlebar: false,
@@ -2344,6 +2393,9 @@ impl Default for NamsdecApp {
             located_tools: BTreeMap::new(),
             locating_tool: None,
             current_exercise: None,
+            verification_demandee: false,
+            executer_apres_assemblage: false,
+            etabli_exercice_gestes_ancres: false,
             settings_file: None,
             dernière_échelle: None,
             zone_de_travail: egui::Rect::NOTHING,
@@ -2360,6 +2412,8 @@ impl Default for NamsdecApp {
             // les deux cases.
             console_ouverte_pour_la_sortie: false,
             prevoir: true,
+            registres_hauts: false,
+            problemes_deborde: false,
             question_answer: String::new(),
             prevision_révélée: None,
             next_detail_open: false,

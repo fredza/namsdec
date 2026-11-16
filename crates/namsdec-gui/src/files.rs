@@ -713,6 +713,13 @@ impl NamsdecApp {
 
     /// Ferme sans plus rien demander.
     pub(crate) fn close_tab_now(&mut self, index: usize) {
+        // CE QU'UNE ÉTAPE AVAIT ÉCRIT NE SE FERME PAS AVEC SON ONGLET.
+        //
+        // C'était le seul endroit où le parcours perdait du travail :
+        // l'onglet emportait le programme, et revenir à l'étape rendait
+        // le code de départ. Le brouillon est rangé en mémoire avant
+        // que le tampon parte, et relu quand on redemande l'étape.
+        self.ranger_brouillon(index);
         if self.tabs.is_empty() {
             // Le DERNIER fichier se ferme aussi.
             //

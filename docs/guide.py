@@ -318,6 +318,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "du panneau droit montre ce qui vient, puis ce qui a changé.",
          "<b>Exécuter</b> (Espace puis p puis r) : jusqu'au bout, ou jusqu'au premier point "
          "d'arrêt.",
+         "Une fois le programme <b>terminé</b>, ces trois gestes ne font plus rien — ni "
+         "au bouton, qui se grise, ni au raccourci, qui se taisait pourtant moins "
+         "poliment : il décodait les octets qui suivent la fin du code, c'est-à-dire "
+         "des zéros, et annonçait une instruction qui n'avait jamais été exécutée. "
+         "<b>Réinitialiser</b> remet la machine au départ.",
         ]),
         ("note",
          "<b>La barre d'outils se gradue, elle aussi.</b> (Elle n'existe qu'au mode avancé depuis le 9 novembre 2026 : le mode débutant a sa propre barre, celle de l'Établi — voir « Deux dispositions ». Les deux disent la même chose des mêmes commandes.) En <b>mode débutant</b>, elle "
@@ -378,11 +383,32 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "cachent quelque chose pour penser à les survoler. Ces phrases tiennent en "
          "<b>deux lignes</b>, et c'est mesuré&nbsp;: à trois, la pile tombait sous la "
          "ligne de flottaison — une légende qui chasse ce qu'elle accompagne ne vaut "
-         "pas mieux que pas de légende.",
+         "pas mieux que pas de légende. <b>Les nombres y sont écrits en clair</b> "
+         "depuis le 16 novembre 2026&nbsp;: un exercice demandait « Que vaut RAX à "
+         "l'arrêt ? » — la réponse est 55 — pendant que le volet affichait "
+         "<font face='Courier'>0000000000000037</font>, c'est-à-dire la réponse dans "
+         "une écriture qu'on n'a pas encore apprise. Sous le million, la valeur se lit "
+         "donc telle quelle, alignée à droite sur la même largeur&nbsp;; ce qui garde "
+         "l'hexadécimal se reconnaît à ses zéros de tête, et ce sont les adresses — "
+         "RSP, RIP, un pointeur. Au-dessus du mode débutant, rien ne change&nbsp;: "
+         "l'hexadécimal est la langue du métier. <b>R8 à R15 ne paraissent que "
+         "lorsqu'ils servent</b> : vides, ils prenaient huit rangées sur dix-sept, "
+         "c'est-à-dire la moitié du volet, pendant que la pile se défilait faute de "
+         "place. Ils reviennent tous les huit ensemble dès que le programme en emploie "
+         "un, et une ligne sous la grille les rend à la demande — ce choix est un "
+         "réglage, il se retient d'une séance à l'autre.",
          "<b>Ce que fait cette ligne</b> — sous le code : l'adresse qui vient, ce "
          "qu'elle fait, ses octets, et — si « Prévoir avant d'avancer » est coché — la "
          "question posée à la place de la réponse. En dessous, ce que le dernier pas a "
-         "changé — <b>en toutes lettres</b> : voir plus bas. <b>Tant que rien ne "
+         "changé — <b>en toutes lettres</b> : voir plus bas. La <b>cible d'un saut y "
+         "porte le nom que vous lui avez donné</b> — « jne boucle » et non "
+         "« jne short 0000000000400021h » : l'étiquette vient de votre programme, pas "
+         "d'une table de symboles, et elle n'est écrite que si l'adresse tombe "
+         "exactement dessus. Et deux nombres disent <b>où l'on en est dans le temps du "
+         "programme</b> : le nombre de pas faits depuis le début, et — à partir du "
+         "deuxième tour — le numéro de passage par la ligne qu'on vient d'exécuter. "
+         "C'est la question de plusieurs étapes du parcours : combien de tours, et que "
+         "reste-t-il. <b>Tant que rien ne "
          "tourne</b>, cette même bande explique la ligne où est le curseur&nbsp;: le "
          "mot, ce qu'il veut dire en une phrase, la fiche en entier à un clic. On "
          "parcourt ainsi un programme ligne à ligne <i>avant</i> de l'exécuter, ce qui "
@@ -398,7 +424,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "comme le reste — et les "
          "erreurs de nasm <b>en tête</b> quand il y en a, "
          "avec leur explication en clair. Quand l'assemblage a échoué, la bande ne "
-         "montre que les erreurs : il n'y a pas de sortie à annoncer. "
+         "montre que les erreurs : il n'y a pas de sortie à annoncer. Quand la liste "
+         "ne tient pas dans la bande, <b>elle le dit en tête d'elle-même</b> plutôt "
+         "que de couper sa dernière phrase en deux — une ligne tranchée ne ressemble "
+         "pas à une liste qui continue, mais à un texte perdu. Et quand namsdec sait "
+         "réécrire la ligne fautive, <b>il le propose là, sous l'erreur</b>, avec un "
+         "bouton qui fait ce que fait Alt+Entrée : la correction existait, elle "
+         "n'avait de porte que par la barre d'état, que ce mode n'a pas. "
          "Dès que le programme a écrit quelque chose, une <b>pastille verte</b> "
          "paraît devant le titre et celui-ci s'éclaircit : la sortie d'un premier "
          "programme tient sur une ligne, et il ne faut pas qu'elle se perde au milieu "
@@ -412,7 +444,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Réinitialiser</b> —, et à droite les portes : <b>Ouvrir un "
          "fichier</b>, <b>Enregistrer</b>, <b>Exercices</b>, <b>Calculatrice</b>, "
          "<b>Aide</b>, l'<b>engrenage</b> des préférences, puis "
-         "<b>Mode avancé</b>. Aucun geste n'est caché selon l'état : ils se grisent, et "
+         "<b>Mode avancé</b>. <b>« Exercices » ne se grise jamais</b> : si le module "
+         "est éteint, le clic l'allume et ouvre la fenêtre — il était gris au premier "
+         "lancement, c'est-à-dire au moment où il sert le plus, et la seule indication "
+         "était un commentaire dans le programme de bienvenue. Une installation neuve "
+         "l'a désormais allumé d'emblée. Aucun geste n'est caché selon l'état : ils se grisent, et "
          "disent au survol ce qui leur manque. « Exécuter » devient « Stop » pendant "
          "que le programme tourne — le programme court ou il ne court pas, et deux "
          "boutons dont l'un est toujours éteint prendraient la place pour ne rien dire. "
@@ -912,9 +948,11 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "secondes à réécrire ce qu'il savait déjà. namsdec regarde la ligne du curseur, "
          "dit en français ce qui cloche, et montre la ligne réécrite dans la barre d'état. "
          "<b>Alt</b> la pose — la même touche qui accepte une proposition de complétion, "
-         "laquelle garde la priorité quand les deux s'offrent ensemble."),
+         "laquelle garde la priorité quand les deux s'offrent ensemble. Au <b>mode "
+         "débutant</b>, qui n'a pas de barre d'état, la proposition paraît sous "
+         "l'erreur elle-même, dans la bande du résultat, avec un bouton qui la pose."),
         ("p",
-         "Six règles, et six seulement : une correction dont on ne saurait pas dire "
+         "Sept règles, et sept seulement : une correction dont on ne saurait pas dire "
          "pourquoi elle est juste apprendrait le faux, ce qui est pire que de se taire."),
         ("table", [
             ["Ce qui est écrit", "Ce qui est proposé", "Pourquoi"],
@@ -924,7 +962,22 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["jmp bouce", "jmp boucle", "aucune étiquette de ce nom"],
             ["mov rax, ebx", "mov rax, rbx", "deux tailles différentes"],
             ["mov [n], 1", "mov qword [n], 1", "la taille de l'écriture n'est pas dite"],
+            ["mov rsp, rbpp", "mov rsp, rbp", "ce registre n'existe pas"],
         ]),
+        ("p",
+         "La dernière mérite un mot, parce qu'elle sait aussi <b>ne pas</b> corriger. "
+         "<font face='Courier'>mov rzx, 1</font> fait répondre à nasm « invalid "
+         "combination of opcode and operands », qui ne nomme pas le coupable : la cause "
+         "est qu'il n'existe pas de registre <font face='Courier'>rzx</font>. Mais "
+         "<font face='Courier'>rzx</font> est à une lettre de "
+         "<font face='Courier'>rax</font>, <font face='Courier'>rbx</font>, "
+         "<font face='Courier'>rcx</font> <i>et</i> <font face='Courier'>rdx</font> — "
+         "en choisir un serait tirer au sort sous couvert de correction. namsdec les "
+         "nomme donc tous les quatre et laisse la ligne intacte : c'est la liste qui "
+         "enseigne. Il n'accuse par ailleurs que ce qui a la forme d'un registre et "
+         "que votre programme ne définit nulle part — une étiquette, une constante "
+         "<font face='Courier'>equ</font>, une macro ou une donnée ne sont jamais "
+         "prises pour des fautes de frappe."),
         ("note",
          "Rien ne s'applique tout seul, et l'ordre des règles n'est pas arbitraire : on ne "
          "juge pas les opérandes d'une instruction dont le nom n'existe pas. La détection "
@@ -1840,6 +1893,61 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "a maintenant son trou, et un contrôle l'EXÉCUTE pour vérifier deux choses que "
          "la lecture ne peut pas tenir sur cent étapes&nbsp;: le programme livré "
          "n'atteint pas le but, et la solution l'atteint — dans le budget annoncé."),
+        ("p",
+         "<b>« Est-ce juste ? » se demande en un geste.</b> Le bouton "
+         "<b>Vérifier</b>, au bas de la bande de l'exercice — ou à la fin de celle-ci "
+         "sur un petit écran, où une rangée ancrée recouvrirait l'énoncé —, assemble le "
+         "programme, "
+         "l'exécute et conclut en toutes lettres — « Réussi », ou « Pas encore », les "
+         "conditions qui manquent étant écrites juste au-dessus. Il en fallait trois "
+         "avant lui, dans le bon ordre, et il fallait savoir qu'il les fallait&nbsp;: "
+         "assembler, exécuter, puis remarquer qu'une pastille avait changé de couleur. "
+         "Un parcours dont chaque vérification exige de connaître la chaîne de "
+         "compilation n'est pas interactif."),
+        ("note",
+         "<b>Le verdict ne se donne pas tout seul.</b> Une course lancée à la main reste "
+         "muette&nbsp;: on exécute aussi pour regarder tourner, et un jugement qu'on n'a "
+         "pas demandé en est un. Il ne suit pas non plus d'une étape à l'autre."),
+        ("p",
+         "<b>Une étape de lecture se répond avant de s'exécuter</b>, et c'est toute sa "
+         "leçon. « Vérifier » attend donc que le champ porte une réponse&nbsp;: exécuter "
+         "ferait apparaître RAX dans le volet de la machine, c'est-à-dire la réponse, "
+         "avant que vous ayez eu l'occasion de vous tromper — or se tromper est la seule "
+         "façon de savoir qu'on n'avait pas compris."),
+        ("p",
+         "<b>Le parcours ne demande jamais d'écrire une notion qu'il n'a ni montrée ni "
+         "annoncée.</b> C'est sa règle de progression, et elle est tenue par un contrôle "
+         "qui relit les %d étapes dans l'ordre&nbsp;: toute instruction que le trou "
+         "réclame doit avoir servi dans une étape précédente, être écrite dans le "
+         "programme qu'on a sous les yeux, ou être nommée par l'énoncé ou l'indice — sa "
+         "famille comptant pour elle, « <font face='Courier'>setcc</font> » introduisant "
+         "<font face='Courier'>setz</font>, <font face='Courier'>sets</font>, "
+         "<font face='Courier'>setc</font> et <font face='Courier'>seto</font> d'un "
+         "coup. À la mesure, vingt étapes introduisent ainsi une notion dans leur "
+         "trou&nbsp;; une seule l'oubliait." % total_exos),
+        ("p",
+         "<b>Et le carnet dit ce que vous avez vu.</b> Dans la fenêtre des exercices, "
+         "sous la barre de progression, <b>Ce que vous avez vu</b> liste les "
+         "instructions des étapes <i>réussies</i> — ouvrir un énoncé n'apprend rien —, "
+         "chacune ouvrant sa fiche. « 12/117 » dit le chemin parcouru&nbsp;; le carnet "
+         "dit ce qu'on y a appris, et c'est l'autre moitié de la question."),
+        ("p",
+         "<b>Le parcours va dans les deux sens.</b> <b>Étape suivante</b> mène à la "
+         "prochaine qu'on n'a pas réussie — reprendre un parcours ne doit pas obliger à "
+         "repasser sur ce qui est fait — et le chevron <b>‹</b>, à sa gauche, ramène à "
+         "l'étape d'avant, celle-là tout court : on recule pour revoir comment on s'y "
+         "était pris, ou pour la refaire plus court. Le survol donne son titre. Dans la "
+         "fenêtre des exercices, les deux sont écrits en toutes lettres. "
+         "<b>Choisir…</b> rouvre la liste entière."),
+        ("p",
+         "<b>Et revenir rend ce qu'on y avait écrit.</b> Une étape qu'on quitte reste "
+         "dans son onglet, avec son programme&nbsp;; si on ferme cet onglet, namsdec en "
+         "garde le <b>brouillon</b> et le remet dans l'éditeur au moment où l'on "
+         "redemande l'étape — pas avant. On recule donc vers son propre travail, et non "
+         "vers le code de départ, qui est précisément ce qu'on ne cherche pas en "
+         "revenant en arrière. Ce brouillon dure <b>le temps de la séance</b>&nbsp;: ce "
+         "n'est pas un fichier, et il n'est pas écrit sur le disque. Pour garder un "
+         "programme au-delà, enregistrez-le&nbsp;: <b>Fichier › Enregistrer sous…</b>."),
         ("p",
          "<b>Un indice d'abord, la solution ensuite.</b> Entre la consigne du trou et le "
          "programme entier il n'y avait rien&nbsp;: on relisait la consigne, on ne "

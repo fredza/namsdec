@@ -1251,6 +1251,44 @@ fn scènes() -> Vec<Scène> {
                 ));
             }
         }
+        // L'ÉTABLI APRÈS « VÉRIFIER », ET C'EST UNE MISE EN PAGE DE
+        // PLUS.
+        //
+        // Le geste unique du parcours ajoute une rangée au bas de la
+        // bande — le bouton, et le verdict à côté de lui —, et cette
+        // rangée n'existe dans aucune autre scène : les deux
+        // précédentes exécutent le programme À LA MAIN, ce qui laisse
+        // le verdict muet (il ne juge que ce qu'on lui a demandé). La
+        // solution est chargée pour que le verdict soit « Réussi » :
+        // c'est l'état où la bande porte le plus de choses à la fois —
+        // la pastille du titre, les deux conditions tenues, le budget,
+        // le bouton et sa réponse.
+        if marche {
+            scènes.push((
+                "établi / un exercice vérifié".to_owned(),
+                None,
+                Box::new(|app: &mut NamsdecApp| {
+                    app.debutant = true;
+                    app.exercises = true;
+                    app.exercise_packs = vec![builtin_pack()];
+                    app.load_exercise_now("namsdec/echange");
+                    charge_la_solution(app, "namsdec/echange");
+                    // LE VRAI CHEMIN, et non un état posé à la main :
+                    // on demande, nasm travaille dans son fil, la
+                    // course part quand la machine existe.
+                    app.verifier_l_exercice();
+                    for _ in 0..4000 {
+                        app.tick_assemble();
+                        app.tick_run(&egui::Context::default());
+                        if app.verdict_de_la_verification().is_some() {
+                            break;
+                        }
+                        std::thread::sleep(std::time::Duration::from_millis(1));
+                    }
+                    app.note_goal_reached();
+                }),
+            ));
+        }
         // L'ÉTABLI, LE CURSEUR SUR UNE INSTRUCTION, RIEN QUI TOURNE.
         //
         // C'est l'état où l'on LIT un programme avant de l'exécuter,

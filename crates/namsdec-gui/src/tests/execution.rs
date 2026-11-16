@@ -4092,3 +4092,157 @@ fn une_erreur_ouvre_le_panneau_meme_assemblee_en_fond() {
     assert!(app.diagnostics.is_empty(), "{:?}", app.diagnostics);
     assert_ne!(app.console_tab, ConsoleTab::Diagnostics);
 }
+
+/// L'adresse d'un saut porte le nom que la source lui donne.
+///
+/// Relevé à l'écran le 16 novembre 2026 : la bande du bas annonçait
+/// `jne short 0000000000400021h` devant un programme dont la ligne dit
+/// `jnz boucle`. Celui qui apprend vient d'écrire un nom, et on lui
+/// rendait seize chiffres.
+#[test]
+fn a_jump_target_is_named_as_the_source_named_it() {
+    let source = "\
+section .text
+global _start
+_start:
+    mov rcx, 2
+boucle:
+    dec rcx
+    jnz boucle
+    hlt
+";
+    // L'étiquette est sur sa propre ligne : l'adresse tombe sur la
+    // ligne SUIVANTE, et c'est le cas qui demande de remonter.
+    assert_eq!(label_at_line(source, 6).as_deref(), Some("boucle"));
+    assert_eq!(
+        label_at_line(source, 5).as_deref(),
+        Some("boucle"),
+        "la ligne de l'étiquette elle-même"
+    );
+    assert_eq!(
+        label_at_line(source, 7),
+        None,
+        "au milieu d'un bloc, l'adresse n'a pas de nom — `boucle` désigne \
+         la première instruction, pas celle-ci"
+    );
+    // Une étiquette locale compte : c'est ce que l'auteur a tapé.
+    assert_eq!(
+        label_at_line("_start:\n.suite:\n    nop\n", 3).as_deref(),
+        Some(".suite")
+    );
+    // Et une ligne hors du fichier ne fait pas tomber l'appel.
+    assert_eq!(label_at_line(source, 999), None);
+    assert_eq!(label_at_line(source, 0), None);
+
+    // Puis le texte de l'instruction, à travers l'application.
+    let mut app = NamsdecApp {
+        source: source.to_owned(),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    // Trois pas : `mov`, `dec`, puis le saut est l'instruction qu'on
+    // retient avant de l'exécuter.
+    app.do_step();
+    app.do_step();
+    app.do_step();
+    let pas = app.last_step.as_ref().expect("un dernier pas");
+    assert!(
+        pas.texte.contains("boucle"),
+        "le saut porte le nom de la source : {}",
+        pas.texte
+    );
+    assert!(
+        !pas.texte.contains("0000"),
+        "et plus l'adresse de seize chiffres : {}",
+        pas.texte
+    );
+
+    // AU NIVEAU AVANCÉ, L'ADRESSE RESTE : c'est elle qu'on compare au
+    // listing, au vidage et à ce que dit gdb.
+    app.debutant = false;
+    app.do_reset();
+    app.do_step();
+    app.do_step();
+    app.do_step();
+    let pas = app.last_step.as_ref().expect("un dernier pas");
+    assert!(
+        !pas.texte.contains("boucle"),
+        "le mode avancé garde l'adresse : {}",
+        pas.texte
+    );
+}
+
+/// UN PAS APRÈS LA FIN N'EN EST PAS UN.
+///
+/// Le défaut que deux captures du banc montraient le 16 novembre 2026 :
+/// le bloc « Dernier pas » annonçait `add [rax], al` sur un programme
+/// arrêté — les octets nuls qui suivent le `hlt`, décodés comme une
+/// instruction parfaitement valide, avec son pseudo-code et son « rien
+/// n'a changé ». Le bouton était bien éteint ; le raccourci, lui,
+/// passait.
+#[test]
+fn a_finished_program_does_not_invent_one_more_step() {
+    let mut app = NamsdecApp {
+        source: "\
+section .text
+global _start
+_start:
+    mov rax, 1
+    hlt
+"
+        .to_owned(),
+        debutant: true,
+        ..Default::default()
+    };
+    app.do_assemble();
+    assert!(matches!(app.status, Status::AssembleOk), "{:?}", app.status);
+    app.do_step();
+    app.do_step();
+    assert!(app.program_finished(), "le hlt a arrêté la machine");
+    let avant = app.last_step.clone();
+    let rip = app.emulator.as_ref().unwrap().cpu().regs.rip;
+
+    // Dix pas de plus, comme le ferait une touche gardée enfoncée.
+    for _ in 0..10 {
+        app.do_step();
+    }
+    assert_eq!(
+        app.last_step.as_ref().map(|p| p.texte.clone()),
+        avant.as_ref().map(|p| p.texte.clone()),
+        "le dernier pas reste celui qu'on a vraiment fait"
+    );
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.rip,
+        rip,
+        "et la machine n'a pas bougé"
+    );
+    // L'ÉTAT D'ARRÊT RESTE : « Arrêté (hlt) » dit déjà pourquoi la
+    // touche ne fait rien, et il dit COMMENT le programme s'est
+    // arrêté — ce qu'une phrase plus vague effacerait.
+    assert!(
+        matches!(app.status, Status::Halted),
+        "l'arrêt garde son nom : {:?}",
+        app.status
+    );
+    // Quand la barre parle d'autre chose, en revanche, la phrase
+    // paraît : sans elle, la touche ne ferait rien du tout, et rien du
+    // tout ressemble à une panne.
+    app.status = Status::SteppedBack;
+    app.do_step();
+    assert!(
+        matches!(app.status, Status::Note(_)),
+        "on le dit plutôt que de laisser croire à une panne : {:?}",
+        app.status
+    );
+    // Le pas large et la course entière suivent la même règle.
+    app.do_step_over();
+    app.do_run();
+    assert!(!app.running, "une course sur un programme fini ne part pas");
+    assert_eq!(
+        app.emulator.as_ref().unwrap().cpu().regs.rip,
+        rip,
+        "rien n'a bougé non plus"
+    );
+}
