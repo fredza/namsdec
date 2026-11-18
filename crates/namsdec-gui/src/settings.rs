@@ -160,6 +160,24 @@ pub struct Settings {
     /// que celui-ci est faux. Voir `crate::prevision`.
     #[serde(default = "vrai")]
     pub prevoir: bool,
+    /// La théorie d'un exercice est-elle dépliée dans sa bande ?
+    ///
+    /// **Repliée par défaut, et c'est une mesure qui l'a décidé.** On
+    /// l'avait ouverte — une fiche repliée par défaut est une fiche
+    /// qu'on ne lit jamais —, et quatre contrôles ont rougi d'un coup :
+    /// la théorie prend cent cinquante pixels dans une bande qui en a
+    /// deux cent dix, et elle poussait LE BUT sous le pli. Or le but
+    /// est ce qui dit si l'on a réussi : on le lit à chaque essai,
+    /// quand la théorie se lit une fois avant de commencer. Entre deux
+    /// textes qui se disputent une bande bornée, celui qu'on relit
+    /// gagne.
+    ///
+    /// Le repli reste SOUS LES YEUX, juste sous l'énoncé, avec son
+    /// titre et ce qu'il promet au survol : c'est une invitation, non
+    /// une fonction cachée. Et l'ouvrir est un réglage — on ne le
+    /// redemande pas à chaque exercice.
+    #[serde(default)]
+    pub theorie_ouverte: bool,
     /// Les huit registres hauts (R8 à R15) sont-ils montrés au niveau
     /// débutant alors qu'ils sont tous à zéro ?
     ///
@@ -474,6 +492,7 @@ impl Default for Settings {
             // Vrai aussi, et sans effet tant que `debutant` est faux :
             // le réglage ne se montre qu'avec lui.
             prevoir: true,
+            theorie_ouverte: false,
             // Le graphe d'abord : c'est la vue qui montre la FORME, et
             // c'est elle qui manque quand on découvre un binaire.
             flow_pseudo: false,

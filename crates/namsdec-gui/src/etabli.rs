@@ -1191,6 +1191,19 @@ impl NamsdecApp {
         let mut vérifier = false;
         let mut fiche_demandée: Option<String> = None;
         let mut montrer_l_indice = false;
+        // RELEVÉE PENDANT LE DESSIN, POSÉE APRÈS. `self` est emprunté
+        // par la zone défilante : on ne peut pas y écrire de l'intérieur.
+        let mut théorie_bascule = false;
+        // LA THÉORIE EST LUE AVANT LA ZONE DÉFILANTE, et pour la même
+        // raison : à l'intérieur, `self` est pris par la closure.
+        let théorie_texte: Option<String> = self
+            .current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .and_then(|ex| ex.theorie.as_ref())
+            .map(|t| t.get(self.lang.code()).to_owned())
+            .filter(|t| !t.trim().is_empty());
+        let théorie_existe = théorie_texte.is_some();
         let mut montrer_la_solution = false;
         // Un indice à donner ? Il disparaît quand il n'a plus rien à
         // dire — tout ce que la solution emploie est écrit.
@@ -1261,6 +1274,24 @@ impl NamsdecApp {
                 {
                     montrer_la_solution = true;
                 }
+                // LA THÉORIE AVEC L'INDICE ET LA SOLUTION, et non
+                // dans la bande qui défile.
+                //
+                // Posée sous l'énoncé, sa rangée coûtait DEUX PIXELS de
+                // plus à la bande — et `la_bande_de_l_exercice_ne_
+                // coupe_pas_sa_derniere_ligne` les a comptés : le
+                // budget « Instructions : 3 / 4 » y perdait deux pixels
+                // sur dix-huit. Cette rangée-ci est HORS de la zone
+                // défilante : ce qu'on y ajoute ne prend rien à ce
+                // qu'on lit.
+                //
+                // Et la place est juste. On y demande déjà de l'aide,
+                // dans l'ordre où l'on y vient : la théorie avant
+                // d'essayer, l'indice quand on bloque, la solution
+                // quand on renonce. La rangée allant de droite à
+                // gauche, elle se pose en dernier pour se lire en
+                // premier.
+                //
                 // L'INDICE AVANT LA SOLUTION, et il est posé APRÈS elle
                 // : la rangée va de droite à gauche, si bien que le
                 // dernier ajouté est le plus à gauche. On lit donc
@@ -1280,6 +1311,21 @@ impl NamsdecApp {
                     .clicked()
                 {
                     montrer_l_indice = true;
+                }
+                if théorie_existe
+                    && small_framed_button(
+                        ui,
+                        theme,
+                        if self.theorie_ouverte {
+                            s.etabli_exercise_theory_hide
+                        } else {
+                            s.etabli_exercise_theory
+                        },
+                    )
+                    .on_hover_text(s.etabli_exercise_theory_hint)
+                    .clicked()
+                {
+                    théorie_bascule = true;
                 }
                 ui.add_space(8.0);
                 // CE QUI EST FAIT DU PARCOURS, et non de cette étape :
@@ -1365,8 +1411,8 @@ impl NamsdecApp {
                 ui.colored_label(theme.dim, s.etabli_exercise_statement);
                 // `prose` ET NON UNE ÉTIQUETTE NUE. Les énoncés citent
                 // les instructions dont ils parlent entre accents
-                // graves — « `loop` décrémente RCX » —, et la bande
-                // les montrait tels quels. Vu à l'écran le 10 novembre
+                // graves — « `loop` décrémente RCX » —, et la bande les
+                // montrait tels quels. Vu à l'écran le 10 novembre
                 // 2026 sur l'étape 5. Même traitement que la fiche de
                 // la bande du bas, et pour la même raison : un texte
                 // qui montre son balisage apprend à ne plus le lire.
@@ -1376,8 +1422,32 @@ impl NamsdecApp {
                 // ce que `xchg` fait — et c'est au moment de LIRE
                 // l'énoncé qu'on se pose la question, avant même
                 // d'avoir demandé un indice.
-                if let Some(mnémonique) = prose_avec_fiches(ui, theme, self.lang, &énoncé) {
+                //
+                // `false` : seuls les mnémoniques se cliquent ici. Un
+                // énoncé cite des instructions ; souligner au passage
+                // un mot courant qui se trouve avoir une fiche ferait
+                // du bruit au milieu d'une phrase. La théorie, elle,
+                // parle de mécanique et demande l'inverse.
+                if let Some(mnémonique) =
+                    prose_avec_fiches_et_notions(ui, theme, self.lang, &énoncé, false)
+                {
                     fiche_demandée = Some(mnémonique);
+                }
+                // LA THÉORIE, ENTRE L'ÉNONCÉ ET CE QU'IL RESTE À
+                // ÉCRIRE : on la lit AVANT d'essayer, donc avant « À
+                // écrire », qui est le moment où l'on commence. Sa
+                // bascule, elle, est dans la rangée des gestes, hors de
+                // cette zone qui défile — voir plus haut.
+                if self.theorie_ouverte
+                    && let Some(théorie) = théorie_texte.as_deref()
+                {
+                    ui.indent("etabli_theorie", |ui| {
+                        if let Some(mot) =
+                            prose_avec_fiches_et_notions(ui, theme, self.lang, théorie, true)
+                        {
+                            fiche_demandée = Some(mot);
+                        }
+                    });
                 }
                 // CE QU'IL RESTE À ÉCRIRE, lu dans le tampon.
                 //
@@ -1439,6 +1509,16 @@ impl NamsdecApp {
         }
         if montrer_l_indice {
             self.indice_montré = !self.indice_montré;
+        }
+        // UN RÉGLAGE, DONC IL S'ÉCRIT. Replier la théorie n'est pas un
+        // état de séance comme l'indice — qui appartient à l'ÉTAPE et
+        // repart à chaque exercice : c'est une façon de lire, et l'on
+        // ne veut pas la redire à chaque ouverture.
+        if théorie_bascule {
+            // `persist_settings_if_changed` passe à chaque image et
+            // compare : il n'y a rien à appeler ici, le réglage s'écrit
+            // de lui-même dès qu'il a bougé.
+            self.theorie_ouverte = !self.theorie_ouverte;
         }
         if montrer_la_solution {
             self.show_solution = true;

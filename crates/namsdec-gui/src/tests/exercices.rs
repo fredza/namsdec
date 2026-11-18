@@ -4642,3 +4642,77 @@ fn l_enonce_mene_aux_fiches() {
         "sur la fiche de l'instruction qu'on a cliquée"
     );
 }
+
+/// La théorie s'offre, et elle se lit.
+///
+/// Trois choses, et il faut les trois : le geste existe quand il y a
+/// une théorie, il ne paraît pas quand il n'y en a pas, et ce qu'il
+/// ouvre est bien peint. Un contrôle qui ne vérifierait que le bouton
+/// passerait au vert le jour où le repli s'ouvre sur rien.
+///
+/// **Le bouton est dans la rangée des gestes, et non dans la bande qui
+/// défile** : c'est une mesure qui l'a décidé. Posé sous l'énoncé, il
+/// coûtait deux pixels à la dernière ligne de la bande, et
+/// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` les a
+/// comptés. Ce contrôle-ci vérifie donc qu'il est bien là où il ne
+/// coûte rien, en le cherchant sur une scène où la bande est pleine.
+#[test]
+fn la_theorie_s_offre_et_se_lit() {
+    let s = strings(Lang::Fr);
+    let mut app = app_with_exercises();
+    app.debutant = true;
+    app.load_exercise("namsdec/prevoir_somme");
+    app.do_assemble();
+
+    // 1. REPLIÉE : le geste est offert, le texte n'est pas là.
+    app.theorie_ouverte = false;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(s.etabli_exercise_theory),
+        "le geste « {} » doit être offert : {peint}",
+        s.etabli_exercise_theory
+    );
+
+    // Ce que la théorie dit, pris dans la série plutôt qu'écrit ici :
+    // un contrôle qui recopierait le texte passerait au vert le jour
+    // où la série en change.
+    let théorie = namsdec_exercises::find(&app.exercise_packs, "namsdec/prevoir_somme")
+        .and_then(|ex| ex.theorie.clone())
+        .expect("cet exercice porte une théorie");
+    let début: String = théorie.fr.split(':').next().unwrap_or_default().to_owned();
+    assert!(début.len() > 20, "de quoi reconnaître le texte : {début:?}");
+    assert!(
+        !peint.contains(début.trim()),
+        "repliée, la théorie ne doit pas être peinte : {peint}"
+    );
+
+    // 2. DÉPLIÉE : le texte est là, et le geste dit comment la refermer.
+    app.theorie_ouverte = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(début.trim()),
+        "dépliée, la théorie doit être peinte — « {début} » : {peint}"
+    );
+    assert!(
+        peint.contains(s.etabli_exercise_theory_hide),
+        "et le geste doit dire comment la refermer : {peint}"
+    );
+
+    // 3. SANS THÉORIE, PAS DE GESTE. Une porte qui n'ouvre sur rien
+    //    est pire qu'une absence de porte (A 9.89).
+    let mut nue = app_with_exercises();
+    nue.debutant = true;
+    nue.load_exercise("namsdec/prevoir_somme");
+    nue.do_assemble();
+    nue.theorie_ouverte = false;
+    for pack in &mut nue.exercise_packs {
+        for exercice in &mut pack.exercises {
+            exercice.theorie = None;
+        }
+    }
+    let peint = paint(&mut nue);
+    assert!(
+        !peint.contains(s.etabli_exercise_theory),
+        "sans théorie, le geste ne doit pas être offert : {peint}"
+    );
+}

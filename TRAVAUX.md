@@ -4696,6 +4696,35 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       `la_bande_de_la_ligne_tient_dans_son_cadre`, éprouvé en remettant
       `.max_size()` et en ôtant la zone défilante.
 
+- [x] **L'installateur met à jour, et ne ferme plus rien avant d'avoir
+      fini** (A 9.103) — `install` supprime la cible avant d'écrire : sans
+      danger pour un binaire en cours (vérifié : le processus garde son
+      inode), mais il reste une fenêtre où le fichier n'existe pas — et
+      GNOME, qui élague les favoris dont il ne trouve plus le `.desktop`,
+      retirait l'icône du dock pendant l'installation. Le lanceur était
+      pire : `cat >` le laissait VIDE le temps de le réécrire. Tout se
+      pose maintenant à côté puis se renomme (`rename(2)`, atomique).
+      **La fenêtre ouverte reste ouverte** pendant les deux minutes de
+      compilation, et n'est refermée qu'à la toute fin, par SIGTERM, puis
+      rouverte par `setsid`. Jamais forcée : une fenêtre qui ne part pas
+      en dix secondes attend une réponse, et le script le dit au lieu de
+      la tuer. `--no-restart` l'en empêche. Les instances se relèvent par
+      `/proc/<pid>/exe` et non par le nom — `pgrep -f` a tué mon propre
+      shell pendant l'épreuve.
+
+- [x] **Une fiche de théorie pour chacun des 117 exercices** (A 9.104) —
+      champ `theorie` bilingue, ni la consigne (ce qu'on demande) ni
+      l'indice (où chercher) : la mécanique sur laquelle l'exercice
+      repose, et qui resservira ailleurs. Cinq contrôles, dont deux ont
+      trouvé du premier coup : 55 théories sur 234 ne citaient aucune
+      fiche (les textes anglais disaient `register` et `addressing`, que
+      la table ne connaissait qu'en français — les trois alias sont
+      entrés), et deux recopiaient leur consigne. **Repliée par défaut**,
+      contre l'intention de départ : dépliée, elle poussait le BUT sous
+      le pli, et quatre contrôles l'ont dit. Le bouton est dans la rangée
+      des gestes, à côté d'« Un indice » et « La solution » — posé
+      ailleurs il coûtait deux pixels à la dernière ligne de la bande.
+
 ## 7. Dette technique
 
 - [x] **Le découpage de `tests.rs`** (A 7.15 §3) — 33 032 lignes et 554

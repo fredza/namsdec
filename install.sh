@@ -47,6 +47,7 @@ AVEC_EXERCICES=1
 AVEC_CLI=1
 AVEC_STRIP=1
 AVEC_COMPILATION=1
+AVEC_REDEMARRAGE=1
 PROFIL=release
 ESSAI=0
 SILENCIEUX=0
@@ -79,6 +80,8 @@ ${GRAS}namsdec — installation${FIN}
                       l'analyse d'un binaire sans ouvrir de fenêtre
     ${CYAN}--no-strip${FIN}        garder les symboles de débogage dans le binaire
                       installé (deux mégaoctets de plus)
+    ${CYAN}--no-restart${FIN}      ne pas redémarrer namsdec s'il tourne : la mise à jour
+                      ne sera prise qu'à sa prochaine ouverture
     ${CYAN}--no-build${FIN}        ne pas compiler : poser le binaire déjà construit.
                       Pour qui compile lui-même — un empaqueteur, ou une
                       réinstallation après un simple ${GRIS}cargo build${FIN}
@@ -90,6 +93,7 @@ ${GRAS}namsdec — installation${FIN}
   ${GRAS}Exemples${FIN}
     ${GRIS}./install.sh${FIN}
     ${GRIS}./install.sh --debug --no-dock${FIN}       essayer vite, sans toucher au dock
+    ${GRIS}./install.sh --no-restart${FIN}            mettre à jour sans fermer la fenêtre ouverte
     ${GRIS}./install.sh --dry-run${FIN}               voir ce qui serait écrit
     ${GRIS}./install.sh --prefix /opt/namsdec${FIN}   ailleurs que dans ~/.local/share
 
@@ -112,6 +116,7 @@ while [ $# -gt 0 ]; do
         --no-exercises)  AVEC_EXERCICES=0; shift ;;
         --no-cli)        AVEC_CLI=0; shift ;;
         --no-strip)      AVEC_STRIP=0; shift ;;
+        --no-restart)    AVEC_REDEMARRAGE=0; shift ;;
         --no-build)      AVEC_COMPILATION=0; shift ;;
         -n|--dry-run)    ESSAI=1; shift ;;
         -q|--quiet)      SILENCIEUX=1; shift ;;
@@ -198,6 +203,75 @@ ok()      { [ "$SILENCIEUX" = 1 ] || printf '      %s✓%s %s\n' "$VERT" "$FIN" 
 avertir() { printf '%s  ⚠%s %s\n' "$JAUNE" "$FIN" "$1" >&2; }
 mourir()  { printf '%serreur:%s %s\n' "$ROUGE" "$FIN" "$1" >&2; exit 1; }
 
+# --- Poser un fichier sans qu'il manque une seule seconde -------------
+#
+# `install` SUPPRIME la cible avant d'écrire la nouvelle. Pour un
+# exécutable en cours, c'est sans danger — le processus garde son inode
+# —, mais il reste une fenêtre, courte et bien réelle, pendant laquelle
+# LE FICHIER N'EXISTE PAS. Et quelqu'un regarde : GNOME Shell élague de
+# lui-même les favoris dont il ne trouve pas le `.desktop`. On relançait
+# donc l'installation, et l'icône disparaissait du dock — on concluait
+# que l'installation avait désinstallé le programme.
+#
+# `cat > fichier` est pire encore : il tronque, et laisse le fichier
+# VIDE le temps de le réécrire. C'est ce que faisait le lanceur.
+#
+# On écrit donc à côté, puis on renomme. `mv` dans le même dossier est
+# un `rename(2)` : atomique, indivisible. À aucun instant la cible n'est
+# absente ni incomplète — elle est l'ancienne, puis la nouvelle.
+poser() {
+    local mode="$1" source="$2" cible="$3"
+    if [ "$ESSAI" = 1 ]; then
+        printf '      %s· poser %s -> %s%s\n' "$GRIS" "$source" "$cible" "$FIN"
+        return 0
+    fi
+    mkdir -p "$(dirname "$cible")"
+    local temporaire="$(dirname "$cible")/.$(basename "$cible").neuf.$$"
+    # Le temporaire part avec nous si quelque chose tourne mal : un
+    # dossier semé de `.namsdec.neuf.1234` serait une trace de plus à
+    # nettoyer à la main.
+    trap 'rm -f "$temporaire"' RETURN
+    cp -f "$source" "$temporaire"
+    chmod "$mode" "$temporaire"
+    mv -f "$temporaire" "$cible"
+}
+
+# Le même geste pour un fichier qu'on écrit au fil de l'eau.
+poser_depuis_stdin() {
+    local mode="$1" cible="$2"
+    if [ "$ESSAI" = 1 ]; then
+        cat >/dev/null
+        printf '      %s· écrire %s%s\n' "$GRIS" "$cible" "$FIN"
+        return 0
+    fi
+    mkdir -p "$(dirname "$cible")"
+    local temporaire="$(dirname "$cible")/.$(basename "$cible").neuf.$$"
+    trap 'rm -f "$temporaire"' RETURN
+    cat > "$temporaire"
+    chmod "$mode" "$temporaire"
+    mv -f "$temporaire" "$cible"
+}
+
+# --- Qui tourne en ce moment ------------------------------------------
+#
+# Par l'EXÉCUTABLE et non par le nom : `pgrep namsdec` attrape le
+# terminal dont le titre porte ce mot, et l'on tuerait sa propre
+# session. `/proc/<pid>/exe` est un lien vers le fichier réellement
+# exécuté — c'est exact, et cela ne peut désigner que lui.
+instances_en_cours() {
+    local cible="$1" pid exe
+    [ -e "$cible" ] || return 0
+    for pid in /proc/[0-9]*; do
+        pid="${pid#/proc/}"
+        exe=$(readlink "/proc/$pid/exe" 2>/dev/null) || continue
+        # Un binaire remplacé voit son lien suffixé « (deleted) » :
+        # c'est précisément le cas d'une instance lancée AVANT la mise à
+        # jour, et c'est elle qu'il faut redémarrer.
+        [ "${exe% (deleted)}" = "$cible" ] && printf '%s\n' "$pid"
+    done
+    return 0
+}
+
 # `--dry-run` : tout ce qui écrit passe par ici, donc rien ne peut lui
 # échapper. Une seule commande oubliée rendrait l'essai à blanc pire
 # qu'absent — on l'emploie précisément quand on n'ose pas la vraie.
@@ -209,7 +283,37 @@ faire() {
     "$@"
 }
 
-# Combien d'étapes : le compte est annoncé, donc il doit être juste.
+# LA VERSION SE LIT TOUJOURS, et non seulement quand on parle : le mot
+# de la fin l'emploie, et `--quiet` la laissait vide.
+VERSION=$(awk -F'"' '/^version = /{print $2; exit}' "$SOURCE_DIR/Cargo.toml" 2>/dev/null || echo '?')
+
+# --- Ce qui est déjà là ------------------------------------------------
+#
+# Une installation par-dessus une autre est une MISE À JOUR : rien n'est
+# retiré, rien n'est remis à zéro, et les réglages, les séries ajoutées
+# et les points d'arrêt restent où ils sont. Le dire change ce qu'on lit
+# ensuite — « installé » et « remplacé » ne se vérifient pas de la même
+# façon.
+DEJA=""
+if [ -x "$BIN_DIR/$APP" ]; then
+    DEJA=$("$BIN_DIR/$APP" --version 2>/dev/null | awk '{print $NF}')
+    [ -n "$DEJA" ] || DEJA="?"
+fi
+
+# Et qui tourne, s'il tourne. Relevé MAINTENANT : après la pose, le lien
+# `/proc/<pid>/exe` porte « (deleted) », et l'on ne saurait plus dire si
+# l'instance est d'avant ou d'après.
+OUVERTS=()
+if [ -n "$DEJA" ]; then
+    while IFS= read -r pid; do
+        [ -n "$pid" ] && OUVERTS+=("$pid")
+    done < <(instances_en_cours "$BIN_DIR/$APP")
+fi
+
+# Combien d'étapes : le compte est annoncé, donc il doit être juste. Il
+# se fait APRÈS le relevé des fenêtres ouvertes, puisque le
+# redémarrage en est une et qu'il n'a lieu que s'il y a quelque chose à
+# redémarrer.
 TOTAL=2
 [ "$AVEC_COMPILATION" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_EXERCICES" = 1 ] && TOTAL=$((TOTAL + 1))
@@ -217,15 +321,23 @@ TOTAL=2
 [ "$AVEC_LANCEUR" = 1 ] && TOTAL=$((TOTAL + 2))
 [ "$AVEC_PATH" = 1 ] && TOTAL=$((TOTAL + 1))
 [ "$AVEC_DOCK" = 1 ] && TOTAL=$((TOTAL + 1))
+[ "$AVEC_REDEMARRAGE" = 1 ] && [ ${#OUVERTS[@]} -gt 0 ] && TOTAL=$((TOTAL + 1))
 
 if [ "$SILENCIEUX" != 1 ]; then
-    VERSION=$(awk -F'"' '/^version = /{print $2; exit}' "$SOURCE_DIR/Cargo.toml" 2>/dev/null || echo '?')
     printf '\n'
     # Pas de tiret cadratin ni de ✓ dans un cadre : ces caractères
     # comptent pour un et se rendent sur deux colonnes dans beaucoup de
     # terminaux, et le bord droit tombe alors à côté.
-    cadre "Installation de namsdec $VERSION"
-    printf '  %sun atelier pour apprendre l'"'"'assembleur x86-64%s\n' "$GRIS" "$FIN"
+    if [ -z "$DEJA" ]; then
+        cadre "Installation de namsdec $VERSION"
+        printf '  %sun atelier pour apprendre l'"'"'assembleur x86-64%s\n' "$GRIS" "$FIN"
+    elif [ "$DEJA" = "$VERSION" ]; then
+        cadre "Mise à jour de namsdec $VERSION"
+        printf '  %smême version : le binaire est remplacé, vos réglages ne bougent pas%s\n' "$GRIS" "$FIN"
+    else
+        cadre "Mise à jour de namsdec $DEJA vers $VERSION"
+        printf '  %srien n'"'"'est retiré : réglages, séries ajoutées et points d'"'"'arrêt restent%s\n' "$GRIS" "$FIN"
+    fi
     [ "$ESSAI" = 1 ] && printf '\n  %s— essai à blanc : rien ne sera écrit —%s\n' "$JAUNE" "$FIN"
 
     # Ce qui va être fait, et l'option qui l'annule. Le script le faisait
@@ -241,8 +353,34 @@ if [ "$SILENCIEUX" != 1 ]; then
     reglage "$AVEC_LANCEUR"     "lanceur et icônes"         "--no-desktop"
     reglage "$AVEC_PATH"        "ajouter au PATH"           "--no-path"
     reglage "$AVEC_DOCK"        "épingler au dock"          "--no-dock"
+    if [ ${#OUVERTS[@]} -gt 0 ]; then
+        reglage "$AVEC_REDEMARRAGE" "redémarrer namsdec à la fin" "--no-restart"
+    fi
     printf '\n    %sbinaire%s    %s\n' "$GRIS" "$FIN" "$BIN_DIR/$APP"
     printf '    %sdonnées%s    %s/%s\n' "$GRIS" "$FIN" "$PREFIX" "$APP"
+    # CE QUI TOURNE, ET CE QU'IL VA LUI ARRIVER. Une fenêtre qui se
+    # ferme sans prévenir au milieu d'une installation est ce qui fait
+    # croire qu'on vient de désinstaller quelque chose. On le dit
+    # AVANT, pendant qu'il est encore temps de couper court — et la
+    # fenêtre, elle, reste ouverte tout le temps du travail.
+    if [ ${#OUVERTS[@]} -gt 0 ]; then
+        printf '\n'
+        if [ ${#OUVERTS[@]} -eq 1 ]; then
+            printf '    %s◆%s namsdec tourne %s(pid %s)%s\n' \
+                "$CYAN" "$FIN" "$GRIS" "${OUVERTS[0]}" "$FIN"
+        else
+            printf '    %s◆%s namsdec tourne %s(%d fenêtres)%s\n' \
+                "$CYAN" "$FIN" "$GRIS" "${#OUVERTS[@]}" "$FIN"
+        fi
+        if [ "$AVEC_REDEMARRAGE" = 1 ]; then
+            printf '      %sil reste ouvert pendant toute la mise à jour, et sera%s\n' "$GRIS" "$FIN"
+            printf '      %srefermé puis rouvert à la toute fin, sur la version neuve.%s\n' "$GRIS" "$FIN"
+            printf '      %sEnregistrez ce qui compte : la fermeture est propre, pas magique.%s\n' "$JAUNE" "$FIN"
+        else
+            printf '      %sil n'"'"'est pas touché — la mise à jour sera prise%s\n' "$GRIS" "$FIN"
+            printf '      %sà sa prochaine ouverture.%s\n' "$GRIS" "$FIN"
+        fi
+    fi
 fi
 
 # --- Prérequis ---------------------------------------------------------
@@ -295,7 +433,7 @@ fi
 # --- Binaire -----------------------------------------------------------
 etape "Installation du binaire"
 detail "$BIN_DIR/$APP"
-faire install -Dm755 "$BUILT" "$BIN_DIR/$APP"
+poser 755 "$BUILT" "$BIN_DIR/$APP"
 # Les symboles pèsent deux mégaoctets et ne servent qu'à lire une trace
 # de panique. Celui de `target/` les garde — c'est lui qu'on ouvre dans
 # un débogueur ; celui qu'on installe s'en passe. Le BuildID reste, de
@@ -319,7 +457,7 @@ if [ "$AVEC_CLI" = 1 ]; then
         avertir "$CLI_NAME introuvable : $BUILT_CLI
     (compilez-le par « cargo build --release -p namsdec-cli », ou passez --no-cli)"
     else
-        faire install -Dm755 "$BUILT_CLI" "$BIN_DIR/$CLI_NAME"
+        poser 755 "$BUILT_CLI" "$BIN_DIR/$CLI_NAME"
         if [ "$AVEC_STRIP" = 1 ] && [ "$PROFIL" = release ] && command -v strip >/dev/null; then
             faire strip "$BIN_DIR/$CLI_NAME" 2>/dev/null || true
         fi
@@ -335,7 +473,7 @@ fi
 if [ "$AVEC_EXERCICES" = 1 ]; then
     etape "Installation des séries d'exercices"
     detail "$EXERCISES_DIR/$APP.json"
-    faire install -Dm644 "$SOURCE_DIR/crates/namsdec-exercises/packs/namsdec.json" \
+    poser 644 "$SOURCE_DIR/crates/namsdec-exercises/packs/namsdec.json" \
         "$EXERCISES_DIR/$APP.json"
 
     # Les séries supplémentaires vivent dans `plugins/exercices/`. Ce
@@ -345,7 +483,7 @@ if [ "$AVEC_EXERCICES" = 1 ]; then
     for serie in "$SOURCE_DIR"/plugins/exercices/*.json; do
         [ -e "$serie" ] || break
         detail "$EXERCISES_DIR/$(basename "$serie")"
-        faire install -Dm644 "$serie" "$EXERCISES_DIR/$(basename "$serie")"
+        poser 644 "$serie" "$EXERCISES_DIR/$(basename "$serie")"
     done
 fi
 
@@ -356,12 +494,12 @@ fi
 if [ "$AVEC_LANCEUR" = 1 ]; then
     etape "Installation des icônes"
     detail "$ICON_DIR"
-    faire install -Dm644 "$SOURCE_DIR/assets/$APP.svg" "$ICON_DIR/scalable/apps/$APP.svg"
+    poser 644 "$SOURCE_DIR/assets/$APP.svg" "$ICON_DIR/scalable/apps/$APP.svg"
     posees=0
     for size in 16 22 24 32 48 64 128 256 512; do
         png="$SOURCE_DIR/assets/icons/$APP-$size.png"
         if [ -f "$png" ]; then
-            faire install -Dm644 "$png" "$ICON_DIR/${size}x${size}/apps/$APP.png"
+            poser 644 "$png" "$ICON_DIR/${size}x${size}/apps/$APP.png"
             posees=$((posees + 1))
         fi
     done
@@ -371,8 +509,12 @@ if [ "$AVEC_LANCEUR" = 1 ]; then
     etape "Installation du lanceur"
     detail "$DESKTOP_DIR/$APP.desktop"
     faire mkdir -p "$DESKTOP_DIR"
-    if [ "$ESSAI" != 1 ]; then
-        cat > "$DESKTOP_DIR/$APP.desktop" <<DESKTOP
+    # ÉCRIT À CÔTÉ, PUIS RENOMMÉ. `cat >` tronque : le lanceur restait
+    # VIDE le temps d'être réécrit, et GNOME Shell, qui élague les
+    # favoris dont il ne trouve plus le fichier, retirait l'icône du
+    # dock pendant qu'on installait. C'est de là que venait
+    # l'impression que l'installation désinstallait le programme.
+    poser_depuis_stdin 644 "$DESKTOP_DIR/$APP.desktop" <<DESKTOP
 [Desktop Entry]
 Type=Application
 Version=1.0
@@ -391,7 +533,6 @@ MimeType=text/x-asm;
 StartupNotify=true
 StartupWMClass=$APP
 DESKTOP
-    fi
 
     # Les caches : sans eux, le lanceur et l'icône peuvent n'apparaître
     # qu'au prochain démarrage de session.
@@ -490,6 +631,66 @@ if [ "$AVEC_DOCK" = 1 ]; then
     fi
 fi
 
+# --- Redémarrage ------------------------------------------------------
+#
+# LA FENÊTRE EST RESTÉE OUVERTE JUSQU'ICI, et c'est voulu : la fermer
+# d'entrée aurait fait attendre devant un écran vide pendant les deux
+# minutes de compilation, pour rien. Le binaire est remplacé sous elle
+# sans qu'elle s'en aperçoive — elle garde l'inode d'avant, qui vit tant
+# qu'elle le tient.
+#
+# Maintenant que tout est en place, on la referme et on la rouvre sur la
+# version neuve. SIGTERM et non SIGKILL : c'est la fermeture ordinaire,
+# celle du bouton de la barre de titre, et l'application a le temps
+# d'écrire ses réglages.
+REDEMARRE=0
+if [ "$AVEC_REDEMARRAGE" = 1 ] && [ ${#OUVERTS[@]} -gt 0 ]; then
+    etape "Redémarrage de namsdec"
+    if [ "$ESSAI" = 1 ]; then
+        detail "les ${#OUVERTS[@]} fenêtre(s) seraient refermées puis rouvertes"
+    else
+        for pid in "${OUVERTS[@]}"; do
+            kill -TERM "$pid" 2>/dev/null || true
+        done
+        # On attend qu'elles partent, sans dépasser dix secondes :
+        # au-delà, c'est qu'une boîte de dialogue retient la fermeture,
+        # et l'utilisateur vaut mieux qu'un SIGKILL dans le dos.
+        reste=()
+        for _ in $(seq 1 50); do
+            reste=()
+            for pid in "${OUVERTS[@]}"; do
+                [ -d "/proc/$pid" ] && reste+=("$pid")
+            done
+            [ ${#reste[@]} -eq 0 ] && break
+            sleep 0.2
+        done
+        if [ ${#reste[@]} -gt 0 ]; then
+            # DIT, ET NON TU. Une fenêtre qui refuse de partir est
+            # presque toujours une question posée à l'écran — un
+            # travail non enregistré. On ne l'exécute pas d'autorité :
+            # on la laisse, et l'on dit pourquoi rien n'a redémarré.
+            avertir "${#reste[@]} fenêtre(s) ne se sont pas refermées — elles attendent sans doute une réponse.
+    namsdec n'a pas été redémarré : répondez-leur, puis relancez « $APP »."
+        else
+            ok "refermé proprement"
+            # `setsid` : la nouvelle fenêtre ne doit RIEN devoir à ce
+            # terminal. Sans lui, fermer le terminal emporterait
+            # l'application qu'on vient de rouvrir.
+            setsid "$BIN_DIR/$APP" >/dev/null 2>&1 < /dev/null &
+            # On laisse à la fenêtre le temps de paraître avant de dire
+            # qu'elle est là : annoncer « rouvert » sur un `&` qui a
+            # réussi ne prouverait que le fork.
+            sleep 1
+            if [ -n "$(instances_en_cours "$BIN_DIR/$APP")" ]; then
+                ok "rouvert sur la version $VERSION"
+                REDEMARRE=1
+            else
+                avertir "namsdec n'a pas rouvert — lancez « $APP » à la main."
+            fi
+        fi
+    fi
+fi
+
 # --- Le mot de la fin ---------------------------------------------------
 if [ "$SILENCIEUX" = 1 ]; then
     exit 0
@@ -502,13 +703,65 @@ if [ "$ESSAI" = 1 ]; then
     exit 0
 fi
 printf '\n'
-cadre "namsdec $VERSION est en place"
+if [ -z "$DEJA" ]; then
+    cadre "namsdec $VERSION est en place"
+elif [ "$DEJA" = "$VERSION" ]; then
+    cadre "namsdec $VERSION est à jour"
+else
+    cadre "namsdec est passé de $DEJA à $VERSION"
+fi
 printf '\n'
-printf '  %sLancer%s          %s\n' "$GRAS" "$FIN" "$APP"
-[ "$AVEC_LANCEUR" = 1 ] && printf '  %sou%s              depuis le menu des applications\n' "$GRAS" "$FIN"
+# CE QU'ON VIENT DE POSER, avec son poids : deux lignes qui disent où
+# regarder le jour où quelque chose ne va pas. Les tailles sont lues sur
+# le disque, non annoncées d'avance — c'est ce qui est là qui compte.
+# Trois colonnes, et elles se tiennent : ce que c'est, où c'est, ce que
+# cela pèse. Les chemins n'ont pas la même longueur — on cale, sinon la
+# dernière colonne fait des vagues et ne se lit plus d'un trait.
+#
+# Le chemin s'écrit à partir de `~` : `/home/fred/.local/bin/namsdec`
+# prend dix caractères de plus pour ne rien dire de plus, et c'est dix
+# caractères pris à la colonne qu'on veut aligner.
+recapituler() {
+    local nom="$1" chemin="$2" poids="$3"
+    printf '  %s✓%s  ' "$VERT" "$FIN"
+    caler "$nom" 15
+    caler "${chemin/#$HOME/\~}" 40
+    printf '%s%s%s\n' "$GRIS" "$poids" "$FIN"
+}
+if [ -x "$BIN_DIR/$APP" ]; then
+    recapituler "l'application" "$BIN_DIR/$APP" "$(du -h "$BIN_DIR/$APP" | cut -f1)"
+fi
+if [ "$AVEC_CLI" = 1 ] && [ -x "$BIN_DIR/$CLI_NAME" ]; then
+    recapituler "l'analyse" "$BIN_DIR/$CLI_NAME" "$(du -h "$BIN_DIR/$CLI_NAME" | cut -f1)"
+fi
+if [ "$AVEC_EXERCICES" = 1 ] && [ -d "$EXERCISES_DIR" ]; then
+    series=$(find "$EXERCISES_DIR" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l)
+    recapituler "les exercices" "$EXERCISES_DIR" "$series série(s)"
+fi
+if [ "$AVEC_LANCEUR" = 1 ] && [ -f "$DESKTOP_DIR/$APP.desktop" ]; then
+    recapituler "le lanceur" "$DESKTOP_DIR/$APP.desktop" ""
+fi
+# RIEN N'A ÉTÉ RETIRÉ, et il faut le dire à qui vient de mettre à jour :
+# c'est la question qu'on se pose en relançant un installateur.
+if [ -n "$DEJA" ]; then
+    printf '\n  %sVos réglages, vos séries ajoutées et vos points d'"'"'arrêt n'"'"'ont pas bougé.%s\n' \
+        "$GRIS" "$FIN"
+fi
+printf '\n'
+if [ "$REDEMARRE" = 1 ]; then
+    printf '  %sEn cours%s        namsdec vient de rouvrir sur cette version\n' "$GRAS" "$FIN"
+else
+    printf '  %sLancer%s          %s\n' "$GRAS" "$FIN" "$APP"
+    [ "$AVEC_LANCEUR" = 1 ] && printf '  %sou%s              depuis le menu des applications\n' "$GRAS" "$FIN"
+fi
 printf '  %sPremiers pas%s    Aide ▸ Guide, ou la touche %sF1%s\n' "$GRAS" "$FIN" "$CYAN" "$FIN"
+printf '  %sMettre à jour%s   ./install.sh %s(rien n'"'"'est retiré)%s\n' "$GRAS" "$FIN" "$GRIS" "$FIN"
 printf '  %sDésinstaller%s    ./uninstall.sh\n' "$GRAS" "$FIN"
 if [ -n "$RAPPEL_PATH" ]; then
     printf '\n  %s⚠ %s%s\n' "$JAUNE" "$RAPPEL_PATH" "$FIN"
+fi
+if [ ${#OUVERTS[@]} -gt 0 ] && [ "$AVEC_REDEMARRAGE" != 1 ]; then
+    printf '\n  %s⚠ namsdec tourne encore sur la version d'"'"'avant : refermez-le et%s\n' "$JAUNE" "$FIN"
+    printf '  %s  rouvrez-le pour prendre la mise à jour.%s\n' "$JAUNE" "$FIN"
 fi
 printf '\n'

@@ -8,3 +8,12 @@ license.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+# POUR LES CONTRÔLES SEULEMENT. La théorie d'un exercice cite entre
+# accents graves les mots qui ont une fiche, et l'interface en fait des
+# renvois : un contrôle vérifie donc que chaque théorie en cite au moins
+# un qui existe VRAIMENT. Sans quoi la promesse est écrite et jamais
+# tenue — et personne ne le verrait, puisqu'un mot sans fiche se peint
+# simplement sans lien.
+namsdec-doc = { path = "../namsdec-doc" }

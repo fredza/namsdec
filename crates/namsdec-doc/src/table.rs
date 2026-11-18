@@ -2890,7 +2890,7 @@ phaddd xmm0, xmm0   ; la somme des quatre",
     },
     Entry {
         kind: Kind::Concept,
-        names: &["registre"],
+        names: &["registre", "register"],
         title: Text {
             fr: "Registre",
             en: "Register",
@@ -3002,7 +3002,7 @@ phaddd xmm0, xmm0   ; la somme des quatre",
     },
     Entry {
         kind: Kind::Concept,
-        names: &["adressage", "crochets"],
+        names: &["adressage", "crochets", "addressing"],
         title: Text {
             fr: "Adressage mémoire",
             en: "Memory addressing",
@@ -3030,7 +3030,7 @@ phaddd xmm0, xmm0   ; la somme des quatre",
     },
     Entry {
         kind: Kind::Concept,
-        names: &["immediat", "immédiat"],
+        names: &["immediat", "immédiat", "immediate"],
         title: Text {
             fr: "Valeur immédiate",
             en: "Immediate value",

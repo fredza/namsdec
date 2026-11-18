@@ -383,6 +383,25 @@ cd namsdec
 lanceur là où le bureau va les chercher. Rien n'est écrit hors de `$HOME`
 et rien ne demande les droits d'administrateur.
 
+**Le relancer est une mise à jour, pas une réinstallation.** Rien n'est
+retiré : vos réglages, les séries que vous avez ajoutées et vos points
+d'arrêt restent où ils sont, et le script le dit en tête — « mise à jour
+de 0.4.0 vers 0.4.1 » plutôt qu'« installation ». Chaque fichier est
+écrit à côté puis renommé, si bien qu'à aucun instant la cible n'est
+absente ni incomplète : c'est ce qui manquait au lanceur, que `cat >`
+laissait vide une fraction de seconde — assez pour que GNOME, qui élague
+les favoris dont il ne trouve plus le `.desktop`, retire l'icône du dock
+pendant qu'on installait.
+
+**Et si namsdec est ouvert**, il le reste pendant tout le travail — la
+compilation dure quelques minutes, et attendre devant un écran vide n'y
+sert à rien. Le binaire est remplacé sous la fenêtre, qui ne s'en aperçoit
+pas : elle garde celui qu'elle a ouvert. C'est à la toute fin, une fois
+tout en place, que le script la referme proprement et la rouvre sur la
+version neuve. `--no-restart` l'en empêche. Une fenêtre qui refuse de
+partir — une question posée à l'écran, un travail non enregistré — n'est
+jamais forcée : le script le dit et s'arrête là.
+
 `./install.sh --help` donne les options. Les plus utiles :
 
 | option | ce qu'elle fait |
@@ -397,6 +416,7 @@ et rien ne demande les droits d'administrateur.
 | `--no-exercises` | ne pas installer la série livrée |
 | `--no-strip` | garder les symboles de débogage (deux mégaoctets de plus) |
 | `--no-build` | ne pas compiler : poser le binaire déjà construit |
+| `--no-restart` | ne pas refermer ni rouvrir namsdec s'il tourne |
 | `--quiet`, `-q` | ne dire que l'essentiel |
 | `--no-color` | pas de couleurs — `NO_COLOR` est respecté aussi |
 
@@ -445,6 +465,29 @@ course, elle le reste ; Affichage ▸ Console l'ouvre à la demande, et le
 réglage est gardé.
 
 ### Les exercices
+
+**Chacun des cent dix-sept porte sa fiche de théorie.** Ni la consigne,
+ni l'indice : la consigne dit ce qu'on demande, l'indice dit où chercher
+quand on bloque, et la théorie dit la mécanique sur laquelle l'exercice
+repose — ce qu'est une boucle quand le processeur n'en a pas, pourquoi
+écrire `eax` efface le haut de `rax`, ce qu'une `convention` d'appel
+n'est pas obligée de garantir. On la lit avant d'essayer, et elle
+resservira à dix autres étapes.
+
+Elle cite entre accents graves les mots qui ont une fiche, et
+l'interface en fait des **renvois cliquables** — vers les instructions
+comme vers les notions, ce qui n'était pas le cas de l'énoncé. Rien
+n'est tenu à la main : un contrôle vérifie que chaque théorie, dans les
+deux langues, cite au moins une fiche qui existe vraiment, qu'elle ne
+recopie pas sa consigne, qu'aucune n'est écrite deux fois, et qu'elle
+tient dans les bornes de lecture de sa bande.
+
+Le bouton **La théorie** est dans la rangée des gestes, à côté de
+*Un indice* et *La solution* — l'ordre dans lequel on y vient. Elle est
+repliée par défaut, et c'est une mesure qui l'a décidé : dépliée, elle
+poussait le **but** sous le pli, et le but se relit à chaque essai quand
+la théorie se lit une fois. L'ouvrir est un réglage, pas un geste à
+refaire.
 
 Six exercices demandent de **lire** plutôt que d'écrire : le programme
 est donné complet, une question est posée — « que vaut RAX à l'arrêt ? »
@@ -913,6 +956,9 @@ téléchargé, rien n'est installé. La mise à jour se fait à la main :
 ```sh
 git pull && ./install.sh
 ```
+
+Vous pouvez le lancer avec namsdec ouvert : la fenêtre reste là pendant la
+compilation, et se rouvre d'elle-même sur la version neuve à la fin.
 
 Un atelier qui se réécrit tout seul pendant qu'on travaille dedans n'est
 pas un atelier.

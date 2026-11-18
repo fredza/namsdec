@@ -1183,6 +1183,9 @@ struct NamsdecApp {
     /// attend le pas, au niveau débutant seulement. Sans effet au
     /// niveau avancé, et le réglage le dit en se grisant.
     prevoir: bool,
+    /// La théorie d'un exercice est-elle dépliée ? Voir
+    /// `Settings::theorie_ouverte` et `etabli_exercice_ui`.
+    theorie_ouverte: bool,
     /// Les huit registres hauts sont-ils montrés quand ils sont tous à
     /// zéro ? Voir `Settings::registres_hauts` et `registers_ui`.
     registres_hauts: bool,
@@ -2022,6 +2025,7 @@ struct PreferencesSnapshot {
     show_re_tab: bool,
     debutant: bool,
     prevoir: bool,
+    theorie_ouverte: bool,
     exercises: bool,
     show_tooltips: bool,
     keybindings: KeyBindings,
@@ -2446,6 +2450,7 @@ impl Default for NamsdecApp {
             // les deux cases.
             console_ouverte_pour_la_sortie: false,
             prevoir: true,
+            theorie_ouverte: false,
             registres_hauts: false,
             problemes_deborde: false,
             question_answer: String::new(),
@@ -4154,11 +4159,21 @@ fn prose(ui: &egui::Ui, theme: &'static Theme, text: &str) -> egui::text::Layout
 /// **Seuls les mnémoniques connus se cliquent.** `section .text` ou
 /// `0x3c` entre accents graves restent du code inerte : un trait sous
 /// ce qui ne mène nulle part est une promesse de plus (A 9.89).
-fn prose_avec_fiches(
+///
+/// `notions` ouvre la porte aux fiches qui n'en sont pas une : la pile,
+/// un indicateur, l'ordre des octets. C'est la THÉORIE d'un exercice
+/// qui en a besoin — elle parle de mécanique plutôt que d'instructions,
+/// et « un saut en arrière vers une `étiquette` » doit mener quelque
+/// part. La règle ne change pas d'un pouce : ce qui se clique est ce
+/// qui a une fiche, et rien d'autre. Les énoncés, eux, gardent le
+/// réglage d'origine — ils citent des mnémoniques, et un mot courant
+/// souligné au milieu d'une phrase y serait du bruit.
+fn prose_avec_fiches_et_notions(
     ui: &mut egui::Ui,
     theme: &'static Theme,
     lang: Lang,
     text: &str,
+    notions: bool,
 ) -> Option<String> {
     let mut demandée = None;
     ui.horizontal_wrapped(|ui| {
@@ -4177,8 +4192,10 @@ fn prose_avec_fiches(
             // Un morceau de code : cliquable s'il nomme une
             // instruction, inerte sinon.
             let premier = part.split_whitespace().next().unwrap_or_default();
-            let fiche = namsdec_doc::lookup(&premier.to_ascii_lowercase())
-                .filter(|entry| entry.kind == namsdec_doc::Kind::Instruction);
+            let fiche = namsdec_doc::lookup(&premier.to_ascii_lowercase()).filter(|entry| {
+                entry.kind == namsdec_doc::Kind::Instruction
+                    || (notions && entry.kind == namsdec_doc::Kind::Concept)
+            });
             let texte = egui::RichText::new(part).monospace().color(theme.mnemonic);
             match fiche {
                 Some(_) => {

@@ -43,6 +43,11 @@
 //! calcule un tout seul quand le trou demande des instructions que le
 //! tampon n'a pas encore.
 //!
+//! `theorie` est ce qu'il faut avoir compris AVANT de s'y mettre : la
+//! mécanique sur laquelle l'exercice repose, et non l'exercice
+//! lui-même. Elle cite entre accents graves les mots qui ont une fiche,
+//! et l'interface en fait des renvois.
+//!
 //! `par` est le budget : le nombre d'instructions exécutées qu'il faut
 //! tenir. Facultatif lui aussi — il n'a de sens qu'avec un but.
 //!
@@ -146,6 +151,10 @@ struct ExerciseFile {
     /// instructions que le tampon n'a pas.
     #[serde(default)]
     hint: Option<TextField>,
+    /// La théorie : ce qu'il faut avoir compris avant de s'y mettre.
+    /// Facultative dans le format, obligatoire dans la série livrée.
+    #[serde(default)]
+    theorie: Option<TextField>,
     /// La question d'un exercice de lecture. Facultative.
     #[serde(default)]
     question: Option<TextField>,
@@ -216,6 +225,7 @@ pub fn parse(text: &str) -> Result<Pack, PackError> {
                 .filter(|programme| !programme.trim().is_empty()),
             goal: exercise.goal,
             hint: exercise.hint.map(Into::into),
+            theorie: exercise.theorie.map(Into::into),
             par: exercise.par,
             level: exercise
                 .level

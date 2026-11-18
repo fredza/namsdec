@@ -12939,3 +12939,123 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      cette taille l'éditeur n'a plus que trois lignes. Le vrai levier
      est ailleurs (la bande du résultat prend 45 % de ce qui reste), et
      il appartient à l'utilisateur : voir A 9.86.
+
+9.103 [FAIT] L'INSTALLATEUR MET À JOUR, ET IL NE FERME PLUS RIEN AVANT
+      D'AVOIR FINI
+
+     Deux demandes : le rendre plus joli, et qu'il « ne désinstalle pas
+     le programme » — qu'il fasse des mises à jour en ne fermant pas la
+     fenêtre tout de suite, mais en la redémarrant à la fin.
+
+     CE QUE « IL DÉSINSTALLE » DÉSIGNAIT, et la mesure l'a trouvé.
+     `install` SUPPRIME la cible avant d'écrire la nouvelle. Pour un
+     exécutable en cours, c'est sans danger — vérifié sur place : un
+     processus survit à l'`install` qui remplace son binaire, parce
+     qu'il garde son inode. Mais il reste une fenêtre, courte et bien
+     réelle, où LE FICHIER N'EXISTE PAS. Et quelqu'un regarde : GNOME
+     Shell élague de lui-même les favoris dont il ne trouve pas le
+     `.desktop` — ce que le script documentait déjà (A 9.50). Le
+     lanceur, lui, était écrit par `cat >`, qui TRONQUE : il restait
+     VIDE le temps d'être réécrit. On relançait l'installation, l'icône
+     disparaissait du dock, et l'on concluait qu'elle avait désinstallé
+     quelque chose.
+
+     TOUT SE POSE MAINTENANT À CÔTÉ, PUIS SE RENOMME. `mv` dans le même
+     dossier est un `rename(2)` : atomique, indivisible. À aucun instant
+     la cible n'est absente ni incomplète — elle est l'ancienne, puis la
+     nouvelle. Deux fonctions, `poser` et `poser_depuis_stdin`, et les
+     six écritures du script y passent.
+
+     LA FENÊTRE RESTE OUVERTE JUSQU'À LA FIN, et c'est le point de la
+     demande. La fermer d'entrée ferait attendre devant un écran vide
+     pendant les deux minutes de compilation, pour rien. Le binaire est
+     remplacé sous elle sans qu'elle s'en aperçoive ; une fois tout en
+     place, une dernière étape la referme par SIGTERM — la fermeture
+     ordinaire, celle du bouton de la barre de titre — et la rouvre par
+     `setsid`, détachée du terminal.
+
+     CE QUI N'EST JAMAIS FORCÉ : une fenêtre qui ne part pas en dix
+     secondes attend presque toujours une réponse — une boîte de
+     dialogue, un travail non enregistré. Le script ne l'exécute pas
+     d'autorité : il le dit, ne redémarre rien, et explique pourquoi.
+     `--no-restart` l'empêche de toucher à quoi que ce soit.
+
+     LE RELEVÉ DES INSTANCES SE FAIT PAR L'EXÉCUTABLE, non par le nom.
+     `pgrep namsdec` attrape le terminal dont le titre porte ce mot — et
+     l'on tuerait sa propre session. C'est arrivé pendant ce travail,
+     sur un `pkill -f` dont le motif figurait dans ma propre ligne de
+     commande : le shell est mort au milieu de l'épreuve. On lit donc
+     `/proc/<pid>/exe`, qui ne peut désigner que le fichier réellement
+     exécuté. Le suffixe « (deleted) » y distingue au passage les
+     instances d'AVANT la mise à jour, qui sont précisément celles qu'il
+     faut redémarrer.
+
+     ET LE RESTE EST DIT : le script annonce « mise à jour de 0.4.0 vers
+     0.4.1 » plutôt qu'« installation » quand il trouve une version
+     installée, dit avant d'agir ce qui arrivera à la fenêtre ouverte,
+     et termine sur un récapitulatif en trois colonnes — ce que c'est,
+     où c'est, ce que cela pèse — suivi d'une ligne qui répond à la
+     question qu'on se pose en relançant un installateur : rien n'a été
+     retiré.
+
+9.104 [FAIT] UNE FICHE DE THÉORIE POUR CHACUN DES CENT DIX-SEPT
+      EXERCICES
+
+     Demandé le 18 novembre 2026. Quatre formes étaient possibles — une
+     par exercice, une par palier, des renvois vers les notions
+     existantes, un document unique — et c'est la première qui a été
+     retenue.
+
+     CE QUE LA THÉORIE N'EST PAS, et c'est ce qui la définit. Pas la
+     consigne, qui dit ce qu'on demande. Pas l'indice, qui dit où
+     chercher quand on bloque. Elle dit la MÉCANIQUE sur laquelle
+     l'exercice repose — ce qu'est une boucle quand le processeur n'en a
+     pas, pourquoi `inc` et `add reg, 1` donnent le même nombre et pas
+     le même état, pourquoi `max_height` plafonne sans imposer. Elle ne
+     parle pas de CET exercice, et elle resservira à dix autres.
+
+     CINQ CONTRÔLES, ET DEUX ONT TROUVÉ QUELQUE CHOSE DU PREMIER COUP.
+     « Chaque théorie cite au moins une fiche » en a nommé 55 sur 234
+     qui ne menaient nulle part : les textes anglais citaient `register`
+     ou `addressing`, que la table ne connaissait que sous leur nom
+     français, et vingt-sept théories ne citaient rien du tout. Les
+     trois alias manquants sont entrés dans la table — c'est un gain
+     pour l'interface anglaise, pas un contournement —, et les
+     vingt-sept textes ont reçu une citation là où la phrase l'appelait
+     déjà. Le même contrôle a montré au passage que `movs`, `stos`,
+     `scas` et `cmps` ne sont pas des noms de fiche : ce sont `movsb`,
+     `stosb`, `scasb`, `cmpsb`, et c'est aussi ce qu'on écrit en NASM.
+     « La théorie ne recopie pas la consigne » en a nommé deux, qui ont
+     été réécrites sous un autre angle.
+
+     LE REPLI EST FERMÉ PAR DÉFAUT, CONTRE L'INTENTION DE DÉPART. On
+     l'avait ouvert, au motif qu'un repli fermé est un repli qu'on
+     n'ouvre jamais — et quatre contrôles ont rougi d'un coup : la
+     théorie prend cent cinquante pixels dans une bande qui en a deux
+     cent dix, et elle poussait LE BUT sous le pli. Le but dit si l'on a
+     réussi ; on le lit à chaque essai, là où la théorie se lit une fois
+     avant de commencer. Entre deux textes qui se disputent une bande
+     bornée, celui qu'on relit gagne.
+
+     ET LE BOUTON A DÉMÉNAGÉ, POUR DEUX PIXELS. Posé sous l'énoncé, il
+     coûtait une rangée ; posé sur la rangée de l'énoncé, il la faisait
+     grandir de deux pixels — et
+     `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` les a
+     comptés, « Instructions : » perdant deux pixels sur dix-huit.
+     Relever `EXERCICE_DEFAUT` n'y change rien, et le commentaire de
+     cette constante le disait déjà : sur un grand écran, c'est la part
+     de ce qui reste (22 %) qui plafonne la bande. Essayé à 232, 250 et
+     270 — le même rouge aux trois. Il est donc allé dans la rangée des
+     gestes, HORS de la zone qui défile, à côté d'« Un indice » et de
+     « La solution ». La place est d'ailleurs la bonne : on y demande
+     déjà de l'aide, et l'ordre de lecture — la théorie, l'indice, la
+     solution — est celui dans lequel on y vient.
+
+     LES RENVOIS VONT PLUS LOIN QUE CEUX DE L'ÉNONCÉ.
+     `prose_avec_fiches_et_notions` prend un drapeau : l'énoncé ne rend
+     cliquables que les mnémoniques — il cite des instructions, et
+     souligner un mot courant au milieu d'une phrase ferait du bruit —,
+     la théorie y ajoute les NOTIONS, puisqu'elle parle de mécanique et
+     qu'« un saut en arrière vers une `etiquette` » doit mener quelque
+     part. La règle ne bouge pas d'un pouce : ce qui se clique est ce
+     qui a une fiche.

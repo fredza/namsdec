@@ -1305,6 +1305,12 @@ pub struct Strings {
     pub etabli_exercise: &'static str,
     pub etabli_exercise_pick: &'static str,
     pub etabli_exercise_statement: &'static str,
+    /// Le titre du repli qui porte la théorie d'un exercice.
+    pub etabli_exercise_theory: &'static str,
+    /// Le même bouton, quand la théorie est déjà dépliée.
+    pub etabli_exercise_theory_hide: &'static str,
+    /// Ce qu'on dit en survolant ce repli : à quoi sert ce qu'il cache.
+    pub etabli_exercise_theory_hint: &'static str,
     /// CE QUE LE VOLET DE LA MACHINE MONTRE, DIT EN MOTS.
     ///
     /// La pile portait déjà sa légende ; les registres et les
@@ -2415,6 +2421,9 @@ déclenchera jamais.",
     etabli_exercise: "L'exercice",
     etabli_exercise_pick: "Choisir…",
     etabli_exercise_statement: "Ce qu'on demande :",
+    etabli_exercise_theory: "La théorie",
+    etabli_exercise_theory_hide: "Masquer la théorie",
+    etabli_exercise_theory_hint: "Ce qu'il faut avoir compris avant de s'y mettre. Ce n'est pas la réponse : c'est la mécanique sur laquelle l'exercice repose, et elle resservira ailleurs.",
     etabli_cursor_line: "La ligne où est le curseur",
     etabli_cursor_sheet: "La fiche entière",
     etabli_cursor_hint: "Placez le curseur sur une instruction : cette bande dit ce \
@@ -3472,6 +3481,9 @@ other is there to compare — that is how gaps and clashes become visible.",
     etabli_exercise: "The exercise",
     etabli_exercise_pick: "Pick one…",
     etabli_exercise_statement: "What is asked:",
+    etabli_exercise_theory: "The theory",
+    etabli_exercise_theory_hide: "Hide the theory",
+    etabli_exercise_theory_hint: "What you need to have understood before starting. This is not the answer: it is the machinery the exercise rests on, and it will serve again elsewhere.",
     etabli_cursor_line: "The line the cursor is on",
     etabli_cursor_sheet: "The whole sheet",
     etabli_cursor_hint: "Put the cursor on an instruction: this band says what it does.",

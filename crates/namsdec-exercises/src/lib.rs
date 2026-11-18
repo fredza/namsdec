@@ -196,6 +196,28 @@ pub struct Exercise {
     /// trouver, un ordre à remettre, une répétition à voir. Ce sont les
     /// plus subtiles, et c'est là qu'un indice compte le plus.
     pub hint: Option<Text>,
+    /// LA THÉORIE : ce qu'il faut avoir compris AVANT de s'y mettre.
+    ///
+    /// Ni la consigne, ni l'indice, et c'est ce qui la distingue des
+    /// deux. La consigne dit ce qu'on demande ; l'indice dit où
+    /// chercher quand on est bloqué. La théorie, elle, ne parle pas de
+    /// CET exercice : elle dit la mécanique du processeur sur laquelle
+    /// il repose — ce qu'est une boucle quand le langage n'en a pas, ce
+    /// qu'un indicateur retient, pourquoi écrire `eax` efface le haut
+    /// de `rax`. On la lit avant d'essayer, et elle resservira à dix
+    /// autres exercices.
+    ///
+    /// Elle cite entre accents graves les mots qui ont une fiche —
+    /// `dec`, `ZF`, `rsp` —, et l'interface en fait des renvois
+    /// cliquables sans qu'on ait à tenir une liste à côté. C'est le
+    /// même mécanisme que `namsdec_doc::related`, et pour la même
+    /// raison : une liste écrite à la main est une liste qui vieillit.
+    ///
+    /// Obligatoire dans la série livrée — un contrôle le vérifie —,
+    /// facultative dans le format : une série tierce peut ne pas en
+    /// avoir, et refuser de la charger pour cela serait fermer la porte
+    /// à ce que le format est censé ouvrir.
+    pub theorie: Option<Text>,
     /// La question d'un exercice de LECTURE, et sa réponse.
     ///
     /// `None` pour les cent huit exercices d'écriture : on y répond en
@@ -413,5 +435,208 @@ mod tests {
         // Le nom seul ne suffit pas : deux séries peuvent le porter.
         assert!(find(&packs, "boucle").is_none());
         assert!(find(&packs, "autre/boucle").is_none());
+    }
+}
+
+#[cfg(test)]
+mod theorie_tests {
+    use super::*;
+
+    fn pack() -> Pack {
+        let chemin = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("packs");
+        builtin_pack_in(&chemin).expect("la série livrée est lisible")
+    }
+
+    /// Les mots cités entre accents graves dans un texte.
+    ///
+    /// Le même découpage que l'interface : les tranches impaires d'un
+    /// `split('`')`, dont on ne garde que le premier mot — « `cmp rax,
+    /// rbx` » cite `cmp`. Écrire ici un second découpage, qui
+    /// divergerait du premier, ferait un contrôle qui vérifie autre
+    /// chose que ce qu'on voit.
+    fn mots_cités(texte: &str) -> Vec<String> {
+        texte
+            .split('`')
+            .enumerate()
+            .filter(|(i, _)| i % 2 == 1)
+            .filter_map(|(_, morceau)| morceau.split_whitespace().next())
+            .map(|mot| {
+                mot.trim_end_matches([',', '.', ':', ';', '?', '!'])
+                    .to_ascii_lowercase()
+            })
+            .filter(|mot| !mot.is_empty())
+            .collect()
+    }
+
+    /// Chaque exercice livré porte sa théorie, dans les deux langues.
+    ///
+    /// Obligatoire ici, facultative dans le format : une série tierce
+    /// peut ne pas en avoir, et refuser de la charger pour cela serait
+    /// fermer la porte que le format est censé ouvrir. Mais la série
+    /// LIVRÉE est le parcours, et un parcours dont une étape sur cent
+    /// dix-sept n'explique pas sur quoi elle repose a un trou que
+    /// personne ne verra — on ne lit pas les cent dix-sept d'affilée.
+    #[test]
+    fn chaque_exercice_livre_porte_sa_theorie() {
+        let pack = pack();
+        let mut sans: Vec<&str> = Vec::new();
+        for exercice in &pack.exercises {
+            match &exercice.theorie {
+                Some(t) if !t.fr.trim().is_empty() && !t.en.trim().is_empty() => {}
+                _ => sans.push(&exercice.id),
+            }
+        }
+        assert!(
+            sans.is_empty(),
+            "{} exercice(s) sans théorie dans les deux langues : {sans:?}",
+            sans.len()
+        );
+    }
+
+    /// La théorie dit autre chose que la consigne.
+    ///
+    /// C'EST LA RAISON D'ÊTRE DU CHAMP, et le seul moyen de la retenir.
+    /// La consigne dit ce qu'on demande ; la théorie dit la mécanique
+    /// sur laquelle l'exercice repose, et elle doit resservir ailleurs.
+    /// Recopier l'une dans l'autre donnerait cent dix-sept redites que
+    /// personne ne relirait, et le repli serait un repli vide.
+    ///
+    /// La mesure est grossière et honnête : on compte les mots communs.
+    /// Au-delà de la moitié, ce n'est plus un autre texte.
+    #[test]
+    fn la_theorie_ne_recopie_pas_la_consigne() {
+        let pack = pack();
+        let mut fautifs: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            let Some(théorie) = &exercice.theorie else {
+                continue;
+            };
+            for (langue, th, desc) in [
+                ("fr", théorie.fr.as_str(), exercice.description.fr.as_str()),
+                ("en", théorie.en.as_str(), exercice.description.en.as_str()),
+            ] {
+                let mots_consigne: std::collections::BTreeSet<String> = desc
+                    .split_whitespace()
+                    .map(|m| m.to_lowercase())
+                    .filter(|m| m.len() > 4)
+                    .collect();
+                let mots_théorie: Vec<String> = th
+                    .split_whitespace()
+                    .map(|m| m.to_lowercase())
+                    .filter(|m| m.len() > 4)
+                    .collect();
+                if mots_théorie.is_empty() {
+                    continue;
+                }
+                let communs = mots_théorie
+                    .iter()
+                    .filter(|m| mots_consigne.contains(*m))
+                    .count();
+                let part = communs as f32 / mots_théorie.len() as f32;
+                if part > 0.5 {
+                    fautifs.push(format!(
+                        "{} ({langue}) : {:.0} % des mots viennent de la consigne",
+                        exercice.id,
+                        part * 100.0
+                    ));
+                }
+            }
+        }
+        assert!(
+            fautifs.is_empty(),
+            "la théorie recopie la consigne au lieu d'expliquer la mécanique :\n  {}",
+            fautifs.join("\n  ")
+        );
+    }
+
+    /// Chaque théorie mène quelque part.
+    ///
+    /// L'interface fait un renvoi cliquable de tout mot cité entre
+    /// accents graves QUI A UNE FICHE. Une théorie qui n'en cite aucune
+    /// est une impasse : on la lit, on ne sait pas où aller ensuite, et
+    /// les cent quatre-vingt-neuf fiches restent fermées. Une par
+    /// théorie suffit — ce n'est pas un quota, c'est une porte.
+    ///
+    /// Éprouvé en retirant les accents graves d'une théorie : il la
+    /// nomme.
+    #[test]
+    fn chaque_theorie_cite_au_moins_une_fiche() {
+        let pack = pack();
+        let mut impasses: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            let Some(théorie) = &exercice.theorie else {
+                continue;
+            };
+            for (langue, texte) in [("fr", théorie.fr.as_str()), ("en", théorie.en.as_str())] {
+                let mène = mots_cités(texte)
+                    .iter()
+                    .any(|mot| namsdec_doc::lookup(mot).is_some());
+                if !mène {
+                    impasses.push(format!("{} ({langue})", exercice.id));
+                }
+            }
+        }
+        assert!(
+            impasses.is_empty(),
+            "{} théorie(s) ne citent aucune fiche : on les lit, et il n'y a \
+             nulle part où aller ensuite — {impasses:?}",
+            impasses.len()
+        );
+    }
+
+    /// Deux exercices n'ont jamais la même théorie.
+    ///
+    /// Un copier-coller d'une étape à l'autre se verrait tout de suite
+    /// en les lisant d'affilée — sauf que personne ne les lit
+    /// d'affilée. C'est exactement le genre de chose qu'un contrôle
+    /// attrape et qu'un relecteur manque.
+    #[test]
+    fn deux_exercices_nont_jamais_la_meme_theorie() {
+        let pack = pack();
+        let mut vues: std::collections::BTreeMap<&str, &str> = Default::default();
+        let mut doublons: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            let Some(théorie) = &exercice.theorie else {
+                continue;
+            };
+            if let Some(premier) = vues.insert(théorie.fr.as_str(), &exercice.id) {
+                doublons.push(format!("{} et {}", premier, exercice.id));
+            }
+        }
+        assert!(
+            doublons.is_empty(),
+            "des théories sont recopiées d'un exercice à l'autre : {doublons:?}"
+        );
+    }
+
+    /// Une théorie se lit, et tient dans sa bande.
+    ///
+    /// LES DEUX BORNES VIENNENT D'UNE MESURE, non d'un goût. En dessous
+    /// de deux cent cinquante caractères, on n'explique pas une
+    /// mécanique : on la mentionne, et le repli ne valait pas la peine
+    /// d'être ouvert. Au-dessus de mille deux cents, la bande de
+    /// l'exercice — qui est bornée, et qui porte aussi la consigne, le
+    /// but et le budget — fait défiler sur plusieurs écrans ce qu'on
+    /// est censé lire AVANT de commencer, et l'on referme.
+    #[test]
+    fn une_theorie_se_lit_et_tient_dans_sa_bande() {
+        let pack = pack();
+        let mut hors_bornes: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            let Some(théorie) = &exercice.theorie else {
+                continue;
+            };
+            for (langue, texte) in [("fr", théorie.fr.as_str()), ("en", théorie.en.as_str())] {
+                let n = texte.chars().count();
+                if !(250..=1200).contains(&n) {
+                    hors_bornes.push(format!("{} ({langue}) : {n} caractères", exercice.id));
+                }
+            }
+        }
+        assert!(
+            hors_bornes.is_empty(),
+            "des théories sortent des bornes de lecture (250 à 1200 caractères) :\n  {}",
+            hors_bornes.join("\n  ")
+        );
     }
 }

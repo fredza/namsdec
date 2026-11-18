@@ -277,19 +277,39 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
             ["--no-exercises", "ne pas installer la série livrée"],
             ["--no-strip", "garder les symboles de débogage"],
             ["--no-build", "poser le binaire déjà construit, sans recompiler"],
+            ["--no-restart", "ne pas refermer ni rouvrir namsdec s'il tourne"],
             ["--quiet, -q", "ne dire que l'essentiel"],
             ["--no-color", "pas de couleurs (NO_COLOR est respecté aussi)"],
         ]),
+        ("p",
+         "<b>Relancer le script est une mise à jour, pas une réinstallation.</b> Rien "
+         "n'est retiré : vos réglages, les séries que vous avez ajoutées et vos points "
+         "d'arrêt restent où ils sont, et le script l'annonce en tête — « mise à jour de "
+         "0.4.0 vers 0.4.1 » plutôt qu'« installation ». Chaque fichier est écrit à côté "
+         "puis <b>renommé</b>, si bien qu'à aucun instant la cible n'est absente ni "
+         "incomplète."),
+        ("p",
+         "<b>Et si namsdec est ouvert, il le reste.</b> La compilation dure quelques "
+         "minutes, et attendre devant un écran vide n'y sert à rien : le binaire est "
+         "remplacé sous la fenêtre, qui ne s'en aperçoit pas — elle garde celui qu'elle a "
+         "ouvert, et le système le lui laisse tant qu'elle le tient. C'est à la toute "
+         "fin, une fois tout en place, que le script la referme proprement et la rouvre "
+         "sur la version neuve. Une fenêtre qui refuse de partir — une question posée à "
+         "l'écran, un travail non enregistré — n'est <i>jamais</i> forcée : le script le "
+         "dit et s'arrête là, plutôt que de vous prendre ce que vous n'aviez pas "
+         "enregistré. <b>--no-restart</b> l'empêche de refermer quoi que ce soit."),
         ("note",
          "<b>L'épingle du dock est vérifiée, pas supposée.</b> GNOME Shell élague de "
          "lui-même les favoris dont il ne trouve pas le fichier "
          "<font face='Courier'>.desktop</font> ; juste après une réinstallation, le "
          "lanceur vient d'être réécrit et le cache des applications n'est pas forcément "
-         "relu. Le dash retirait alors l'entrée qu'install.sh venait de poser, le script "
+         "relu — et le lanceur, écrit par <font face='Courier'>cat &gt;</font>, restait VIDE le "
+         "temps d'être réécrit. Le dash retirait alors l'entrée qu'install.sh venait de poser, le script "
          "annonçait « épinglé », et l'on concluait que l'installation avait "
          "<i>désinstallé</i> l'icône. Il relit maintenant, laisse une seconde au bureau, "
          "repose une fois — et si l'épingle ne tient toujours pas, il le dit au lieu "
-         "d'annoncer le contraire."),
+         "d'annoncer le contraire. Et depuis le 18 novembre 2026, le lanceur ne passe plus "
+         "jamais par un état vide : il est écrit à côté, puis renommé d'un seul geste."),
         ("p",
          "<font face='Courier'>./uninstall.sh</font> prend <b>--prefix</b>, <b>--bin-dir</b>, "
          "<b>--dry-run</b>, <b>--quiet</b> "
@@ -2008,6 +2028,31 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "revenant en arrière. Ce brouillon dure <b>le temps de la séance</b>&nbsp;: ce "
          "n'est pas un fichier, et il n'est pas écrit sur le disque. Pour garder un "
          "programme au-delà, enregistrez-le&nbsp;: <b>Fichier › Enregistrer sous…</b>."),
+        ("p",
+         "<b>Chaque exercice porte sa fiche de théorie.</b> Ni la consigne, ni "
+         "l'indice&nbsp;: la consigne dit ce qu'on demande, l'indice dit où chercher "
+         "quand on bloque, et la théorie dit la <b>mécanique sur laquelle l'exercice "
+         "repose</b> — ce qu'est une boucle quand le processeur n'en a pas, pourquoi "
+         "écrire <font face='Courier'>eax</font> efface le haut de "
+         "<font face='Courier'>rax</font>, ce qu'une convention d'appel n'est pas "
+         "obligée de garantir. On la lit avant d'essayer, et elle resservira à dix "
+         "autres étapes."),
+        ("p",
+         "Elle cite entre accents graves les mots qui ont une fiche, et l'interface en "
+         "fait des <b>renvois cliquables</b> — vers les instructions comme vers les "
+         "notions, ce que l'énoncé ne fait pas&nbsp;: un énoncé cite des mnémoniques, "
+         "et souligner au passage un mot courant au milieu d'une phrase ferait du "
+         "bruit. La théorie, elle, parle de mécanique, et «&nbsp;un saut en arrière "
+         "vers une étiquette&nbsp;» doit mener quelque part."),
+        ("note",
+         "<b>Repliée par défaut, et c'est une mesure qui l'a décidé.</b> On l'avait "
+         "ouverte, au motif qu'un repli fermé est un repli qu'on n'ouvre jamais. Quatre "
+         "contrôles ont rougi d'un coup&nbsp;: la théorie prend cent cinquante pixels "
+         "dans une bande qui en a deux cent dix, et elle poussait <b>le but</b> sous le "
+         "pli. Or le but dit si l'on a réussi&nbsp;: on le lit à chaque essai, là où la "
+         "théorie se lit une fois avant de commencer. Entre deux textes qui se disputent "
+         "une bande bornée, celui qu'on relit gagne. Le bouton <b>La théorie</b> reste "
+         "sous les yeux, dans la rangée des gestes, et l'ouvrir est un réglage."),
         ("p",
          "<b>Un indice d'abord, la solution ensuite.</b> Entre la consigne du trou et le "
          "programme entier il n'y avait rien&nbsp;: on relisait la consigne, on ne "
