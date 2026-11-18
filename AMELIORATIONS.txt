@@ -12755,3 +12755,187 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      j'avais créé en nommant ma fonction `prose_cliquable` — le relevé
      lit les lignes qui contiennent « cliquable( », et une signature en
      était une. Renommée `prose_avec_fiches`.
+
+9.101 [FAIT] SIX CAPTURES SUR CENT TRENTE-SEPT MONTRAIENT AUTRE CHOSE
+      QUE L'ÉCRAN
+
+     Revue d'interface du 18 novembre 2026, demandée sans précision :
+     une revue complète, donc le banc entier. Mille cinq cent
+     quatre-vingt-treize contrôles verts, aucune mesure ne trouvait
+     plus rien — c'est le moment où il faut REGARDER. Les cent
+     trente-sept scènes rendues en image, et dans l'une d'elles,
+     « établi / le curseur sur une instruction », le programme
+     d'accueil était peint en charabia : les numéros de ligne justes,
+     la mise en page juste, les lettres prises ailleurs.
+
+     CE QUI A ÉTÉ ESSAYÉ ET N'A RIEN DONNÉ, parce que cela vaut d'être
+     dit. Rendre deux fois : les deux rendus étaient identiques.
+     Rendre trois ou quatre fois : identiques. Avancer de douze ou
+     vingt images avant de rendre au lieu de six : identiques.
+     L'image fausse était PARFAITEMENT STABLE — ce qui est le plus
+     mauvais cas, puisque la règle qu'on applique d'ordinaire
+     (« rendre deux fois avant de comparer ») la déclarait bonne.
+
+     CE QUI L'A TROUVÉE. Rendue SEULE, la scène était propre ; rendue
+     dans la série, non. Les cent trente-sept scènes rendues à
+     l'endroit puis À L'ENVERS, et comparées octet à octet : six
+     images différaient, toutes des scènes de l'Établi. Une image qui
+     dépend de ce qui a été rendu avant garde de l'état par-dessus son
+     contexte.
+
+     LA CAUSE, ET ELLE ATTEINT LE PROGRAMME, PAS SEULEMENT LE BANC.
+     `editor::layout_code` garde un `Arc<Galley>` dans un
+     `thread_local`, sous la clé `(texte, thème, taille)` — le cache
+     qui évite de reposer quinze mille lignes deux fois par image. Un
+     galley ne porte pas ses glyphes : il porte, pour chacun, le
+     RECTANGLE EN PIXELS où le lire dans l'atlas des polices. Tant que
+     l'atlas ne fait que grandir, ces rectangles restent bons —
+     `resize_to_min_height` double la hauteur et ne déplace rien. Mais
+     `Fonts::begin_pass` ne se contente pas de grandir : dès que
+     l'atlas est plein à plus de 80 %, ou que `pixels_per_point`
+     change, il REFAIT L'OBJET ENTIER, atlas vide, glyphes rerangés
+     ailleurs. egui vide alors son propre cache de galleys ; celui-ci
+     ne se vidait pas.
+
+     Dans le banc, le contexte change à chaque scène : cent
+     trente-sept atlas à la suite, et la clé était vraie de l'un à
+     l'autre. Dans le programme, le contexte est unique — mais la
+     refonte à 80 % arrive au bout d'une séance, dès qu'une fiche
+     d'aide, un binaire plein de chaînes ou un changement de langue a
+     rempli l'atlas, et le texte de l'éditeur se serait mis en bouillie
+     jusqu'à ce qu'on y touche. Le reste de l'écran, qui repasse par
+     egui, serait resté juste : c'est exactement le genre de défaut
+     qu'on croit venir de son propre code.
+
+     LA CLÉ PORTE MAINTENANT L'ATLAS. Deux pièces en plus : un jeton
+     propre au contexte (rangé dans ses données, il naît et meurt avec
+     lui), et la taille de l'atlas — qui change à chaque refonte,
+     puisqu'elle repart de sa valeur initiale après avoir doublé pour
+     se remplir. Relevée APRÈS la pose, et non avant : poser un texte
+     neuf peut faire grandir l'atlas, et une taille notée avant aurait
+     fait manquer le cache au second appel de la même image — celui de
+     la gouttière — pour rien. Le contrôle de performance
+     `the_frame_that_lays_out_the_text_is_the_one_that_says_so` le
+     vérifie encore : deux relectures dans une image coûtent zéro pose.
+
+     DEUX CONTRÔLES, ET CHACUN ÉPROUVÉ EN REMETTANT LE DÉFAUT.
+     `un_galley_garde_ne_survit_pas_a_son_atlas` est le bon marché : il
+     pose le même texte dans deux contextes successifs et demande que
+     le second ne rende pas l'objet du premier. Il tombe dès qu'on
+     retire `contexte` ou `atlas` de la clé.
+     `aucune_capture_ne_depend_de_celle_d_avant` est le cher, et c'est
+     lui qui a trouvé : il rend tout à l'endroit puis à l'envers et
+     compare. Il reste `#[ignore]` — une minute et un pilote graphique
+     entier —, mais il reste, parce qu'aucune mesure de `output.shapes`
+     ne pouvait voir ceci : le texte y est JUSTE, ce sont les
+     rectangles de glyphes, un cran plus bas, qui désignaient un atlas
+     disparu.
+
+     LE BOUTON DE DON DISAIT LE CONTRAIRE DE CE QU'IL MONTRAIT. Vu sur
+     la capture d'« À propos » : l'image du café et du hamburger peinte
+     en pleine couleur, et juste au-dessous la phrase « Tant qu'elle
+     est vide, ce bouton reste éteint plutôt que de mener nulle part ».
+     Le code faisait bien `add_enabled_ui(false)` — mais egui éteint en
+     fondant une forme de MOITIÉ vers le fond de la fenêtre, ce qui
+     suffit à du gris et ne fait rien à un carré orange saturé : 134,6
+     de clarté moyenne contre 153,3 allumé, douze pour cent. Mesuré
+     deux fois, une fois sur la teinte du rectangle texturé
+     (`#40404040` contre `#7F7F7F7F`), une fois sur les pixels rendus.
+     Une teinte grise explicite le fait tomber à 97,3 — trente-six pour
+     cent —, et le dessin reste reconnaissable : on voit ce qu'on
+     allumerait, on ne croit pas pouvoir cliquer dessus. Retenu par
+     `le_bouton_de_don_eteint_se_voit_eteint`, éprouvé en remettant la
+     teinte blanche.
+
+     CE QUI A ÉTÉ REGARDÉ ET LAISSÉ. L'état vide replie sa phrase à
+     560 pixels même quand la bande en offre 1570, et « composent. » se
+     retrouve seul sur sa ligne : la borne de lecture est un choix
+     écrit et argumenté (`widgets.rs`), la veuve typographique en est
+     le prix. À revoir le jour où l'on équilibrera les lignes, pas
+     avant. Les pastilles des barres de titre diffèrent d'une fenêtre à
+     l'autre — rouge seul pour Préférences et Aide, rouge et vert pour
+     l'Analyse : c'est `window_head` contre `window_head_zoom`, et une
+     fenêtre ne reçoit la verte que si l'agrandir a un sens. Rien à
+     corriger.
+
+9.102 [FAIT] LA BANDE DE LA LIGNE PERDAIT SA PREMIÈRE LIGNE PAR LE
+      HAUT, ET SA DERNIÈRE PAR LE BAS
+
+     Suite de la revue du 18 novembre 2026 (A 9.101), sur demande :
+     corriger la bande `etabli_ligne` avec la hauteur imposée.
+
+     LE DÉFAUT, MESURÉ. Scène « établi / le détail de l'instruction »,
+     1600x1100 : le panneau occupait 734..924, et son contenu était
+     découpé sur 710..900 — vingt-quatre pixels AU-DESSUS du cadre, là
+     où le fond de l'éditeur est peint par-dessus. Ce qui s'y perdait
+     n'était pas un détail : la ligne qui NOMME l'instruction,
+     « 0x400024 jne short boucle », c'est-à-dire la raison d'être de la
+     bande. Par le bas, « RCX 3 -> 2 » perdait seize pixels sur
+     dix-huit. Rien ne défilait : les deux étaient hors d'atteinte.
+
+     POURQUOI LES DEUX INVARIANTS EXISTANTS PASSAIENT À CÔTÉ.
+     `aucune_phrase_ne_perd_de_hauteur_au_decoupage` mesure une encre
+     contre SON découpage — or le découpage était complice, puisqu'il
+     sortait du cadre avec le texte. Et
+     `no_two_texts_of_a_scene_ever_overlap` compare des textes entre
+     eux, alors que ce qui recouvrait est un RECTANGLE, le fond d'un
+     panneau peint après. Le défaut passait exactement entre les deux,
+     et c'est pour cela qu'il a fallu REGARDER une capture pour le
+     voir.
+
+     LA PREMIÈRE CORRECTION N'A PAS MARCHÉ, ET C'EST INSTRUCTIF. Poser
+     une `ScrollArea` avec `.max_height(LIGNE_CONTENU_MAX)` — la borne
+     ÉCRITE, comme la règle le demande — n'a rien réglé :
+     `la_réponse_attend_le_pas_au_niveau_débutant` est tombé, le bloc
+     « Dernier pas » ayant disparu. Mesuré sur place : la zone ne
+     recevait que SOIXANTE pixels pour cent cinquante-quatre de
+     contenu.
+
+     La raison tient en une phrase : `max_height` PLAFONNE, il
+     n'IMPOSE pas. La zone prend le minimum entre la place offerte et
+     sa borne — et la place offerte venait du panneau, qui se mesurait
+     sur elle. La boucle tournait toujours, et elle s'arrêtait sur le
+     mauvais point fixe : la bande restait courte parce qu'elle était
+     courte. C'est très exactement ce que la première tentative (celle
+     qu'on avait retirée) avait rencontré, et écrire la borne de la
+     zone ne suffisait pas à la casser — il fallait écrire celle du
+     PANNEAU.
+
+     LA HAUTEUR EST DONNÉE, ET NON DEMANDÉE. `etabli_ligne_height`
+     relève ce que le contenu a pris (`ui.min_rect().height()`, et non
+     la place offerte), et l'image suivante s'en sert pour poser un
+     `.exact_size()`. Le motif n'est pas neuf dans ce dépôt :
+     `console_input_height` fait la même chose pour la rangée de
+     saisie, avec la même raison écrite — « le panneau restait court
+     parce qu'il était court ». Une image de retard, qu'une seule
+     image corrige, et la boucle est coupée : le panneau ne mesure
+     plus son enfant, donc l'enfant peut lire sa hauteur sans la lui
+     redemander.
+
+     CE QUE CELA DONNE. Sous la borne, rien ne change : deux lignes
+     devant un `nop` prennent deux lignes, et la bande se serre comme
+     avant — le repli automatique s'en charge. Au-delà, la bande prend
+     LIGNE_MAX, une barre paraît, et ce qui dépasse s'atteint. Vérifié
+     à l'image dans les trois états : le détail déplié (barre presque
+     pleine, tout le reste visible), l'état ordinaire en marche (tout
+     visible, pas de barre), et 800x520, où la bande prend même ONZE
+     PIXELS DE MOINS qu'avant — 155 contre 166 — qui reviennent au
+     code.
+
+     L'INVARIANT : `la_bande_de_la_ligne_tient_dans_son_cadre`. Il dit
+     la règle générale — un panneau découpe son contenu à son cadre —
+     et il la mesure sur le découpage plutôt que sur le texte, puisque
+     c'est le découpage qui sortait. Reconnaître la bande parmi les
+     formes peintes demande trois marques, faute de pouvoir lire un
+     identifiant sur une forme : toute la largeur (à la barre près),
+     pas plus haute que ce que la bande peut prendre, et croisant la
+     bande. Éprouvé en remettant le défaut — rendre `.max_size()` et
+     ôter la zone défilante — : il nomme la scène et les vingt-quatre
+     pixels.
+
+     VU ET LAISSÉ : à 800x520, l'en-tête « CE QUE J'AI ÉCRIT » de
+     l'éditeur est coupé par le milieu. C'est antérieur et sans rapport
+     — la bande a RÉTRÉCI de onze pixels —, et cela tient au fait qu'à
+     cette taille l'éditeur n'a plus que trois lignes. Le vrai levier
+     est ailleurs (la bande du résultat prend 45 % de ce qui reste), et
+     il appartient à l'utilisateur : voir A 9.86.

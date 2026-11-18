@@ -841,6 +841,30 @@ impl NamsdecApp {
                             // `Image::sense` plutôt qu'un `ImageButton` : egui
                             // 0.36 a retiré ce dernier, une image cliquable le
                             // remplace.
+                            // ÉTEINTE POUR DE BON QUAND IL N'Y A PAS
+                            // D'ADRESSE, et c'est le mot qui l'exige : la
+                            // phrase juste au-dessous dit « ce bouton reste
+                            // éteint plutôt que de mener nulle part ».
+                            //
+                            // `add_enabled_ui` suffit pour du texte — egui le
+                            // fond de MOITIÉ vers le fond de la fenêtre, et du
+                            // gris à moitié fondu se lit comme du gris inactif.
+                            // Sur une IMAGE saturée, non : le carré orange ne
+                            // perdait que douze pour cent de clarté (134,6
+                            // contre 153,3 de moyenne, mesuré le 18 novembre
+                            // 2026) et restait la chose la plus vive du
+                            // panneau. L'écran disait l'inverse de la phrase.
+                            //
+                            // La teinte multiplie : elle éteint la lumière sans
+                            // toucher à la couleur, et le dessin reste
+                            // reconnaissable — on voit ce qu'on allumerait, on
+                            // ne croit pas pouvoir cliquer dessus. Retenu par
+                            // `le_bouton_de_don_eteint_se_voit_eteint`.
+                            let teinte = if can_donate {
+                                egui::Color32::WHITE
+                            } else {
+                                egui::Color32::from_gray(80)
+                            };
                             let image =
                                 egui::Image::new(egui::load::SizedTexture::from_handle(&texture))
                                     .fit_to_exact_size(egui::vec2(
@@ -848,6 +872,7 @@ impl NamsdecApp {
                                         TREAT_IMAGE_SHOWN,
                                     ))
                                     .corner_radius(6)
+                                    .tint(teinte)
                                     .sense(egui::Sense::click());
                             if ui
                                 .add(image)

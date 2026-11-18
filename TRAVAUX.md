@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **16 novembre
+Tenue à jour au fil des séances. Dernière mise à jour : **18 novembre
 2026**, version 0.4.0-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -4645,6 +4645,56 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       L'emploi est borné : kittest pour les GESTES, le banc pour la mise
       en page — il mesure des pixels, là où l'arbre d'accessibilité ne
       connaît que des noms.
+
+- [x] **Six captures sur cent trente-sept montraient autre chose que
+      l'écran** (A 9.101) — revue d'interface du 18 novembre 2026. Les
+      1 593 contrôles étaient verts ; les IMAGES, non. `layout_code`
+      gardait un `Arc<Galley>` sous la clé `(texte, thème, taille)`, et
+      un galley ne porte pas ses glyphes mais les RECTANGLES EN PIXELS
+      où les lire dans l'atlas des polices. `Fonts::begin_pass` refait
+      l'atlas entier — pas seulement le grandit — dès qu'il est plein à
+      80 % ou que `pixels_per_point` change ; egui vide alors son cache
+      de galleys, celui-ci ne se vidait pas. Le banc le voyait à chaque
+      scène (un contexte par scène) ; le programme l'aurait vu au bout
+      d'une séance, le texte de l'éditeur en bouillie et tout le reste
+      de l'écran juste. La clé porte maintenant un jeton de contexte et
+      la taille de l'atlas, relevée APRÈS la pose pour ne pas coûter une
+      seconde pose dans la même image.
+      NI RENDRE DEUX FOIS, NI TROIS, NI AVANCER DE VINGT IMAGES n'y
+      changeaient rien : l'image fausse était stable, et c'est l'ORDRE
+      des scènes qui la faisait bouger. Deux contrôles, chacun éprouvé
+      en remettant le défaut : `un_galley_garde_ne_survit_pas_a_son_atlas`
+      (bon marché, deux contextes successifs) et
+      `aucune_capture_ne_depend_de_celle_d_avant` (`#[ignore]`, rend tout
+      à l'endroit puis à l'envers et compare octet à octet).
+
+- [x] **Le bouton de don disait le contraire de ce qu'il montrait**
+      (A 9.101) — « À propos » écrit « ce bouton reste éteint plutôt que
+      de mener nulle part » sous une image peinte en pleine couleur.
+      `add_enabled_ui` éteint en fondant de moitié vers le fond : cela
+      suffit à du gris, pas à un carré orange saturé — douze pour cent
+      de clarté en moins (134,6 contre 153,3). Une teinte grise
+      explicite en ôte trente-six, et le dessin reste reconnaissable.
+      Retenu par `le_bouton_de_don_eteint_se_voit_eteint`.
+
+- [x] **La bande de la ligne perdait sa première ligne par le haut, et
+      sa dernière par le bas** (A 9.102) — scène « établi / le détail de
+      l'instruction », 1600×1100 : le panneau occupait 734..924 et
+      découpait son contenu sur 710..900, soit **24 px au-dessus du
+      cadre**, là où le fond de l'éditeur est peint par-dessus. Ce qui
+      s'y perdait est la ligne qui NOMME l'instruction ; par le bas,
+      « RCX 3 → 2 » perdait 16 px sur 18. Rien ne défilait.
+      `max_height` SEUL N'A RIEN RÉGLÉ — il plafonne, il n'impose pas :
+      la zone recevait 60 px pour 154 de contenu, et `Dernier pas`
+      disparaissait (`la_réponse_attend_le_pas_au_niveau_débutant` l'a
+      dit). La boucle se coupe au PANNEAU : `etabli_ligne_height` relève
+      ce que le contenu a pris, et l'image suivante pose un
+      `.exact_size()` — le même motif que `console_input_height` pour la
+      rangée de saisie. Sous la borne rien ne change ; au-delà, une barre
+      paraît et ce qui dépasse s'atteint. À 800×520 la bande prend même
+      11 px de moins qu'avant, qui reviennent au code. Retenu par
+      `la_bande_de_la_ligne_tient_dans_son_cadre`, éprouvé en remettant
+      `.max_size()` et en ôtant la zone défilante.
 
 ## 7. Dette technique
 

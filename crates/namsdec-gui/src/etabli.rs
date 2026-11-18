@@ -78,7 +78,44 @@ const RESULTAT_MAX: f32 = 320.0;
 /// Elle s'ajuste à ce qu'elle porte — deux lignes devant un `nop`, six
 /// devant un saut conditionnel détaillé —, mais elle ne prend pas la
 /// place du code : au-delà, c'est elle qui se serre.
-const LIGNE_MAX: f32 = 190.0;
+pub(crate) const LIGNE_MAX: f32 = 190.0;
+
+/// Les marges hautes et basses du cadre de cette bande, huit chacune.
+///
+/// Nommées parce qu'elles servent dans les deux sens : du contenu vers
+/// la hauteur de la bande, et de la hauteur de la bande vers la place
+/// qui reste au contenu. Deux huit écrits séparément finiraient par ne
+/// plus valoir la même chose que la marge réellement posée.
+const LIGNE_MARGES: f32 = 16.0;
+
+/// Ce que la bande de la ligne courante prend au moins, dès qu'elle a
+/// quelque chose à dire.
+///
+/// Une ligne et ses marges : un filet, non un choix de mise en page.
+/// La bande se donne une hauteur exacte à partir d'un relevé, et un
+/// relevé aberrant — une image où rien n'a encore été posé — la
+/// réduirait à un liseré sans ce plancher.
+const LIGNE_MIN: f32 = 18.0 + LIGNE_MARGES;
+
+/// Ce que la zone défilante de cette bande prend au plus.
+///
+/// [`LIGNE_MAX`] moins [`LIGNE_MARGES`]. **Écrite, et non lue sur le
+/// parent** : c'est le point de la correction du 18 novembre 2026. Le
+/// panneau prenait la hauteur de son contenu, et une zone défilante qui
+/// lit la hauteur offerte par ce panneau lui demande le chiffre qu'il
+/// est en train de calculer sur elle. Chacun attendait l'autre, et la
+/// boucle s'arrêtait sur le mauvais point fixe — mesuré le 18 novembre
+/// 2026 : soixante pixels offerts pour cent cinquante-quatre de
+/// contenu, la bande restant courte parce qu'elle était courte. C'est
+/// ce qui avait fait retirer la première tentative.
+///
+/// Plafonner ne suffisait donc pas : la bande se donne désormais une
+/// hauteur EXACTE (voir [`NamsdecApp::etabli_ligne_height`]), et cette
+/// borne-ci ne sert plus qu'à dire à la zone quand il faut défiler.
+///
+/// Toute hauteur qu'un enfant lit de son parent, et que le parent mesure
+/// sur son enfant, doit être écrite.
+const LIGNE_CONTENU_MAX: f32 = LIGNE_MAX - LIGNE_MARGES;
 
 /// Ce que la bande de l'exercice prend quand elle paraît.
 ///
@@ -346,8 +383,21 @@ impl NamsdecApp {
         // gagnée ne paie pas deux panneaux qui se recouvrent, et l'on
         // ne garde pas une borne dont on ne sait pas expliquer l'effet.
         // Voir `panels_do_not_overlap_on_the_smallest_screen`.
+        // LA HAUTEUR EST DONNÉE, ET NON DEMANDÉE.
+        //
+        // Elle vaut ce que le contenu a pris à l'image précédente, plus
+        // les marges, bornée à [`LIGNE_MAX`] — et faute de relevé, la
+        // borne elle-même, qu'une seule image corrige. Le panneau ne
+        // mesure donc plus son enfant, et son enfant peut lire sa
+        // hauteur sans la lui redemander : c'est ce qui rend la zone
+        // défilante ci-dessous possible. Voir
+        // [`NamsdecApp::etabli_ligne_height`].
+        let hauteur_de_la_bande = self
+            .etabli_ligne_height
+            .map_or(LIGNE_MAX, |contenu| contenu + LIGNE_MARGES)
+            .clamp(LIGNE_MIN, LIGNE_MAX);
         egui::Panel::bottom("etabli_ligne")
-            .max_size(LIGNE_MAX)
+            .exact_size(hauteur_de_la_bande)
             .frame(
                 egui::Frame::new()
                     .fill(theme.panel)
@@ -367,7 +417,57 @@ impl NamsdecApp {
                 // « établi / le détail de l'instruction » a amené au
                 // banc le 16 novembre 2026.
                 //
-                self.etabli_ligne_ui(ui);
+                // LA BORNE EST ÉCRITE, ET C'EST TOUTE LA DIFFÉRENCE
+                // AVEC LA PREMIÈRE TENTATIVE.
+                //
+                // Une zone défilante avait déjà été posée ici, puis
+                // retirée : elle ne montrait que la première moitié de
+                // ce qu'elle portait. La raison n'était pas la zone
+                // mais la BOUCLE DE MESURE — le panneau prend la
+                // hauteur de son contenu, la zone lisait la hauteur
+                // offerte par le panneau, et chacun attendait le
+                // chiffre de l'autre. Une zone qui ne sait pas quelle
+                // hauteur demander en demande une fausse.
+                //
+                // La boucle se coupe en écrivant la dimension :
+                // [`LIGNE_CONTENU_MAX`] est un nombre, dérivé de
+                // [`LIGNE_MAX`] et des marges du cadre, et il ne vient
+                // plus du parent. Le repli automatique garde le cas
+                // ordinaire inchangé — deux lignes devant un `nop`
+                // prennent deux lignes, et le panneau se serre comme
+                // avant ; c'est seulement au-delà de la borne que la
+                // barre paraît et que l'on peut atteindre ce qui
+                // dépasse.
+                //
+                // MESURÉ AVANT (18 novembre 2026, scène « établi / le
+                // détail de l'instruction », 1600x1100) : le contenu
+                // demandait plus que les 190 px du panneau, et la
+                // bande le perdait AUX DEUX BOUTS — la ligne qui nomme
+                // l'instruction était peinte au-dessus du cadre, où le
+                // fond de l'éditeur la recouvrait, et « RCX 3 -> 2 »
+                // perdait 16 pixels sur 18 par le bas. Aucun des deux
+                // invariants n'y voyait rien : celui du découpage
+                // n'accuse qu'une zone dont l'UNIQUE ligne est coupée,
+                // et celui des recouvrements compare des textes entre
+                // eux, alors qu'ici c'est un rectangle qui recouvrait.
+                // Retenu par `la_bande_de_la_ligne_ne_peint_rien_hors_de_son_cadre`.
+                let zone = egui::ScrollArea::vertical()
+                    .max_height(LIGNE_CONTENU_MAX)
+                    // La largeur reste entière : la bande centre
+                    // certaines de ses phrases, et une zone qui se
+                    // serre sur son texte le plus long les centrerait
+                    // sur autre chose que la bande.
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        self.etabli_ligne_ui(ui);
+                        // `min_rect` et non la hauteur offerte : c'est
+                        // ce que le contenu A PRIS, qu'il y ait eu la
+                        // place ou non. La hauteur offerte dirait
+                        // seulement ce qu'on lui a donné, et la bande
+                        // resterait courte parce qu'elle est courte.
+                        ui.min_rect().height()
+                    });
+                self.etabli_ligne_height = Some(zone.inner).filter(|h| *h > 1.0);
             });
 
         if !self.etabli_machine_detachee {

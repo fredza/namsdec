@@ -415,7 +415,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "est la première moitié de l'apprentissage et ce que l'écran ne proposait "
          "nulle part. <b>Une seule bande explique à la fois</b>&nbsp;: pendant un "
          "exercice, c'est la bande de l'exercice qui le fait — les deux ensemble ne "
-         "laissaient plus une ligne de programme visible sur un petit écran.",
+         "laissaient plus une ligne de programme visible sur un petit écran. "
+         "<b>Elle prend la hauteur de ce qu'elle a à dire</b> — deux lignes devant un "
+         "<font face='Courier'>nop</font>, six devant un saut conditionnel détaillé — "
+         "sans jamais dépasser une borne&nbsp;: au-delà, <b>c'est elle qui se serre</b>, "
+         "une barre paraît sur son bord droit, et ce qui dépasse se fait défiler. "
+         "Elle ne mange pas les lignes du programme, et elle ne peint plus rien "
+         "au-dessus de son propre cadre&nbsp;: la ligne qui nomme l'instruction y était "
+         "recouverte par le fond de l'éditeur, et rien ne permettait d'aller la "
+         "chercher.",
          "<b>Résultat</b> — tout en bas : ce que le programme a écrit, ce qu'il attend "
          "qu'on lui réponde — la bande se donne la hauteur de <b>la rangée où l'on "
          "répond</b>, arguments et environnement compris, sinon elle passe sous le bord "
@@ -4025,6 +4033,14 @@ def main():
         "namsdec est publié sous licence <b>MIT</b> : ce que vous comprenez ici est fait "
         "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "
         "GitHub, et la boîte « À propos » mène aux deux ainsi qu'au salon Discord."))
+    blocs.append(("p",
+        "La même boîte porte une image — un café et un hamburger — qui ouvre une page de "
+        "don. <b>Elle est éteinte tant qu'aucune adresse n'est réglée</b>, et elle se voit "
+        "éteinte : le dessin reste reconnaissable, mais sa lumière est baissée, pour qu'on "
+        "ne croie pas pouvoir cliquer sur ce qui ne mène nulle part. L'adresse se pose dans "
+        "<b>Préférences › Général</b>, ou dans le champ <font face='Courier'>donation_url</font> "
+        "de <font face='Courier'>settings.json</font> ; namsdec n'en privilégie aucune et "
+        "ouvre ce qu'on lui donne, dans votre navigateur, à votre clic."))
 
     _verifie_les_glyphes(blocs)
     sortie = RACINE / "docs" / ("guide-namsdec-%s.pdf" % v)

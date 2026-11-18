@@ -2064,12 +2064,46 @@ pub(crate) fn layout_code(
     // Le zoom change la taille de la police sans toucher au texte.
     let taille = egui::TextStyle::Monospace.resolve(ui.style()).size;
     let thème = theme as *const Theme as usize;
+    let contexte = jeton_du_contexte(ui.ctx());
+    // L'ATLAS FAIT PARTIE DE LA CLÉ, et c'est le point de la
+    // correction du 18 novembre 2026.
+    //
+    // Un galley ne porte pas ses glyphes : il porte, pour chacun, le
+    // RECTANGLE EN PIXELS où le lire dans l'atlas des polices. Tant que
+    // l'atlas ne fait que grandir, ces rectangles restent bons —
+    // `resize_to_min_height` double la hauteur et n'ôte rien de ce qui
+    // est déjà rangé. Mais `Fonts::begin_pass` ne grandit pas toujours :
+    // dès que l'atlas est plein à plus de 80 %, ou que `pixels_per_point`
+    // change, il REFAIT L'OBJET ENTIER — atlas vide, glyphes rerangés
+    // dans l'ordre où la nouvelle image les redemande, donc ailleurs.
+    // egui vide alors son propre cache de galleys. Celui-ci ne se vidait
+    // pas, et rendait des rectangles qui désignent des cases où il y a
+    // désormais autre chose : le texte de l'éditeur se peint en
+    // charabia, et le reste de l'écran — qui repasse par egui — demeure
+    // juste.
+    //
+    // La taille de l'atlas change à chaque refonte, puisqu'elle repart
+    // de sa valeur initiale alors qu'elle avait doublé pour se remplir.
+    // Elle est donc le témoin, et elle ne coûte rien à lire.
+    //
+    // RELEVÉE APRÈS LA POSE, et non avant : poser un texte neuf peut
+    // faire grandir l'atlas, et une taille notée avant serait déjà
+    // périmée au premier appel suivant — la gouttière et le champ de
+    // texte demandent le même texte deux fois par image, et la seconde
+    // aurait manqué le cache pour rien.
+    let atlas = ui.fonts(|f| f.font_image_size());
 
     if let Some(galley) = CACHE.with(|cache| {
         cache
             .borrow()
             .as_ref()
-            .filter(|gardé| gardé.thème == thème && gardé.taille == taille && gardé.texte == text)
+            .filter(|gardé| {
+                gardé.thème == thème
+                    && gardé.taille == taille
+                    && gardé.contexte == contexte
+                    && gardé.atlas == atlas
+                    && gardé.texte == text
+            })
             .map(|gardé| gardé.galley.clone())
     }) {
         return galley;
@@ -2078,11 +2112,14 @@ pub(crate) fn layout_code(
     let job = syntax::highlight(ui, theme, text, f32::INFINITY);
     let galley = ui.fonts_mut(|f| f.layout_job(job));
     POSES.with(|n| n.set(n.get() + 1));
+    let atlas = ui.fonts(|f| f.font_image_size());
     CACHE.with(|cache| {
         *cache.borrow_mut() = Some(Cache {
             texte: text.to_owned(),
             thème,
             taille,
+            contexte,
+            atlas,
             galley: galley.clone(),
         })
     });
@@ -2152,5 +2189,33 @@ struct Cache {
     /// L'adresse du thème — ils sont statiques, donc elle les désigne.
     thème: usize,
     taille: f32,
+    /// Quel `egui::Context` a posé ce galley — voir `jeton_du_contexte`.
+    contexte: u64,
+    /// La taille de l'atlas APRÈS la pose, qui date l'atlas où ce
+    /// galley a ses glyphes. Voir `layout_code`.
+    atlas: [usize; 2],
     galley: std::sync::Arc<egui::Galley>,
+}
+
+/// Un numéro propre à chaque `egui::Context`, qui ne se répète pas.
+///
+/// Le cache est un `thread_local` : il survit au contexte qui l'a
+/// rempli. Un seul programme n'a qu'un contexte et ne voit rien ; le
+/// banc des captures en fabrique cent trente-sept à la suite, et la
+/// clé `(texte, thème, taille)` était vraie d'un contexte à l'autre —
+/// l'Établi reprenait alors le galley d'une AUTRE fenêtre, dont les
+/// glyphes désignent des cases d'un atlas qui n'existe plus ici. Six
+/// captures sur cent trente-sept montraient du charabia à la place du
+/// programme d'accueil, et le même texte changeait selon la scène
+/// rendue juste avant.
+///
+/// Le numéro se range dans les données du contexte : il naît avec lui
+/// et meurt avec lui, sans que personne ait à le nettoyer.
+fn jeton_du_contexte(ctx: &egui::Context) -> u64 {
+    static SUIVANT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    ctx.data_mut(|données| {
+        *données.get_temp_mut_or_insert_with(egui::Id::new("namsdec:jeton-du-contexte"), || {
+            SUIVANT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+        })
+    })
 }

@@ -722,6 +722,22 @@ struct NamsdecApp {
     /// se trouve démentie dès qu'on ouvre quelque chose. Le panneau était
     /// alors trop court, et le champ passait sous la barre de statut.
     console_input_height: Option<f32>,
+    /// La hauteur qu'a prise le contenu de la bande de la ligne
+    /// courante, à la dernière image.
+    ///
+    /// Le même relevé que [`Self::console_input_height`], et pour la
+    /// même raison, mesurée le 18 novembre 2026 : la bande prenait la
+    /// hauteur de son contenu, et sa zone défilante lisait la hauteur
+    /// offerte par la bande. Chacun attendait le chiffre de l'autre, et
+    /// la boucle s'arrêtait sur le mauvais — la bande restait courte
+    /// parce qu'elle était courte, et la zone ne montrait que soixante
+    /// pixels sur cent cinquante-quatre. Le bloc « Dernier pas »
+    /// disparaissait.
+    ///
+    /// Le relevé coupe la boucle : il vient de l'image PRÉCÉDENTE, donc
+    /// d'aucun calcul en cours, et la bande peut se donner une hauteur
+    /// exacte avant de dessiner quoi que ce soit.
+    etabli_ligne_height: Option<f32>,
     /// Le bloc des variables d'environnement est-il déplié ?
     ///
     /// Tenu ici plutôt que laissé au repliable : sa hauteur entre dans
@@ -2445,6 +2461,7 @@ impl Default for NamsdecApp {
             program_args: String::new(),
             program_env: String::new(),
             console_input_height: None,
+            etabli_ligne_height: None,
             console_env_open: false,
             console_args_open: false,
             console_input_released: false,

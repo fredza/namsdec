@@ -778,3 +778,79 @@ fn the_whole_text_is_surveyed_once_per_text() {
         "un texte nouveau, un relevé"
     );
 }
+
+/// Un texte gardé d'une image à l'autre vaut encore pour l'atlas
+/// d'aujourd'hui.
+///
+/// LE DÉFAUT. `layout_code` garde un `Arc<Galley>` dans un
+/// `thread_local`, sous la clé `(texte, thème, taille)`. Un galley ne
+/// porte pas ses glyphes : il porte, pour chacun, le rectangle EN
+/// PIXELS où le lire dans l'atlas des polices. Or `Fonts::begin_pass`
+/// refait l'atlas entier — pas seulement le grandir — dès qu'il est
+/// plein à plus de 80 %, ou que `pixels_per_point` change. egui vide
+/// alors son propre cache de galleys ; celui-ci ne se vidait pas, et
+/// rendait des rectangles qui désignent des cases où il y a désormais
+/// autre chose.
+///
+/// CE QU'ON VOYAIT. Le banc des captures fabrique un contexte par
+/// scène : cent trente-sept atlas à la suite. Six captures sur cent
+/// trente-sept peignaient le programme d'accueil en charabia — les
+/// numéros de ligne justes, la mise en page juste, les lettres prises
+/// dans un autre atlas —, et le MÊME texte changeait d'allure selon la
+/// scène rendue juste avant. Rendu seul, l'Établi était propre ; rendu
+/// après une autre scène, non. Mesuré le 18 novembre 2026 en rendant
+/// les cent trente-sept scènes à l'endroit puis à l'envers : six
+/// images différaient.
+///
+/// Dans le programme, le contexte est unique et ce chemin-là ne se
+/// prend pas ; c'est la refonte à 80 % qui l'atteint, et elle arrive
+/// au bout d'une séance — une fiche d'aide, un binaire plein de
+/// chaînes, un changement de langue.
+///
+/// LE CONTRÔLE pose le même texte dans deux contextes successifs, ce
+/// que le banc fait pour de vrai. Un galley rendu par le second qui
+/// serait l'objet même du premier est un galley d'un autre atlas :
+/// c'est exactement le défaut. Retirer `contexte` ou `atlas` de la clé
+/// de `layout_code` fait rougir cette ligne.
+#[test]
+fn un_galley_garde_ne_survit_pas_a_son_atlas() {
+    let app = NamsdecApp::default();
+    let texte = "; une ligne de commentaire\nmov rax, 1\nsyscall\n".repeat(40);
+
+    let pose = |theme| {
+        let ctx = egui::Context::default();
+        app.apply_theme(&ctx);
+        let mut gardé = None;
+        let mut sortie = ctx.run_ui(
+            egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1400.0, 900.0),
+                )),
+                ..Default::default()
+            },
+            |ui| {
+                // Deux fois, comme la gouttière puis le champ de texte :
+                // DANS une même image, le cache doit servir.
+                let a = crate::editor::layout_code(ui, theme, &texte);
+                let b = crate::editor::layout_code(ui, theme, &texte);
+                assert!(
+                    std::sync::Arc::ptr_eq(&a, &b),
+                    "dans une même image, le texte ne se pose qu'une fois"
+                );
+                gardé = Some(a);
+            },
+        );
+        sortie.textures_delta.clear();
+        gardé.expect("le texte est posé")
+    };
+
+    let premier = pose(app.theme);
+    let second = pose(app.theme);
+    assert!(
+        !std::sync::Arc::ptr_eq(&premier, &second),
+        "le second contexte a repris le galley du premier : ses glyphes \
+         désignent les cases d'un atlas qui n'existe plus ici, et le \
+         texte se peint en charabia"
+    );
+}

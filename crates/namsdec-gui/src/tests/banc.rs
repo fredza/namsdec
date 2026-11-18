@@ -5689,3 +5689,268 @@ fn aucun_survol_ne_deplace_ce_qui_l_entoure() {
         }
     }
 }
+
+/// Une capture ne dépend pas de la scène rendue juste avant.
+///
+/// C'EST LE CONTRÔLE QUI A TROUVÉ LE CACHE DE GALLEYS PÉRIMÉ, le
+/// 18 novembre 2026, et il reste parce qu'aucune mesure ne pouvait le
+/// voir : les invariants du banc lisent `output.shapes`, où le texte
+/// est JUSTE — ce sont les rectangles de glyphes, un cran plus bas, qui
+/// désignaient les cases d'un atlas disparu. Le défaut ne se voyait
+/// qu'à l'image, et seulement si l'on savait à quoi la comparer.
+///
+/// Le principe : rendre toutes les scènes à l'endroit, puis à l'envers,
+/// et comparer octet à octet. Une scène dont l'image change selon ce
+/// qui précède garde de l'état par-dessus son contexte — et ce qu'elle
+/// montre alors n'est pas ce que le programme ferait. Six scènes sur
+/// cent trente-six différaient ; elles peignaient le programme
+/// d'accueil en charabia.
+///
+/// Ce n'est pas la même question que « rendre deux fois avant de
+/// comparer » : deux rendus de SUITE étaient parfaitement identiques,
+/// et l'image fausse était stable. L'ordre, lui, la faisait bouger.
+///
+/// IGNORÉ PAR DÉFAUT : deux rendus complets, une minute, et un pilote
+/// graphique logiciel entier.
+///
+/// ```text
+/// cargo test -p namsdec-gui --release -- --ignored --nocapture aucune_capture_ne_depend_de_celle_d_avant
+/// ```
+#[test]
+#[ignore = "rend toutes les scènes deux fois ; se demande explicitement"]
+fn aucune_capture_ne_depend_de_celle_d_avant() {
+    use egui_kittest::Harness;
+
+    let rendu = |envers: bool| {
+        let mut images: std::collections::BTreeMap<String, Vec<u8>> = Default::default();
+        let mut toutes = scènes();
+        if envers {
+            toutes.reverse();
+        }
+        for (nom, _, prépare) in toutes {
+            let mut app = NamsdecApp::default();
+            prépare(&mut app);
+            app.values_changed_at = None;
+            let taille = écran_du_banc()
+                .screen_rect
+                .map(|r| r.size())
+                .unwrap_or(egui::vec2(1600.0, 1100.0));
+            let mut harness = Harness::builder()
+                .with_size(taille)
+                .wgpu()
+                .build_ui(move |ui| {
+                    app.apply_theme(ui.ctx());
+                    app.draw(ui)
+                });
+            for _ in 0..6 {
+                harness.step();
+            }
+            // Le même pas de deux que les captures : l'atlas se
+            // construit en peignant, et le premier rendu emploie
+            // encore l'ancienne texture.
+            let _ = harness.render();
+            harness.step();
+            if let Ok(image) = harness.render() {
+                images.insert(nom, image.into_raw());
+            }
+        }
+        images
+    };
+
+    let endroit = rendu(false);
+    let envers = rendu(true);
+    assert!(
+        endroit.len() > 20,
+        "le banc a plus de vingt scènes : {}",
+        endroit.len()
+    );
+
+    let fautives: Vec<&String> = endroit
+        .iter()
+        .filter(|(nom, pixels)| envers.get(*nom).is_some_and(|autre| autre != *pixels))
+        .map(|(nom, _)| nom)
+        .collect();
+    assert!(
+        fautives.is_empty(),
+        "{} scène(s) changent selon ce qui a été rendu avant — \
+         elles gardent de l'état par-dessus leur contexte :\n  {}",
+        fautives.len(),
+        fautives
+            .iter()
+            .map(|n| n.as_str())
+            .collect::<Vec<_>>()
+            .join("\n  ")
+    );
+}
+
+/// Le bouton de don se voit éteint quand il ne mène nulle part.
+///
+/// La fenêtre « À propos » écrit, sous l'image : « Tant qu'elle est
+/// vide, ce bouton reste éteint plutôt que de mener nulle part. »
+/// L'image, elle, était peinte presque à plein — `add_enabled_ui` fond
+/// une forme de MOITIÉ vers le fond de la fenêtre, ce qui éteint un
+/// gris et ne fait rien à un carré orange saturé : 134,6 de clarté
+/// moyenne contre 153,3, douze pour cent. Personne ne lit douze pour
+/// cent comme « éteint », et la phrase disait donc le contraire de ce
+/// qu'on voyait.
+///
+/// Le contrôle lit la TEINTE de l'image peinte — le `fill` du
+/// rectangle texturé — dans les deux états, et demande que l'éteinte
+/// soit nettement plus sombre. Le facteur deux est le minimum de ce
+/// qui se voit ; remettre la teinte blanche dans les deux cas fait
+/// rougir cette ligne.
+#[test]
+fn le_bouton_de_don_eteint_se_voit_eteint() {
+    let teinte = |adresse: &str| {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.show_about = true;
+        app.donation_url = adresse.to_owned();
+        let mut trouvée = None;
+        for _ in 0..4 {
+            trouvée = None;
+            let mut sortie = ctx.run_ui(écran_du_banc(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                // Le rectangle texturé le plus bas de la fenêtre :
+                // l'image du repas est sous le logo, qui est le seul
+                // autre.
+                if let egui::epaint::Shape::Rect(r) = &clipped.shape
+                    && r.brush.is_some()
+                    && trouvée.is_none_or(|(haut, _)| r.rect.top() > haut)
+                {
+                    trouvée = Some((r.rect.top(), r.fill));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        trouvée.expect("l'image du don est peinte").1
+    };
+
+    let allumée = teinte("https://exemple.invalide/don");
+    let éteinte = teinte("");
+    // La clarté de la teinte, canaux pondérés comme pour le contraste.
+    let clarté = |c: egui::Color32| {
+        0.2126 * f32::from(c.r()) + 0.7152 * f32::from(c.g()) + 0.0722 * f32::from(c.b())
+    };
+    assert!(
+        clarté(éteinte) * 2.0 <= clarté(allumée),
+        "sans adresse de don, l'image est peinte presque aussi vive \
+         qu'avec — teinte éteinte {éteinte:?} ({:.0}) contre allumée \
+         {allumée:?} ({:.0}) —, alors que la phrase au-dessous annonce \
+         un bouton éteint",
+        clarté(éteinte),
+        clarté(allumée),
+    );
+}
+
+/// La bande de la ligne courante tient dans son cadre.
+///
+/// LE DÉFAUT, mesuré le 18 novembre 2026 sur la capture de la scène
+/// « établi / le détail de l'instruction », à 1600x1100. La bande
+/// prenait la hauteur de ce qu'elle portait, bornée à `LIGNE_MAX` — et
+/// quand le contenu en demandait plus, egui lui donnait quand même la
+/// place, EN DEHORS du cadre : le panneau occupait 734..924, et son
+/// contenu était découpé sur 710..900. Vingt-quatre pixels au-dessus du
+/// bord, là où le fond de l'éditeur est peint par-dessus.
+///
+/// Ce qui s'y perdait n'était pas un détail : la ligne qui NOMME
+/// l'instruction, `0x400024 jne short boucle`, c'est-à-dire la raison
+/// d'être de la bande. Elle était recouverte, et rien ne défilait pour
+/// aller la chercher. Par le bas, « RCX 3 -> 2 » perdait seize pixels
+/// sur dix-huit.
+///
+/// POURQUOI AUCUN AUTRE INVARIANT NE LE VOYAIT, et c'est la raison
+/// d'écrire celui-ci. `aucune_phrase_ne_perd_de_hauteur_au_decoupage`
+/// mesure une encre contre SON découpage — or le découpage était
+/// complice, puisqu'il sortait du cadre avec le texte. Et
+/// `no_two_texts_of_a_scene_ever_overlap` compare des textes entre eux,
+/// alors que ce qui recouvrait ici est un RECTANGLE, le fond d'un
+/// panneau peint après. Le défaut passait entre les deux.
+///
+/// LA RÈGLE : un panneau découpe son contenu À SON CADRE. Ce qui ne
+/// tient pas défile, et la barre le dit.
+///
+/// Éprouvé en remettant le défaut — rendre à la bande son
+/// `.max_size(LIGNE_MAX)` et lui ôter sa zone défilante — : il nomme la
+/// scène et les vingt-quatre pixels.
+#[test]
+fn la_bande_de_la_ligne_tient_dans_son_cadre() {
+    let mut fautifs = Vec::new();
+    for (nom, _, prépare) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        prépare(&mut app);
+        app.values_changed_at = None;
+        // La bande n'existe qu'à l'Établi.
+        if !app.debutant {
+            continue;
+        }
+        app.apply_theme(&ctx);
+        let input = écran_du_banc();
+        // QUATRE IMAGES, ET LA DERNIÈRE SEULE. La bande se donne sa
+        // hauteur à partir du relevé de l'image PRÉCÉDENTE : la
+        // première n'en a pas et prend la borne. Une mise en place qui
+        // converge n'est pas un défaut ; ce qu'on refuse, c'est ce qui
+        // reste faux une fois tout posé.
+        for image in 0..4 {
+            let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
+            let cadre =
+                egui::containers::panel::PanelState::load(&ctx, egui::Id::new("etabli_ligne"))
+                    .map(|état| état.outer_rect);
+            if image < 3 {
+                sortie.textures_delta.clear();
+                continue;
+            }
+            let Some(cadre) = cadre else { continue };
+            // RECONNAÎTRE LE DÉCOUPAGE DE LA BANDE, et lui seul. Trois
+            // marques, et il faut les trois :
+            //
+            // — il prend toute la largeur, à la barre de défilement
+            //   près (seize pixels) ;
+            // — il n'est pas plus haut que ce que la bande peut
+            //   prendre, ce qui écarte l'éditeur et la bande du
+            //   résultat, qui tiennent toute la largeur eux aussi ;
+            // — il croise la bande, ce qui écarte la barre de statut
+            //   et la rangée des vues, larges et basses mais
+            //   ailleurs.
+            //
+            // Le tri ne peut pas se faire sur l'identifiant : une
+            // forme peinte ne porte que son découpage.
+            let mut découpages: Vec<egui::Rect> = Vec::new();
+            for clipped in &sortie.shapes {
+                if !matches!(clipped.shape, egui::epaint::Shape::Text(_)) {
+                    continue;
+                }
+                let clip = clipped.clip_rect;
+                let large = (clip.width() - cadre.width()).abs() <= 16.0;
+                let basse = clip.height() <= crate::etabli::LIGNE_MAX + 2.0;
+                let croise = clip.bottom() > cadre.top() && clip.top() < cadre.bottom();
+                if large && basse && croise && !découpages.contains(&clip) {
+                    découpages.push(clip);
+                }
+            }
+            for clip in découpages {
+                let dehors = (cadre.top() - clip.top()).max(clip.bottom() - cadre.bottom());
+                if dehors > 1.0 {
+                    fautifs.push(format!(
+                        "{nom} : la bande occupe {:.1}..{:.1} et découpe son contenu \
+                         sur {:.1}..{:.1} — {dehors:.1} px hors du cadre, recouverts \
+                         par ce qui est peint après",
+                        cadre.top(),
+                        cadre.bottom(),
+                        clip.top(),
+                        clip.bottom(),
+                    ));
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+    }
+    assert!(
+        fautifs.is_empty(),
+        "la bande de la ligne courante déborde de son cadre — ce qui est \
+         peint là n'est ni visible ni atteignable :\n  {}",
+        fautifs.join("\n  ")
+    );
+}
