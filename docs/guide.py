@@ -2044,15 +2044,19 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "et souligner au passage un mot courant au milieu d'une phrase ferait du "
          "bruit. La théorie, elle, parle de mécanique, et «&nbsp;un saut en arrière "
          "vers une étiquette&nbsp;» doit mener quelque part."),
+        ("p",
+         "Elle est écrite <b>pour qui débute</b>&nbsp;: une idée par paragraphe, des "
+         "phrases courtes, un exemple avec de vrais nombres, et le piège à la fin quand "
+         "il y en a un. Elle ne suppose pas qu'on sache déjà ce qu'elle explique."),
         ("note",
-         "<b>Repliée par défaut, et c'est une mesure qui l'a décidé.</b> On l'avait "
-         "ouverte, au motif qu'un repli fermé est un repli qu'on n'ouvre jamais. Quatre "
-         "contrôles ont rougi d'un coup&nbsp;: la théorie prend cent cinquante pixels "
-         "dans une bande qui en a deux cent dix, et elle poussait <b>le but</b> sous le "
-         "pli. Or le but dit si l'on a réussi&nbsp;: on le lit à chaque essai, là où la "
-         "théorie se lit une fois avant de commencer. Entre deux textes qui se disputent "
-         "une bande bornée, celui qu'on relit gagne. Le bouton <b>La théorie</b> reste "
-         "sous les yeux, dans la rangée des gestes, et l'ouvrir est un réglage."),
+         "<b>Elle s'ouvre dans sa propre fenêtre, et c'est une mesure qui l'a décidé.</b> "
+         "Elle a d'abord été un repli dans la bande de l'exercice, et les deux états "
+         "étaient mauvais. Dépliée, elle prenait cent cinquante pixels dans une bande qui "
+         "en a deux cent dix et poussait <b>le but</b> sous le pli — quatre contrôles "
+         "l'ont dit, et le but est ce qui dit si l'on a réussi. Repliée pour cette "
+         "raison, elle devenait cent dix-sept textes que personne n'ouvre. Une fenêtre "
+         "règle les deux, et elle en règle un troisième&nbsp;: un débutant a besoin de "
+         "<b>place</b>, et une bande de deux cent dix pixels n'en donne pas."),
         ("p",
          "<b>Un indice d'abord, la solution ensuite.</b> Entre la consigne du trou et le "
          "programme entier il n'y avait rien&nbsp;: on relisait la consigne, on ne "

@@ -59,7 +59,6 @@ impl NamsdecApp {
                 show_re_tab: self.show_re_tab,
                 debutant: self.debutant,
                 prevoir: self.prevoir,
-                theorie_ouverte: self.theorie_ouverte,
                 exercises: self.exercises,
                 decompiler_module: self.show_decompiler_module,
                 installer_module: self.show_installer_module,
@@ -83,7 +82,6 @@ impl NamsdecApp {
             self.show_re_tab = snapshot.show_re_tab;
             self.debutant = snapshot.debutant;
             self.prevoir = snapshot.prevoir;
-            self.theorie_ouverte = snapshot.theorie_ouverte;
             self.exercises = snapshot.exercises;
             self.show_decompiler_module = snapshot.decompiler_module;
             self.show_installer_module = snapshot.installer_module;

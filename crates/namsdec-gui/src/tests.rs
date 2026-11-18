@@ -913,6 +913,28 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
             app.show_calculator = true;
         }),
         ("aide", "instruction_help", |app| app.show_help = true),
+        // LA FICHE DE THÉORIE. Elle ne s'ouvre que sur un exercice —
+        // sans lui, elle se referme d'elle-même et il n'y aurait rien
+        // à mesurer. La scène en charge donc un, et c'est ce qui fait
+        // d'elle la fenêtre qui porte le plus long texte continu de
+        // l'application : exactement le genre de chose que le banc est
+        // fait pour attraper.
+        ("théorie", THEORIE_WINDOW, |app| {
+            // LA SÉRIE LIVRÉE, ET NON CELLE DE LA MACHINE. Sans elle,
+            // `load_exercise` ne trouve rien, la fiche se referme
+            // d'elle-même, et la scène mesurerait une fenêtre absente.
+            app.exercises = true;
+            app.exercise_packs = vec![builtin_pack()];
+            // `load_exercise_now` ET NON `load_exercise` : le second
+            // passe par la garde — « votre travail n'est pas
+            // enregistré, on remplace ? » — et dans la moitié « en
+            // marche » de cette scène, le tampon porte déjà le
+            // programme du banc. La garde s'ouvrait, l'exercice ne se
+            // chargeait pas, et la fiche se refermait d'elle-même : la
+            // scène mesurait une fenêtre absente.
+            app.load_exercise_now("namsdec/prevoir_somme");
+            app.show_theorie = true;
+        }),
         ("registres étendus", "vectors_window", |app| {
             app.show_vectors = true;
         }),

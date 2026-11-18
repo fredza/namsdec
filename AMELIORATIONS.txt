@@ -13059,3 +13059,80 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      qu'« un saut en arrière vers une `etiquette` » doit mener quelque
      part. La règle ne bouge pas d'un pouce : ce qui se clique est ce
      qui a une fiche.
+
+9.105 [FAIT] LA THÉORIE PARLE À QUI DÉBUTE, ET ELLE A SA PROPRE FENÊTRE
+
+     Trois demandes du 18 novembre 2026, le soir : rendre la théorie
+     plus pédagogique — c'est pour un débutant —, l'ouvrir dans une
+     fiche séparée plutôt qu'en dépliant, et passer en 0.4.2.
+
+     LA FENÊTRE RÈGLE UN PROBLÈME QU'ON AVAIT MAL RÉSOLU. La théorie
+     était un repli dans la bande de l'exercice, et les deux états
+     étaient mauvais. Dépliée, elle prenait cent cinquante pixels dans
+     une bande qui en a deux cent dix et poussait LE BUT sous le pli —
+     quatre contrôles l'avaient dit (A 9.104). Repliée par défaut pour
+     cette raison, elle devenait cent dix-sept textes que personne
+     n'ouvre. On avait choisi le moindre mal au lieu de changer
+     d'endroit.
+
+     Une fenêtre règle les deux, et elle en règle un troisième, qui est
+     le cœur de la demande : un débutant a besoin de PLACE. Une idée
+     par paragraphe, de l'air entre eux, un exemple avec de vrais
+     nombres — rien de cela n'entre dans une bande de deux cent dix
+     pixels. Le repli bornait le texte autant que le texte débordait le
+     repli.
+
+     ELLE NE PREND PAS DE PANNEAU ANCRÉ, ET C'EST MESURÉ. Premier jet
+     calqué sur la fiche d'instruction : `Panel::bottom` pour que « OK »
+     reste en bas. Résultat, deux cent cinquante pixels de vide entre la
+     dernière ligne d'une théorie courte et le bouton — un panneau ancré
+     réclame à la fenêtre TOUTE la hauteur disponible pour avoir un bas
+     où s'accrocher. La fiche d'instruction en a besoin, son contenu
+     n'étant pas borné ; celle-ci non, puisque sa zone défilante est
+     déjà bornée à `window_room`. « OK » est donc posé à la suite, et la
+     fenêtre se dimensionne à ce qu'elle porte.
+
+     LES CENT DIX-SEPT TEXTES SONT RÉÉCRITS, et c'est le gros du
+     travail. La forme retenue, tenue par un contrôle : au moins deux
+     paragraphes, séparés par une ligne vide. L'idée d'abord, en phrases
+     courtes. Comment la machine s'y prend. Un exemple avec de vrais
+     nombres — « si `rax` vaut 0x1122334455667788, `mov eax, …` donne
+     ceci ». Le piège à la fin.
+
+     Le ton a changé autant que le fond. L'ancienne version écrivait
+     comme les commentaires de ce dépôt — dense, mesuré, elliptique.
+     C'est la bonne voix pour qui relit du code ; c'est la mauvaise pour
+     qui apprend. Les bornes de longueur ont suivi : 250–1200 pour un
+     repli, 400–2000 pour une fenêtre. Les textes tiennent entre 580 et
+     1010.
+
+     DEUX CONTRÔLES ONT ENCORE TROUVÉ. « Chaque théorie cite au moins
+     une fiche » en a nommé quatre après réécriture — `hexadecimal` ne
+     citait plus que des nombres, `convention` plus rien du tout.
+     Corrigées là où la phrase l'appelait déjà. Et
+     `la_theorie_s_ouvre_dans_sa_fiche` a échoué sur un faux positif qui
+     vaut d'être noté : il cherchait un extrait pris TEL QUEL dans le
+     fichier, or `prose` rend `**ainsi**` en gras et ne peint pas les
+     étoiles. Le contrôle accusait la fenêtre de ne rien montrer alors
+     qu'elle montrait tout. L'extrait est maintenant débarrassé de son
+     balisage avant la comparaison.
+
+     ET LA SCÈNE DU BANC A DEMANDÉ DEUX CORRECTIONS avant de montrer
+     quoi que ce soit. La fiche ne s'ouvre que sur un exercice : sans
+     `builtin_pack()`, `load_exercise` ne trouve rien et la fenêtre se
+     referme d'elle-même. Puis, dans la moitié « en marche » de la
+     scène, `load_exercise` passe par la GARDE — « votre travail n'est
+     pas enregistré, on remplace ? » — et le tampon porte déjà le
+     programme du banc : la garde s'ouvrait, l'exercice ne se chargeait
+     pas. `load_exercise_now` contourne la garde, ce qui est le geste
+     juste pour une scène. Sept invariants ont rougi sur la fenêtre
+     neuve entre-temps ; c'est leur métier, et ils ont tous fini par
+     passer.
+
+     LA VERSION PASSE À 0.4.2, à la demande. Conséquence à signaler :
+     `prerelease()` ne trouve plus d'étiquette après le tiret, donc le
+     bandeau « Version de préversion » disparaît d'« À propos », et la
+     recherche de mise à jour ne proposera plus que du définitif. Trois
+     contrôles ont réclamé leur dû — une entrée de changelog, un PDF à
+     ce numéro, un lien de README qui y mène — et c'est exactement ce
+     qu'on leur demande de faire.

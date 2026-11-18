@@ -351,7 +351,7 @@ demande explicite, et écrit la commande complète avant de la lancer.
 ## Le guide
 
 Un **guide de l'utilisateur en PDF** accompagne chaque version :
-[`docs/guide-namsdec-0.4.0-beta.1.pdf`](docs/guide-namsdec-0.4.0-beta.1.pdf)
+[`docs/guide-namsdec-0.4.2.pdf`](docs/guide-namsdec-0.4.2.pdf)
 — installation, prise en main, chaque panneau, l'exécution pas à pas, la
 mémoire, le manuel, le déroulement, le parcours, la rétro-ingénierie, les
 raccourcis et les limites connues.
@@ -482,12 +482,16 @@ deux langues, cite au moins une fiche qui existe vraiment, qu'elle ne
 recopie pas sa consigne, qu'aucune n'est écrite deux fois, et qu'elle
 tient dans les bornes de lecture de sa bande.
 
+Elle est écrite **pour qui débute** : une idée par paragraphe, des
+phrases courtes, un exemple avec de vrais nombres, et le piège à la fin.
+
 Le bouton **La théorie** est dans la rangée des gestes, à côté de
-*Un indice* et *La solution* — l'ordre dans lequel on y vient. Elle est
-repliée par défaut, et c'est une mesure qui l'a décidé : dépliée, elle
-poussait le **but** sous le pli, et le but se relit à chaque essai quand
-la théorie se lit une fois. L'ouvrir est un réglage, pas un geste à
-refaire.
+*Un indice* et *La solution* — l'ordre dans lequel on y vient —, et il
+ouvre **une fenêtre à elle**. Elle a d'abord été un repli dans la bande,
+et les deux états étaient mauvais : dépliée elle poussait le **but** sous
+le pli (quatre contrôles l'ont dit), repliée pour cette raison elle ne
+s'ouvrait jamais. Une fenêtre règle les deux, et donne enfin la place
+qu'un texte pédagogique demande.
 
 Six exercices demandent de **lire** plutôt que d'écrire : le programme
 est donné complet, une question est posée — « que vaut RAX à l'arrêt ? »

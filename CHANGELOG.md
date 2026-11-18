@@ -4,6 +4,50 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.4.2 — 18 novembre 2026
+
+Ce qui justifie le chiffre, du point de vue de qui s'en sert : **chaque
+exercice explique maintenant la mécanique sur laquelle il repose**, et
+**l'installateur met à jour sans rien fermer avant d'avoir fini**.
+
+**Une fiche de théorie pour chacun des 117 exercices**
+- Ni la consigne, ni l'indice. La consigne dit ce qu'on demande,
+  l'indice dit où chercher quand on bloque ; la **théorie** dit comment
+  la machine s'y prend — ce qu'est une boucle quand le processeur n'en
+  a pas, pourquoi écrire `eax` efface le haut de `rax`, pourquoi une
+  division réquisitionne deux registres sans les nommer.
+- Écrite **pour qui débute** : une idée par paragraphe, des phrases
+  courtes, un exemple avec de vrais nombres, et le piège à la fin.
+- Elle s'ouvre dans **sa propre fenêtre**, par le bouton *La théorie*,
+  à côté de *Un indice* et *La solution* — l'ordre dans lequel on y
+  vient. Les mots qu'elle cite mènent aux fiches, instructions comme
+  notions.
+- Cinq contrôles la tiennent : chacune existe dans les deux langues,
+  ne recopie pas sa consigne, cite au moins une fiche qui existe, n'est
+  écrite qu'une fois, et se lit d'un trait.
+
+**L'installateur met à jour**
+- Le relancer est une **mise à jour**, pas une réinstallation : rien
+  n'est retiré, et il le dit en tête.
+- Chaque fichier est écrit à côté puis **renommé**. L'icône ne
+  disparaît plus du dock pendant l'installation — le lanceur ne passe
+  plus par un état vide.
+- **Si namsdec est ouvert, il le reste** pendant toute la compilation,
+  et n'est refermé qu'à la fin, proprement, avant d'être rouvert sur la
+  version neuve. `--no-restart` l'en empêche. Une fenêtre qui ne part
+  pas n'est jamais forcée.
+
+**Ce que l'écran disait de travers**
+- Six captures sur cent trente-sept montraient autre chose que l'écran :
+  un cache de mise en page gardait un texte posé pour un atlas de
+  polices qui n'existait plus. Dans l'application, cela serait arrivé au
+  bout d'une séance.
+- La bande de la ligne courante perdait sa première ligne par le haut et
+  sa dernière par le bas, sans rien pour les atteindre. Elle se donne
+  maintenant une hauteur exacte, et ce qui dépasse défile.
+- Le bouton de don d'« À propos » annonçait qu'il était éteint et se
+  peignait en pleine couleur.
+
 ## 0.4.0-beta.1 — 10 au 16 novembre 2026
 
 Ce qui justifie le chiffre du milieu, du point de vue de qui s'en sert :

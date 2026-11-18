@@ -4643,35 +4643,25 @@ fn l_enonce_mene_aux_fiches() {
     );
 }
 
-/// La théorie s'offre, et elle se lit.
+/// La théorie s'offre, et elle s'ouvre dans sa propre fiche.
 ///
 /// Trois choses, et il faut les trois : le geste existe quand il y a
-/// une théorie, il ne paraît pas quand il n'y en a pas, et ce qu'il
-/// ouvre est bien peint. Un contrôle qui ne vérifierait que le bouton
-/// passerait au vert le jour où le repli s'ouvre sur rien.
+/// une théorie, il n'est pas offert quand il n'y en a pas, et ce qu'il
+/// ouvre porte bien le texte. Un contrôle qui ne vérifierait que le
+/// bouton passerait au vert le jour où la fenêtre s'ouvre sur rien.
 ///
-/// **Le bouton est dans la rangée des gestes, et non dans la bande qui
-/// défile** : c'est une mesure qui l'a décidé. Posé sous l'énoncé, il
-/// coûtait deux pixels à la dernière ligne de la bande, et
-/// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` les a
-/// comptés. Ce contrôle-ci vérifie donc qu'il est bien là où il ne
-/// coûte rien, en le cherchant sur une scène où la bande est pleine.
+/// **La théorie n'est PAS dans la bande**, et c'est aussi ce qu'on
+/// vérifie ici. Elle y a été, dépliée puis repliée, et les deux
+/// marchaient mal : dépliée elle poussait le but sous le pli — quatre
+/// contrôles l'ont dit —, repliée elle ne s'ouvrait jamais. Qu'elle
+/// reparaisse un jour dans la bande ferait rougir cette ligne.
 #[test]
-fn la_theorie_s_offre_et_se_lit() {
+fn la_theorie_s_ouvre_dans_sa_fiche() {
     let s = strings(Lang::Fr);
     let mut app = app_with_exercises();
     app.debutant = true;
     app.load_exercise("namsdec/prevoir_somme");
     app.do_assemble();
-
-    // 1. REPLIÉE : le geste est offert, le texte n'est pas là.
-    app.theorie_ouverte = false;
-    let peint = paint(&mut app);
-    assert!(
-        peint.contains(s.etabli_exercise_theory),
-        "le geste « {} » doit être offert : {peint}",
-        s.etabli_exercise_theory
-    );
 
     // Ce que la théorie dit, pris dans la série plutôt qu'écrit ici :
     // un contrôle qui recopierait le texte passerait au vert le jour
@@ -4679,40 +4669,72 @@ fn la_theorie_s_offre_et_se_lit() {
     let théorie = namsdec_exercises::find(&app.exercise_packs, "namsdec/prevoir_somme")
         .and_then(|ex| ex.theorie.clone())
         .expect("cet exercice porte une théorie");
-    let début: String = théorie.fr.split(':').next().unwrap_or_default().to_owned();
+    // LE BALISAGE EST RETIRÉ, parce que l'écran ne le montre pas.
+    //
+    // `prose` rend `**ainsi**` en gras et ne peint pas les étoiles —
+    // c'est la règle de `no_screen_shows_its_own_markup`. Un extrait
+    // pris tel quel dans le fichier ne se retrouverait donc jamais
+    // dans ce qui est peint, et le contrôle accuserait la fenêtre de
+    // ne rien montrer alors qu'elle montre tout.
+    //
+    // Même raison pour les accents graves : ils découpent le texte en
+    // morceaux cliquables, donc en galleys séparées.
+    let début: String = théorie
+        .fr
+        .replace(['*', '`'], "")
+        .split_whitespace()
+        .take(7)
+        .collect::<Vec<_>>()
+        .join(" ");
     assert!(début.len() > 20, "de quoi reconnaître le texte : {début:?}");
-    assert!(
-        !peint.contains(début.trim()),
-        "repliée, la théorie ne doit pas être peinte : {peint}"
-    );
 
-    // 2. DÉPLIÉE : le texte est là, et le geste dit comment la refermer.
-    app.theorie_ouverte = true;
+    // 1. FENÊTRE FERMÉE : le geste est offert, le texte n'est nulle
+    //    part — ni dans la bande, ni ailleurs.
+    app.show_theorie = false;
     let peint = paint(&mut app);
     assert!(
-        peint.contains(début.trim()),
-        "dépliée, la théorie doit être peinte — « {début} » : {peint}"
+        peint.contains(s.etabli_exercise_theory),
+        "le geste « {} » doit être offert : {peint}",
+        s.etabli_exercise_theory
     );
     assert!(
-        peint.contains(s.etabli_exercise_theory_hide),
-        "et le geste doit dire comment la refermer : {peint}"
+        !peint.contains(&début),
+        "fermée, la théorie ne doit être peinte nulle part — surtout pas \
+         dans la bande, où elle prenait la place du but : {peint}"
     );
 
-    // 3. SANS THÉORIE, PAS DE GESTE. Une porte qui n'ouvre sur rien
-    //    est pire qu'une absence de porte (A 9.89).
+    // 2. FENÊTRE OUVERTE : le texte est là, et la fiche dit de quel
+    //    exercice il est la théorie.
+    app.show_theorie = true;
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains(&début),
+        "ouverte, la fiche doit porter la théorie — « {début} » : {peint}"
+    );
+    assert!(
+        peint.contains(s.etabli_exercise_theory_for),
+        "et dire de quel exercice elle est la théorie : {peint}"
+    );
+
+    // 3. SANS THÉORIE, PAS DE GESTE ET PAS DE FENÊTRE. Une porte qui
+    //    n'ouvre sur rien est pire qu'une absence de porte (A 9.89).
     let mut nue = app_with_exercises();
     nue.debutant = true;
     nue.load_exercise("namsdec/prevoir_somme");
     nue.do_assemble();
-    nue.theorie_ouverte = false;
     for pack in &mut nue.exercise_packs {
         for exercice in &mut pack.exercises {
             exercice.theorie = None;
         }
     }
+    nue.show_theorie = true;
     let peint = paint(&mut nue);
     assert!(
-        !peint.contains(s.etabli_exercise_theory),
-        "sans théorie, le geste ne doit pas être offert : {peint}"
+        !peint.contains(s.etabli_exercise_theory_for),
+        "sans théorie, la fiche se referme d'elle-même : {peint}"
+    );
+    assert!(
+        !nue.show_theorie,
+        "et elle ne se redemande pas à l'image suivante"
     );
 }

@@ -1192,18 +1192,10 @@ impl NamsdecApp {
         let mut fiche_demandée: Option<String> = None;
         let mut montrer_l_indice = false;
         // RELEVÉE PENDANT LE DESSIN, POSÉE APRÈS. `self` est emprunté
-        // par la zone défilante : on ne peut pas y écrire de l'intérieur.
-        let mut théorie_bascule = false;
-        // LA THÉORIE EST LUE AVANT LA ZONE DÉFILANTE, et pour la même
-        // raison : à l'intérieur, `self` est pris par la closure.
-        let théorie_texte: Option<String> = self
-            .current_exercise
-            .as_deref()
-            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
-            .and_then(|ex| ex.theorie.as_ref())
-            .map(|t| t.get(self.lang.code()).to_owned())
-            .filter(|t| !t.trim().is_empty());
-        let théorie_existe = théorie_texte.is_some();
+        // par la rangée des gestes : on ne peut pas y écrire de
+        // l'intérieur.
+        let mut ouvrir_la_théorie = false;
+        let théorie_existe = self.theorie_de_l_exercice().is_some();
         let mut montrer_la_solution = false;
         // Un indice à donner ? Il disparaît quand il n'a plus rien à
         // dire — tout ce que la solution emploie est écrit.
@@ -1312,20 +1304,28 @@ impl NamsdecApp {
                 {
                     montrer_l_indice = true;
                 }
+                // LA THÉORIE S'OUVRE DANS SA PROPRE FICHE, et non
+                // dans la bande.
+                //
+                // Dépliée ici, elle poussait le but sous le pli — la
+                // bande fait deux cent dix pixels, la théorie en
+                // prenait cent cinquante — et quatre contrôles l'ont
+                // dit. On avait alors replié par défaut, ce qui
+                // revenait à écrire cent dix-sept textes que personne
+                // n'ouvre.
+                //
+                // Une fenêtre règle les deux : la bande ne perd rien,
+                // et la théorie a enfin la place d'être PÉDAGOGIQUE —
+                // une idée par paragraphe, un exemple avec de vrais
+                // nombres, et les renvois vers les fiches qu'elle cite.
+                // C'est le même geste que « La fiche entière » de la
+                // bande du bas, et la même fenêtre de lecture.
                 if théorie_existe
-                    && small_framed_button(
-                        ui,
-                        theme,
-                        if self.theorie_ouverte {
-                            s.etabli_exercise_theory_hide
-                        } else {
-                            s.etabli_exercise_theory
-                        },
-                    )
-                    .on_hover_text(s.etabli_exercise_theory_hint)
-                    .clicked()
+                    && small_framed_button(ui, theme, s.etabli_exercise_theory)
+                        .on_hover_text(s.etabli_exercise_theory_hint)
+                        .clicked()
                 {
-                    théorie_bascule = true;
+                    ouvrir_la_théorie = true;
                 }
                 ui.add_space(8.0);
                 // CE QUI EST FAIT DU PARCOURS, et non de cette étape :
@@ -1433,22 +1433,6 @@ impl NamsdecApp {
                 {
                     fiche_demandée = Some(mnémonique);
                 }
-                // LA THÉORIE, ENTRE L'ÉNONCÉ ET CE QU'IL RESTE À
-                // ÉCRIRE : on la lit AVANT d'essayer, donc avant « À
-                // écrire », qui est le moment où l'on commence. Sa
-                // bascule, elle, est dans la rangée des gestes, hors de
-                // cette zone qui défile — voir plus haut.
-                if self.theorie_ouverte
-                    && let Some(théorie) = théorie_texte.as_deref()
-                {
-                    ui.indent("etabli_theorie", |ui| {
-                        if let Some(mot) =
-                            prose_avec_fiches_et_notions(ui, theme, self.lang, théorie, true)
-                        {
-                            fiche_demandée = Some(mot);
-                        }
-                    });
-                }
                 // CE QU'IL RESTE À ÉCRIRE, lu dans le tampon.
                 //
                 // Les consignes du programme — « ; À FAIRE : … » —
@@ -1510,15 +1494,8 @@ impl NamsdecApp {
         if montrer_l_indice {
             self.indice_montré = !self.indice_montré;
         }
-        // UN RÉGLAGE, DONC IL S'ÉCRIT. Replier la théorie n'est pas un
-        // état de séance comme l'indice — qui appartient à l'ÉTAPE et
-        // repart à chaque exercice : c'est une façon de lire, et l'on
-        // ne veut pas la redire à chaque ouverture.
-        if théorie_bascule {
-            // `persist_settings_if_changed` passe à chaque image et
-            // compare : il n'y a rien à appeler ici, le réglage s'écrit
-            // de lui-même dès qu'il a bougé.
-            self.theorie_ouverte = !self.theorie_ouverte;
+        if ouvrir_la_théorie {
+            self.show_theorie = true;
         }
         if montrer_la_solution {
             self.show_solution = true;

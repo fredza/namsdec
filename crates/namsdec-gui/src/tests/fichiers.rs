@@ -1019,7 +1019,6 @@ fn every_setting_that_is_written_is_read_back() {
         debutant: false,
         // Faux, pour la même raison.
         prevoir: false,
-        theorie_ouverte: false,
         // Faux aussi : le parcours est allumé par défaut depuis le
         // 16 novembre 2026, et ce contrôle veut des valeurs qui ne
         // soient pas celles d'origine.

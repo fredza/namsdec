@@ -609,17 +609,29 @@ mod theorie_tests {
         );
     }
 
-    /// Une théorie se lit, et tient dans sa bande.
+    /// Une théorie s'explique, et elle se lit d'un trait.
     ///
-    /// LES DEUX BORNES VIENNENT D'UNE MESURE, non d'un goût. En dessous
-    /// de deux cent cinquante caractères, on n'explique pas une
-    /// mécanique : on la mentionne, et le repli ne valait pas la peine
-    /// d'être ouvert. Au-dessus de mille deux cents, la bande de
-    /// l'exercice — qui est bornée, et qui porte aussi la consigne, le
-    /// but et le budget — fait défiler sur plusieurs écrans ce qu'on
-    /// est censé lire AVANT de commencer, et l'on referme.
+    /// LES DEUX BORNES VIENNENT D'UNE MESURE, non d'un goût, et elles
+    /// ont changé le jour où la théorie a quitté la bande de
+    /// l'exercice pour une fenêtre à elle.
+    ///
+    /// En dessous de quatre cents caractères, on n'explique pas une
+    /// mécanique à quelqu'un qui débute : on la mentionne. C'était
+    /// supportable dans un repli de quelques lignes ; cela ne l'est
+    /// plus dans une fenêtre qu'on a ouverte exprès.
+    ///
+    /// Au-dessus de deux mille, on ne lit plus d'un trait : la fenêtre
+    /// se met à défiler, et un texte qu'on lit AVANT de commencer doit
+    /// tenir sous les yeux. Les cent dix-sept tiennent entre 580 et
+    /// 1010 ; les bornes laissent de la place sans ouvrir la porte au
+    /// chapitre de cours.
+    ///
+    /// ET LA FORME COMPTE AUTANT QUE LA LONGUEUR : une idée par
+    /// paragraphe, séparés par une ligne vide, que la fenêtre rend
+    /// avec de l'air entre eux. Un bloc de huit cents caractères d'un
+    /// seul tenant est un mur, quelle que soit sa qualité.
     #[test]
-    fn une_theorie_se_lit_et_tient_dans_sa_bande() {
+    fn une_theorie_s_explique_et_se_lit_d_un_trait() {
         let pack = pack();
         let mut hors_bornes: Vec<String> = Vec::new();
         for exercice in &pack.exercises {
@@ -628,14 +640,22 @@ mod theorie_tests {
             };
             for (langue, texte) in [("fr", théorie.fr.as_str()), ("en", théorie.en.as_str())] {
                 let n = texte.chars().count();
-                if !(250..=1200).contains(&n) {
+                if !(400..=2000).contains(&n) {
                     hors_bornes.push(format!("{} ({langue}) : {n} caractères", exercice.id));
+                }
+                // Au moins deux paragraphes : un seul bloc est un mur.
+                if texte.split("\n\n").filter(|p| !p.trim().is_empty()).count() < 2 {
+                    hors_bornes.push(format!(
+                        "{} ({langue}) : un seul paragraphe — une idée par paragraphe",
+                        exercice.id
+                    ));
                 }
             }
         }
         assert!(
             hors_bornes.is_empty(),
-            "des théories sortent des bornes de lecture (250 à 1200 caractères) :\n  {}",
+            "des théories ne se lisent pas d'un trait (400 à 2000 caractères, \
+             au moins deux paragraphes) :\n  {}",
             hors_bornes.join("\n  ")
         );
     }

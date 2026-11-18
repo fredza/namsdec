@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **18 novembre
-2026**, version 0.4.0-beta.1.
+Tenue à jour au fil des séances. Dernière mise à jour : **19 novembre
+2026**, version 0.4.2.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -4724,6 +4724,27 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       le pli, et quatre contrôles l'ont dit. Le bouton est dans la rangée
       des gestes, à côté d'« Un indice » et « La solution » — posé
       ailleurs il coûtait deux pixels à la dernière ligne de la bande.
+
+- [x] **La théorie parle à qui débute, et elle a sa propre fenêtre**
+      (A 9.105) — le repli était un mauvais endroit dans les deux états :
+      déplié il poussait le but sous le pli, replié il ne s'ouvrait
+      jamais. Une fenêtre règle les deux et donne la place qu'un texte
+      pédagogique demande. Les 117 textes sont réécrits : une idée par
+      paragraphe (un contrôle en exige deux au moins), des phrases
+      courtes, un exemple avec de vrais nombres, le piège à la fin.
+      Bornes passées de 250–1200 à 400–2000.
+      PAS DE PANNEAU ANCRÉ : calqué sur la fiche d'instruction, il
+      laissait 250 px de vide sous une théorie courte — un panneau ancré
+      réclame toute la hauteur pour avoir un bas. La zone étant déjà
+      bornée à `window_room`, « OK » se pose à la suite.
+      Retenu par `la_theorie_s_ouvre_dans_sa_fiche`, qui vérifie aussi
+      que la théorie n'est PLUS dans la bande.
+
+- [x] **Version 0.4.2** (A 9.105) — à la demande. Le bandeau
+      « préversion » disparaît d'« À propos » et la recherche de mise à
+      jour ne propose plus que du définitif, `prerelease()` ne trouvant
+      plus d'étiquette. Changelog, PDF et lien du README suivis — trois
+      contrôles les ont réclamés.
 
 ## 7. Dette technique
 

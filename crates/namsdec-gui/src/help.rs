@@ -1420,3 +1420,137 @@ impl NamsdecApp {
         }
     }
 }
+
+/// La fiche de théorie d'un exercice : sa fenêtre, et son contenu.
+impl NamsdecApp {
+    /// La théorie de l'exercice en cours, dans la langue de
+    /// l'interface — rien quand il n'y en a pas, ou qu'aucun exercice
+    /// n'est chargé.
+    pub(crate) fn theorie_de_l_exercice(&self) -> Option<String> {
+        self.current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .and_then(|ex| ex.theorie.as_ref())
+            .map(|t| t.get(self.lang.code()).to_owned())
+            .filter(|t| !t.trim().is_empty())
+    }
+
+    /// Le titre de l'exercice en cours, pour nommer la fiche.
+    fn titre_de_l_exercice(&self) -> Option<String> {
+        self.current_exercise
+            .as_deref()
+            .and_then(|id| namsdec_exercises::find(&self.exercise_packs, id))
+            .map(|ex| ex.title.get(self.lang.code()).to_owned())
+    }
+
+    /// LA THÉORIE DANS SA PROPRE FENÊTRE.
+    ///
+    /// Elle était un repli dans la bande de l'exercice, et c'était un
+    /// mauvais endroit pour deux raisons qui se cumulaient : dépliée,
+    /// elle poussait le but sous le pli (quatre contrôles l'ont dit) ;
+    /// repliée par défaut pour cette raison, elle devenait cent
+    /// dix-sept textes que personne n'ouvre.
+    ///
+    /// Une fenêtre règle les deux, et elle en règle un troisième : la
+    /// théorie s'adresse à QUI DÉBUTE, et un débutant a besoin de
+    /// place — une idée par paragraphe, un exemple avec de vrais
+    /// nombres, et de l'air entre les deux. Une bande de deux cent dix
+    /// pixels ne le permet pas.
+    ///
+    /// Même fenêtre de lecture que la fiche d'instruction, et pour la
+    /// même raison : c'est le même geste — on lit à côté de son
+    /// programme, sans le perdre de vue.
+    pub(crate) fn theorie_window_ui(&mut self, ctx: &egui::Context) {
+        let s = strings(self.lang);
+        let theme = self.theme;
+        let Some(théorie) = self.theorie_de_l_exercice() else {
+            // L'exercice a changé pour un qui n'a pas de théorie : la
+            // fenêtre se referme plutôt que de rester vide.
+            self.show_theorie = false;
+            return;
+        };
+        let titre = self.titre_de_l_exercice().unwrap_or_default();
+        let mut open = self.show_theorie;
+        let mut fermer = false;
+        let mut fiche_demandée: Option<String> = None;
+        egui::Window::new(s.etabli_exercise_theory)
+            .id(egui::Id::new(THEORIE_WINDOW))
+            .open(&mut open)
+            .resizable(true)
+            .collapsible(false)
+            .default_width(640.0)
+            .min_width(420.0)
+            .pivot(egui::Align2::RIGHT_BOTTOM)
+            .default_pos(
+                ctx.viewport_rect().max
+                    - egui::vec2(24.0, self.hauteur_des_barres_du_bas(ctx) + 12.0),
+            )
+            .title_bar(false)
+            .show(ctx, |ui| {
+                if chrome::window_head(ui, theme, s, s.etabli_exercise_theory) {
+                    fermer = true;
+                }
+                // DE QUOI C'EST LA THÉORIE, nommé en tête : la fenêtre
+                // se détache de la bande, et sans ce rappel on ne sait
+                // plus de quel exercice on lit la théorie dès qu'on en
+                // a ouvert deux.
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 6.0;
+                    ui.colored_label(theme.dim, s.etabli_exercise_theory_for);
+                    ui.colored_label(theme.text, egui::RichText::new(&titre).strong());
+                });
+                ui.add_space(8.0);
+                egui::ScrollArea::vertical()
+                    .id_salt("theorie_corps")
+                    .max_height(window_room(ui))
+                    // La largeur ne se rétracte pas — une fiche qui se
+                    // serrerait sur son plus long paragraphe changerait
+                    // de largeur à chaque exercice —, la hauteur si :
+                    // une théorie courte ne doit pas laisser deux cents
+                    // pixels de vide entre sa dernière ligne et « OK ».
+                    .auto_shrink([false, true])
+                    .show(ui, |ui| {
+                        // UN PARAGRAPHE PAR IDÉE, et de l'air entre
+                        // eux. Le texte les sépare par une ligne vide,
+                        // comme partout ailleurs ; les coller en ferait
+                        // un mur que personne ne lit jusqu'au bout.
+                        for (rang, paragraphe) in théorie.split("\n\n").enumerate() {
+                            let paragraphe = paragraphe.trim();
+                            if paragraphe.is_empty() {
+                                continue;
+                            }
+                            if rang > 0 {
+                                ui.add_space(10.0);
+                            }
+                            if let Some(mot) =
+                                prose_avec_fiches_et_notions(ui, theme, self.lang, paragraphe, true)
+                            {
+                                fiche_demandée = Some(mot);
+                            }
+                        }
+                        ui.add_space(6.0);
+                        ui.colored_label(theme.dim, s.etabli_exercise_theory_sheets);
+                    });
+                // « OK » APRÈS LA ZONE, ET NON DANS UN PANNEAU ANCRÉ.
+                //
+                // La fiche d'instruction ancre le sien en bas, parce
+                // que son contenu n'est pas borné : une fiche longue
+                // pousserait le bouton hors de la fenêtre. Ici la zone
+                // défilante est déjà bornée à `window_room`, donc le
+                // bouton ne peut pas sortir — et un panneau ancré a un
+                // coût : il demande à la fenêtre TOUTE la hauteur
+                // disponible pour avoir un bas où s'accrocher.
+                // Mesuré : deux cent cinquante pixels de vide entre la
+                // dernière ligne d'une théorie courte et « OK ».
+                ui.add_space(6.0);
+                if dialog_bar(ui, theme, s.dialog_ok, None).is_some() {
+                    fermer = true;
+                }
+            });
+        self.show_theorie = open && !fermer;
+        if let Some(mot) = fiche_demandée {
+            self.open_help(&mot);
+            self.show_help = true;
+        }
+    }
+}

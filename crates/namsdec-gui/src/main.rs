@@ -1183,9 +1183,6 @@ struct NamsdecApp {
     /// attend le pas, au niveau débutant seulement. Sans effet au
     /// niveau avancé, et le réglage le dit en se grisant.
     prevoir: bool,
-    /// La théorie d'un exercice est-elle dépliée ? Voir
-    /// `Settings::theorie_ouverte` et `etabli_exercice_ui`.
-    theorie_ouverte: bool,
     /// Les huit registres hauts sont-ils montrés quand ils sont tous à
     /// zéro ? Voir `Settings::registres_hauts` et `registers_ui`.
     registres_hauts: bool,
@@ -1279,6 +1276,14 @@ struct NamsdecApp {
     /// sa sortie, les diagnostics de nasm —, et une fiche d'instruction
     /// n'en fait pas partie.
     show_help: bool,
+    /// La fiche de théorie de l'exercice en cours.
+    ///
+    /// UN ÉTAT DE SÉANCE, et non un réglage : c'est une fenêtre qu'on
+    /// ouvre et qu'on referme, comme la fiche d'une instruction. Elle
+    /// l'a d'abord été — un repli dans la bande, avec son réglage —,
+    /// et cela ne marchait pas : dépliée elle poussait le but sous le
+    /// pli, repliée elle ne s'ouvrait jamais.
+    show_theorie: bool,
     /// La fenêtre d'analyse du binaire — les modules de rétro-ingénierie
     /// dans une fenêtre à eux, où ils ont la place de tout dire.
     show_analysis: bool,
@@ -2025,7 +2030,6 @@ struct PreferencesSnapshot {
     show_re_tab: bool,
     debutant: bool,
     prevoir: bool,
-    theorie_ouverte: bool,
     exercises: bool,
     show_tooltips: bool,
     keybindings: KeyBindings,
@@ -2372,6 +2376,7 @@ impl Default for NamsdecApp {
             calculator_was_open: false,
             calc_reprendre_clavier: false,
             show_help: false,
+            show_theorie: false,
             show_analysis: false,
             show_vectors: false,
             show_breakpoints: false,
@@ -2450,7 +2455,6 @@ impl Default for NamsdecApp {
             // les deux cases.
             console_ouverte_pour_la_sortie: false,
             prevoir: true,
-            theorie_ouverte: false,
             registres_hauts: false,
             problemes_deborde: false,
             question_answer: String::new(),
@@ -2938,12 +2942,13 @@ impl NamsdecApp {
     /// ajouter une fenêtre sans y penser reviendrait à réintroduire le
     /// défaut sans le voir. Les noms sont les identifiants qu'on passe à
     /// `egui::Window::id`, lesquels ne changent pas avec la langue.
-    fn window_states(&self) -> [(&'static str, bool); 26] {
+    fn window_states(&self) -> [(&'static str, bool); 27] {
         [
             ("preferences_window", self.show_preferences),
             (ABOUT_WINDOW, self.show_about),
             ("bug_report", self.show_bug_report),
             ("instruction_help", self.show_help),
+            (THEORIE_WINDOW, self.show_theorie),
             ("vectors_window", self.show_vectors),
             ("breakpoints_window", self.show_breakpoints),
             ("timeline_window", self.show_timeline),
@@ -3966,6 +3971,7 @@ impl NamsdecApp {
             self.about_window_ui(&ctx);
             self.bug_report_ui(&ctx);
             self.help_window_ui(&ctx);
+            self.theorie_window_ui(&ctx);
             self.vectors_window_ui(&ctx);
             self.breakpoints_window_ui(&ctx);
             self.timeline_window_ui(&ctx);
@@ -4286,6 +4292,11 @@ fn emphase_simple(
 /// position. Trois endroits, un seul mot — sans quoi renommer l'un
 /// laisserait les autres chercher une fenêtre qui n'existe plus.
 pub(crate) const ABOUT_WINDOW: &str = "about_window";
+
+/// La fiche de théorie d'un exercice. Un identifiant explicite :
+/// le titre change avec la langue, et la fenêtre perdrait sa place en
+/// passant à l'anglais.
+pub(crate) const THEORIE_WINDOW: &str = "theorie_window";
 
 /// L'identifiant de la boîte de saisie.
 ///
