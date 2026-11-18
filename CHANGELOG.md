@@ -4,7 +4,7 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.4.2 — 18 novembre 2026
+## 0.4.2-beta.1 — 18 au 19 novembre 2026
 
 Ce qui justifie le chiffre, du point de vue de qui s'en sert : **chaque
 exercice explique maintenant la mécanique sur laquelle il repose**, et

@@ -13129,10 +13129,19 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      neuve entre-temps ; c'est leur métier, et ils ont tous fini par
      passer.
 
-     LA VERSION PASSE À 0.4.2, à la demande. Conséquence à signaler :
-     `prerelease()` ne trouve plus d'étiquette après le tiret, donc le
-     bandeau « Version de préversion » disparaît d'« À propos », et la
-     recherche de mise à jour ne proposera plus que du définitif. Trois
-     contrôles ont réclamé leur dû — une entrée de changelog, un PDF à
-     ce numéro, un lien de README qui y mène — et c'est exactement ce
-     qu'on leur demande de faire.
+     LA VERSION PASSE À 0.4.2-beta.1, en deux temps. Demandée d'abord
+     en 0.4.2 tout court, puis corrigée : « garde la préversion ».
+
+     L'aller-retour valait la peine, parce qu'il a montré ce que le
+     numéro décide. Sans tiret, `prerelease()` ne trouve plus
+     d'étiquette : le bandeau « Version de préversion » disparaît
+     d'« À propos », et la recherche de mise à jour cesse de proposer
+     des préversions — une version définitive ne se voit offrir que du
+     définitif. Un chiffre de SemVer n'est donc pas un ornement ici,
+     c'est un réglage de comportement, et c'est exactement pourquoi il
+     ne se monte pas sans demander.
+
+     Trois contrôles ont réclamé leur dû à chaque passage — une entrée
+     de changelog au bon numéro, un PDF nommé d'après lui, un lien de
+     README qui y mène. C'est ce qu'on leur demande de faire, et ils
+     l'ont fait deux fois de suite sans se lasser.

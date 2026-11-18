@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **19 novembre
-2026**, version 0.4.2.
+2026**, version 0.4.2-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -4740,11 +4740,14 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       Retenu par `la_theorie_s_ouvre_dans_sa_fiche`, qui vérifie aussi
       que la théorie n'est PLUS dans la bande.
 
-- [x] **Version 0.4.2** (A 9.105) — à la demande. Le bandeau
-      « préversion » disparaît d'« À propos » et la recherche de mise à
-      jour ne propose plus que du définitif, `prerelease()` ne trouvant
-      plus d'étiquette. Changelog, PDF et lien du README suivis — trois
-      contrôles les ont réclamés.
+- [x] **Version 0.4.2-beta.1** (A 9.105) — demandée d'abord en 0.4.2
+      tout court, puis corrigée : « garde la préversion ». L'aller-retour
+      a montré ce que le numéro décide — sans tiret, `prerelease()` ne
+      trouve plus d'étiquette, le bandeau « préversion » disparaît
+      d'« À propos » et la recherche de mise à jour cesse de proposer des
+      préversions. Un chiffre de SemVer est ici un réglage de
+      comportement, pas un ornement. Changelog, PDF et lien du README
+      suivis — trois contrôles les ont réclamés, deux fois.
 
 ## 7. Dette technique
 
