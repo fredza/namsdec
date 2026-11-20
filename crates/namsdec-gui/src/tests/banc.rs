@@ -5978,3 +5978,215 @@ fn la_bande_de_la_ligne_tient_dans_son_cadre() {
         fautifs.join("\n  ")
     );
 }
+
+/// UNE BARRE DE DÉFILEMENT ANNONCE QUELQUE CHOSE QU'ON PEUT ATTEINDRE.
+///
+/// **Le symptôme, vu sur capture avant d'être mesuré** : sur le premier
+/// écran du mode débutant — un écran par ailleurs sombre et vide —, un
+/// trait clair de soixante-douze pixels brillait au bord de la bande qui
+/// dit ce que fait la ligne courante. Cette bande portait deux phrases
+/// centrées, qui tenaient. Rien n'était hors de vue.
+///
+/// **La cause est une mesure reprise en entrée d'elle-même**, dans sa
+/// forme la plus douce : la bande se donne la hauteur de son contenu,
+/// donc la zone défilante reçoit exactement la hauteur de ce qu'elle
+/// porte. « Le contenu tient-il ? » se répond alors par un flottant
+/// contre lui-même, et egui tranche du mauvais côté. Se tailler juste
+/// est précisément ce qui fait paraître la barre.
+///
+/// **La mesure, le 20 novembre 2026, sur les cent vingt-deux scènes** :
+/// cinquante-six poignées remplissaient leur glissière à plus de 96 %.
+/// Elles se séparaient nettement en deux familles, et c'est la
+/// séparation qui a donné le seuil :
+///
+/// - **97 à 98 %** — les listes d'analyse (721 px sur 733), la
+///   chronologie, le profil. Douze pixels hors de vue sur sept cent
+///   trente-trois : c'est peu, c'est vrai, et la barre a raison de le
+///   dire. Rien à corriger ;
+/// - **99 à 101 %** — les trois écrans du mode débutant, et eux seuls.
+///   Soixante-douze sur soixante-treize, cent cinquante-deux sur cent
+///   cinquante-trois. Un pixel, c'est-à-dire rien.
+///
+/// Le seuil est donc à 99 %, et il vient de ce que la mesure a montré,
+/// non d'un goût. Corrigé par [`LIGNE_JEU`] : deux pixels de jeu entre
+/// ce que la bande porte et la hauteur qu'elle se donne. Éprouvé en les
+/// retirant — le contrôle nomme les trois scènes.
+#[test]
+fn une_barre_de_defilement_annonce_quelque_chose_d_atteignable() {
+    const PLEINE: f32 = 0.99;
+    let mut fautives: Vec<String> = Vec::new();
+
+    for (nom, _, prépare) in scènes() {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        let entrée = egui::RawInput {
+            predicted_dt: 0.5,
+            ..écran_du_banc()
+        };
+        let mut formes = Vec::new();
+        // Six images : une surface ancrée ne paraît qu'à la deuxième, et
+        // la bande qui se mesure sur son contenu met trois images à se
+        // poser.
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+
+        // GLISSIÈRE ET POIGNÉE SE RECONNAISSENT À LEUR FORME, et non à
+        // leur couleur : un thème clair inverse les deux, et le banc
+        // passe les six thèmes. Étroites, hautes, et l'une dans l'autre.
+        let barres: Vec<egui::Rect> = formes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::epaint::Shape::Rect(r)
+                    if r.fill.a() > 0
+                        && (4.0..14.0).contains(&r.rect.width())
+                        && r.rect.height() > 24.0 =>
+                {
+                    Some(r.rect)
+                }
+                _ => None,
+            })
+            .collect();
+
+        for glissière in &barres {
+            for poignée in &barres {
+                if poignée == glissière || poignée.height() > glissière.height() {
+                    continue;
+                }
+                let dedans = (poignée.min.x - glissière.min.x).abs() < 2.0
+                    && poignée.min.y >= glissière.min.y - 1.0
+                    && poignée.max.y <= glissière.max.y + 1.0;
+                let part = poignée.height() / glissière.height();
+                if dedans && part > PLEINE {
+                    fautives.push(format!(
+                        "{nom} : une poignée de {:.0} px dans une glissière de {:.0} \
+                         ({:.0} %) en {:?} — elle annonce ce que personne n'atteindra",
+                        poignée.height(),
+                        glissière.height(),
+                        part * 100.0,
+                        glissière.min
+                    ));
+                }
+            }
+        }
+    }
+
+    fautives.sort();
+    fautives.dedup();
+    assert!(
+        fautives.is_empty(),
+        "{} barre(s) de défilement ne servent à rien :\n  {}",
+        fautives.len(),
+        fautives.join("\n  ")
+    );
+}
+
+/// UNE PHRASE NE SE COMPOSE PAS SUR LA LARGEUR DE LA FENÊTRE.
+///
+/// Un œil qui revient à la ligne perd son rang au-delà d'une quinzaine
+/// de mots ; c'est la raison pour laquelle un livre n'est pas composé
+/// sur la largeur de sa page. [`crate::widgets::LARGEUR_DE_LECTURE`]
+/// existait pour cela depuis les états vides — et ne servait qu'à eux.
+///
+/// **Mesuré le 20 novembre 2026 sur les scènes du mode débutant**, en
+/// comptant les caractères de chaque ligne RÉELLEMENT composée :
+///
+/// - l'énoncé de l'exercice : **278 caractères** sur une ligne pour
+///   « Ce que la boucle a accumulé ». C'est le texte qu'un débutant lit
+///   avant tout le reste ;
+/// - l'explication d'une erreur de nasm : **269**. C'est le texte qu'il
+///   lit au moment précis où il est bloqué ;
+/// - l'énoncé d'un exercice d'écriture : **191** ;
+/// - la phrase qui dit ce que fait le désassembleur en clair : **140**,
+///   alors que son propre commentaire la disait « de deux ou trois
+///   lignes ».
+///
+/// Les trois premières tombent à 99 une fois composées sur la largeur
+/// de lecture, la quatrième à 97.
+///
+/// **Le seuil est à cent cinquante, et non à cent.** Cent serait
+/// l'idéal typographique, et plusieurs bandes ne peuvent pas l'atteindre
+/// sans grandir : celle de la ligne courante est plafonnée en hauteur,
+/// et la resserrer y ramènerait la barre de défilement que
+/// `une_barre_de_defilement_annonce_quelque_chose_d_atteignable`
+/// interdit. Cent cinquante est la ligne au-delà de laquelle un texte
+/// n'est plus lu mais parcouru ; les quatre défauts ci-dessus la
+/// franchissaient tous, et ce qui reste tient à 137.
+///
+/// **Les textes TRONQUÉS n'en sont pas**, et c'est une correction du
+/// relevé plutôt qu'un défaut : la note de la frise fait deux cent
+/// trois caractères et n'en peint qu'une ligne suivie de « … », le
+/// reste au survol. Un relevé qui compte le texte d'une galley élidée
+/// mesure ce qui n'est pas peint — exactement l'erreur que le banc a
+/// déjà corrigée sur le contraste.
+#[test]
+fn une_phrase_ne_se_compose_pas_sur_la_largeur_de_la_fenetre() {
+    const TROP_LONG: usize = 150;
+    let mut fautives: Vec<String> = Vec::new();
+
+    for (nom, _, prépare) in scènes() {
+        // LE MODE DÉBUTANT, et lui seul : c'est là que la règle
+        // compte, et c'est là qu'on a mesuré. Le mode avancé montre des
+        // listings, des vidages et des tables, où une ligne longue est
+        // une donnée et non une phrase.
+        if !nom.contains("établi") && !nom.contains("débutant") {
+            continue;
+        }
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        prépare(&mut app);
+        let entrée = egui::RawInput {
+            predicted_dt: 0.5,
+            ..écran_du_banc()
+        };
+        let mut formes = Vec::new();
+        for _ in 0..6 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+
+        for clipped in &formes {
+            let egui::epaint::Shape::Text(t) = &clipped.shape else {
+                continue;
+            };
+            // Ce qui est élidé n'est pas composé : une seule ligne est
+            // peinte, et le reste se survole.
+            if t.galley.elided {
+                continue;
+            }
+            for ligne in &t.galley.rows {
+                let texte = ligne.text();
+                // UNE PHRASE, ET NON UNE LIGNE DE CODE NI UNE
+                // ÉTIQUETTE. Huit espaces : un programme en assembleur
+                // en a deux ou trois par ligne, une adresse et ses
+                // octets aucun, et une phrase française en a une
+                // dizaine dès qu'elle dépasse la moitié du seuil.
+                if texte.chars().filter(|c| *c == ' ').count() < 8 {
+                    continue;
+                }
+                let combien = texte.chars().count();
+                if combien > TROP_LONG {
+                    let début: String = texte.chars().take(60).collect();
+                    fautives.push(format!(
+                        "{nom} : {combien} caractères sur une ligne — « {début}… »"
+                    ));
+                }
+            }
+        }
+    }
+
+    fautives.sort();
+    fautives.dedup();
+    assert!(
+        fautives.is_empty(),
+        "{} phrase(s) composées sur plus de {TROP_LONG} caractères :\n  {}",
+        fautives.len(),
+        fautives.join("\n  ")
+    );
+}

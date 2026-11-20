@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **20 novembre
-2026**, version 0.4.2-beta.1.
+2026**, version 0.4.2-beta.2.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -4807,6 +4807,60 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       1311. Le banc mesurait un tiers de texte en moins, et restait
       vert. `la_scene_de_la_theorie_porte_la_plus_longue` compare
       désormais les longueurs.
+
+- [x] **Une barre de défilement qui n'annonçait rien** (A 9.107) — sur
+      le premier écran du mode débutant, un trait clair au bord de la
+      bande de la ligne courante, qui ne portait que deux phrases
+      tenant largement. La bande se donne la hauteur de son contenu,
+      donc sa zone reçoit exactement la hauteur de ce qu'elle porte :
+      « cela tient-il ? » se répondait par un flottant contre lui-même.
+      **Se tailler juste était ce qui faisait paraître la barre.**
+      Mesuré sur les 122 scènes : deux familles nettes — 97 à 98 % pour
+      les listes d'analyse, où douze pixels sont vraiment hors de vue ;
+      99 à 101 % pour les écrans du débutant, et eux seuls. Deux pixels
+      de jeu. Retenu par
+      `une_barre_de_defilement_annonce_quelque_chose_d_atteignable`,
+      seuil à 99 % parce que c'est là que la mesure sépare.
+
+- [x] **Une phrase ne se compose pas sur la largeur de la fenêtre**
+      (A 9.107) — l'énoncé de l'exercice faisait **278 caractères par
+      ligne**, l'explication d'une erreur de nasm 269, la phrase du
+      désassemblage en clair 140. La règle était déjà écrite dans le
+      dépôt, dans `empty_state`, et ne servait qu'aux panneaux vides :
+      `LARGEUR_DE_LECTURE` est sortie de sa fonction. Les trois tombent
+      à 99, 116 et 97. Retenu par
+      `une_phrase_ne_se_compose_pas_sur_la_largeur_de_la_fenetre`
+      (seuil 150), qui ignore les galleys **élidées** — la note de la
+      frise fait 203 caractères et n'en peint qu'une ligne.
+
+- [x] **La hauteur se trouve en l'ajoutant, pas en la déplaçant**
+      (A 9.107) — l'énoncé plus étroit passe de deux lignes à quatre et
+      le budget sortait par le bas. Monter `EXERCICE_DEFAUT` ne faisait
+      rien (la part de 22 % plafonne la bande avant lui) ; monter la
+      part prenait des lignes de programme au plus petit écran. Les
+      deux contrôles ont dit non ensemble, et ils avaient raison tous
+      les deux. `EXERCICE_LECTURE` : quarante pixels **ajoutés** à la
+      bande là où l'écran les donne, au même seuil que la rangée des
+      gestes. En dessous de 860 px, rien ne change.
+
+- [x] **La seule étape qu'on ne pouvait pas ouvrir était celle où l'on
+      s'était arrêté** (A 9.108) — signalé sur capture : la bande
+      annonçait « 3/120 Échanger deux registres », l'éditeur portait le
+      programme d'accueil, et « Charger » ne faisait rien. Deux faits
+      justes séparément : `current_exercise` part dans les réglages,
+      le contenu de l'éditeur jamais — et `exercise_tab_index` répond
+      « tu y es déjà » sur le seul NOM de l'étape. Le raccourci n'est
+      pas retiré mais rendu honnête (l'onglet porte l'étape quand son
+      `saved_source` est son programme de départ), et la cause première
+      est traitée : `reprendre_l_etape_en_cours` la charge au
+      démarrage, **sur un démarrage nu seulement**. Deux contrôles,
+      dont un qui vérifie que le raccourci sert toujours.
+      **Angle mort du banc** : le défaut ne vit que dans une suite —
+      régler, fermer, rouvrir —, et aucune scène ne repart d'un
+      `settings.json` écrit par la séance d'avant.
+
+- [x] **Version 0.4.2-beta.2** (A 9.107) — demandée. Changelog, PDF
+      renommé et régénéré, lien du README.
 
 ## 7. Dette technique
 

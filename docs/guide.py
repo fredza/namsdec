@@ -440,6 +440,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>nop</font>, six devant un saut conditionnel détaillé — "
          "sans jamais dépasser une borne&nbsp;: au-delà, <b>c'est elle qui se serre</b>, "
          "une barre paraît sur son bord droit, et ce qui dépasse se fait défiler. "
+         "<b>Au-delà seulement</b>&nbsp;: cette barre a longtemps été là tout le temps, "
+         "y compris sur l'écran d'accueil où la bande ne porte que deux phrases qui "
+         "tiennent. Une bande qui se taille exactement sur son contenu offre une zone "
+         "dont le contenu fait exactement la hauteur, et « cela tient-il ? » se "
+         "répondait alors par un nombre contre lui-même&nbsp;: soixante-douze pixels de "
+         "poignée dans une glissière de soixante-treize, pour un pixel que personne "
+         "n'atteindrait. Se tailler juste était précisément ce qui la faisait paraître. "
          "Elle ne mange pas les lignes du programme, et elle ne peint plus rien "
          "au-dessus de son propre cadre&nbsp;: la ligne qui nomme l'instruction y était "
          "recouverte par le fond de l'éditeur, et rien ne permettait d'aller la "
@@ -510,6 +517,40 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "qui est fait du parcours entier, et deux boutons&nbsp;: "
          "<b>Choisir…</b> rouvre la liste, <b>Étape suivante</b> charge la suite sans y "
          "repasser. La bande se règle à la poignée, comme celle du résultat."),
+        ("p",
+         "<b>Au démarrage, l'étape où vous vous étiez arrêté revient avec son "
+         "programme.</b> namsdec retient le rang de l'étape d'une séance à l'autre, "
+         "mais jamais le contenu de l'éditeur — des chemins, jamais leur contenu, c'est "
+         "la règle de ses réglages. La bande annonçait donc une étape que l'éditeur "
+         "n'avait pas, et « Charger » sur cette étape-là ne faisait rien&nbsp;: c'était "
+         "la seule du parcours qu'on ne pouvait pas ouvrir. Elle se charge maintenant "
+         "d'elle-même, <b>sur un démarrage nu seulement</b>&nbsp;: un fichier rouvert "
+         "ou une séance reprise ne se fait pas recouvrir, et c'est "
+         "<b>Reprendre</b> qui la charge alors."),
+        ("p",
+         "<b>L'énoncé est composé sur une largeur de lecture</b>, et non sur celle de "
+         "la fenêtre. Un œil qui revient à la ligne perd son rang au-delà d'une "
+         "quinzaine de mots&nbsp;; c'est la raison pour laquelle un livre n'est pas "
+         "composé sur la largeur de sa page. Mesuré le 20 novembre 2026 sur un écran de "
+         "1600 pixels&nbsp;: l'énoncé de « Ce que la boucle a accumulé » faisait "
+         "<b>deux cent soixante-dix-huit caractères sur une ligne</b>, soit trois fois "
+         "la limite — dans la bande qu'un débutant lit avant tout le reste. Il en fait "
+         "quatre-vingt-dix-neuf."),
+        ("note",
+         "<b>La hauteur que cela coûte est ajoutée à la bande, jamais prise sur ce "
+         "qu'elle montrait.</b> Un énoncé plus étroit est plus haut&nbsp;: deux lignes "
+         "deviennent quatre, et le budget d'instructions sortait par le bas — un "
+         "contrôle l'a dit aussitôt. La bande n'avait aucun jeu. Elle reçoit donc "
+         "quarante pixels de plus <b>là où l'écran les donne</b>, au même seuil que la "
+         "rangée « Vérifier »&nbsp;; en dessous, l'énoncé reprend toute la largeur, qui "
+         "est le moindre mal quand l'autre est de ne plus voir son programme."),
+        ("p",
+         "La même largeur vaut pour <b>l'explication d'une erreur de nasm</b> — le "
+         "texte qu'on lit au moment précis où l'on est bloqué, et qui faisait deux cent "
+         "soixante-neuf caractères par ligne — et pour la phrase qui dit ce que le "
+         "désassemblage montre en clair. Le message brut de nasm, lui, ne change "
+         "pas&nbsp;: c'est une ligne de machine, pas une phrase, et c'est elle qu'on "
+         "colle dans une recherche."),
         ("note",
          "<b>Sur un petit écran, elle se serre — et cela ne suffit pas.</b> La bande "
          "prend une part de ce qui reste plutôt qu'un nombre de pixels&nbsp;: à 800×520, "

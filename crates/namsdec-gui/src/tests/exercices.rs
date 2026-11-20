@@ -4901,3 +4901,133 @@ fn la_theorie_s_ouvre_dans_sa_fiche() {
         "et elle ne se redemande pas à l'image suivante"
     );
 }
+
+/// L'ÉTAPE QU'ON RETROUVE AU DÉMARRAGE SE CHARGE QUAND ON LA DEMANDE.
+///
+/// **Signalé sur capture le 20 novembre 2026, et c'était un cul-de-sac
+/// complet** : la bande annonçait « L'EXERCICE 3/120 Découverte —
+/// Échanger deux registres » et l'éditeur portait le programme
+/// d'accueil. Cliquer « Charger » sur cette étape-là ne faisait rien.
+/// La seule étape du parcours qu'on ne pouvait pas ouvrir était celle
+/// sur laquelle on s'était arrêté.
+///
+/// **La cause tient en deux faits qui, séparément, sont justes.**
+/// `current_exercise` part dans les réglages — « au retour, l'outil
+/// doit dire où l'on en était » — et il revient au démarrage suivant.
+/// Le PROGRAMME, lui, ne part pas avec : des chemins, jamais leur
+/// contenu, c'est la règle de ce fichier. Et `exercise_tab_index`
+/// répond « tu y es déjà » dès que `current_exercise` porte
+/// l'identifiant demandé, ce qui fait de `load_exercise_now` une
+/// opération vide.
+///
+/// Au premier démarrage d'après, l'application se croyait donc sur une
+/// étape dont elle n'avait pas le programme, et toute demande de le
+/// charger lui répondait qu'il était déjà là.
+///
+/// **Le raccourci n'est pas retiré, il est rendu honnête** : il garde
+/// ce qu'on a tapé quand l'onglet porte VRAIMENT cette étape, ce qui
+/// est sa raison d'être. Un onglet porte vraiment l'étape quand son
+/// `saved_source` est le programme de départ de celle-ci — c'est
+/// exactement ce que `load_exercise_now` y écrit en l'ouvrant.
+#[test]
+fn l_etape_retrouvee_au_demarrage_se_charge_quand_on_la_demande() {
+    let pack = builtin_pack();
+    let exercice = pack.by_id("echange").expect("l'étape existe");
+
+    // L'ÉTAT DU DÉMARRAGE D'APRÈS : l'étape est retenue, le tampon
+    // porte le programme d'accueil, et rien d'autre n'a été fait.
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        current_exercise: Some("namsdec/echange".to_owned()),
+        ..Default::default()
+    };
+    let accueil = app.source.clone();
+    app.saved_source = accueil.clone();
+    assert!(
+        !accueil.contains("xchg"),
+        "le tampon de départ n'est pas celui de l'étape"
+    );
+
+    app.load_exercise_now("namsdec/echange");
+
+    assert_eq!(
+        app.source, exercice.starter_code,
+        "« Charger » sur l'étape où l'on s'était arrêté doit ouvrir son programme"
+    );
+    assert_ne!(app.source, accueil, "le programme d'accueil est resté");
+
+    // ET LE RACCOURCI SERT TOUJOURS : une fois l'étape vraiment
+    // ouverte, la redemander ne doit PAS effacer ce qu'on a écrit.
+    // C'est pour cela qu'il existe, et le retirer serait échanger un
+    // défaut contre un pire.
+    let écrit = format!("{}\n    ; mon essai\n", app.source);
+    app.set_source(écrit.clone());
+    app.load_exercise_now("namsdec/echange");
+    assert_eq!(
+        app.source, écrit,
+        "recharger l'étape où l'on est en train d'écrire effacerait le travail"
+    );
+}
+
+/// AU DÉMARRAGE, LA BANDE ET L'ÉDITEUR DISENT LA MÊME CHOSE.
+///
+/// L'autre moitié du cul-de-sac du 20 novembre 2026, et sa cause
+/// première : il ne suffit pas que « Charger » marche, encore faut-il
+/// n'avoir pas à le chercher. L'application rouvrait sur une étape
+/// annoncée et un programme d'accueil, ce qui est le genre d'écran qui
+/// fait douter d'avoir mal cliqué.
+///
+/// Et **seulement sur un démarrage nu** : un fichier rouvert ou une
+/// séance reprise ne se fait pas recouvrir par une étape que personne
+/// ne vient de demander. Elle reste annoncée, et « Reprendre » la
+/// charge.
+#[test]
+fn au_demarrage_la_bande_et_l_editeur_disent_la_meme_chose() {
+    let pack = builtin_pack();
+    let exercice = pack.by_id("echange").expect("l'étape existe");
+
+    // Démarrage nu : l'étape est retenue, rien d'autre n'est ouvert.
+    let mut app = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        current_exercise: Some("namsdec/echange".to_owned()),
+        ..Default::default()
+    };
+    app.saved_source = app.source.clone();
+    app.reprendre_l_etape_en_cours();
+    assert_eq!(
+        app.source, exercice.starter_code,
+        "l'étape annoncée dans la bande doit être celle de l'éditeur"
+    );
+    assert!(app.tabs.is_empty(), "un seul onglet : rien n'a été poussé");
+
+    // Le module éteint : le parcours n'existe pas, et rien ne s'impose.
+    let mut éteint = NamsdecApp {
+        exercises: false,
+        exercise_packs: vec![builtin_pack()],
+        current_exercise: Some("namsdec/echange".to_owned()),
+        ..Default::default()
+    };
+    let accueil = éteint.source.clone();
+    éteint.saved_source = accueil.clone();
+    éteint.reprendre_l_etape_en_cours();
+    assert_eq!(éteint.source, accueil, "module éteint : rien ne bouge");
+
+    // Un travail déjà ouvert : l'étape ne le recouvre pas.
+    let mut occupé = NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        current_exercise: Some("namsdec/echange".to_owned()),
+        current_file: Some(std::path::PathBuf::from("/tmp/quelque-chose.asm")),
+        ..Default::default()
+    };
+    let à_moi = "; mon programme\nglobal _start\n_start:\n    hlt\n".to_owned();
+    occupé.set_source(à_moi.clone());
+    occupé.saved_source = à_moi.clone();
+    occupé.reprendre_l_etape_en_cours();
+    assert_eq!(
+        occupé.source, à_moi,
+        "un fichier ouvert ne se fait pas recouvrir par une étape"
+    );
+}

@@ -4,6 +4,59 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 0.4.2-beta.2 — 20 novembre 2026
+
+Ce qui justifie le chiffre, du point de vue de qui s'en sert : **le
+mode débutant se lit mieux, et le parcours ne se bloque plus**. Un
+cul-de-sac signalé à l'écran, et deux défauts mesurés sur ses écrans —
+les trois étaient là depuis le début.
+
+**L'étape où l'on s'était arrêté se recharge — corrige un cul-de-sac**
+- La bande annonçait « L'EXERCICE 3/120 — Échanger deux registres » et
+  l'éditeur portait le programme d'accueil. Cliquer **Charger** sur
+  cette étape-là ne faisait rien : **la seule étape du parcours qu'on
+  ne pouvait pas ouvrir était celle sur laquelle on s'était arrêté.**
+- Deux faits justes séparément en étaient la cause. L'étape en cours
+  part dans les réglages, pour dire au retour où l'on en était ; le
+  programme, lui, n'y va jamais — des chemins, jamais leur contenu. Et
+  le raccourci « cette étape est déjà ouverte, n'efface pas ce qui y
+  est écrit » se fiait au seul nom de l'étape.
+- Le raccourci n'est pas retiré, il est rendu honnête : une marque
+  d'étape sans son programme ne vaut pas un onglet ouvert. Et au
+  démarrage, l'étape revient **avec son programme** — sur un démarrage
+  nu seulement : un fichier rouvert ou une séance reprise ne se fait
+  pas recouvrir.
+
+**Une barre de défilement qui ne servait à rien**
+- Sur le premier écran — par ailleurs sombre et vide —, un trait clair
+  brillait au bord de la bande qui dit ce que fait la ligne courante.
+  Cette bande portait deux phrases, qui tenaient. Rien n'était hors de
+  vue.
+- La cause : la bande se donne la hauteur de son contenu, donc sa zone
+  reçoit exactement la hauteur de ce qu'elle porte. « Le contenu
+  tient-il ? » se répondait par un flottant contre lui-même. Se tailler
+  juste est précisément ce qui faisait paraître la barre.
+- Mesuré sur les cent vingt-deux scènes : la poignée remplissait sa
+  glissière à 99 % sur **tous** les écrans du mode débutant — 72 pixels
+  sur 73 à l'accueil, 152 sur 153 en marche —, contre 97 à 98 % pour
+  les listes d'analyse, où douze pixels sont vraiment hors de vue. Un
+  contrôle tient la différence.
+
+**Une phrase ne se compose plus sur la largeur de la fenêtre**
+- L'énoncé de l'exercice faisait **278 caractères sur une ligne**.
+  C'est le texte qu'un débutant lit avant tout le reste ; au-delà d'une
+  quinzaine de mots, un œil qui revient à la ligne perd son rang.
+- L'explication d'une erreur de nasm en faisait **269** — le texte
+  qu'on lit au moment précis où l'on est bloqué —, et la phrase qui dit
+  ce que le désassembleur montre en clair, **140**, alors qu'elle se
+  croyait « de deux ou trois lignes ».
+- Les trois tombent à 99, 116 et 97. La largeur de lecture existait
+  déjà dans namsdec ; elle ne servait qu'aux panneaux vides.
+- La bande de l'exercice n'avait aucun jeu : l'énoncé plus étroit passe
+  de deux lignes à quatre, et le budget sortait par le bas. La hauteur
+  lui est **ajoutée** là où l'écran la donne, jamais prise sur ce
+  qu'elle montrait — au plus petit écran, rien ne change.
+
 ## 0.4.2-beta.1 — 18 au 20 novembre 2026
 
 Ce qui justifie le chiffre, du point de vue de qui s'en sert : **chaque

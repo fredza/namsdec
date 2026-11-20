@@ -117,6 +117,26 @@ const LIGNE_MIN: f32 = 18.0 + LIGNE_MARGES;
 /// sur son enfant, doit être écrite.
 const LIGNE_CONTENU_MAX: f32 = LIGNE_MAX - LIGNE_MARGES;
 
+/// LE JEU ENTRE CE QUE LA BANDE PORTE ET LA HAUTEUR QU'ELLE SE DONNE.
+///
+/// Une bande qui se taille EXACTEMENT sur son contenu offre une zone
+/// défilante dont le contenu fait exactement la hauteur offerte — et
+/// egui montre alors sa barre, pour un pixel que personne ne peut
+/// atteindre. Se tailler juste est précisément ce qui la fait paraître.
+///
+/// **Mesuré le 20 novembre 2026, sur le premier écran** : contenu 74 px,
+/// marges 16, bande 90 — donc zone 74 pour un contenu de 74, et une
+/// poignée de 72 pixels dans une glissière de 73. En marche, 152 sur
+/// 153. Ce n'était pas l'état vide : la barre était là sur **tous** les
+/// écrans du mode débutant, et c'est la première chose qui brille sur un
+/// écran d'accueil par ailleurs sombre et vide.
+///
+/// Deux pixels suffisent, et ils ne se voient pas. La barre reparaît
+/// exactement quand elle doit : au plafond, le découpage à [`LIGNE_MAX`]
+/// reprend le jeu, la zone redevient égale à son contenu, et il y a
+/// cette fois vraiment quelque chose dessous.
+const LIGNE_JEU: f32 = 2.0;
+
 /// Ce que la bande de l'exercice prend quand elle paraît.
 ///
 /// MESURÉE, et non choisie. À cent soixante-quatre pixels — le chiffre
@@ -166,6 +186,22 @@ const EXERCICE_GESTES: f32 = 33.0;
 /// Son titre et une ligne : en dessous, on ne lit plus l'énoncé, on
 /// devine qu'il y en a un.
 const EXERCICE_MIN: f32 = 76.0;
+
+/// La ligne que coûte un énoncé composé sur une largeur de lecture.
+///
+/// Un énoncé qui tenait sur deux lignes d'un bord à l'autre de la
+/// fenêtre en prend quatre une fois ramené à cent caractères — c'est
+/// le prix d'un texte qu'on lit au lieu de le parcourir, et il se paie
+/// en deux lignes.
+///
+/// QUARANTE PIXELS, ET LE CHIFFRE VIENT D'UNE ÉPREUVE, non d'un calcul.
+/// Vingt-deux — deux lignes de dix-huit, à quelques pixels près — ne
+/// suffisaient pas : `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_
+/// ligne` coupait encore « Instructions : 3 / 4 ». Quarante passe, et
+/// c'est ce contrôle-là qui l'a dit.
+///
+/// AJOUTÉE à la bande et non prise dessus, comme [`EXERCICE_GESTES`].
+const EXERCICE_LECTURE: f32 = 40.0;
 
 /// Ce qu'elle prend au plus.
 const EXERCICE_MAX: f32 = 320.0;
@@ -242,6 +278,28 @@ impl NamsdecApp {
             } else {
                 0.0
             };
+            // LA LIGNE QUE COÛTE UNE LARGEUR DE LECTURE, au même seuil
+            // et de la même façon que la rangée des gestes : AJOUTÉE à
+            // la bande, jamais prise sur ce qu'elle montrait.
+            //
+            // La bande n'avait aucun jeu — mesuré le 20 novembre
+            // 2026 : l'énoncé composé plus étroit passe de deux lignes
+            // à trois, et « Instructions : 3 / 4 » perdait treize
+            // pixels sur dix-huit. Monter `EXERCICE_DEFAUT` n'y faisait
+            // rien, la part de 22 % plafonnant la bande bien avant ; et
+            // monter la part prenait des lignes de programme au plus
+            // petit écran, ce que
+            // `au_plus_petit_ecran_l_etabli_montre_encore_du_code`
+            // refuse. Les deux contrôles ont dit non ensemble, et ils
+            // avaient raison tous les deux : ce n'est pas une hauteur
+            // qu'il fallait déplacer, c'en est une qu'il fallait
+            // ajouter.
+            self.etabli_enonce_sur_largeur_de_lecture = ui.available_height() >= 860.0;
+            let lecture = if self.etabli_enonce_sur_largeur_de_lecture {
+                EXERCICE_LECTURE
+            } else {
+                0.0
+            };
             egui::Panel::top("etabli_exercice")
                 .resizable(true)
                 // UNE PART DE CE QUI RESTE, ET NON UN NOMBRE DE
@@ -274,11 +332,12 @@ impl NamsdecApp {
                     EXERCICE_DEFAUT
                         .min(ui.available_height() * 0.22)
                         .max(EXERCICE_MIN)
-                        + gestes,
+                        + gestes
+                        + lecture,
                 )
                 .min_size(EXERCICE_MIN + gestes)
                 .max_size(
-                    (EXERCICE_MAX + gestes)
+                    (EXERCICE_MAX + gestes + lecture)
                         .min((ui.available_height() * 0.4).max(EXERCICE_MIN + gestes)),
                 )
                 .frame(
@@ -394,7 +453,7 @@ impl NamsdecApp {
         // [`NamsdecApp::etabli_ligne_height`].
         let hauteur_de_la_bande = self
             .etabli_ligne_height
-            .map_or(LIGNE_MAX, |contenu| contenu + LIGNE_MARGES)
+            .map_or(LIGNE_MAX, |contenu| contenu + LIGNE_MARGES + LIGNE_JEU)
             .clamp(LIGNE_MIN, LIGNE_MAX);
         egui::Panel::bottom("etabli_ligne")
             .exact_size(hauteur_de_la_bande)
@@ -1428,11 +1487,33 @@ impl NamsdecApp {
                 // un mot courant qui se trouve avoir une fiche ferait
                 // du bruit au milieu d'une phrase. La théorie, elle,
                 // parle de mécanique et demande l'inverse.
-                if let Some(mnémonique) =
-                    prose_avec_fiches_et_notions(ui, theme, self.lang, &énoncé, false)
-                {
-                    fiche_demandée = Some(mnémonique);
-                }
+                // COMPOSÉ SUR UNE LARGEUR DE LECTURE, et non sur celle
+                // de la fenêtre.
+                //
+                // C'est le texte que le débutant lit avant tout le
+                // reste, et il se composait d'un bord à l'autre :
+                // mesuré le 20 novembre 2026, DEUX CENT
+                // SOIXANTE-DIX-HUIT caractères sur une ligne pour « Ce
+                // que la boucle a accumulé ». Trois fois la limite au
+                // delà de laquelle un œil qui revient à la ligne perd
+                // son rang — la raison même pour laquelle
+                // [`LARGEUR_DE_LECTURE`] existait déjà, appliquée aux
+                // états vides et à rien d'autre.
+                //
+                // Le minimum garde les écrans étroits inchangés : sous
+                // cette borne, c'est la fenêtre qui commande.
+                ui.scope(|ui| {
+                    if self.etabli_enonce_sur_largeur_de_lecture {
+                        ui.set_max_width(
+                            ui.available_width().min(crate::widgets::LARGEUR_DE_LECTURE),
+                        );
+                    }
+                    if let Some(mnémonique) =
+                        prose_avec_fiches_et_notions(ui, theme, self.lang, &énoncé, false)
+                    {
+                        fiche_demandée = Some(mnémonique);
+                    }
+                });
                 // CE QU'IL RESTE À ÉCRIRE, lu dans le tampon.
                 //
                 // Les consignes du programme — « ; À FAIRE : … » —

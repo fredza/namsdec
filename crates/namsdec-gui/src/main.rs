@@ -1532,6 +1532,17 @@ struct NamsdecApp {
     /// par-dessus l'énoncé. Posé au moment où la bande se dispose, lu
     /// quand elle se remplit.
     etabli_exercice_gestes_ancres: bool,
+    /// L'énoncé de l'exercice est-il composé sur une largeur de
+    /// lecture ?
+    ///
+    /// Vrai là où la bande a reçu la ligne que cela lui coûte — au
+    /// dessus de 860 pixels de place, le même seuil que la rangée
+    /// « Vérifier » et pour la même raison. En dessous, la bande n'a
+    /// plus de quoi payer une ligne de plus : l'énoncé reprend toute
+    /// la largeur, qui est le moindre mal quand l'autre est de ne plus
+    /// voir son programme. Posé au moment où la bande se dispose, lu
+    /// quand elle se remplit.
+    etabli_enonce_sur_largeur_de_lecture: bool,
     /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
     ///
     /// `None` est le défaut, et c'est délibéré : les réglages se
@@ -2439,6 +2450,7 @@ impl Default for NamsdecApp {
             verification_demandee: false,
             executer_apres_assemblage: false,
             etabli_exercice_gestes_ancres: false,
+            etabli_enonce_sur_largeur_de_lecture: false,
             settings_file: None,
             dernière_échelle: None,
             zone_de_travail: egui::Rect::NOTHING,
@@ -4992,6 +5004,11 @@ fn main() -> eframe::Result<()> {
             // livrée en tête.
             app.exercise_packs.extend(packs);
             app.exercise_files = exercise_files;
+            // ET L'ÉTAPE OÙ L'ON S'ÉTAIT ARRÊTÉ REVIENT AVEC SON
+            // PROGRAMME. Ici et pas plus tôt : `from_settings` n'a pas
+            // encore les séries, et sans elles il n'y a rien à
+            // retrouver.
+            app.reprendre_l_etape_en_cours();
             // Les décompilateurs déclarés : on lit leur description, on
             // ne lance rien. Lancer se demande, et se demande deux fois
             // — la case du module, puis le bouton.

@@ -403,6 +403,29 @@ pub(crate) fn icon_button(
     response
 }
 
+/// LA LARGEUR SUR LAQUELLE ON COMPOSE UNE PHRASE.
+///
+/// Un œil qui revient à la ligne perd son rang au-delà d'une quinzaine
+/// de mots ; c'est la raison pour laquelle un livre n'est pas composé
+/// sur la largeur de sa page. Cinq cent soixante pixels font une
+/// centaine de caractères, ce qui est le haut de la fourchette lisible
+/// et laisse de la place aux mots longs de l'assembleur.
+///
+/// **Une seule pour toute l'application**, et c'est le point. Elle
+/// vivait dans [`empty_state`] et n'a longtemps servi qu'aux états
+/// vides, pendant que le texte le plus lu du mode débutant — l'énoncé
+/// de l'exercice — se composait sur toute la largeur de la fenêtre.
+/// Mesuré le 20 novembre 2026 sur les scènes de l'Établi : **deux cent
+/// soixante-dix-huit caractères** sur une ligne pour « Ce que la boucle
+/// a accumulé », deux cent soixante-neuf pour l'explication d'une
+/// erreur de nasm, cent quatre-vingt-onze pour un énoncé d'écriture —
+/// trois fois la limite, dans la bande qu'un débutant lit avant tout
+/// le reste.
+///
+/// Elle se prend toujours en minimum de ce qui est offert : un panneau
+/// étroit commande, et rien ne change là où la place manquait déjà.
+pub(crate) const LARGEUR_DE_LECTURE: f32 = 560.0;
+
 /// Un panneau vide qui dit ce qui manque, et propose ce qui le corrige.
 ///
 /// La règle vient de l'explorateur, qui l'appliquait seul : « un panneau
@@ -441,7 +464,6 @@ pub(crate) fn empty_state(
         // Le minimum garde les panneaux étroits inchangés : ils
         // offrent moins que cette borne, et c'est leur largeur qui
         // commande.
-        const LARGEUR_DE_LECTURE: f32 = 560.0;
         ui.set_max_width(ui.available_width().min(LARGEUR_DE_LECTURE) - 16.0);
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         ui.colored_label(theme.text, phrase);

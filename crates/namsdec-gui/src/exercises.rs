@@ -235,6 +235,33 @@ impl NamsdecApp {
     /// `current_file` repart à zéro : ce qui est chargé est un modèle, pas
     /// le fichier de l'utilisateur, et « Enregistrer » ne doit pas écrire
     /// par-dessus celui qu'il avait ouvert.
+    /// L'ÉTAPE OÙ L'ON S'ÉTAIT ARRÊTÉ REVIENT AVEC SON PROGRAMME.
+    ///
+    /// `current_exercise` est restitué des réglages — « au retour,
+    /// l'outil doit dire où l'on en était » — mais le programme ne
+    /// part jamais avec : des chemins, jamais leur contenu. La bande
+    /// annonçait donc, au premier démarrage d'après, une étape que
+    /// l'éditeur n'avait pas : « 3/120 — Échanger deux registres » en
+    /// tête, et le programme d'accueil en dessous. C'est de là que
+    /// venait le cul-de-sac signalé le 20 novembre 2026.
+    ///
+    /// Appelée au démarrage, une fois les séries lues — elles le sont
+    /// APRÈS les réglages, et sans elles il n'y a rien à retrouver.
+    ///
+    /// **Seulement sur un démarrage nu.** Un fichier rouvert, une
+    /// séance reprise, un second onglet : l'étape ne s'impose pas
+    /// par-dessus. Elle reste annoncée dans la bande, et « Reprendre »
+    /// la charge quand on le demande.
+    pub(crate) fn reprendre_l_etape_en_cours(&mut self) {
+        if !self.exercises || self.current_file.is_some() || !self.tabs.is_empty() {
+            return;
+        }
+        let Some(étape) = self.current_exercise.clone() else {
+            return;
+        };
+        self.load_exercise_now(&étape);
+    }
+
     pub(crate) fn load_exercise(&mut self, id: &str) {
         self.guard(Pending::Exercise(id.to_owned()));
     }
@@ -252,7 +279,38 @@ impl NamsdecApp {
         // série, pas au tampon, et l'emprunter une seule fois évite de
         // refaire `find` après chaque déplacement d'onglet.
         let départ = exercise.starter_code.clone();
+        // UNE MARQUE D'ÉTAPE SANS SON PROGRAMME NE VAUT PAS UN ONGLET
+        // OUVERT.
+        //
+        // `current_exercise` part dans les réglages — « au retour,
+        // l'outil doit dire où l'on en était » — et il revient au
+        // démarrage suivant. Le PROGRAMME, lui, ne part pas avec :
+        // des chemins, jamais leur contenu, c'est la règle de ce
+        // fichier. L'application se retrouvait donc, au premier
+        // démarrage d'après, sur une étape dont elle n'avait que le
+        // titre : la bande annonçait « 3/120 — Échanger deux
+        // registres » et l'éditeur portait le programme d'accueil.
+        //
+        // Et comme `exercise_tab_index` répond « tu y es déjà » dès
+        // que `current_exercise` porte l'identifiant demandé, cliquer
+        // « Charger » sur cette étape-là ne faisait RIEN. La seule
+        // étape du parcours qu'on ne pouvait pas ouvrir était celle
+        // sur laquelle on s'était arrêté (signalé sur capture le
+        // 20 novembre 2026).
+        //
+        // L'onglet porte vraiment l'étape quand son `saved_source` est
+        // le programme de départ de celle-ci — c'est exactement ce que
+        // l'ouverture y écrit, quelques lignes plus bas. Sinon la
+        // marque est périmée, et on l'efface avant de décider : le
+        // tampon redevient ce qu'il est, un programme d'accueil que
+        // personne n'a touché, et le chemin ordinaire s'applique.
+        if self.current_exercise.as_deref() == Some(id) && self.saved_source != départ {
+            self.current_exercise = None;
+        }
         // Déjà ouvert : on y retourne, avec ce qu'on y avait écrit.
+        // C'est ce qui empêche de recharger par-dessus son propre
+        // travail, et c'est pourquoi le raccourci n'est pas retiré
+        // mais rendu honnête.
         if let Some(rang) = self.exercise_tab_index(id) {
             self.go_to_tab(rang);
             return;

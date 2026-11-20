@@ -381,12 +381,21 @@ impl NamsdecApp {
         // fenêtre qui s'ouvre à 540×280 pour une phrase en moins
         // laisserait quatre-vingt-six pixels de vide.
         if !dans_la_rangée || ui.available_height() > PLACE_POUR_L_INDICE {
-            ui.weak(if self.disassembler == PSEUDO_ID {
-                s.disassembly_pseudo_hint
-            } else if self.disassembler == SYSTEM_ID {
-                s.disassembly_system_hint
-            } else {
-                s.disassembly_nasm_hint
+            // COMPOSÉE SUR UNE LARGEUR DE LECTURE. « Deux ou trois
+            // lignes » le disait déjà : dans la fenêtre du
+            // désassemblage, à pleine largeur, elle n'en faisait
+            // qu'une — cent quarante caractères d'un bord à l'autre,
+            // mesurés le 20 novembre 2026. Une phrase qui ne se lit
+            // qu'une fois doit se lire cette fois-là.
+            ui.scope(|ui| {
+                ui.set_max_width(ui.available_width().min(crate::widgets::LARGEUR_DE_LECTURE));
+                ui.weak(if self.disassembler == PSEUDO_ID {
+                    s.disassembly_pseudo_hint
+                } else if self.disassembler == SYSTEM_ID {
+                    s.disassembly_system_hint
+                } else {
+                    s.disassembly_nasm_hint
+                });
             });
         }
         ui.separator();

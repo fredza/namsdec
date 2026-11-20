@@ -925,8 +925,21 @@ impl NamsdecApp {
             }
             // Le message brut reste — c'est lui qu'on colle dans
             // une recherche —, et l'explication vient dessous.
+            //
+            // COMPOSÉE SUR UNE LARGEUR DE LECTURE. Le message de nasm
+            // est une ligne de machine et reste telle quelle ; les
+            // explications, elles, sont des phrases — et elles
+            // s'étiraient sur toute la bande : deux cent
+            // soixante-neuf caractères sur une ligne, mesurés le
+            // 20 novembre 2026 sur « établi / l'assemblage a échoué ».
+            // C'est le texte qu'on lit quand on vient d'être bloqué,
+            // et c'est le pire moment pour perdre son rang en revenant
+            // à la ligne.
             if let Some(explication) = nasm_errors::explain(lang, &d.message) {
-                ui.label(prose(ui, theme, explication));
+                ui.scope(|ui| {
+                    ui.set_max_width(ui.available_width().min(crate::widgets::LARGEUR_DE_LECTURE));
+                    ui.label(prose(ui, theme, explication));
+                });
             }
             // CE QUE NASM NE PEUT PAS DIRE, ET QUE LA LIGNE DIT.
             //
@@ -946,13 +959,16 @@ impl NamsdecApp {
                     fixes::registre_inconnu(&self.source, d.line as usize - 1)
             {
                 let liste = proches.join(", ");
-                ui.label(prose(
-                    ui,
-                    theme,
-                    &s.unknown_register_note
-                        .replacen("{}", &mot, 1)
-                        .replacen("{}", &liste, 1),
-                ));
+                ui.scope(|ui| {
+                    ui.set_max_width(ui.available_width().min(crate::widgets::LARGEUR_DE_LECTURE));
+                    ui.label(prose(
+                        ui,
+                        theme,
+                        &s.unknown_register_note
+                            .replacen("{}", &mot, 1)
+                            .replacen("{}", &liste, 1),
+                    ));
+                });
             }
             // LA CORRECTION SE MONTRE OÙ L'ERREUR SE LIT.
             //

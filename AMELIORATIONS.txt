@@ -13262,3 +13262,193 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      `la_scene_de_la_theorie_porte_la_plus_longue`. Toute scène choisie
      pour être le PIRE CAS doit avoir un contrôle qui vérifie qu'elle
      l'est encore.
+
+9.107 [FAIT] DEUX DÉFAUTS DE L'INTERFACE DÉBUTANT, ET LES DEUX ÉTAIENT
+      LÀ DEPUIS LE DÉBUT
+
+     Demande du 20 novembre 2026 : « passe à la version beta sup et
+     améliore l'interface débutant ». Pas de défaut nommé — donc une
+     revue : rendre les scènes de l'Établi, les regarder, puis mesurer
+     ce que le regard a trouvé.
+
+     LES DEUX ONT ÉTÉ VUS SUR CAPTURE AVANT D'ÊTRE MESURÉS, et c'est
+     exactement ce que le banc ne savait pas chercher. Huit cent
+     soixante-dix-sept contrôles passaient.
+
+     ── UNE BARRE DE DÉFILEMENT QUI N'ANNONÇAIT RIEN ──
+
+     Sur le premier écran — sombre, vide, seize lignes de code et sept
+     cents pixels de rien —, un trait clair de soixante-douze pixels
+     brillait au bord de la bande qui dit ce que fait la ligne
+     courante. Cette bande portait deux phrases centrées, qui
+     tenaient. Rien n'était hors de vue.
+
+     LA CAUSE EST UNE MESURE REPRISE EN ENTRÉE D'ELLE-MÊME, dans sa
+     forme la plus douce — et c'est ce qui la rend intéressante. La
+     bande se donne la hauteur de son contenu (A 9.102) ; la zone
+     défilante reçoit donc exactement la hauteur de ce qu'elle porte.
+     « Le contenu tient-il ? » se répond alors par un flottant contre
+     lui-même, et egui tranche du mauvais côté. SE TAILLER JUSTE EST
+     PRÉCISÉMENT CE QUI FAISAIT PARAÎTRE LA BARRE.
+
+     La mesure, sur les cent vingt-deux scènes : cinquante-six poignées
+     remplissaient leur glissière à plus de 96 %, et elles se
+     séparaient NETTEMENT en deux familles. C'est la séparation qui a
+     donné le seuil, et non l'inverse :
+
+       · 97 à 98 % — les listes d'analyse (721 px sur 733), la
+         chronologie, le profil. Douze pixels hors de vue sur sept cent
+         trente-trois : la barre a raison de le dire ;
+       · 99 à 101 % — les écrans du mode débutant, et eux seuls.
+         Soixante-douze sur soixante-treize. Un pixel.
+
+     Deux pixels de jeu entre ce que la bande porte et la hauteur
+     qu'elle se donne suffisent, et ils ne se voient pas. La barre
+     reparaît exactement quand elle doit : au plafond, le découpage
+     reprend le jeu et il y a cette fois vraiment quelque chose
+     dessous. Retenu par
+     `une_barre_de_defilement_annonce_quelque_chose_d_atteignable`,
+     éprouvé en retirant le jeu — neuf scènes nommées, toutes du mode
+     débutant.
+
+     ── UNE PHRASE COMPOSÉE SUR LA LARGEUR DE LA FENÊTRE ──
+
+     L'énoncé de l'exercice faisait DEUX CENT SOIXANTE-DIX-HUIT
+     CARACTÈRES sur une ligne. C'est le texte qu'un débutant lit avant
+     tout le reste. L'explication d'une erreur de nasm en faisait deux
+     cent soixante-neuf — le texte qu'il lit au moment précis où il est
+     bloqué. La phrase qui dit ce que le désassembleur montre en clair,
+     cent quarante, alors que son propre commentaire la disait « de
+     deux ou trois lignes ».
+
+     ET LA RÈGLE ÉTAIT DÉJÀ ÉCRITE DANS LE DÉPÔT, dans `empty_state` :
+     « un œil qui revient à la ligne perd son rang au-delà d'une
+     quinzaine de mots ; c'est la raison pour laquelle un livre n'est
+     pas composé sur la largeur de sa page. » Cinq cent soixante
+     pixels, et ils ne servaient qu'aux panneaux vides. La constante
+     est sortie de sa fonction ; il n'y en a toujours qu'une.
+
+     LA BANDE DE L'EXERCICE N'AVAIT AUCUN JEU, et deux contrôles ont
+     dit non ensemble. Un énoncé plus étroit est plus haut : deux
+     lignes deviennent quatre, et « Instructions : 3 / 4 » perdait
+     treize pixels sur dix-huit. Monter `EXERCICE_DEFAUT` n'y faisait
+     RIEN — la part de 22 % de la hauteur disponible plafonne la bande
+     bien avant, et c'est elle qui commande à 1600×1100. Monter la part
+     prenait des lignes de programme au plus petit écran, ce que
+     `au_plus_petit_ecran_l_etabli_montre_encore_du_code` refuse.
+
+     Les deux avaient raison, et ils disaient ensemble la même chose :
+     CE N'EST PAS UNE HAUTEUR QU'IL FALLAIT DÉPLACER, C'EN EST UNE
+     QU'IL FALLAIT AJOUTER. Quarante pixels, ajoutés à la bande comme
+     la rangée des gestes l'est déjà (A 9.94), et au même seuil — huit
+     cent soixante pixels de place. En dessous, rien ne change :
+     l'énoncé reprend toute la largeur, qui est le moindre mal quand
+     l'autre est de ne plus voir son programme. Le chiffre vient d'une
+     épreuve et non d'un calcul : vingt-deux ne suffisaient pas.
+
+     LES TEXTES TRONQUÉS NE SONT PAS DES PHRASES LONGUES, et c'est une
+     correction du relevé plutôt qu'un défaut trouvé. La note de la
+     frise fait deux cent trois caractères et n'en peint qu'une ligne
+     suivie de « … », le reste au survol. Un relevé qui compte le texte
+     d'une galley élidée mesure ce qui n'est pas peint — exactement
+     l'erreur que le banc venait de corriger sur le contraste (A
+     9.106). `galley.elided` la coupe.
+
+     Retenu par `une_phrase_ne_se_compose_pas_sur_la_largeur_de_la_
+     fenetre`, seuil à cent cinquante caractères. Cent serait l'idéal
+     typographique et plusieurs bandes ne peuvent pas l'atteindre sans
+     grandir — celle de la ligne courante est plafonnée en hauteur, et
+     la resserrer y ramènerait la barre qu'on vient de retirer. Cent
+     cinquante est la ligne au-delà de laquelle un texte n'est plus lu
+     mais parcouru ; les quatre défauts la franchissaient tous, et ce
+     qui reste tient à cent trente-sept.
+
+     ── CE QUI A ÉTÉ REGARDÉ ET LAISSÉ ──
+
+     Le premier écran est vide aux trois quarts : seize lignes de code
+     et sept cents pixels de fond. Ce n'est pas un défaut de mise en
+     page — rien n'est coupé, rien ne se recouvre —, c'est un choix de
+     disposition, et le changer serait refaire l'Établi plutôt que le
+     corriger. Noté ici pour que la prochaine revue n'ait pas à le
+     retrouver.
+
+     VERSION 0.4.2-beta.2, demandée. Changelog, PDF renommé et
+     régénéré, lien du README : les trois contrôles habituels les ont
+     réclamés.
+
+9.108 [FAIT] LA SEULE ÉTAPE QU'ON NE POUVAIT PAS OUVRIR ÉTAIT CELLE OÙ
+      L'ON S'ÉTAIT ARRÊTÉ
+
+     Signalé sur capture le 20 novembre 2026 : « l'exercice
+     correspondant à la leçon ne se charge pas », puis « j'ai cliqué
+     sur charger mais ». Trois images, et la troisième est la même que
+     la première — c'est tout le défaut.
+
+     CE QUE LES IMAGES MONTRAIENT. La bande annonçait « L'EXERCICE
+     3/120 Découverte — Échanger deux registres », avec son énoncé sur
+     `xchg` et son but (RAX vaut 2, RBX vaut 1). L'éditeur, lui,
+     portait le programme d'accueil : la boucle qui additionne
+     5+4+3+2+1. Un clic sur « Charger » dans la fenêtre des exercices
+     ne changeait rien.
+
+     DEUX FAITS JUSTES SÉPARÉMENT, ET FAUX ENSEMBLE.
+
+     Le premier : `current_exercise` part dans `settings.json` — « un
+     parcours de douze étapes se fait en plusieurs fois : au retour,
+     l'outil doit pouvoir dire où l'on en était ». Le second : le
+     CONTENU de l'éditeur n'y va jamais, et c'est une règle écrite du
+     même fichier, à propos des fichiers récents — « des chemins,
+     jamais leur contenu : rouvrir un fichier déplacé doit échouer en
+     le disant, pas ressortir une copie d'hier ».
+
+     Au démarrage suivant, l'application se croyait donc sur une étape
+     dont elle n'avait que le titre.
+
+     ET LE RACCOURCI A FERMÉ LA PORTE. `load_exercise_now` commence
+     par « déjà ouvert : on y retourne, avec ce qu'on y avait écrit » —
+     ce qui est juste, et qui empêche de recharger par-dessus son
+     propre travail. Mais `exercise_tab_index` répond « tu y es déjà »
+     sur le SEUL NOM de l'étape :
+
+         if self.current_exercise.as_deref() == Some(id) {
+             return Some(self.active_tab_index);
+         }
+
+     Le nom était là, le programme non, et la fonction rendait la main
+     sans rien faire. Toute demande de charger cette étape répondait
+     qu'elle était déjà là.
+
+     LE RACCOURCI N'EST PAS RETIRÉ, IL EST RENDU HONNÊTE. Le retirer
+     aurait échangé ce défaut contre un pire : recharger par-dessus ce
+     qu'on est en train d'écrire. Un onglet porte VRAIMENT l'étape
+     quand son `saved_source` est le programme de départ de celle-ci —
+     c'est exactement ce que l'ouverture y écrit. Sinon la marque est
+     périmée, on l'efface, et le chemin ordinaire s'applique : le
+     tampon redevient ce qu'il est, un programme d'accueil que
+     personne n'a touché.
+
+     ET LA CAUSE PREMIÈRE EST TRAITÉE AUSSI, parce qu'il ne suffit pas
+     que « Charger » marche : encore faut-il n'avoir pas à le
+     chercher. L'étape revient désormais AVEC son programme
+     (`reprendre_l_etape_en_cours`, appelée une fois les séries lues —
+     elles le sont après les réglages). SUR UN DÉMARRAGE NU SEULEMENT :
+     un fichier rouvert, une séance reprise, un second onglet, et
+     l'étape ne s'impose pas par-dessus ; elle reste annoncée, et
+     « Reprendre » la charge.
+
+     DEUX CONTRÔLES, et le premier a échoué avant la correction en
+     montrant les deux programmes côte à côte — celui qu'on voyait et
+     celui qu'on aurait dû voir :
+     `l_etape_retrouvee_au_demarrage_se_charge_quand_on_la_demande`
+     (qui vérifie AUSSI que le raccourci sert toujours : écrire, puis
+     redemander l'étape, ne doit rien effacer) et
+     `au_demarrage_la_bande_et_l_editeur_disent_la_meme_chose` (module
+     éteint, fichier ouvert : rien ne bouge).
+
+     CE QUE LE BANC NE POUVAIT PAS VOIR, et qui vaut d'être noté. Huit
+     cent quatre-vingts contrôles passaient. Le défaut ne vit que dans
+     une SUITE : régler, fermer, rouvrir. Aucune scène ne repart d'un
+     `settings.json` écrit par la séance d'avant — elles construisent
+     toutes une application neuve et lui posent l'état à la main. C'est
+     un angle mort du banc, et le seul moyen de le voir restait
+     d'ouvrir le programme deux fois.
