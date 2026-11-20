@@ -466,7 +466,7 @@ réglage est gardé.
 
 ### Les exercices
 
-**Chacun des cent dix-sept porte sa fiche de théorie.** Ni la consigne,
+**Chacun des cent vingt porte sa fiche de théorie.** Ni la consigne,
 ni l'indice : la consigne dit ce qu'on demande, l'indice dit où chercher
 quand on bloque, et la théorie dit la mécanique sur laquelle l'exercice
 repose — ce qu'est une boucle quand le processeur n'en a pas, pourquoi
@@ -493,7 +493,7 @@ le pli (quatre contrôles l'ont dit), repliée pour cette raison elle ne
 s'ouvrait jamais. Une fenêtre règle les deux, et donne enfin la place
 qu'un texte pédagogique demande.
 
-Six exercices demandent de **lire** plutôt que d'écrire : le programme
+Onze exercices demandent de **lire** plutôt que d'écrire : le programme
 est donné complet, une question est posée — « que vaut RAX à l'arrêt ? »
 —, et l'on répond avant d'exécuter. Le verdict ne donne pas la bonne
 réponse : elle s'obtient en exécutant, c'est-à-dire en faisant ce que
@@ -504,7 +504,7 @@ que la machine donne** : un contrôle assemble chacun de ces programmes,
 l'exécute et vérifie — une réponse écrite à la main dans un fichier JSON
 est une affirmation, passée à l'épreuve de l'émulateur c'est un fait.
 
-Cent un des cent dix-sept exercices portent un **but vérifiable** (`rax == 0xf`) :
+Cent deux des cent vingt exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -521,14 +521,19 @@ n'atteint serait pire que de n'en pas donner. Une série installée peut en port
 aussi — champ `goal` du fichier JSON, et `question` + `answer` pour un
 exercice de lecture.
 
-Un parcours de cent dix-sept exercices est livré avec le
+Un parcours de cent vingt exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
-- **Découverte** (22) — registres, échange, mise à zéro, boucles,
-  `loop`, bits, comparaisons, indicateurs, signe, nombres négatifs,
-  écritures d'un nombre, `inc` contre `add`, `test`, `xchg`/`bswap`,
-  masques de bits, constantes calculées à l'assemblage, rotations,
-  `setcc`, `not` et `neg`, division signée, coût d'un immédiat.
+- **Découverte** (25) — registres, échange, mise à zéro, `add` et
+  `sub`, boucles, `loop`, bits, comparaisons, indicateurs, signe,
+  nombres négatifs, écritures d'un nombre, `inc` contre `add`, `test`,
+  `xchg`/`bswap`, masques de bits, constantes calculées à
+  l'assemblage, rotations, `setcc`, `not` et `neg`, division signée,
+  coût d'un immédiat. Et trois exercices de **prévision**, placés
+  chacun juste après la théorie qu'ils éprouvent : ce qu'il reste de
+  RAX quand on écrit une tranche de 32 puis de 16 bits, qui est ôté de
+  qui dans une soustraction, et ce qu'il reste des soixante-quatre bits
+  quand on les allume tous puis qu'on les décale.
 - **Pratique** (33) — décalages, compte de bits, multiplication,
   division, mémoire, tailles d'opérande, ordre des octets, données
   déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et

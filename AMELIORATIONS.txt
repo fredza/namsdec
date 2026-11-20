@@ -13145,3 +13145,120 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      de changelog au bon numéro, un PDF nommé d'après lui, un lien de
      README qui y mène. C'est ce qu'on leur demande de faire, et ils
      l'ont fait deux fois de suite sans se lasser.
+
+9.106 [FAIT] LA THÉORIE N'ENSEIGNAIT PAS TOUJOURS CE QUE SON EXERCICE
+      DEMANDAIT D'ÉCRIRE
+
+     Demande du 20 novembre 2026 : « la partie débutant devient très
+     intéressante mais tu peux encore mieux adapter la théorie avec les
+     exercices adéquats (n'oublies pas que le programme en mode
+     débutant est destiné aux débutants) ».
+
+     C'était une demande de goût, et elle s'est révélée mesurable. La
+     question posée au parcours : POUR CHAQUE TROU, LE NOM QU'IL FAUT
+     TAPER EST-IL ÉCRIT QUELQUE PART SUR LA PAGE ? On calcule ce que le
+     trou demande — les mnémoniques de la solution absentes du programme
+     de départ — et on le cherche dans la théorie, l'énoncé, les
+     commentaires et l'indice.
+
+     CE QUE LA MESURE A TROUVÉ, et pourquoi un contrôle existant ne le
+     voyait pas. `aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee`
+     (A 9.92) passait au vert, et il avait raison de passer : il
+     accepte trois façons d'être en règle, dont deux ne valent rien
+     pour un débutant.
+
+       · « la notion a servi vingt étapes plus tôt » — personne ne tient
+         vingt étapes de mémoire, et avoir lu `sub` ne dit pas que `add`
+         existe ;
+       · « l'étape nomme la FAMILLE » — `setcc` n'est pas une
+         instruction. On ne peut pas l'écrire : `cc` est la PLACE d'une
+         condition. Il faut savoir que celle de ZF s'appelle `z`, et
+         rien ne le disait.
+
+     La règle neuve ne vaut donc qu'au palier Découverte, et elle
+     demande le NOM, cité COMME DU CODE — entre accents graves, ou dans
+     le programme. Sur les vingt-cinq étapes du palier, CINQ étaient en
+     faute :
+
+       · `boucle`, quatrième étape, faisait écrire `add` sans l'avoir
+         nommé nulle part. La consigne disait « ajouter RCX à RAX », en
+         français ;
+       · `drapeaux`, huitième, faisait écrire `setz`, `sets`, `setc` et
+         `seto` — dix étapes avant l'étape qui enseigne la famille ;
+       · `negatif` attendait `shr`, `hexadecimal` attendait `mov`,
+         `test_and` attendait `jz` alors que seul `jnz` avait paru.
+
+     LES ACCENTS GRAVES NE SONT PAS UNE COQUETTERIE, et c'est la mesure
+     qui l'a imposé. Un premier relevé cherchait le mot n'importe où
+     dans la prose, et il déclarait `boucle` en règle EN ANGLAIS : sa
+     consigne anglaise commence par « Add 5+4+3+2+1 ». Le verbe tombe
+     sur le mnémonique par accident. Un contrôle qui s'en contente est
+     vert sans que personne n'ait rien introduit.
+
+     LA CORRECTION N'A PAS TOUJOURS ÉTÉ UN MOT AJOUTÉ À LA THÉORIE, et
+     c'est le point de cette entrée. Pour `drapeaux`, c'est L'EXERCICE
+     qui était mal posé. Sa théorie enseigne ce que ZF, SF, CF et OF
+     veulent dire ; son trou demandait quatre mnémoniques d'une famille
+     non enseignée. Les deux ne parlaient pas de la même chose.
+
+     Les quatre `setcc` sont donc désormais ÉCRITS dans le programme —
+     ils ne sont que l'instrument qui rend un indicateur visible —, et
+     le trou est devenu ce que la théorie enseigne : le calcul qui
+     provoque chacun des quatre. Même but, même budget (dix-sept
+     instructions), et l'étape éprouve enfin sa propre leçon.
+
+     TROIS ÉTAPES EN PLUS, et chacune comble un trou que la mesure a
+     montré.
+
+       · `addition` — l'arithmétique à deux opérandes, qui MANQUAIT. Le
+         parcours faisait écrire `add` dans une boucle avant d'avoir
+         jamais parlé d'addition, et aucune étape n'enseignait que la
+         destination est l'une des deux valeurs et qu'elle est écrasée.
+         C'est la chose la plus élémentaire du jeu d'instructions.
+       · `prevoir_largeur` — le piège numéro un du débutant se
+         RACONTAIT (première étape, une démonstration) et ne se
+         prévoyait jamais. Trois écritures sur la même case, deux
+         règles, et trois réponses distinctes selon l'erreur commise :
+         0xAABBBEEF si l'on a compris, 0x11223344AABBBEEF si l'on
+         oublie que la tranche 32 efface le haut, 0xBEEF si l'on croit
+         que la tranche 16 l'efface aussi.
+       · `prevoir_soustraction` — l'ordre des opérandes ET le passage
+         sous zéro, les deux erreurs qu'une soustraction cache. 3 − 10
+         ne donne pas 7.
+
+     Le palier passe ainsi d'UNE étape de lecture à TROIS, et le
+     parcours de cent dix-sept à cent vingt. Les deux réponses neuves
+     sont vérifiées par l'émulateur, comme les neuf autres.
+
+     UN SEUL DÉCOUPAGE D'ASSEMBLEUR, DEUX VUES.
+     `instructions_du_programme` rendait des FICHES ; la règle neuve a
+     besoin des NOMS. Écrire un second analyseur à côté du premier
+     aurait fait deux contrôles qui ne lisent pas le même programme :
+     `mnemoniques_du_programme` fait le découpage, et le premier se
+     réduit à une projection sur les fiches.
+
+     ET LE BANC A RENDU DEUX DÉFAUTS QUI N'ÉTAIENT PAS DANS LA DEMANDE.
+
+     Le premier est un faux positif, et il valait la peine. Le relevé de
+     contraste a rougi : « Charger », gris 212 sur l'accent bleu, 2,07
+     contre un plancher de 3. Sauf que ce texte n'est pas peint — c'est
+     la vingtième rangée d'une zone défilante, qui sort par le bas de la
+     fenêtre et qu'egui découpe. Le relevé, lui, voyait sa forme et lui
+     cherchait un fond : il l'a trouvé sous le panneau ancré du bas, qui
+     recouvre justement cette place. Trois rangées de plus dans la liste
+     ont suffi à le déclencher — et cent dix-sept étapes passaient par
+     chance. Un relevé qui dépend du nombre de lignes d'une liste fait
+     douter de tous les autres : il ignore désormais ce qui est hors du
+     `clip_rect` de sa propre forme.
+
+     Le second est une scène qui avait vieilli sans le dire. La scène
+     « théorie » du banc est là parce que cette fenêtre porte le plus
+     long texte continu de l'application — mais elle ouvrait
+     `prevoir_somme`, huit cent soixante-trois caractères, pendant que
+     `drapeaux` passait à mille trois cent onze en gagnant le
+     paragraphe qui nomme son instrument. Le banc mesurait un tiers de
+     texte en moins que ce que l'application sait montrer, et restait
+     vert. Un contrôle compare désormais les longueurs :
+     `la_scene_de_la_theorie_porte_la_plus_longue`. Toute scène choisie
+     pour être le PIRE CAS doit avoir un contrôle qui vérifie qu'elle
+     l'est encore.

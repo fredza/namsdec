@@ -891,6 +891,14 @@ fn compile_c(source: &str, options: &[&str]) -> Option<(tempfile::TempDir, std::
 /// s'affiche.
 type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
 
+/// L'étape dont la scène « théorie » du banc ouvre la fiche.
+///
+/// Nommée ici, et non écrite dans la scène, parce qu'un contrôle la
+/// relit : la scène doit porter la **plus longue** des théories livrées,
+/// sans quoi le banc mesure un texte court et ne dit rien du long. Voir
+/// `la_scene_de_la_theorie_porte_la_plus_longue`.
+pub(crate) const THEORIE_DU_BANC: &str = "drapeaux";
+
 /// Les fenêtres qu'un démarrage nu sait ouvrir.
 ///
 /// Une seule liste, et non une par test : c'est ce qui fait qu'une
@@ -932,7 +940,15 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
             // programme du banc. La garde s'ouvrait, l'exercice ne se
             // chargeait pas, et la fiche se refermait d'elle-même : la
             // scène mesurait une fenêtre absente.
-            app.load_exercise_now("namsdec/prevoir_somme");
+            //
+            // CELLE QUI PORTE LE PLUS LONG TEXTE, et non une au
+            // hasard : une scène qui mesure un texte court ne dit rien
+            // du long. Elle a tenu sur « prevoir_somme », huit cent
+            // soixante-trois caractères, jusqu'au jour où « Les quatre
+            // indicateurs » est passé à mille trois cent onze — et le
+            // banc n'en savait rien. Un contrôle le dit désormais :
+            // `la_scene_de_la_theorie_porte_la_plus_longue`.
+            app.load_exercise_now(&format!("namsdec/{THEORIE_DU_BANC}"));
             app.show_theorie = true;
         }),
         ("registres étendus", "vectors_window", |app| {
@@ -967,7 +983,7 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
         }),
         ("correctifs", PATCHES_WINDOW, |app| app.show_patches = true),
         // LA FENÊTRE DES EXERCICES N'Y ÉTAIT PAS, et c'est la plus
-        // longue liste que namsdec sache peindre : cent dix-sept titres,
+        // longue liste que namsdec sache peindre : cent vingt titres,
         // leur énoncé, leur palier, leurs fiches utiles. Aucun
         // invariant ne l'avait jamais regardée — ni recouvrement, ni
         // découpage, ni taille —, et le parcours vient d'y gagner douze

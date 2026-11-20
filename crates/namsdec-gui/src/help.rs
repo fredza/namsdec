@@ -14,7 +14,7 @@ use crate::exercises::exercises_dir;
 ///
 /// Un chiffre — « 8/10 » — se LIT ; une barre se VOIT, et c'est toute
 /// la différence quand on hésite à rouvrir un parcours de
-/// cent dix-sept étapes. Elle ne récompense rien et ne compte pas
+/// cent vingt étapes. Elle ne récompense rien et ne compte pas
 /// les jours : elle montre l'avancée, ce qu'un parcours doit à qui le
 /// suit, et pas un gramme de plus. Le seul mérite de namsdec reste
 /// l'anneau du budget, qui se gagne en réécrivant.
@@ -36,7 +36,7 @@ pub(crate) fn barre_progression(
     }
     let part = (faits as f32 / total as f32).clamp(0.0, 1.0);
     // Au moins la hauteur de la barre : une avancée d'un sur
-    // cent dix-sept donne six dixièmes de pixel, c'est-à-dire
+    // cent vingt donne six dixièmes de pixel, c'est-à-dire
     // rien — et « rien » est exactement ce qu'on vient de ne pas
     // mériter.
     let plein = (rect.width() * part).max(rect.height());
@@ -123,7 +123,7 @@ impl NamsdecApp {
 
     /// La question posée avant d'effacer ce que le parcours a retenu.
     ///
-    /// **Une boîte, et non un clic direct** : cent dix-sept étapes de
+    /// **Une boîte, et non un clic direct** : cent vingt étapes de
     /// réussites et de meilleurs scores ne se perdent pas sur un geste
     /// de travers. C'est la règle de l'application pour tout ce qui ne
     /// se défait pas — et c'est pourquoi le bouton qui l'ouvre porte
@@ -232,7 +232,7 @@ impl NamsdecApp {
                     return;
                 }
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : cent dix-sept exercices ne tiennent
+                // L'étape en cours, en tête : cent vingt exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -329,7 +329,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses cent dix-sept exercices,
+                    // contenu est aussi haute que ses cent vingt exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
@@ -400,7 +400,7 @@ impl NamsdecApp {
                                     // Les trois points disent qu'une
                                     // question suit : ceci ne se défait
                                     // pas, et un clic de travers ne doit
-                                    // pas coûter cent dix-sept étapes.
+                                    // pas coûter cent vingt étapes.
                                     if faits > 0
                                         && framed_button(ui, theme, s.exercises_reset_all)
                                             .on_hover_text(s.exercises_reset_all_hint)
@@ -411,7 +411,7 @@ impl NamsdecApp {
                                 });
                                 // LE CARNET DES NOTIONS, sous la barre.
                                 //
-                                // « 12/117 » dit le chemin parcouru et
+                                // « 12/120 » dit le chemin parcouru et
                                 // rien de ce qu'on y a appris. Or c'est
                                 // la seule question qui compte quand on
                                 // apprend : qu'est-ce que je sais

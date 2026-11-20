@@ -4,13 +4,44 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 0.4.2-beta.1 — 18 au 19 novembre 2026
+## 0.4.2-beta.1 — 18 au 20 novembre 2026
 
 Ce qui justifie le chiffre, du point de vue de qui s'en sert : **chaque
 exercice explique maintenant la mécanique sur laquelle il repose**, et
 **l'installateur met à jour sans rien fermer avant d'avoir fini**.
 
-**Une fiche de théorie pour chacun des 117 exercices**
+**La théorie enseigne ce que son exercice demande d'écrire** (20 novembre)
+- Au palier **Découverte**, chaque **nom** que le trou réclame est
+  désormais écrit sur la page qu'on a sous les yeux — théorie, énoncé,
+  commentaires du programme ou indice —, dans les deux langues. Pas sa
+  famille, pas une étape précédente : le nom qu'il faut taper.
+- Cinq étapes sur vingt-cinq étaient en faute. *Une boucle qui compte*,
+  quatrième étape, faisait écrire `add` sans l'avoir nommé : la consigne
+  disait « ajouter RCX à RAX », en français. *Les quatre indicateurs*,
+  huitième, faisait écrire `setz`, `sets`, `setc` et `seto` — la famille
+  `setcc` est enseignée dix étapes plus loin, et `setcc` ne s'écrit pas.
+  Plus `shr`, `mov` et `jz`.
+- **L'exercice des indicateurs a changé, pas seulement sa théorie.** Les
+  quatre `setcc` sont maintenant écrits dans le programme — ils ne sont
+  que l'instrument qui rend un indicateur visible —, et ce qui reste à
+  écrire est ce que la théorie enseigne : le calcul qui provoque chacun
+  des quatre. Même but, même budget.
+
+**Trois étapes neuves pour qui débute : le parcours passe à 120**
+- **Ajouter, ôter** — l'arithmétique à deux opérandes, qui manquait. On
+  faisait écrire `add` dans une boucle avant d'avoir jamais dit que la
+  destination est l'une des deux valeurs, et qu'elle est écrasée.
+- **Ce qu'il reste de RAX** — le piège numéro un du débutant se
+  racontait en démonstration ; il se **prévoit** maintenant. Trois
+  écritures sur la même case, deux règles, et trois réponses distinctes
+  selon l'erreur commise.
+- **Qui est ôté de qui** — l'ordre des opérandes et le passage sous
+  zéro : `sub rax, rbx` ôte RBX de RAX, et 3 − 10 ne donne pas 7.
+- Le palier Découverte passe ainsi d'une étape de lecture à trois, et
+  chacune est placée juste après la théorie qu'elle éprouve. Les deux
+  réponses neuves sont vérifiées par l'émulateur, comme les neuf autres.
+
+**Une fiche de théorie pour chacun des 120 exercices**
 - Ni la consigne, ni l'indice. La consigne dit ce qu'on demande,
   l'indice dit où chercher quand on bloque ; la **théorie** dit comment
   la machine s'y prend — ce qu'est une boucle quand le processeur n'en

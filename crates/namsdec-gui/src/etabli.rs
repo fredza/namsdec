@@ -1311,7 +1311,7 @@ impl NamsdecApp {
                 // bande fait deux cent dix pixels, la théorie en
                 // prenait cent cinquante — et quatre contrôles l'ont
                 // dit. On avait alors replié par défaut, ce qui
-                // revenait à écrire cent dix-sept textes que personne
+                // revenait à écrire cent vingt textes que personne
                 // n'ouvre.
                 //
                 // Une fenêtre règle les deux : la bande ne perd rien,
@@ -1334,8 +1334,8 @@ impl NamsdecApp {
                 // part.
                 //
                 // LA BARRE SEULE, ET LE COMPTE AU SURVOL. Elle portait
-                // « 1/117 » à côté d'elle, et le titre de la bande
-                // porte « 2/117 » trois centimètres plus à gauche :
+                // « 1/120 » à côté d'elle, et le titre de la bande
+                // porte « 2/120 » trois centimètres plus à gauche :
                 // deux fractions de même forme et de même dénominateur
                 // sur une seule ligne, l'une disant le RANG et l'autre
                 // les RÉUSSIS. Sur la capture du 10 novembre 2026, on

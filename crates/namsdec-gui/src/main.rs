@@ -2099,7 +2099,7 @@ impl PreferencesTab {
 /// chose qui marche même quand il ne l'est pas.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de cent dix-sept exercices vous attend : Préférences > Modules.
+; Un parcours de cent vingt exercices vous attend : Préférences > Modules.
 
 global _start
 

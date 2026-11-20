@@ -429,8 +429,10 @@ fn the_built_in_pack_is_a_course_in_order() {
         ids,
         [
             "registres",
+            "prevoir_largeur",
             "echange",
             "zero",
+            "addition",
             "boucle",
             "compteur",
             "bits",
@@ -438,6 +440,7 @@ fn the_built_in_pack_is_a_course_in_order() {
             "drapeaux",
             "signe",
             "negatif",
+            "prevoir_soustraction",
             "hexadecimal",
             "incrementer",
             "test_and",
@@ -664,7 +667,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("cent dix-sept exercices"), "{painted}");
+    assert!(painted.contains("cent vingt exercices"), "{painted}");
 }
 
 /// Le programme d'accueil annonce le bon nombre d'exercices.
@@ -823,12 +826,12 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // trente et unième des cent dix-sept étapes.
-    assert!(painted.contains("31/117"), "{painted}");
+    // trente-quatrième des cent vingt étapes.
+    assert!(painted.contains("34/120"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
-/// retrouver son rang dans une liste de cent dix-sept.
+/// retrouver son rang dans une liste de cent vingt.
 #[test]
 fn the_course_offers_the_next_step() {
     let mut app = NamsdecApp {
@@ -842,7 +845,7 @@ fn the_course_offers_the_next_step() {
     let (suivant, titre) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/echange");
+    assert_eq!(suivant, "namsdec/prevoir_largeur");
     assert!(!titre.is_empty());
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
@@ -876,7 +879,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/117"),
+        painted.contains("1/120"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -1090,7 +1093,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/117 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/120 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -1569,15 +1572,16 @@ fn the_next_step_skips_what_is_already_done() {
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/echange");
+    assert_eq!(suivant, "namsdec/prevoir_largeur");
 
     // Les deux d'après déjà réussies : on saute par-dessus.
+    app.exercises_done
+        .insert("namsdec/prevoir_largeur".to_owned());
     app.exercises_done.insert("namsdec/echange".to_owned());
-    app.exercises_done.insert("namsdec/zero".to_owned());
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/boucle");
+    assert_eq!(suivant, "namsdec/zero");
 
     // Tout réussi jusqu'au bout : on retombe sur la suivante, plutôt
     // que de ne rien proposer.
@@ -1588,7 +1592,7 @@ fn the_next_step_skips_what_is_already_done() {
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/echange");
+    assert_eq!(suivant, "namsdec/prevoir_largeur");
 
     // Et la recherche filtre la liste : sur « pile », il reste les
     // étapes qui en parlent, pas les trente-six.
@@ -4232,7 +4236,7 @@ fn le_bouton_du_parcours_allume_le_module_qu_il_demande() {
     app.show_exercises = true;
     let peint = paint(&mut app);
     assert!(
-        peint.contains("117") || peint.contains("Découverte"),
+        peint.contains("120") || peint.contains("Découverte"),
         "et la fenêtre du parcours s'ouvre :\n{peint:.600}"
     );
     // Le choix se retient : c'est un réglage comme un autre.
@@ -4339,6 +4343,117 @@ fn aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee() {
         fautes.len(),
         fautes.join("\n  ")
     );
+}
+
+/// AU PALIER DÉCOUVERTE, LE NOM À TAPER EST SUR LA PAGE.
+///
+/// **Pourquoi un second contrôle, plus dur que le précédent.** Celui
+/// d'au-dessus accepte trois façons d'être en règle, dont deux ne
+/// suffisent pas à qui débute :
+///
+/// - « la notion a servi vingt étapes plus tôt » — un débutant ne tient
+///   pas vingt étapes de mémoire, et il n'a aucune raison de deviner
+///   que `add` existe parce qu'il a lu `sub` ;
+/// - « l'étape nomme la FAMILLE » — `setcc` n'est pas une instruction.
+///   On ne peut pas l'écrire : `cc` est la PLACE d'une condition, pas
+///   une condition. Il faut savoir que celle de ZF s'appelle `z`, et
+///   rien ne le disait.
+///
+/// **Ce que mesure celui-ci**, et seulement au premier palier : chaque
+/// mnémonique que le trou demande est citée **comme du code** — entre
+/// accents graves, ou dans le programme de départ — sur la page qu'on a
+/// sous les yeux, et dans les deux langues. Pas sa famille, pas une
+/// étape précédente : le nom qu'il faut taper.
+///
+/// **Entre accents graves, et non n'importe où dans la prose** : la
+/// consigne anglaise de « Une boucle qui compte » commence par « Add
+/// 5+4+3+2+1 ». Le verbe anglais tombe sur le mnémonique par accident,
+/// et un contrôle qui s'en contenterait serait vert sans que personne
+/// n'ait introduit `add`. Les accents graves, eux, sont la convention
+/// du parcours pour « ceci est du code » — et c'est aussi ce qui en
+/// fait un renvoi cliquable vers la fiche.
+///
+/// **Mesuré le 20 novembre 2026 sur les vingt-cinq étapes du palier** :
+/// cinq ne nommaient pas ce qu'elles demandaient. « Une boucle qui
+/// compte » faisait écrire `add` sans l'avoir jamais nommé ; « Les
+/// quatre indicateurs », huitième étape du parcours, faisait écrire
+/// `setz`, `sets`, `setc` et `seto`, une famille enseignée dix étapes
+/// plus loin ; « Un nombre négatif » attendait `shr`, « Un nombre,
+/// trois écritures » attendait `mov`, et « Regarder sans écrire »
+/// attendait `jz` alors que seul `jnz` avait paru.
+#[test]
+fn au_palier_decouverte_le_nom_a_taper_est_sur_la_page() {
+    let pack = builtin_pack();
+    let mut fautes: Vec<String> = Vec::new();
+    let mut éprouvées = 0;
+
+    for exercise in &pack.exercises {
+        if exercise.level != namsdec_exercises::Level::Discovery {
+            continue;
+        }
+        let Some(solution) = exercise.solution.as_deref() else {
+            // Une démonstration ou une étape de lecture n'a rien à
+            // taper : tout est sous les yeux.
+            continue;
+        };
+        éprouvées += 1;
+        let sujet = crate::exercises::mnemoniques_du_programme(&exercise.starter_code);
+        for mot in crate::exercises::mnemoniques_du_programme(solution) {
+            if sujet.contains(&mot) {
+                continue;
+            }
+            for langue in ["fr", "en"] {
+                // CHAQUE TEXTE À PART, et non collés bout à bout : les
+                // accents graves vont par paires, et un texte qui en
+                // porterait un nombre impair décalerait la parité de
+                // tous les suivants.
+                let mut page: Vec<&str> =
+                    vec![exercise.description.get(langue), &exercise.starter_code];
+                if let Some(théorie) = &exercise.theorie {
+                    page.push(théorie.get(langue));
+                }
+                if let Some(indice) = &exercise.hint {
+                    page.push(indice.get(langue));
+                }
+                if !page.iter().any(|texte| cité_comme_du_code(texte, &mot)) {
+                    fautes.push(format!(
+                        "{} ({langue}) : il faut taper « {mot} », et la page ne le cite nulle part",
+                        exercise.id
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        fautes.is_empty(),
+        "{} étape(s) du palier Découverte demandent un nom qu'elles n'écrivent pas :\n  {}",
+        fautes.len(),
+        fautes.join("\n  ")
+    );
+    // Le palier a bien des trous à éprouver : si tout y devenait
+    // démonstration, le contrôle passerait au vert en ne regardant
+    // plus rien.
+    assert!(
+        éprouvées >= 18,
+        "seulement {éprouvées} étapes à trou au palier Découverte"
+    );
+}
+
+/// Le mot est-il cité COMME DU CODE dans ce texte ?
+///
+/// C'est-à-dire entre accents graves — « `shr` pousse les bits vers le
+/// bas » —, et non au fil de la prose, où un mnémonique de trois
+/// lettres tombe par accident. Les tranches impaires d'un découpage sur
+/// l'accent grave sont le même découpage que l'interface emploie pour
+/// faire ses renvois : ce qui est vérifié ici est donc exactement ce
+/// qui est cliquable là-bas.
+fn cité_comme_du_code(texte: &str, mot: &str) -> bool {
+    texte
+        .split('`')
+        .enumerate()
+        .filter(|(i, _)| i % 2 == 1)
+        .any(|(_, morceau)| mot_présent(&morceau.to_ascii_lowercase(), mot))
 }
 
 /// Un mot entier, et non un morceau : `add` ne doit pas se reconnaître
@@ -4475,7 +4590,7 @@ fn une_question_ne_se_verifie_pas_avant_d_avoir_repondu() {
 
 /// LE CARNET NE COMPTE QUE CE QU'ON A RÉUSSI.
 ///
-/// « 12/117 » dit le chemin parcouru et rien de ce qu'on y a appris.
+/// « 12/120 » dit le chemin parcouru et rien de ce qu'on y a appris.
 /// Le carnet répond à l'autre question — qu'est-ce que je sais
 /// maintenant — et il ne la flatte pas : ouvrir un énoncé n'apprend
 /// rien, et deux noms du même opcode ne font pas deux notions.
@@ -4640,6 +4755,54 @@ fn l_enonce_mene_aux_fiches() {
         app.help.as_ref().map(|(mot, _)| mot.as_str()),
         Some("xchg"),
         "sur la fiche de l'instruction qu'on a cliquée"
+    );
+}
+
+/// LA SCÈNE DU BANC OUVRE LA PLUS LONGUE DES THÉORIES.
+///
+/// La fenêtre de la théorie porte le plus long texte continu de
+/// l'application, et c'est à ce titre qu'elle est au banc : contraste,
+/// recouvrement, découpage, hauteur. Mais une scène n'ouvre qu'UNE
+/// fiche, et mesurer un texte court ne dit rien du long — une fenêtre
+/// qui tient huit cents caractères peut déborder à mille trois cents.
+///
+/// La scène a tenu sur « Ce que la boucle a accumulé », huit cent
+/// soixante-trois caractères, pendant que « Les quatre indicateurs »
+/// passait à mille trois cent onze en gagnant le paragraphe qui nomme
+/// son instrument. Personne ne l'aurait vu : le banc restait vert, et
+/// il mesurait un tiers de texte en moins que ce que l'application
+/// sait montrer.
+///
+/// D'où ce contrôle, qui ne regarde pas une image : il compare des
+/// longueurs. Écrire une théorie plus longue que celle du banc fait
+/// rougir cette ligne, et la correction tient en un identifiant.
+#[test]
+fn la_scene_de_la_theorie_porte_la_plus_longue() {
+    let pack = builtin_pack();
+    let longueur = |exercice: &namsdec_exercises::Exercise| {
+        exercice
+            .theorie
+            .as_ref()
+            .map(|t| t.fr.chars().count().max(t.en.chars().count()))
+            .unwrap_or(0)
+    };
+    let du_banc = pack
+        .by_id(crate::tests::THEORIE_DU_BANC)
+        .unwrap_or_else(|| panic!("« {} » est au parcours", crate::tests::THEORIE_DU_BANC));
+    let (plus_longue, combien) = pack
+        .exercises
+        .iter()
+        .map(|e| (e.id.as_str(), longueur(e)))
+        .max_by_key(|(_, n)| *n)
+        .expect("le parcours a des étapes");
+    assert_eq!(
+        (crate::tests::THEORIE_DU_BANC, longueur(du_banc)),
+        (plus_longue, combien),
+        "la scène « théorie » du banc ouvre « {} » ({} caractères) alors que \
+         « {plus_longue} » en porte {combien} : le banc mesurerait moins que \
+         ce que l'application montre",
+        crate::tests::THEORIE_DU_BANC,
+        longueur(du_banc)
     );
 }
 

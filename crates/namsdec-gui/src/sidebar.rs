@@ -2039,7 +2039,7 @@ impl NamsdecApp {
         // 2026 : R8 à R15 y sont à zéro, alignés sur huit rangées,
         // c'est-à-dire LA MOITIÉ du volet — pendant que la pile, en
         // dessous, montre trois lignes et se défile de côté. Vingt
-        // étapes du parcours sur cent dix-sept les emploient ; les
+        // étapes du parcours sur cent vingt les emploient ; les
         // quatre-vingt-dix-sept autres paient huit lignes pour huit
         // zéros.
         //

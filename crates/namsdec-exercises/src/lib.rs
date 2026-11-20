@@ -312,9 +312,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : cent dix-sept étapes, et
+        // Un parcours, pas une poignée : cent vingt étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 117);
+        assert_eq!(pack.exercises.len(), 120);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
@@ -475,7 +475,7 @@ mod theorie_tests {
     /// fermer la porte que le format est censé ouvrir. Mais la série
     /// LIVRÉE est le parcours, et un parcours dont une étape sur cent
     /// dix-sept n'explique pas sur quoi elle repose a un trou que
-    /// personne ne verra — on ne lit pas les cent dix-sept d'affilée.
+    /// personne ne verra — on ne lit pas les cent vingt d'affilée.
     #[test]
     fn chaque_exercice_livre_porte_sa_theorie() {
         let pack = pack();
@@ -498,7 +498,7 @@ mod theorie_tests {
     /// C'EST LA RAISON D'ÊTRE DU CHAMP, et le seul moyen de la retenir.
     /// La consigne dit ce qu'on demande ; la théorie dit la mécanique
     /// sur laquelle l'exercice repose, et elle doit resservir ailleurs.
-    /// Recopier l'une dans l'autre donnerait cent dix-sept redites que
+    /// Recopier l'une dans l'autre donnerait cent vingt redites que
     /// personne ne relirait, et le repli serait un repli vide.
     ///
     /// La mesure est grossière et honnête : on compte les mots communs.
@@ -622,7 +622,7 @@ mod theorie_tests {
     ///
     /// Au-dessus de deux mille, on ne lit plus d'un trait : la fenêtre
     /// se met à défiler, et un texte qu'on lit AVANT de commencer doit
-    /// tenir sous les yeux. Les cent dix-sept tiennent entre 580 et
+    /// tenir sous les yeux. Les cent vingt tiennent entre 580 et
     /// 1010 ; les bornes laissent de la place sans ouvrir la porte au
     /// chapitre de cours.
     ///

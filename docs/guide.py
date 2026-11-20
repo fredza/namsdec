@@ -1982,7 +1982,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "la version française, ce sont ces fiches-ci."),
         ("p",
          "<b>Et tout le parcours se remet à zéro</b>, depuis la fenêtre des "
-         "exercices&nbsp;: réussites, scores et brouillons des cent dix-sept étapes. Une "
+         "exercices&nbsp;: réussites, scores et brouillons des cent vingt étapes. Une "
          "question est posée avant, parce que cela ne se défait pas."),
         ("note",
          "<b>Le verdict ne se donne pas tout seul.</b> Une course lancée à la main reste "
@@ -2009,7 +2009,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Et le carnet dit ce que vous avez vu.</b> Dans la fenêtre des exercices, "
          "sous la barre de progression, <b>Ce que vous avez vu</b> liste les "
          "instructions des étapes <i>réussies</i> — ouvrir un énoncé n'apprend rien —, "
-         "chacune ouvrant sa fiche. « 12/117 » dit le chemin parcouru&nbsp;; le carnet "
+         "chacune ouvrant sa fiche. « 12/120 » dit le chemin parcouru&nbsp;; le carnet "
          "dit ce qu'on y a appris, et c'est l'autre moitié de la question."),
         ("p",
          "<b>Le parcours va dans les deux sens.</b> <b>Étape suivante</b> mène à la "
@@ -2048,13 +2048,50 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Elle est écrite <b>pour qui débute</b>&nbsp;: une idée par paragraphe, des "
          "phrases courtes, un exemple avec de vrais nombres, et le piège à la fin quand "
          "il y en a un. Elle ne suppose pas qu'on sache déjà ce qu'elle explique."),
+        ("p",
+         "<b>Et elle enseigne ce que son exercice demande d'écrire.</b> Cela paraît "
+         "aller de soi&nbsp;; cela n'allait pas de soi. Au palier <b>Découverte</b>, "
+         "chaque <b>nom</b> que le trou réclame est écrit sur la page qu'on a sous les "
+         "yeux — dans la théorie, l'énoncé, les commentaires du programme ou l'indice —, "
+         "et dans les deux langues. Pas sa famille, pas une étape précédente&nbsp;: le "
+         "nom qu'il faut taper."),
+        ("note",
+         "<b>Pourquoi cette règle ne vaut qu'au premier palier, et ce qu'elle a trouvé.</b> "
+         "Plus loin dans le parcours on a écrit vingt programmes, et «&nbsp;la famille "
+         "<font face='Courier'>setcc</font>&nbsp;» suffit à chercher "
+         "<font face='Courier'>setg</font>. Au palier Découverte, c'est la cinquième "
+         "ligne d'assembleur d'une vie. Mesuré le 20 novembre 2026 sur les "
+         "vingt-cinq étapes du palier&nbsp;: <b>cinq</b> réclamaient un nom qu'elles "
+         "n'écrivaient nulle part. «&nbsp;Une boucle qui compte&nbsp;», quatrième étape, "
+         "faisait écrire <font face='Courier'>add</font> sans l'avoir jamais nommé — la "
+         "consigne disait «&nbsp;ajouter RCX à RAX&nbsp;», en français. «&nbsp;Les quatre "
+         "indicateurs&nbsp;» faisait écrire <font face='Courier'>setz</font>, "
+         "<font face='Courier'>sets</font>, <font face='Courier'>setc</font> et "
+         "<font face='Courier'>seto</font> — une famille enseignée dix étapes plus loin. "
+         "Les cinq sont corrigées, et un contrôle les retient."),
+        ("p",
+         "La correction n'a pas toujours été un mot ajouté à la théorie. Pour "
+         "«&nbsp;Les quatre indicateurs&nbsp;», c'est <b>l'exercice</b> qui a changé&nbsp;: "
+         "les quatre <font face='Courier'>setcc</font> sont désormais <b>écrits dans le "
+         "programme</b>, puisqu'ils ne sont que l'instrument qui rend un indicateur "
+         "visible, et le trou est devenu ce que la théorie enseigne — <b>le calcul qui "
+         "provoque chacun des quatre</b>. On y apprend ce que ZF, SF, CF et OF veulent "
+         "dire, et non une famille de mnémoniques qui vient plus tard."),
+        ("p",
+         "Le palier a aussi gagné trois étapes. <b>«&nbsp;Ajouter, ôter&nbsp;»</b>, "
+         "l'arithmétique à deux opérandes, qui manquait&nbsp;: la destination est l'une "
+         "des deux valeurs, et elle est écrasée. Et <b>deux étapes de prévision</b>, "
+         "placées chacune juste après la théorie qu'elles éprouvent — ce qu'il reste de "
+         "RAX quand on écrit une tranche de 32 puis de 16 bits, et qui est ôté de qui "
+         "dans une soustraction. Le palier passe ainsi d'une étape de lecture à trois, "
+         "et le piège numéro un du débutant se <b>prévoit</b> au lieu de se raconter."),
         ("note",
          "<b>Elle s'ouvre dans sa propre fenêtre, et c'est une mesure qui l'a décidé.</b> "
          "Elle a d'abord été un repli dans la bande de l'exercice, et les deux états "
          "étaient mauvais. Dépliée, elle prenait cent cinquante pixels dans une bande qui "
          "en a deux cent dix et poussait <b>le but</b> sous le pli — quatre contrôles "
          "l'ont dit, et le but est ce qui dit si l'on a réussi. Repliée pour cette "
-         "raison, elle devenait cent dix-sept textes que personne n'ouvre. Une fenêtre "
+         "raison, elle devenait cent vingt textes que personne n'ouvre. Une fenêtre "
          "règle les deux, et elle en règle un troisième&nbsp;: un débutant a besoin de "
          "<b>place</b>, et une bande de deux cent dix pixels n'en donne pas."),
         ("p",
@@ -2104,7 +2141,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "un gadget ROP, et l'octet qui change tout. Chacune <b>dit où regarder</b> : "
          "c'est le geste qu'on vient apprendre, pas la syntaxe.",),
         ("p",
-         "<b>Et six étapes demandent de PRÉVOIR</b>, ce qui est l'autre moitié de la "
+         "<b>Et onze étapes demandent de PRÉVOIR</b>, ce qui est l'autre moitié de la "
          "lecture. Le programme est donné <b>complet</b> — il n'y a rien à écrire —, une "
          "question est posée (« que vaut RAX à l'arrêt ? »), et l'on répond <i>avant</i> "
          "d'exécuter. C'est le même chemin que « prévoir avant d'avancer » dans le "

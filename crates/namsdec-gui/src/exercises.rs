@@ -525,6 +525,34 @@ impl NamsdecApp {
 /// représente le groupe, comme partout ailleurs dans `namsdec-doc`.
 pub(crate) fn instructions_du_programme(code: &str) -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();
+    for mot in mnemoniques_du_programme(code) {
+        if let Some(entrée) = namsdec_doc::lookup(&mot)
+            && let Some(fiche) = entrée.names.first()
+            && !out.contains(fiche)
+        {
+            out.push(fiche);
+        }
+    }
+    out
+}
+
+/// Les mnémoniques qu'un programme écrit, TELLES QU'ON LES A TAPÉES.
+///
+/// Le même découpage que [`instructions_du_programme`] — c'est lui qui
+/// le fait —, mais rendu **par nom** et non par fiche. Les deux vues
+/// servent à des questions différentes, et c'est pourquoi il n'y a
+/// qu'un seul découpage : deux analyseurs d'assembleur écrits côte à
+/// côte finiraient par ne plus lire le même programme.
+///
+/// La fiche répond à « quelle notion ? » : `je` et `jz` sont deux noms
+/// du même opcode, et le carnet des notions n'en compte qu'une. Le nom
+/// répond à « que faut-il taper ? », et là ils ne sont plus
+/// interchangeables : quelqu'un qui n'a jamais vu que `jnz` ne devine
+/// pas `jz`, et quelqu'un à qui on a dit « `setcc` » ne peut pas
+/// l'écrire — `cc` n'est pas une condition, c'est la place d'une
+/// condition. C'est ce que mesure le contrôle du palier Découverte.
+pub(crate) fn mnemoniques_du_programme(code: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
     for ligne in code.lines() {
         let ligne = ligne.split(';').next().unwrap_or("").trim();
         if ligne.is_empty() {
@@ -543,12 +571,12 @@ pub(crate) fn instructions_du_programme(code: &str) -> Vec<&'static str> {
             continue;
         };
         let mot = mot.to_ascii_lowercase();
-        if let Some(entrée) = namsdec_doc::lookup(&mot)
-            && entrée.kind == namsdec_doc::Kind::Instruction
-            && let Some(fiche) = entrée.names.first()
-            && !out.contains(fiche)
+        // Une instruction, et non une directive : `section` et `db` ont
+        // une fiche eux aussi, et ne s'exécutent pas.
+        if namsdec_doc::lookup(&mot).is_some_and(|e| e.kind == namsdec_doc::Kind::Instruction)
+            && !out.contains(&mot)
         {
-            out.push(fiche);
+            out.push(mot);
         }
     }
     out
@@ -558,7 +586,7 @@ impl NamsdecApp {
     /// Les notions que le parcours a déjà fait écrire ou lire.
     ///
     /// **Ce que le carnet répond, et que rien ne répondait.** « Où
-    /// j'en suis » se lisait en une fraction — 12/117 —, qui dit le
+    /// j'en suis » se lisait en une fraction — 12/120 —, qui dit le
     /// chemin parcouru et rien de ce qu'on y a appris. Un débutant qui
     /// a fait douze étapes connaît une vingtaine d'instructions ; il ne
     /// le sait pas, ne peut pas les relire, et le parcours ne lui en
@@ -748,7 +776,7 @@ impl NamsdecApp {
     /// L'exercice en cours est-il une DÉMONSTRATION ?
     ///
     /// C'est-à-dire : un programme à regarder tourner, sans but à
-    /// atteindre. Neuf des cent dix-sept en sont, et le tout
+    /// atteindre. Sept des cent vingt en sont, et le tout
     /// premier du parcours aussi — « Registres et largeurs » montre ce
     /// qu'une écriture 32 bits fait à la moitié haute, et il n'y a rien
     /// à y réussir.

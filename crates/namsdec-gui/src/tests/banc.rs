@@ -977,6 +977,30 @@ fn every_text_stands_out_from_its_background() {
                     if dans.is_some_and(|c| !c.contains_rect(place.shrink(1.0))) {
                         continue;
                     }
+                    // CE QUI EST DÉCOUPÉ N'EST PAS PEINT, donc n'a pas
+                    // de contraste.
+                    //
+                    // Une zone défilante remet à egui toutes ses
+                    // lignes, y compris celles qui sortent par le bas,
+                    // et c'est egui qui les coupe à l'affichage. Le
+                    // relevé, lui, voyait leur forme et lui cherchait
+                    // un fond — en le prenant, le cas échéant, sous un
+                    // panneau ancré plus bas, qui recouvre justement
+                    // cette place-là.
+                    //
+                    // Mesuré le 20 novembre 2026 : le parcours passe de
+                    // cent dix-sept étapes à cent vingt, la liste des
+                    // exercices s'allonge de trois rangées, et le
+                    // « Charger » de la vingtième tombe hors de la
+                    // fenêtre, pile sur le bouton d'accent de la barre
+                    // du bas. Deux virgule zéro sept de contraste pour
+                    // un texte que personne ne voit — et, à l'inverse,
+                    // cent dix-sept étapes qui passaient par chance.
+                    // Un relevé qui dépend du nombre de lignes d'une
+                    // liste fait douter de tous les autres.
+                    if !clipped.clip_rect.intersects(place) {
+                        continue;
+                    }
                     let mut fond = fond_initial;
                     for (rect, couleur) in &fonds {
                         if rect.contains(place.center()) {

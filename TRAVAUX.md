@@ -6,7 +6,7 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **19 novembre
+Tenue à jour au fil des séances. Dernière mise à jour : **20 novembre
 2026**, version 0.4.2-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
@@ -4748,6 +4748,65 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       préversions. Un chiffre de SemVer est ici un réglage de
       comportement, pas un ornement. Changelog, PDF et lien du README
       suivis — trois contrôles les ont réclamés, deux fois.
+
+- [x] **La théorie enseigne ce que son exercice demande d'écrire**
+      (A 9.106) — demande du 20 novembre 2026 : « mieux adapter la
+      théorie avec les exercices adéquats », pour qui débute. Mesuré :
+      au palier Découverte, **cinq étapes sur vingt-cinq** réclamaient
+      un nom qu'elles n'écrivaient nulle part. `boucle`, quatrième
+      étape, faisait écrire `add` sans l'avoir nommé — la consigne
+      disait « ajouter RCX à RAX », en français. `drapeaux`, huitième,
+      faisait écrire `setz`, `sets`, `setc`, `seto` : la famille `setcc`
+      est enseignée dix étapes plus loin, et `setcc` ne s'écrit pas —
+      `cc` est la place d'une condition. Plus `shr`, `mov` et `jz`.
+      `aucune_etape_ne_demande_une_notion_jamais_vue_ni_annoncee`
+      (A 9.92) passait au vert, et à juste titre : il accepte la famille
+      et la mémoire longue, qui ne valent rien à la cinquième ligne
+      d'assembleur d'une vie.
+      Retenu par `au_palier_decouverte_le_nom_a_taper_est_sur_la_page`,
+      qui exige le NOM, cité **comme du code** — entre accents graves ou
+      dans le programme —, dans les deux langues. Les accents graves
+      sont mesurés, non décoratifs : un premier relevé cherchant le mot
+      dans toute la prose déclarait `boucle` en règle en anglais, dont
+      la consigne commence par « Add 5+4+3+2+1 ».
+      `mnemoniques_du_programme` rend les noms, et
+      `instructions_du_programme` se réduit à sa projection sur les
+      fiches : un seul découpage d'assembleur, deux vues.
+
+- [x] **`drapeaux` éprouve enfin sa propre leçon** (A 9.106) — sa
+      théorie dit ce que ZF, SF, CF et OF veulent dire ; son trou
+      demandait quatre mnémoniques d'une famille non enseignée. Les
+      quatre `setcc` sont désormais **écrits dans le programme** — ils
+      ne sont que l'instrument qui rend un indicateur visible —, et le
+      trou est devenu **le calcul qui provoque chacun des quatre**. Même
+      but, même budget (17 instructions). Un indice écrit l'accompagne.
+
+- [x] **Trois étapes neuves au palier Découverte** (A 9.106) — le
+      parcours passe de 117 à **120**, et le palier d'une étape de
+      lecture à trois. `addition` : l'arithmétique à deux opérandes, qui
+      manquait — on faisait écrire `add` dans une boucle avant d'avoir
+      jamais dit que la destination est l'une des deux valeurs et
+      qu'elle est écrasée. `prevoir_largeur` : le piège numéro un se
+      racontait en démonstration et ne se prévoyait jamais ; trois
+      réponses distinctes selon l'erreur commise. `prevoir_soustraction`
+      : l'ordre des opérandes et le passage sous zéro. Les deux réponses
+      neuves sont vérifiées par l'émulateur, comme les neuf autres.
+
+- [x] **Un texte découpé n'a pas de contraste** (A 9.106) — le relevé de
+      contraste du banc a rougi sur « Charger », 2,07 sur l'accent
+      bleu : la vingtième rangée d'une zone défilante, qui sort par le
+      bas et qu'egui découpe, à qui le relevé cherchait un fond sous le
+      panneau ancré du bas. Trois rangées de plus ont suffi à le
+      déclencher — et 117 étapes passaient par chance. Le relevé ignore
+      désormais ce qui est hors du `clip_rect` de sa propre forme.
+
+- [x] **Une scène de pire cas doit rester le pire cas** (A 9.106) — la
+      scène « théorie » du banc est là parce que cette fenêtre porte le
+      plus long texte continu de l'application, et elle ouvrait
+      `prevoir_somme` (863 caractères) pendant que `drapeaux` passait à
+      1311. Le banc mesurait un tiers de texte en moins, et restait
+      vert. `la_scene_de_la_theorie_porte_la_plus_longue` compare
+      désormais les longueurs.
 
 ## 7. Dette technique
 
