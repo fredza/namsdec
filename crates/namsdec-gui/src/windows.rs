@@ -786,7 +786,7 @@ impl NamsdecApp {
             // `a_window_opens_at_the_size_of_what_it_shows` tolère.
             //
             // La différence avec la fiche : celle-ci borne ses zones
-            // défilantes à `window_room` et se rétracte avec elles ;
+            // défilantes à `hauteur_de_fiche` et se rétracte avec elles ;
             // celle-là n'a pas de zone défilante, et son bouton est
             // épinglé en bas par un panneau. Le vide n'est pas de la
             // hauteur en trop, c'est la place que garde la réponse à

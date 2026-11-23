@@ -206,6 +206,15 @@ const HEAD_HEIGHT: f32 = 24.0;
 /// La fenêtre se déplace en tirant n'importe où (egui bascule en
 /// « glisser partout » dès qu'on lui retire sa barre de titre), donc
 /// cette barre-ci n'a pas à s'en charger.
+///
+/// CE QUE CELA COÛTE, ET OÙ IL FAUT LE RENDRE. « N'importe où », c'est
+/// aussi le texte qu'on est en train de lire : dans une fiche, tirer le
+/// texte pour descendre déplaçait la fenêtre de la hauteur du geste
+/// sans faire défiler une ligne — cent pixels mesurés. La
+/// documentation d'egui prévient de ce mode, qui « interfère avec la
+/// sélection et le glissement du contenu ». Une zone qu'on LIT doit
+/// donc reprendre le glissement à son compte : voir `zone_de_lecture`
+/// et `DragScroll::Always`.
 pub fn window_head(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, titre: &str) -> bool {
     window_head_zoom(ui, theme, s, titre, None).0
 }

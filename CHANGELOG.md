@@ -6,10 +6,169 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 0.4.2-beta.2 — 20 novembre 2026
 
+**La théorie montre maintenant ses nombres** (23 novembre 2026)
+
+- La fenêtre de théorie promettait « un exemple avec de vrais nombres ».
+  Sur les cent trente-huit théories livrées, **quatre-vingt-dix-sept**
+  ne citaient aucune instruction avec ses opérandes et **cinquante et
+  une** ne portaient pas un chiffre : elles énonçaient des règles justes
+  — « lire un octet laisse le haut du registre tel qu'il était » —
+  qu'un débutant ne peut pas refaire.
+- Les deux cent soixante-seize textes — cent trente-huit étapes dans
+  deux langues — portent désormais chacun un **passage chiffré** : les
+  valeurs de départ, ce que chaque instruction en fait, et le nombre qui
+  sort, pris sur le programme de l'étape. La médiane passe de 800 à
+  1 597 caractères, et deux contrôles le retiennent.
+- **Cinq affirmations fausses sont tombées** en vérifiant chaque chiffre
+  contre l'assembleur du dépôt : `mov rax, 0` fait cinq octets et non
+  sept — l'assembleur passe par `eax`, ce que l'onglet Octets montrait
+  déjà ; de même pour `mov rax, 1` ; `test rax, rax` en fait trois et
+  non deux ; l'exercice « Ce que coûte une constante » comparait trois
+  écritures que l'assembleur rend identiques, et il a été refait ; et la
+  chaîne cachée de « Pourquoi `strings` ne montre rien » se déchiffrait
+  en « SECRDT ».
+- **La fiche de lecture prend la largeur qu'il y a**, comme elle prenait
+  déjà la hauteur, jusqu'à un plafond de 840 pixels. Sans cela,
+  quarante-neuf théories complétées se seraient mises à défiler sur un
+  portable de 1280×800 ; quarante-cinq ont cessé de le faire sans qu'un
+  mot ne change, et les quatre dernières ont été resserrées — en
+  fusionnant des paragraphes, car leur nombre coûte autant que les
+  caractères. Le plafond est cherché par le bas : à 1 100 pixels plus
+  rien ne défilait, mais la plus longue théorie faisait des lignes de
+  cent soixante-quinze caractères.
+- **Tirer le texte le fait défiler partout**, et non plus seulement à
+  côté des mots. Un texte d'egui est sélectionnable par défaut et prend
+  donc le glissement pour sélectionner : la promesse du 23 novembre ne
+  tenait que là où le pointeur manquait le texte — elle tombait sur
+  trois théories essayées sur cinq dès qu'elles ont été complétées. Dans
+  une fiche qu'on lit, le texte n'est plus sélectionnable ; on ne
+  recopie donc plus un exemple à la souris depuis une fiche.
+
+**Une fiche de théorie se lit sans se battre avec elle** (23 novembre
+2026)
+
+- Signalé à l'écran : « lors de la consultation de théorie, l'ascenseur
+  ne fonctionnait pas, moyen d'aller plus bas ». L'ascenseur
+  fonctionnait ; c'est **tirer le texte** — le geste qu'on fait
+  d'abord — qui déplaçait la fenêtre de cent pixels sans faire défiler
+  une ligne. Le bandeau déplace la fiche, le texte la fait défiler, et
+  chacun son geste.
+- Les fiches prennent désormais **la place qu'il y a** entre les barres,
+  au lieu de 55 % de l'écran : sur un portable de 1280×800, 626 pixels
+  au lieu de 440. **Aucune des cent trente-huit théories ne demande plus
+  de défiler** — défiler pour lire une explication est exactement ce
+  qu'on ne doit pas demander à quelqu'un qui débute.
+- **La couleur d'appel ne va qu'à ce qui s'ouvre.** La fiche promet que
+  « les mots en couleur ont leur propre fiche » ; sur 1 127 morceaux
+  colorés, 284 — un quart — ne répondaient pas au clic (`rax`, `al`,
+  `db`, `0x88`…). Le code sans fiche reste du code, en chasse fixe et de
+  la couleur du texte.
+- La première phrase du programme d'accueil **nomme le bouton
+  « Exercices… »** au lieu d'envoyer dans Préférences › Modules : le
+  module est allumé d'emblée depuis le 16 novembre, et le bouton est à
+  l'écran au moment où on lit la phrase.
+
+**Le parcours garde ses programmes tout seul, dans un dossier à part**
+(22 novembre 2026)
+
+- Demandé à l'écran : « les exercices ne doivent pas se sauvegarder
+  (dans un répertoire différent (résolus)) ». Une étape n'est pas un
+  fichier qu'on a ouvert, et lui poser la question « Modifications non
+  enregistrées » ouvrait un sélecteur de fichiers au milieu d'une leçon.
+- Ce qu'on écrit dans une étape part désormais dans
+  `~/.local/share/namsdec/resolus/`, un sous-dossier par série, pendant
+  qu'on l'écrit — et revient au lancement suivant. Plus de question,
+  plus de rond de non-enregistré sur l'onglet d'une étape. Recommencer
+  l'étape, ou réinitialiser le parcours, efface ce qui était gardé.
+- « Enregistrer » reste là pour sortir son programme du parcours, vers
+  le dossier de son choix.
+
+**La barre du mode débutant ne se recouvre plus, à aucune largeur**
+(22 novembre 2026)
+
+- Signalé sur capture : à 1280 points de large, « Ouvrir… » se peignait
+  par-dessus « Réinitialiser ». La barre décidait sur un seuil écrit à
+  la main, qu'il fallait remonter à chaque bouton ajouté.
+- Elle mesure maintenant ce que ses trois groupes demandent, et choisit
+  une, deux ou trois rangées en conséquence. Avant de se couper, c'est
+  le **nom du fichier** qui se serre — jusqu'à huit caractères, le nom
+  entier restant au survol.
+
+**Le clic droit sur un onglet ferme plus d'un fichier** (21 novembre
+2026)
+
+- Demandé à l'écran, capture d'un autre éditeur à l'appui. Cinq
+  entrées : *Fermer*, *Fermer les autres*, *Fermer tous les onglets*,
+  *Fermer ceux de gauche*, *Fermer ceux de droite*. Les deux derniers ne
+  paraissent que s'il y a quelque chose de ce côté.
+- Un fichier non enregistré **arrête le défilé** le temps de la question
+  habituelle ; « Annuler » abandonne la fermeture entière, et non
+  seulement celle de l'onglet affiché.
+- **Deux défauts relevés en le montant.** Passer d'un onglet à l'autre
+  **réarrangeait** les onglets : avec quatre fichiers, aller de f3 à f1
+  puis à f0 rendait f0, f2, f1, f3. Et en mode débutant, la barre des
+  fichiers ne paraissait qu'au **troisième** fichier — avec deux
+  ouverts, rien ne permettait de revenir au premier, ni même de savoir
+  qu'il était là.
+
 Ce qui justifie le chiffre, du point de vue de qui s'en sert : **le
 mode débutant se lit mieux, et le parcours ne se bloque plus**. Un
 cul-de-sac signalé à l'écran, et deux défauts mesurés sur ses écrans —
 les trois étaient là depuis le début.
+
+**Le palier Découverte commence par le commencement — dix-huit étapes
+neuves** (21 novembre 2026)
+
+- Deuxième passe, sur retour : « la théorie n'est pas assez progressive
+  pour un débutant complet ». Sept marches de plus, toutes avant la
+  moitié du palier. Le parcours compte **138 étapes**, le palier 43.
+- **Le programme lui-même, avant la première notion.** La première
+  étape posait `global _start`, `section .text`, une étiquette et `hlt`
+  sous les yeux de quelqu'un à qui rien ne les avait expliqués — et
+  employait `mov` comme si le sens d'une virgule allait de soi. Quatre
+  étapes ouvrent maintenant le parcours : la charpente ligne à ligne,
+  RIP et le pas à pas, `mov` qui copie au lieu de déplacer, et une
+  prévision sur le sens de lecture d'une instruction.
+- **Le saut avant la boucle.** « Une boucle qui compte » demandait d'un
+  seul trou l'étiquette, le saut, l'indicateur ZF et la boucle — quatre
+  notions neuves pour une ligne à écrire. Trois étapes les séparent :
+  `jmp` et ce qu'est une étiquette ; le code qu'un saut en avant laisse
+  derrière lui ; ZF tout seul, en ligne droite, sans boucle autour.
+
+**Et d'abord, les bases — onze étapes neuves**
+(21 novembre 2026)
+- Le parcours passe de **120 à 131 étapes**, et le premier palier de 25
+  à 36. Trois notions sur lesquelles tout le reste repose n'étaient pas
+  enseignées : la première étape montrait les tranches de `rax` à
+  quelqu'un qui n'avait vu ni un bit, ni un octet, ni ce qu'un chiffre
+  hexadécimal recouvre.
+- **Les bases, avant les registres** : un bit et les poids 1 à 128,
+  l'octet qu'ils forment, puis le **quartet** — seize est une puissance
+  de deux et dix non, ce qui est toute la raison d'être de
+  l'hexadécimal —, et ce qui vient après 9 en base seize.
+- **La structure des registres, en entier** : 64, 32, 16 et 8 bits —
+  soit huit, quatre, deux ou un octet —, les noms hérités des huit anciens (`rax`,
+  `eax`, `ax`, `al`) et les suffixes des huit numérotés (`r8`, `r8d`,
+  `r8w`, `r8b`), qu'aucune étape ne faisait écrire : `r8w`, `r8b` et
+  `ah` ne paraissaient dans aucun des cent vingt programmes. Et le fait
+  qu'il n'y a **pas** de tranche de quatre bits — un quartet se lit, il
+  ne s'adresse pas.
+- **Le complément à deux, pas à pas** : quatre étapes là où il n'y en
+  avait qu'une. Fabriqué à la main avec `not` et `inc`, les trois
+  bornes d'un octet et leur asymétrie, le pas qui fait basculer 127, et
+  `movzx` contre `movsx` — l'**extension de signe** ne figurait nulle
+  part dans le parcours.
+- **Cinq des onze sont interactives**, placées chacune juste après la
+  notion qu'elles éprouvent : le programme est donné complet, la
+  question est posée, et l'on répond *avant* d'exécuter. Une base de
+  numération ne s'apprend pas en la recopiant. Le parcours passe de onze
+  étapes de lecture à seize.
+- **Corrige au passage une bande trop courte** : la hauteur de la bande
+  de l'exercice avait été mesurée sur des buts d'une et deux
+  conditions, et une étape à trois voyait la troisième peinte à moitié.
+  Elle était dans ce cas depuis toujours pour « Un nombre négatif, vu de
+  près ». Chaque condition au-delà de la deuxième est maintenant ajoutée
+  à la bande, et non prise sur ce qu'elle montrait.
 
 **L'étape où l'on s'était arrêté se recharge — corrige un cul-de-sac**
 - La bande annonçait « L'EXERCICE 3/120 — Échanger deux registres » et

@@ -1139,3 +1139,76 @@ fn le_nom_du_fichier_s_abrege_dans_la_barre() {
         "et jamais le nom entier : c'est lui qui repoussait les commandes"
     );
 }
+
+/// La barre du mode débutant ne se recouvre à AUCUNE largeur.
+///
+/// Elle décidait sur un seuil écrit à la main — 900 pixels, puis 1100,
+/// puis 1200 — qu'il fallait remonter à chaque bouton ajouté. Le
+/// 21 novembre 2026, une capture l'a prise en défaut À 1280 PIXELS,
+/// au-dessus du seuil : « Ouvrir… » peint par-dessus
+/// « Réinitialiser ». La disposition suit désormais une mesure, et ce
+/// contrôle la tient sur les largeurs où l'on travaille vraiment.
+#[test]
+fn la_barre_du_debutant_ne_se_recouvre_a_aucune_largeur() {
+    let ctx = egui::Context::default();
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    app.apply_theme(&ctx);
+    // Un nom long : c'est lui qui pousse les commandes, et c'est le cas
+    // qu'on sait avoir été manqué.
+    app.current_file = Some(std::path::PathBuf::from(
+        "/tmp/un_nom_de_fichier_vraiment_tres_long.asm",
+    ));
+
+    for largeur in [800.0_f32, 1024.0, 1280.0, 1366.0, 1600.0, 1920.0] {
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(largeur, 900.0),
+            )),
+            ..Default::default()
+        };
+        let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
+        // Deux poses : la première place, la seconde est celle qu'on
+        // mesure (voir les captures du banc).
+        for _ in 0..2 {
+            lignes.clear();
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                let egui::epaint::Shape::Text(texte) = &clipped.shape else {
+                    continue;
+                };
+                for ligne in &texte.galley.rows {
+                    if ligne.glyphs.is_empty() {
+                        continue;
+                    }
+                    let encre =
+                        egui::Rect::from_min_size(texte.pos + ligne.pos.to_vec2(), ligne.size);
+                    // La barre seule : les trois rangées au plus, soit
+                    // le haut de la fenêtre.
+                    if encre.top() < 110.0 {
+                        lignes.push((ligne.text().trim().to_owned(), encre));
+                    }
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+
+        for (un, rect_un) in &lignes {
+            for (deux, rect_deux) in &lignes {
+                if std::ptr::eq(un, deux) {
+                    continue;
+                }
+                // Deux pixels de tolérance : les jambages d'une ligne
+                // frôlent les hampes de la suivante.
+                let croise = rect_un.shrink(2.0).intersects(rect_deux.shrink(2.0));
+                assert!(
+                    !croise,
+                    "à {largeur} px, « {un} » {rect_un:?} se peint sur « {deux} » {rect_deux:?}"
+                );
+            }
+        }
+    }
+}

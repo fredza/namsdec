@@ -122,7 +122,7 @@ pub struct Strings {
     pub goal_reached: &'static str,
     /// Ce que dit le panneau pour un exercice SANS but.
     ///
-    /// Sept des cent vingt sont des programmes à regarder
+    /// Huit des cent trente-huit sont des programmes à regarder
     /// tourner. Le panneau se taisait pour eux : rien ne disait ce
     /// qu'on attendait, et la pastille du parcours restait creuse quoi
     /// qu'on fasse.
@@ -368,6 +368,13 @@ pub struct Strings {
     pub untitled_buffer: &'static str,
     /// L'infobulle de la croix d'un onglet.
     pub tab_close_hint: &'static str,
+    /// Le menu du clic droit sur un onglet : fermer celui-ci, les
+    /// autres, tous, ou ceux d'un côté.
+    pub tab_menu_close: &'static str,
+    pub tab_menu_close_others: &'static str,
+    pub tab_menu_close_all: &'static str,
+    pub tab_menu_close_left: &'static str,
+    pub tab_menu_close_right: &'static str,
     /// Ce qui se dit quand le parcours livré n'est pas là : c'est un
     /// fichier de données, et il s'installe.
     pub exercises_missing: &'static str,
@@ -1756,6 +1763,11 @@ const FR: Strings = Strings {
     prefix_vex: "VEX : l'encodage des instructions AVX.",
     untitled_buffer: "sans titre",
     tab_close_hint: "Fermer ce fichier",
+    tab_menu_close: "Fermer",
+    tab_menu_close_others: "Fermer les autres",
+    tab_menu_close_all: "Fermer tous les onglets",
+    tab_menu_close_left: "Fermer ceux de gauche",
+    tab_menu_close_right: "Fermer ceux de droite",
     exercises_missing: "Aucune série d'exercices n'a été trouvée.",
     exercises_missing_hint: "Le parcours est un fichier de données, comme un thème : relancez install.sh, ou déposez un fichier de série avec Outils > Exercices.",
     disk_reloaded: "Le fichier a changé sur le disque : rechargé.",
@@ -1949,8 +1961,8 @@ déclenchera jamais.",
     buffer_saved: "Rien à enregistrer",
     action_goto_label: "Aller à l'étiquette",
     exercises_where: "Le module des exercices n'est pas chargé : Préférences > Modules pour l'activer.",
-    exercises_open_hint: "Le parcours : cent vingt étapes, de la première instruction à la lecture d'un programme entier.",
-    exercises_turn_on: "Le parcours d'apprentissage, en cent vingt étapes. Un clic l'allume.",
+    exercises_open_hint: "Le parcours : cent trente-huit étapes, de la première instruction à la lecture d'un programme entier.",
+    exercises_turn_on: "Le parcours d'apprentissage, en cent trente-huit étapes. Un clic l'allume.",
     exercises_current: "En cours :",
     exercises_resume: "Reprendre",
     exercises_next: "Étape suivante",
@@ -1981,7 +1993,7 @@ déclenchera jamais.",
     exercise_restart_hint: "Remettre cette étape dans l'état où vous l'avez trouvée. Ce qui est réussi le reste.",
     exercise_restarted: "Étape remise à son programme de départ.",
     exercises_reset_all: "Tout remettre à zéro…",
-    exercises_reset_all_hint: "Effacer les réussites, les scores et les brouillons des cent vingt étapes.",
+    exercises_reset_all_hint: "Effacer les réussites, les scores et les brouillons des cent trente-huit étapes.",
     exercises_reset_confirm: "Effacer les réussites et les scores de toutes les étapes ? Les programmes enregistrés dans des fichiers ne sont pas touchés ; ce que le parcours a retenu, si.",
     exercises_reset_done: "Le parcours est remis à zéro.",
     exercise_hint_uses: "La solution livrée emploie :",
@@ -2819,6 +2831,11 @@ const EN: Strings = Strings {
     prefix_vex: "VEX: the encoding of AVX instructions.",
     untitled_buffer: "untitled",
     tab_close_hint: "Close this file",
+    tab_menu_close: "Close",
+    tab_menu_close_others: "Close Other Tabs",
+    tab_menu_close_all: "Close All Tabs",
+    tab_menu_close_left: "Close Tabs to the Left",
+    tab_menu_close_right: "Close Tabs to the Right",
     exercises_missing: "No exercise pack was found.",
     exercises_missing_hint: "The course is a data file, like a theme: run install.sh again, or drop a pack in with Tools > Exercises.",
     disk_reloaded: "The file changed on disk: reloaded.",
@@ -3011,8 +3028,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     buffer_saved: "Nothing to save",
     action_goto_label: "Go to label",
     exercises_where: "The exercises module is not loaded: Preferences > Modules to turn it on.",
-    exercises_open_hint: "The course: one hundred and twenty steps, from a first instruction to reading a whole program.",
-    exercises_turn_on: "The learning course, in one hundred and twenty steps. One click turns it on.",
+    exercises_open_hint: "The course: one hundred and thirty-eight steps, from a first instruction to reading a whole program.",
+    exercises_turn_on: "The learning course, in one hundred and thirty-eight steps. One click turns it on.",
     exercises_current: "In progress:",
     exercises_resume: "Resume",
     exercises_next: "Next step",

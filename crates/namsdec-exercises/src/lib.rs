@@ -188,10 +188,10 @@ pub struct Exercise {
     /// met fin à l'exercice. Un indice dit où chercher sans dire quoi
     /// écrire.
     ///
-    /// Facultatif, et pour une raison mesurée : quatre-vingts des cent
-    /// une étapes en ont un SANS QU'ON L'ÉCRIVE — « la solution livrée
-    /// emploie `add`, `dec`, `jnz` », calculé en comparant la solution
-    /// à ce qu'on a tapé. Ce champ sert aux vingt et une autres, dont
+    /// Facultatif, et pour une raison mesurée : quatre-vingt-cinq des
+    /// cent huit étapes en ont un SANS QU'ON L'ÉCRIVE — « la solution
+    /// livrée emploie `add`, `dec`, `jnz` », calculé en comparant la
+    /// solution à ce qu'on a tapé. Ce champ sert aux vingt-sept autres, dont
     /// le trou ne demande aucune instruction nouvelle : une valeur à
     /// trouver, un ordre à remettre, une répétition à voir. Ce sont les
     /// plus subtiles, et c'est là qu'un indice compte le plus.
@@ -220,8 +220,9 @@ pub struct Exercise {
     pub theorie: Option<Text>,
     /// La question d'un exercice de LECTURE, et sa réponse.
     ///
-    /// `None` pour les cent huit exercices d'écriture : on y répond en
-    /// écrivant du code, et le but dit si l'on a réussi. Un exercice de
+    /// `None` pour les cent huit exercices d'écriture et les sept
+    /// démonstrations : on y répond en écrivant du code, ou en
+    /// regardant tourner, et le but dit si l'on a réussi. Un exercice de
     /// lecture, lui, donne un programme COMPLET et demande ce qu'il
     /// fait — on lit, on répond, puis on exécute, et la machine
     /// tranche. Voir [`reponse`].
@@ -312,9 +313,9 @@ mod tests {
     #[test]
     fn every_builtin_exercise_is_complete_and_stops() {
         let pack = builtin_pack();
-        // Un parcours, pas une poignée : cent vingt étapes, et
+        // Un parcours, pas une poignée : cent trente-huit étapes, et
         // chacune s'appuie sur les précédentes.
-        assert_eq!(pack.exercises.len(), 120);
+        assert_eq!(pack.exercises.len(), 138);
         for exercise in &pack.exercises {
             assert!(!exercise.id.is_empty());
             assert!(!exercise.title.fr.is_empty() && !exercise.title.en.is_empty());
@@ -475,7 +476,7 @@ mod theorie_tests {
     /// fermer la porte que le format est censé ouvrir. Mais la série
     /// LIVRÉE est le parcours, et un parcours dont une étape sur cent
     /// dix-sept n'explique pas sur quoi elle repose a un trou que
-    /// personne ne verra — on ne lit pas les cent vingt d'affilée.
+    /// personne ne verra — on ne lit pas les cent trente-huit d'affilée.
     #[test]
     fn chaque_exercice_livre_porte_sa_theorie() {
         let pack = pack();
@@ -498,7 +499,7 @@ mod theorie_tests {
     /// C'EST LA RAISON D'ÊTRE DU CHAMP, et le seul moyen de la retenir.
     /// La consigne dit ce qu'on demande ; la théorie dit la mécanique
     /// sur laquelle l'exercice repose, et elle doit resservir ailleurs.
-    /// Recopier l'une dans l'autre donnerait cent vingt redites que
+    /// Recopier l'une dans l'autre donnerait cent trente-huit redites que
     /// personne ne relirait, et le repli serait un repli vide.
     ///
     /// La mesure est grossière et honnête : on compte les mots communs.
@@ -612,24 +613,41 @@ mod theorie_tests {
     /// Une théorie s'explique, et elle se lit d'un trait.
     ///
     /// LES DEUX BORNES VIENNENT D'UNE MESURE, non d'un goût, et elles
-    /// ont changé le jour où la théorie a quitté la bande de
-    /// l'exercice pour une fenêtre à elle.
+    /// ont changé deux fois : le jour où la théorie a quitté la bande
+    /// de l'exercice pour une fenêtre à elle, puis le jour où elle a
+    /// été complétée pour qui débute.
     ///
-    /// En dessous de quatre cents caractères, on n'explique pas une
-    /// mécanique à quelqu'un qui débute : on la mentionne. C'était
-    /// supportable dans un repli de quelques lignes ; cela ne l'est
-    /// plus dans une fenêtre qu'on a ouverte exprès.
+    /// Le plancher était à quatre cents caractères, ce qui laissait
+    /// passer une mécanique MENTIONNÉE au lieu d'être expliquée. Le
+    /// compte l'a dit : sur les cent trente-huit théories livrées,
+    /// quatre-vingt-dix-sept ne montraient aucun exemple instrumenté
+    /// et cinquante et une pas un seul nombre. Un débutant à qui l'on
+    /// explique `movzx` sans jamais écrire ce que devient `0xFF` n'a
+    /// pas reçu d'explication : il a reçu un vocabulaire. Les cent
+    /// trente-huit portent maintenant chacune un passage chiffré —
+    /// voir le contrôle d'à côté —, et cela coûte de quatre à six
+    /// cents caractères. D'où le plancher à mille deux cents.
     ///
-    /// Au-dessus de deux mille, on ne lit plus d'un trait : la fenêtre
-    /// se met à défiler, et un texte qu'on lit AVANT de commencer doit
-    /// tenir sous les yeux. Les cent vingt tiennent entre 580 et
-    /// 1010 ; les bornes laissent de la place sans ouvrir la porte au
-    /// chapitre de cours.
+    /// Au-dessus de deux mille quatre cents, on ne lit plus d'un
+    /// trait : la fenêtre se met à défiler, et un texte qu'on lit
+    /// AVANT de commencer doit tenir sous les yeux. Les deux cent
+    /// soixante-seize textes — cent trente-huit dans deux langues —
+    /// tiennent entre 1274 et 2004 caractères ; les bornes laissent
+    /// de la place sans ouvrir la porte au chapitre de cours.
+    ///
+    /// ET LE PLAFOND N'EST PAS LA VRAIE BORNE. Ce qui décide est la
+    /// hauteur rendue, que `banc::aucune_theorie_ne_demande_de_defiler`
+    /// mesure dans l'image à 1280x800 — quatre théories y défilaient
+    /// encore après l'élargissement de la fiche, dont une de 1708
+    /// caractères qui avait un paragraphe de trop. Les caractères se
+    /// comptent ici parce que c'est instantané ; la hauteur se mesure
+    /// là-bas parce que c'est la vérité.
     ///
     /// ET LA FORME COMPTE AUTANT QUE LA LONGUEUR : une idée par
     /// paragraphe, séparés par une ligne vide, que la fenêtre rend
     /// avec de l'air entre eux. Un bloc de huit cents caractères d'un
-    /// seul tenant est un mur, quelle que soit sa qualité.
+    /// seul tenant est un mur, quelle que soit sa qualité. Les textes
+    /// livrés en comptent de cinq à neuf.
     #[test]
     fn une_theorie_s_explique_et_se_lit_d_un_trait() {
         let pack = pack();
@@ -640,7 +658,7 @@ mod theorie_tests {
             };
             for (langue, texte) in [("fr", théorie.fr.as_str()), ("en", théorie.en.as_str())] {
                 let n = texte.chars().count();
-                if !(400..=2000).contains(&n) {
+                if !(1200..=2400).contains(&n) {
                     hors_bornes.push(format!("{} ({langue}) : {n} caractères", exercice.id));
                 }
                 // Au moins deux paragraphes : un seul bloc est un mur.
@@ -654,9 +672,58 @@ mod theorie_tests {
         }
         assert!(
             hors_bornes.is_empty(),
-            "des théories ne se lisent pas d'un trait (400 à 2000 caractères, \
+            "des théories ne se lisent pas d'un trait (1200 à 2400 caractères, \
              au moins deux paragraphes) :\n  {}",
             hors_bornes.join("\n  ")
+        );
+    }
+
+    /// Une théorie montre un exemple CHIFFRÉ, et pas seulement une règle.
+    ///
+    /// **Le défaut qu'il attrape, et le compte qui l'a trouvé.** La
+    /// fenêtre de théorie promet, dans son propre commentaire, « un
+    /// exemple avec de vrais nombres » — c'est l'une des trois
+    /// raisons pour lesquelles elle a quitté la bande de quatre-vingts
+    /// pixels. Or sur les cent trente-huit théories livrées,
+    /// quatre-vingt-dix-sept ne citaient aucune instruction avec ses
+    /// opérandes, et cinquante et une ne portaient pas un chiffre. La
+    /// promesse était tenue par vingt-neuf d'entre elles.
+    ///
+    /// Une règle énoncée — « lire un octet laisse le haut du registre
+    /// tel qu'il était » — est juste et ne s'attrape pas. La même
+    /// règle avec `0xFF` d'un côté et `0x00000000000000FF` de
+    /// l'autre se retient, parce qu'on peut la REFAIRE. C'est toute
+    /// la différence entre savoir et avoir vu.
+    ///
+    /// **La mesure est la plus grossière possible, et c'est
+    /// voulu** : un chiffre quelque part dans le texte. Un contrôle
+    /// plus fin — un décompte de valeurs hexadécimales, une forme
+    /// imposée — vérifierait une façon d'écrire plutôt qu'un exemple,
+    /// et le premier auteur qui écrirait son exemple autrement le
+    /// ferait tomber pour rien. Le plancher de longueur du contrôle
+    /// d'à côté fait le reste du travail.
+    ///
+    /// Éprouvé en retirant le passage chiffré d'une théorie : il la
+    /// nomme, dans la langue où le passage manque.
+    #[test]
+    fn chaque_theorie_montre_un_exemple_chiffre() {
+        let pack = pack();
+        let mut sans_exemple: Vec<String> = Vec::new();
+        for exercice in &pack.exercises {
+            let Some(théorie) = &exercice.theorie else {
+                continue;
+            };
+            for (langue, texte) in [("fr", théorie.fr.as_str()), ("en", théorie.en.as_str())] {
+                if !texte.chars().any(|c| c.is_ascii_digit()) {
+                    sans_exemple.push(format!("{} ({langue})", exercice.id));
+                }
+            }
+        }
+        assert!(
+            sans_exemple.is_empty(),
+            "{} théorie(s) n'énoncent qu'une règle, sans un seul nombre à \
+             refaire : {sans_exemple:?}",
+            sans_exemple.len()
         );
     }
 }

@@ -897,7 +897,7 @@ type Ouverture = (&'static str, &'static str, fn(&mut NamsdecApp));
 /// relit : la scène doit porter la **plus longue** des théories livrées,
 /// sans quoi le banc mesure un texte court et ne dit rien du long. Voir
 /// `la_scene_de_la_theorie_porte_la_plus_longue`.
-pub(crate) const THEORIE_DU_BANC: &str = "drapeaux";
+pub(crate) const THEORIE_DU_BANC: &str = "largeurs_famille";
 
 /// Les fenêtres qu'un démarrage nu sait ouvrir.
 ///
@@ -1300,6 +1300,13 @@ fn scènes() -> Vec<Scène> {
             for (nom, id) in [
                 ("d'écriture", "namsdec/echange"),
                 ("de lecture", "namsdec/prevoir_somme"),
+                // TROIS conditions, et un en-tête de programme qui
+                // porte un petit tableau aligné. Les deux scènes
+                // au-dessus n'en ont qu'une et deux : la bande du but
+                // n'avait donc jamais été mesurée avec trois lignes,
+                // et c'est la forme que prennent les étapes des
+                // largeurs de registre.
+                ("à trois conditions", "namsdec/largeurs_famille"),
             ] {
                 scènes.push((
                     format!("établi / un exercice {nom}"),

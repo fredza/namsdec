@@ -14,7 +14,7 @@ use crate::exercises::exercises_dir;
 ///
 /// Un chiffre — « 8/10 » — se LIT ; une barre se VOIT, et c'est toute
 /// la différence quand on hésite à rouvrir un parcours de
-/// cent vingt étapes. Elle ne récompense rien et ne compte pas
+/// cent trente-huit étapes. Elle ne récompense rien et ne compte pas
 /// les jours : elle montre l'avancée, ce qu'un parcours doit à qui le
 /// suit, et pas un gramme de plus. Le seul mérite de namsdec reste
 /// l'anneau du budget, qui se gagne en réécrivant.
@@ -36,7 +36,7 @@ pub(crate) fn barre_progression(
     }
     let part = (faits as f32 / total as f32).clamp(0.0, 1.0);
     // Au moins la hauteur de la barre : une avancée d'un sur
-    // cent vingt donne six dixièmes de pixel, c'est-à-dire
+    // cent trente-huit donne six dixièmes de pixel, c'est-à-dire
     // rien — et « rien » est exactement ce qu'on vient de ne pas
     // mériter.
     let plein = (rect.width() * part).max(rect.height());
@@ -123,7 +123,7 @@ impl NamsdecApp {
 
     /// La question posée avant d'effacer ce que le parcours a retenu.
     ///
-    /// **Une boîte, et non un clic direct** : cent vingt étapes de
+    /// **Une boîte, et non un clic direct** : cent trente-huit étapes de
     /// réussites et de meilleurs scores ne se perdent pas sur un geste
     /// de travers. C'est la règle de l'application pour tout ce qui ne
     /// se défait pas — et c'est pourquoi le bouton qui l'ouvre porte
@@ -232,7 +232,7 @@ impl NamsdecApp {
                     return;
                 }
                 ui.label(s.exercises_legend);
-                // L'étape en cours, en tête : cent vingt exercices ne tiennent
+                // L'étape en cours, en tête : cent trente-huit exercices ne tiennent
                 // pas dans la fenêtre, et « où j'en étais » ne sert à
                 // rien s'il faut le chercher en défilant.
                 if let Some(id) = self.current_exercise.clone()
@@ -329,7 +329,7 @@ impl NamsdecApp {
                 egui::ScrollArea::vertical()
                     .max_height(room)
                     // `false` en hauteur : une zone qui rétrécit à son
-                    // contenu est aussi haute que ses cent vingt exercices,
+                    // contenu est aussi haute que ses cent trente-huit exercices,
                     // donc ne défile jamais — elle déborde de la fenêtre,
                     // et ce qui dépasse est coupé.
                     .auto_shrink([false, false])
@@ -400,7 +400,7 @@ impl NamsdecApp {
                                     // Les trois points disent qu'une
                                     // question suit : ceci ne se défait
                                     // pas, et un clic de travers ne doit
-                                    // pas coûter cent vingt étapes.
+                                    // pas coûter cent trente-huit étapes.
                                     if faits > 0
                                         && framed_button(ui, theme, s.exercises_reset_all)
                                             .on_hover_text(s.exercises_reset_all_hint)
@@ -988,7 +988,7 @@ impl NamsdecApp {
             // laissait cent trois pixels de vide entre sa dernière ligne
             // et le bouton « OK », ancré au bas d'un cadre de 560 px.
             // Les zones défilantes se rétractent à leur contenu et se
-            // bornent à `window_room`, la fenêtre suit — comme ailleurs
+            // bornent à `hauteur_de_fiche`, la fenêtre suit — comme ailleurs
             // dans namsdec.
             .default_width(680.0)
             .min_width(460.0)
@@ -1100,11 +1100,12 @@ impl NamsdecApp {
                 ouvrir = Some(première.name);
             }
             ui.separator();
-            egui::ScrollArea::vertical()
-                .id_salt("help_index")
-                .max_height(window_room(ui))
-                .auto_shrink([false, true])
-                .show(ui, |ui| {
+            zone_de_lecture(
+                ui,
+                "help_index",
+                self.place_pour_une_fiche(ui.ctx()),
+                panneau_d_action(ui, "help_actions"),
+                |ui| {
                     for trouvée in trouvées {
                         let ligne = ui.horizontal_wrapped(|ui| {
                             ui.colored_label(
@@ -1140,7 +1141,8 @@ impl NamsdecApp {
                             ouvrir = Some(trouvée.name);
                         }
                     }
-                });
+                },
+            );
             if let Some(name) = ouvrir {
                 self.open_help(name);
                 self.help_query.clear();
@@ -1182,11 +1184,12 @@ impl NamsdecApp {
         let mut copié = false;
         let mut suivante = None;
         let mut à_ouvrir: Option<String> = None;
-        egui::ScrollArea::vertical()
-            .id_salt("help")
-            .max_height(window_room(ui))
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
+        zone_de_lecture(
+            ui,
+            "help",
+            self.place_pour_une_fiche(ui.ctx()),
+            panneau_d_action(ui, "help_actions"),
+            |ui| {
                 ui.horizontal_wrapped(|ui| {
                     for name in entry.names {
                         ui.colored_label(
@@ -1328,7 +1331,8 @@ impl NamsdecApp {
                         }
                     });
                 }
-            });
+            },
+        );
         if let Some(name) = suivante {
             self.open_help(name);
         }
@@ -1383,11 +1387,12 @@ impl NamsdecApp {
         ui.add_space(2.0);
 
         let mut ouvrir = None;
-        egui::ScrollArea::vertical()
-            .id_salt("help_sommaire")
-            .max_height(window_room(ui))
-            .auto_shrink([false, true])
-            .show(ui, |ui| {
+        zone_de_lecture(
+            ui,
+            "help_sommaire",
+            self.place_pour_une_fiche(ui.ctx()),
+            panneau_d_action(ui, "help_actions"),
+            |ui| {
                 for entry in fiches {
                     ui.horizontal_wrapped(|ui| {
                         // TOUS les noms de la fiche, pas seulement le
@@ -1413,7 +1418,8 @@ impl NamsdecApp {
                         ui.colored_label(theme.dim, entry.title.get(lang));
                     });
                 }
-            });
+            },
+        );
 
         if let Some(name) = ouvrir {
             self.open_help(name);
@@ -1470,6 +1476,14 @@ impl NamsdecApp {
             return;
         };
         let titre = self.titre_de_l_exercice().unwrap_or_default();
+        // LA PLACE, relevée avant d'entrer dans la fenêtre : la zone de
+        // travail est un champ de l'application, et la fermeture ci-
+        // dessous n'en emprunte qu'une copie.
+        let place = self.place_pour_une_fiche(ctx);
+        // LA LARGEUR AUSSI SE MESURE : une théorie complétée tient en
+        // moins de lignes quand la fiche est large, et c'est en
+        // hauteur que la place manque.
+        let largeur = self.largeur_pour_une_fiche(ctx);
         let mut open = self.show_theorie;
         let mut fermer = false;
         let mut fiche_demandée: Option<String> = None;
@@ -1478,7 +1492,7 @@ impl NamsdecApp {
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
-            .default_width(640.0)
+            .default_width(largeur)
             .min_width(420.0)
             .pivot(egui::Align2::RIGHT_BOTTOM)
             .default_pos(
@@ -1500,43 +1514,34 @@ impl NamsdecApp {
                     ui.colored_label(theme.text, egui::RichText::new(&titre).strong());
                 });
                 ui.add_space(8.0);
-                egui::ScrollArea::vertical()
-                    .id_salt("theorie_corps")
-                    .max_height(window_room(ui))
-                    // La largeur ne se rétracte pas — une fiche qui se
-                    // serrerait sur son plus long paragraphe changerait
-                    // de largeur à chaque exercice —, la hauteur si :
-                    // une théorie courte ne doit pas laisser deux cents
-                    // pixels de vide entre sa dernière ligne et « OK ».
-                    .auto_shrink([false, true])
-                    .show(ui, |ui| {
-                        // UN PARAGRAPHE PAR IDÉE, et de l'air entre
-                        // eux. Le texte les sépare par une ligne vide,
-                        // comme partout ailleurs ; les coller en ferait
-                        // un mur que personne ne lit jusqu'au bout.
-                        for (rang, paragraphe) in théorie.split("\n\n").enumerate() {
-                            let paragraphe = paragraphe.trim();
-                            if paragraphe.is_empty() {
-                                continue;
-                            }
-                            if rang > 0 {
-                                ui.add_space(10.0);
-                            }
-                            if let Some(mot) =
-                                prose_avec_fiches_et_notions(ui, theme, self.lang, paragraphe, true)
-                            {
-                                fiche_demandée = Some(mot);
-                            }
+                zone_de_lecture(ui, "theorie_corps", place, barre_d_action(ui), |ui| {
+                    // UN PARAGRAPHE PAR IDÉE, et de l'air entre
+                    // eux. Le texte les sépare par une ligne vide,
+                    // comme partout ailleurs ; les coller en ferait
+                    // un mur que personne ne lit jusqu'au bout.
+                    for (rang, paragraphe) in théorie.split("\n\n").enumerate() {
+                        let paragraphe = paragraphe.trim();
+                        if paragraphe.is_empty() {
+                            continue;
                         }
-                        ui.add_space(6.0);
-                        ui.colored_label(theme.dim, s.etabli_exercise_theory_sheets);
-                    });
+                        if rang > 0 {
+                            ui.add_space(10.0);
+                        }
+                        if let Some(mot) =
+                            prose_avec_fiches_et_notions(ui, theme, self.lang, paragraphe, true)
+                        {
+                            fiche_demandée = Some(mot);
+                        }
+                    }
+                    ui.add_space(6.0);
+                    ui.colored_label(theme.dim, s.etabli_exercise_theory_sheets);
+                });
                 // « OK » APRÈS LA ZONE, ET NON DANS UN PANNEAU ANCRÉ.
                 //
                 // La fiche d'instruction ancre le sien en bas, parce
                 // que son contenu n'est pas borné : une fiche longue
                 // pousserait le bouton hors de la fenêtre. Ici la zone
-                // défilante est déjà bornée à `window_room`, donc le
+                // défilante est déjà bornée à `hauteur_de_fiche`, donc le
                 // bouton ne peut pas sortir — et un panneau ancré a un
                 // coût : il demande à la fenêtre TOUTE la hauteur
                 // disponible pour avoir un bas où s'accrocher.

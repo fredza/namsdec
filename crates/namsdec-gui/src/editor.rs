@@ -1332,6 +1332,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let mut aller = None;
         let mut fermer = None;
+        let mut fermer_groupe: Option<(usize, files::FermerLesquels)> = None;
         let mut demande = None;
         let ctx_raccourcis = ui.ctx().clone();
         let neuf_infobulle = format!(
@@ -1358,6 +1359,7 @@ impl NamsdecApp {
 
         let étiquettes = self.tab_labels();
         let actif = self.active_tab_index;
+        let total = étiquettes.len();
         egui::ScrollArea::horizontal()
             .id_salt("tabs_bar")
             .auto_shrink([false, true])
@@ -1454,8 +1456,28 @@ impl NamsdecApp {
                                 trait_,
                             );
                         }
+                        // LE CLIC DROIT : fermer plus d'un onglet sans
+                        // viser quatre croix à la file.
+                        //
+                        // Demandé le 21 novembre 2026, capture de
+                        // JetBrains à l'appui. Les entrées d'un côté ne
+                        // s'affichent que s'il y a quelque chose de ce
+                        // côté : « Fermer ceux de gauche » sur le
+                        // premier onglet est une ligne qui ne fait rien,
+                        // et une ligne qui ne fait rien se clique quand
+                        // même.
+                        let menu_ouvert = réponse.context_menu_opened();
+                        réponse.context_menu(|ui| {
+                            menu_d_un_onglet(ui, s, rang, total, &mut fermer, &mut fermer_groupe);
+                        });
                         if sur_croix.on_hover_text(s.tab_close_hint).clicked() {
                             fermer = Some(rang);
+                        } else if menu_ouvert {
+                            // Le menu ouvert, l'infobulle du nom se
+                            // peindrait par-dessus ses entrées.
+                            if réponse.clicked() {
+                                aller = Some(rang);
+                            }
                         } else if réponse.on_hover_text(&nom).clicked() {
                             aller = Some(rang);
                         }
@@ -1511,6 +1533,10 @@ impl NamsdecApp {
         }
         if let Some(rang) = fermer {
             self.close_tab(rang);
+        }
+        if let Some((rang, quoi)) = fermer_groupe {
+            let rangs = self.rangs_a_fermer(rang, quoi);
+            self.close_tabs(&rangs);
         }
     }
 
@@ -1891,6 +1917,57 @@ enum Visuel {
 /// Les fins de ligne elles-mêmes ne sont pas surlignées : peindre le
 /// `\n` dessinerait un rectangle qui dépasse à droite du texte, pour
 /// un caractère qu'on ne voit pas.
+/// Le menu du clic droit sur un onglet : fermer celui-ci, les autres,
+/// tous, ou ceux d'un côté.
+///
+/// Demandé le 21 novembre 2026, capture de JetBrains à l'appui. Les
+/// entrées d'un côté ne paraissent que s'il y a quelque chose de ce
+/// côté : « Fermer ceux de gauche » sur le premier onglet serait une
+/// ligne qui ne fait rien, et une ligne qui ne fait rien se clique quand
+/// même.
+///
+/// À part, et non dans `tabs_bar_ui` : un bouton plat n'est la règle que
+/// dans un menu, et c'est au nom de la fonction que le contrôle des
+/// boutons invisibles le reconnaît (voir
+/// `outside_the_menus_a_button_shows_itself_without_being_hovered`).
+fn menu_d_un_onglet(
+    ui: &mut egui::Ui,
+    s: &Strings,
+    rang: usize,
+    total: usize,
+    fermer: &mut Option<usize>,
+    groupe: &mut Option<(usize, files::FermerLesquels)>,
+) {
+    if ui.button(s.tab_menu_close).clicked() {
+        *fermer = Some(rang);
+        ui.close();
+    }
+    if total > 1 && ui.button(s.tab_menu_close_others).clicked() {
+        *groupe = Some((rang, files::FermerLesquels::Autres));
+        ui.close();
+    }
+    if ui.button(s.tab_menu_close_all).clicked() {
+        *groupe = Some((rang, files::FermerLesquels::Tous));
+        ui.close();
+    }
+    if rang > 0 {
+        ui.separator();
+        if ui.button(s.tab_menu_close_left).clicked() {
+            *groupe = Some((rang, files::FermerLesquels::Gauche));
+            ui.close();
+        }
+    }
+    if rang + 1 < total {
+        if rang == 0 {
+            ui.separator();
+        }
+        if ui.button(s.tab_menu_close_right).clicked() {
+            *groupe = Some((rang, files::FermerLesquels::Droite));
+            ui.close();
+        }
+    }
+}
+
 fn découper_par_ligne(
     texte: &str,
     étendue: std::ops::Range<usize>,

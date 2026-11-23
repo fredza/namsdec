@@ -654,8 +654,28 @@ impl NamsdecApp {
             self.tabs.remove(index - 1)
         };
         let courant = self.take_tab();
-        self.tabs
-            .insert(self.active_tab_index.min(self.tabs.len()), courant);
+        // OÙ RANGER CELUI QU'ON QUITTE — et c'est là que l'ordre se
+        // jouait.
+        //
+        // `tabs` ne porte que les onglets qu'on ne regarde pas : le rang
+        // d'affichage `r` y est à l'indice `r` s'il précède l'actif, et
+        // `r - 1` s'il le suit. Celui qu'on quitte garde son rang
+        // d'affichage ; son indice, lui, dépend du côté où va le
+        // nouveau. En allant vers la GAUCHE, l'actif sortant passe
+        // derrière le nouveau, et son indice descend d'un cran.
+        //
+        // Il était rangé à `active_tab_index` dans tous les cas. Relevé
+        // le 21 novembre 2026 : quatre fichiers, aller de f3 à f1 puis à
+        // f0 donnait f0, f2, f1, f3 — deux onglets avaient échangé leur
+        // place sous les doigts. Invisible avec deux onglets (le
+        // `.min()` rattrapait tout), et c'est pourquoi cela a tenu si
+        // longtemps.
+        let place = if index < self.active_tab_index {
+            self.active_tab_index - 1
+        } else {
+            self.active_tab_index
+        };
+        self.tabs.insert(place.min(self.tabs.len()), courant);
         self.active_tab_index = index;
         self.restore_tab(cible);
     }
@@ -709,6 +729,57 @@ impl NamsdecApp {
             index.wrapping_sub(1)
         };
         self.tabs.get(rang).is_some_and(OpenTab::modifié)
+    }
+
+    /// Ferme plusieurs onglets d'un coup — les autres, tous, ou ceux
+    /// d'un côté.
+    ///
+    /// Un par un et du dernier au premier : fermer le rang 5 ne déplace
+    /// pas les rangs 0 à 4, si bien que la liste reste juste du début à
+    /// la fin. Ceux qui ne sont pas enregistrés arrêtent le défilé le
+    /// temps d'une question ; les autres partent sans rien demander.
+    pub(crate) fn close_tabs(&mut self, rangs: &[usize]) {
+        let mut file: Vec<usize> = rangs.to_vec();
+        file.sort_unstable();
+        file.dedup();
+        // Rangée en ordre croissant, et dépilée par la fin : le plus
+        // grand rang part le premier.
+        self.fermetures_en_file = file;
+        self.poursuivre_fermetures();
+    }
+
+    /// Reprend la file de fermeture là où une question l'avait arrêtée.
+    pub(crate) fn poursuivre_fermetures(&mut self) {
+        while let Some(index) = self.fermetures_en_file.pop() {
+            if self.tab_modified(index) {
+                // La question porte sur celui-là : on l'ouvre, on la
+                // pose, et le reste de la file attend la réponse. Lui
+                // est déjà sorti de la file — c'est `close_tab` qui le
+                // fermera, une fois qu'on aura répondu.
+                self.close_tab(index);
+                return;
+            }
+            self.close_tab_now(index);
+        }
+    }
+
+    /// Abandonne ce qui restait à fermer : « Annuler » annule la
+    /// fermeture, pas seulement celle de l'onglet affiché.
+    pub(crate) fn abandonner_fermetures(&mut self) {
+        self.fermetures_en_file.clear();
+    }
+
+    /// Les rangs à fermer pour une entrée du menu d'un onglet.
+    pub(crate) fn rangs_a_fermer(&self, visé: usize, quoi: FermerLesquels) -> Vec<usize> {
+        let total = self.tabs.len() + 1;
+        (0..total)
+            .filter(|&rang| match quoi {
+                FermerLesquels::Autres => rang != visé,
+                FermerLesquels::Tous => true,
+                FermerLesquels::Gauche => rang < visé,
+                FermerLesquels::Droite => rang > visé,
+            })
+            .collect()
     }
 
     /// Ferme sans plus rien demander.
@@ -900,6 +971,15 @@ impl NamsdecApp {
     /// La comparaison se fait sur le texte, pas sur un drapeau : taper
     /// un caractère puis l'effacer ne met rien en danger.
     pub(crate) fn buffer_modified(&self) -> bool {
+        // LE PARCOURS NE DEMANDE RIEN : une étape qu'on travaille n'a
+        // pas de fichier, et son programme est gardé tout seul dans le
+        // dossier des résolus. Lui poser la question « Modifications
+        // non enregistrées » revenait à ouvrir un sélecteur de fichiers
+        // au milieu d'une leçon, pour écrire où ? — voir
+        // `exercises::resolus_dir`.
+        if self.current_file.is_none() && self.current_exercise.is_some() {
+            return false;
+        }
         self.source != self.saved_source
     }
 
@@ -1521,6 +1601,10 @@ impl NamsdecApp {
         }
         if annuler {
             self.pending = None;
+            // « Annuler » annule la fermeture entière, et pas seulement
+            // celle de l'onglet affiché : rien ne dirait à l'écran
+            // combien d'autres allaient encore partir.
+            self.abandonner_fermetures();
             return;
         }
         let Some(enregistrer) = décision else {
@@ -1546,7 +1630,18 @@ impl NamsdecApp {
             }
         }
         self.pending = None;
+        let fermait_un_onglet = matches!(pending, Pending::CloseTab(_));
         self.perform(pending);
+        // Une fermeture groupée reprend là où la question l'avait
+        // arrêtée : sans ça, « fermer tous les onglets » s'arrêterait au
+        // premier qui n'est pas enregistré. Seulement après une
+        // fermeture : si la question portait sur autre chose, ce qui
+        // restait en file n'a plus de raison de partir.
+        if fermait_un_onglet {
+            self.poursuivre_fermetures();
+        } else {
+            self.abandonner_fermetures();
+        }
     }
 
     /// Intercepte la fermeture de la fenêtre tant qu'il reste quelque
@@ -1563,6 +1658,18 @@ impl NamsdecApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
         self.pending = Some(Pending::Quit);
     }
+}
+
+/// Ce qu'une entrée du menu d'un onglet ferme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FermerLesquels {
+    /// Tous sauf celui qu'on a désigné.
+    Autres,
+    Tous,
+    /// Ceux d'avant : on garde celui-là et sa suite.
+    Gauche,
+    /// Ceux d'après.
+    Droite,
 }
 
 /// Ce qu'un fichier est, décidé avant d'essayer de le lire.

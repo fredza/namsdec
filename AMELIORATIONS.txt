@@ -13452,3 +13452,652 @@ pourrait mal tourner. À trier, à refuser, à reprendre.
      toutes une application neuve et lui posent l'état à la main. C'est
      un angle mort du banc, et le seul moyen de le voir restait
      d'ouvrir le programme deux fois.
+
+9.109 [FAIT] LE PALIER DÉBUTANT NE COMMENÇAIT PAS PAR LES BASES
+
+     Demande du 21 novembre 2026 : « Améliore les exercices et étoffe
+     encore les exercices, ce mode débutant est pour DEBUTANT la
+     structure 64,32,16,8,4 des registres n'est pas abordé, le
+     complément à deux, les bases ne sont pas abordées inclus les aux
+     exercices INTERACTIF ».
+
+     TROIS TROUS, ET ILS ÉTAIENT AU DÉBUT. La première étape du
+     parcours, « Registres et largeurs », montrait les tranches de
+     `rax` à quelqu'un qui n'avait encore vu ni un bit, ni un octet,
+     ni ce qu'un chiffre hexadécimal recouvre. Les notions étaient
+     mentionnées — « 0xFF, c'est huit bits tous à un » — jamais
+     enseignées, et jamais éprouvées.
+
+     1. LES BASES. Deux étapes les touchaient : `hexadecimal`, qui
+        demande d'écrire le même nombre de trois façons, et `bits`, qui
+        décale. Aucune ne dit ce qu'est un bit, ni pourquoi chaque rang
+        pèse le double du précédent, ni que seize est une puissance de
+        deux et dix non — ce qui est TOUTE la raison d'être de
+        l'hexadécimal. Le quartet n'était nommé nulle part.
+
+     2. LA STRUCTURE DES REGISTRES. `registres` et `prevoir_largeur`
+        enseignaient la RÈGLE (la tranche de 32 bits met le haut à
+        zéro, les plus étroites non) sans jamais nommer la STRUCTURE.
+        Mesuré dans la série : `r8d` paraissait dans un seul programme
+        sur cent vingt, `r8w` et `r8b` dans aucun, `ah` dans aucun.
+        Un débutant finissait donc le palier sans savoir que les huit
+        registres numérotés se nomment autrement que les huit anciens
+        — deux systèmes dans la même machine, et il faut les deux.
+
+     3. LE COMPLÉMENT À DEUX. Une seule étape, `negatif`, et elle
+        attaque directement par `neg` puis un `shr` de soixante-trois
+        crans. Ni les bornes d'un octet, ni leur asymétrie, ni ce qui
+        arrive au bord. Et l'EXTENSION DE SIGNE ne figurait nulle part :
+        `movsx` n'était écrit dans aucun des cent vingt programmes,
+        alors que c'est l'endroit où un binaire compilé dit encore si
+        la variable était signée.
+
+     ONZE ÉTAPES NEUVES, et le palier passe de 25 à 36. Leur ordre est
+     celui de la dépendance, non celui de l'ajout : les bases d'abord
+     (`bit_octet`, `prevoir_base`, `quartet`, `prevoir_apres_neuf`), les
+     largeurs autour de `registres` (`largeurs_famille`, `prevoir_ah`),
+     le complément à deux après `negatif` (`complement_deux`,
+     `intervalle`, `prevoir_complement`, `signe_etendu`), et
+     `prevoir_quartet` après `bits`, qui est l'étape où `and` et `shr`
+     sont vraiment enseignés.
+
+     CINQ DES ONZE SONT INTERACTIVES, et c'est la partie de la demande
+     qu'il aurait été facile de négliger. Une base de numération ne
+     s'apprend pas en la tapant : on recopie la consigne et l'on passe
+     à la suite. Elle s'apprend en RÉPONDANT — le programme est donné
+     complet, la question est posée, le champ attend, et le verdict ne
+     donne pas la réponse. Chaque notion est donc suivie de sa
+     prévision : convertir 0b1010_0000 en décimal, dire ce que `inc`
+     donne sur 0x19 (après 9 vient A), dire où `ah` écrit dans RAX,
+     extraire un quartet du milieu de 0xBEEF, et dire ce que 127 + 1
+     donne sur un octet. Le parcours passe de onze étapes de lecture à
+     seize, le palier de trois à huit.
+
+     CE QUI LES RETIENT, et aucune de ces promesses n'est tenue à la
+     main. La suite ASSEMBLE et EXÉCUTE chacune des cent trente et une
+     étapes : la solution atteint son but dans le budget annoncé
+     (`chaque_exercice_a_quelque_chose_a_faire_et_une_solution_qui_marche`,
+     qui exige l'ÉGALITÉ du budget et du coût), le programme de départ
+     ne l'atteint PAS — sans quoi ce serait une démonstration déguisée
+     en devoir —, et la réponse écrite dans la série est celle que
+     l'émulateur donne
+     (`la_réponse_d_un_exercice_de_lecture_est_celle_que_la_machine_donne`).
+     `au_palier_decouverte_le_nom_a_taper_est_sur_la_page` (A 9.106)
+     vérifie que les noms neufs — `shr`, `not`, `inc`, `movsx` — sont
+     cités COMME DU CODE sur la page, dans les deux langues.
+
+     UN DÉTAIL QUE LA SUITE A ATTRAPÉ, et qu'une relecture n'aurait pas
+     vu. Deux contrôles prenaient « le premier exercice SANS BUT » pour
+     une démonstration. C'était vrai tant que la première étape était
+     `registres` ; `prevoir_base`, deuxième du parcours, n'a pas de but
+     elle non plus — mais elle a une QUESTION, et elle ne se finit pas
+     en la regardant tourner. Le prédicat demande désormais les deux :
+     pas de but ET pas de question.
+
+     ET UNE CAPTURE A SORTI UN DÉFAUT ANCIEN, qu'aucun de ces contrôles
+     ne regardait. La bande de l'exercice se taille sur une hauteur
+     MESURÉE — 210 pixels, plus ce que la rangée de « Vérifier » et la
+     largeur de lecture lui AJOUTENT —, et cette mesure avait été prise
+     sur des buts d'une et deux conditions. Le commentaire d'alors
+     promettait « de quoi ne pas se retrouver à un pixel près le jour
+     où une condition de plus s'ajoute » ; il n'y en avait pas.
+
+     `largeurs_famille` en porte trois, parce qu'elle fait écrire deux
+     tranches et vérifie que la troisième n'a pas bougé. Sur la capture
+     du 21 novembre, « R9 vaut 153 — il vaut 0 » était peint sur
+     vingt-quatre pixels dont onze visibles, et la ligne du budget ne
+     paraissait pas du tout. `negatif` est dans ce cas DEPUIS TOUJOURS,
+     et personne ne l'avait vu : `la_bande_de_l_exercice_ne_coupe_pas_
+     sa_derniere_ligne` n'éprouvait que deux étapes, à une et deux
+     conditions. Un contrôle qui ne regarde pas une forme ne la protège
+     pas, même quand il est vert pour la bonne raison.
+
+     LA CORRECTION SUIT LE PRINCIPE QUE CE FICHIER APPLIQUE DÉJÀ DEUX
+     FOIS : une hauteur qu'on AJOUTE, jamais une qu'on déplace. Monter
+     `EXERCICE_DEFAUT` n'aurait rien fait — la part de 22 % plafonne la
+     bande bien avant — et monter la part prend des lignes de programme
+     au plus petit écran, ce que
+     `au_plus_petit_ecran_l_etabli_montre_encore_du_code` refuse.
+     `EXERCICE_CONDITION` vaut donc vingt-huit pixels par condition
+     au-delà de la deuxième, au même seuil de 860 que les deux autres,
+     et plafonné à deux. Vingt-quatre — l'écart mesuré entre deux
+     conditions — ne suffisaient pas : le contrôle montrait encore
+     « Instructions : 3 / 5 » à quatorze pixels sur dix-huit. C'est lui
+     qui a dit combien il manquait, comme pour `EXERCICE_LECTURE` avant
+     lui.
+
+     ET LE PLAFOND DE LA MESURE SUIT LA BANDE. Le contrôle bornait son
+     relevé à trois cents pixels pour ne pas juger la bande sur les
+     lignes du code ; une bande qui grandit d'une condition déplace
+     cette borne d'autant, et de la même constante — sans quoi la
+     ligne qu'on vient de rendre visible serait simplement ignorée, ce
+     qu'il a fait au premier essai.
+
+9.110 [FAIT] LE PARCOURS COMMENÇAIT APRÈS LE COMMENCEMENT
+
+     Retour du 21 novembre 2026, le même jour que 9.109 : « la théorie
+     n'est pas assez progressive pour un débutant complet, ajoute des
+     exercices en conséquences ».
+
+     DEUX SAUTS RESTAIENT, et la mesure est la même que pour 9.109 :
+     chercher ce qu'une étape SUPPOSE, et vérifier que cela a été
+     enseigné — pas mentionné, enseigné.
+
+     1. LE PROGRAMME LUI-MÊME. La première étape du parcours
+        (`bit_octet` après 9.109, `registres` avant) posait quatre
+        lignes que rien n'avait expliquées : `global _start`,
+        `section .text`, l'étiquette `_start:` et `hlt`. Elle employait
+        aussi `mov` comme si l'ordre des opérandes allait de soi. Pour
+        qui a déjà programmé, c'est du bruit qu'on saute ; pour un
+        débutant complet, c'est la cinquième ligne d'assembleur d'une
+        vie, et elle est illisible.
+
+     2. LE SAUT ARRIVAIT AVEC LA BOUCLE. `boucle` demandait d'un SEUL
+        trou quatre notions neuves : ce qu'est une étiquette, ce qu'est
+        un saut, ce qu'est l'indicateur ZF, et ce qu'est une boucle
+        quand le processeur n'en a pas. Sa théorie les explique toutes
+        les quatre — bien, mais en une fois —, et le trou demande de
+        les appliquer ensemble du premier coup. Pire : `drapeaux`, qui
+        enseigne ce qu'est un indicateur, venait CINQ ÉTAPES PLUS TARD.
+        On se servait de ZF avant d'avoir appris ce que c'est.
+
+     SEPT ÉTAPES NEUVES, et aucune n'est un ajout au bout de la liste :
+     quatre avant tout le reste, trois entre `addition` et `boucle`.
+
+       · `premier_programme` — la charpente ligne à ligne, et le
+         point-virgule. Son trou tient en une ligne, `mov rax, 7` :
+         c'est volontaire, la première étape d'un parcours doit se
+         finir ;
+       · `rip` — DÉMONSTRATION, et la seule chose qu'elle demande est
+         de regarder. Un pas, c'est lire l'instruction que RIP désigne,
+         ajouter sa taille, exécuter. Les quatre instructions du
+         programme n'ont pas la même taille, et le pas de RIP le dit.
+         C'est aussi là qu'on apprend qu'un saut n'est rien d'autre
+         qu'une adresse écrite dans ce registre-là ;
+       · `copier` — `mov` ne déplace pas, il copie ; la destination est
+         à gauche ; les deux côtés ont la même largeur ; et `mov` ne
+         touche à aucun indicateur, ce qui resservira à `drapeau_zero`
+         quinze étapes plus loin ;
+       · `prevoir_ordre` — interactif. `mov rax, 5` / `mov rbx, 9` /
+         `mov rax, rbx` : qui reçoit ? ;
+       · `sauter` — `jmp` inconditionnel, et ce qu'est une étiquette :
+         un nom collé à une adresse, qui ne produit AUCUN octet. Le
+         trou est le saut qui enjambe une ligne, et le but vérifie que
+         la ligne enjambée n'a pas tourné ;
+       · `prevoir_saut` — interactif, et c'est le premier pas vers la
+         lecture d'un binaire : suivre le CHEMIN et non les lignes.
+         Deux des quatre additions ne tournent jamais ;
+       · `drapeau_zero` — ZF tout seul, en ligne droite, sans boucle
+         autour. `dec` pose, `jnz` lit, et la règle qui compte : le
+         calcul et le saut restent VOISINS.
+
+     CE QUE LA SUITE A ÉPROUVÉ DU PREMIER COUP, sans une correction :
+     les soixante-dix-sept contrôles d'exercices sont passés dès le
+     premier essai. Cela tient à ce que les invariants existaient déjà
+     — budget égal au coût de la solution, programme de départ qui
+     n'atteint PAS le but, réponse de lecture confrontée à l'émulateur,
+     nom à taper cité comme du code au palier Découverte. Écrire une
+     étape neuve, c'est remplir un formulaire que la suite relit.
+
+     UN PIÈGE ÉVITÉ DE JUSTESSE SUR `drapeau_zero`. Le premier jet
+     partait de RCX à 1 : après `dec`, le résultat est nul, le saut
+     n'est pas pris, et le programme SANS le `jnz` atteignait déjà le
+     but — une démonstration déguisée en devoir, exactement ce que
+     `chaque_exercice_a_quelque_chose_a_faire_et_une_solution_qui_marche`
+     attrape. RCX vaut donc 3 : le saut DOIT être pris, et son absence
+     se voit.
+
+     Parcours : 131 → 138 étapes. Palier Découverte : 36 → 43, dont dix
+     étapes de prévision (trois avant le 21 novembre).
+
+
+--------------------------------------------------------------------------------
+9.111 [FAIT] FERMER PLUS D'UN ONGLET, ET DEUX DÉFAUTS TROUVÉS EN CHEMIN
+      (21 novembre 2026)
+--------------------------------------------------------------------------------
+     Demandé à l'écran, avec deux images : la barre d'onglets de namsdec, et
+     le menu du clic droit d'un autre éditeur. « J'aimerais avoir la
+     possibilité de fermer tous les onglets et aussi les onglets situés à
+     gauche. » Le geste manquait : la croix ferme UN onglet, et rien ne
+     fermait les six autres.
+
+     CINQ ENTRÉES, et non quatre. Fermer, Fermer les autres, Fermer tous les
+     onglets, Fermer ceux de gauche — et Fermer ceux de droite, qui n'était
+     pas demandée mais que son absence rendrait bizarre : un menu qui
+     connaît un seul côté donne à croire qu'on s'est trompé de clic. Les
+     deux entrées de côté ne paraissent QUE s'il y a quelque chose de ce
+     côté-là ; une ligne qui ne fait rien se clique quand même, et c'est
+     alors l'application qui paraît cassée.
+
+     LA FILE, ET POURQUOI ELLE EXISTE. Fermer plusieurs onglets n'est pas
+     une boucle : un fichier non enregistré pose une question, et la réponse
+     n'arrive qu'à l'image suivante. Les rangs à fermer sont donc rangés
+     dans une file, dépilée du plus grand au plus petit — fermer le rang 5
+     ne déplace pas les rangs 0 à 4, si bien que la liste reste juste du
+     début à la fin sans jamais être recalculée. La question interrompt ;
+     « Enregistrer » et « Ne pas enregistrer » font reprendre la file là où
+     elle s'était arrêtée ; « Annuler » l'abandonne TOUT ENTIÈRE. Ce dernier
+     point est un choix : rien à l'écran ne dit combien d'onglets allaient
+     encore partir, et une fermeture qui continue après un « Annuler »
+     serait la pire des surprises.
+
+     PREMIER DÉFAUT TROUVÉ EN CHEMIN — `go_to_tab` RÉARRANGEAIT LES ONGLETS.
+     Le premier contrôle de la fermeture groupée a rendu f1, f3 là où il
+     fallait f2, f3. L'accusé n'était pas la fermeture : `tabs` ne porte que
+     les onglets qu'on ne regarde PAS, et l'ancien actif y était rangé à
+     l'indice `active_tab_index` dans tous les cas. Or son indice descend
+     d'un cran quand le nouvel actif passe DEVANT lui. Quatre fichiers,
+     f3 → f1 → f0 donnait f0, f2, f1, f3 : deux onglets avaient échangé
+     leur place sous les doigts, ce que le commentaire de la fonction
+     promettait justement de ne jamais faire. Invisible à deux onglets — le
+     `.min()` rattrapait tout —, et c'est pourquoi le défaut a tenu depuis
+     l'arrivée des onglets.
+
+     SECOND DÉFAUT — LA BARRE DES FICHIERS MANQUAIT AU DÉBUTANT. L'Établi
+     ne la montrait que si `tabs.len() > 1`, c'est-à-dire à partir du
+     TROISIÈME fichier. Avec deux fichiers ouverts, le débutant n'avait
+     aucune barre : ni moyen de revenir au premier, ni indice qu'il était
+     encore ouvert — et, depuis ce jour, aucun accès au menu du clic droit,
+     qui ne s'atteint que là. Trouvé en cherchant à capturer le menu sur
+     l'application en marche, et non par une relecture du code.
+
+     CE QUI N'A PAS PU ÊTRE FAIT : la capture du menu ouvert sur
+     l'application en marche. Sous Wayland, xdotool ne pilote pas le
+     pointeur d'une fenêtre XWayland — ni le clic droit, ni même le clic
+     sur « Mode avancé » n'atteignent l'application. Le menu est donc
+     mesuré au banc : clic secondaire simulé, les cinq entrées relevées
+     dans les formes peintes, chacune dans l'écran, et le nom du fichier
+     vérifié absent du rectangle du menu (sans quoi l'infobulle de l'onglet
+     se peindrait sur ses entrées, le pointeur restant posé dessus).
+
+
+--------------------------------------------------------------------------------
+9.112 [FAIT] UN EXERCICE N'EST PAS UN FICHIER QU'ON A OUVERT
+      (22 novembre 2026)
+--------------------------------------------------------------------------------
+     Signalé par une capture : la boîte « Modifications non enregistrées »
+     posée au milieu d'un exercice RÉUSSI, avec ses trois boutons —
+     Enregistrer, Abandonner, Annuler. « Les exercices ne doivent pas se
+     sauvegarder (dans un répertoire différent (résolus)). »
+
+     CE QUI CLOCHAIT N'ÉTAIT PAS LA QUESTION, MAIS SA RÉPONSE. La question
+     était juste : rien n'était écrit nulle part. Mais le seul bouton qui
+     réglait quelque chose — « Enregistrer » — ouvrait un sélecteur de
+     fichiers, c'est-à-dire demandait à quelqu'un qui apprend `mov` de
+     choisir un dossier et un nom pour un programme de cinq lignes qui lui
+     a été donné. Les deux autres jetaient le travail ou refusaient
+     d'avancer. Une question dont aucune réponse n'est bonne n'est pas une
+     question, c'est un obstacle.
+
+     CE QUI EST FAIT. Le programme d'une étape part tout seul dans
+     `~/.local/share/namsdec/resolus/<série>/<étape>.asm` : pendant qu'on
+     l'écrit (au plus une écriture par seconde — assez pour survivre à une
+     coupure, assez peu pour ne pas transformer une leçon en journal
+     d'écriture), au changement d'étape, et à la fermeture de l'onglet. Il
+     revient à l'étape suivante, et au lancement suivant. L'étape n'a donc
+     plus rien à demander : `buffer_modified` rend faux pour un onglet
+     d'exercice sans fichier, et avec lui partent la question, le rond de
+     l'onglet et le point de la barre de titre.
+
+     « ENREGISTRER » N'A PAS DISPARU, et c'est voulu : il sert maintenant à
+     une seule chose, qui est la bonne — SORTIR son programme du parcours,
+     vers le dossier de son choix. Un geste explicite, jamais une question
+     posée au moment de fermer.
+
+     TROIS DÉTAILS QUI NE SONT PAS DES DÉTAILS :
+       · Les noms de fichiers sont assainis. Une série d'exercices est un
+         fichier de données que n'importe qui peut écrire, et `../../.bashrc`
+         comme identifiant d'étape ferait écrire namsdec hors de son
+         dossier. Tout ce qui n'est ni lettre, ni chiffre, ni `.`, ni `-`,
+         ni `_` devient un tiret, et un morceau qui commence par un point
+         est refusé — donc aucun chemin ne remonte.
+       · Le dossier n'est donné qu'au lancement réel, comme `settings_file`.
+         Sans ce garde, la suite de tests sèmerait des fichiers dans le
+         dossier de données de la machine à chaque exécution.
+       · Un programme revenu au code de départ n'est pas un brouillon : son
+         fichier est effacé. Le garder ferait croire, au retour, à un
+         travail qu'on n'a pas fait — c'est la règle qui valait déjà pour
+         les brouillons en mémoire, et elle vaut maintenant pour le disque.
+
+     UN TEST A DÛ CHANGER D'AVIS. `a_closed_step_keeps_what_was_written`
+     exigeait que l'étape porte sa marque de non-enregistré. La marque
+     était juste et la règle a changé : il dit maintenant le contraire,
+     avec le pourquoi écrit au-dessus de l'assertion. C'est la bonne façon
+     de retourner un contrôle — on ne l'efface pas, on écrit ce qui a
+     changé d'avis.
+
+
+--------------------------------------------------------------------------------
+9.113 [FAIT] LA BARRE DU DÉBUTANT DÉCIDAIT SUR UN NOMBRE ÉCRIT À LA MAIN
+      (22 novembre 2026)
+--------------------------------------------------------------------------------
+     Troisième fois, et cette fois le seuil est parti. La barre de l'Établi
+     choisissait entre une rangée et trois en comparant la largeur
+     disponible à une constante : 900 pixels, montée à 1100 quand la barre
+     a gagné les pastilles de fenêtre, montée à 1200 quand elle a gagné la
+     calculatrice. Chaque bouton ajouté demandait de remonter un nombre
+     que rien n'obligeait à remonter.
+
+     LE DÉFAUT S'EST VU À 1280 PIXELS, c'est-à-dire AU-DESSUS du seuil :
+     « Ouvrir… » peint par-dessus « Réinitialiser », sur une capture prise
+     en vérifiant tout autre chose. Un nombre écrit à la main ne peut
+     connaître ni la longueur des libellés dans une autre langue, ni celle
+     du nom du fichier ouvert, ni le bouton du mois prochain.
+
+     CE QUI REMPLACE LE SEUIL. Chaque groupe est dessiné une fois dans le
+     vide — un `Ui` à part, invisible, désactivé, posé à cent mille pixels
+     de l'écran —, et c'est sa largeur qui décide. Trois dispositions, de
+     la moins chère à la plus chère : une rangée ; deux rangées, les
+     gestes en haut et les portes en dessous ; trois rangées, un groupe
+     par ligne. Et avant de couper quoi que ce soit, le NOM DU FICHIER se
+     serre : c'est la seule largeur de cette rangée qui ne dépende pas de
+     nous, et c'est précisément ce que demandait la réponse à la question
+     — « oui (ex en concaténant le nom du fichier) ».
+
+     LE PREMIER ESSAI A ÉTÉ UN BEL ÉCHEC, et il mérite d'être noté. Le
+     `Ui` de mesure était un ENFANT de la barre (`ui.scope_builder`) :
+     même invisible, le rectangle de cent mille pixels qu'il demandait a
+     emporté la mise en page entière, et la barre du haut a disparu de
+     huit contrôles d'un coup. Un `Ui` construit sur le CONTEXTE, dans sa
+     propre couche, ne remonte rien à son voisin.
+
+     HUIT CARACTÈRES, ET LE CHIFFRE EST MESURÉ. Le plancher du nom était à
+     dix ; à 1366 pixels — la définition la plus répandue après 1920 — il
+     reste 77 pixels pour le nom une fois les cinq gestes et les sept
+     portes posés, et un nom de dix caractères en demande 78. La barre
+     basculait donc sur deux rangées pour un demi-pixel, en mangeant une
+     ligne du programme qu'on est en train de lire — ce que
+     `au_plus_petit_ecran_l_etabli_montre_encore_du_code` a dit tout seul,
+     en demandant quatorze lignes et n'en trouvant que treize. Huit
+     caractères laissent lire « Échanger » là où dix coûtaient une ligne
+     de code, et le nom entier reste au survol.
+
+     L'INVARIANT QUI LE TIENT :
+     `la_barre_du_debutant_ne_se_recouvre_a_aucune_largeur` — six largeurs
+     de 800 à 1920, un nom de fichier long, aucun texte du haut de l'écran
+     n'en recouvre un autre. Éprouvé en remettant le seuil fixe : il
+     retrouve le défaut à 1280, et le nomme.
+
+9.114 [FAIT] « L'ASCENSEUR NE FONCTIONNAIT PAS » — C'ÉTAIT LA FENÊTRE
+      QUI DESCENDAIT, PAS LE TEXTE
+
+     Demande du 22 novembre 2026 : « analyser l'interface débutant et
+     l'améliorer pour la rendre plus pédagogique ; j'ai remarqué lors
+     de la consultation de théorie que l'ascenseur ne fonctionnait pas,
+     moyen d'aller plus bas ».
+
+     LA PREMIÈRE MESURE A DÉMENTI L'ÉNONCÉ, et c'est elle qui a donné
+     la cause. L'ascenseur fonctionne : tiré à la souris, le pouce
+     descend de 101 à 442 et la dernière ligne paraît ; à la molette
+     aussi. Ce qui ne fonctionnait pas, c'est le geste qu'on fait
+     d'abord — TIRER LE TEXTE pour pousser la page. Mesuré sur la scène
+     de la théorie, à 1000x620 : la fenêtre descendait de CENT PIXELS,
+     exactement le déplacement du pointeur, et le texte ne défilait pas
+     d'une ligne. Le bas s'éloignait donc à mesure qu'on tirait.
+
+     LA CAUSE EST DANS EGUI, ET ELLE VAUT POUR LES VINGT-CINQ FENÊTRES
+     DE NAMSDEC. Une fenêtre à qui l'on retire la barre de titre d'egui
+     bascule en « glisser partout » : `WindowDrag::Anywhere`. Ce n'est
+     pas un accident, c'est écrit dans `window.rs` — « sans barre de
+     titre, le mode TitleBar laisserait la fenêtre immobile » —, et la
+     documentation d'egui prévient elle-même que ce mode « peut
+     interférer avec la sélection et le glissement du contenu ».
+     namsdec porte son propre bandeau partout, donc il y est partout.
+     Le commentaire de `window_head` l'avait même ACTÉ : « la fenêtre
+     se déplace en tirant n'importe où, donc cette barre-ci n'a pas à
+     s'en charger ». Ce qui était vrai pour une fenêtre qu'on regarde
+     devient faux pour une fiche qu'on LIT.
+
+     LE REMÈDE TIENT EN UN RÉGLAGE, et il rend le geste à la zone :
+     `ScrollSource { drag: DragScroll::Always }`. La zone défilante
+     pose alors son propre capteur de glissement, qui gagne contre
+     celui de la fenêtre — le texte défile, la fenêtre ne bouge plus,
+     et le bandeau reste là pour la déplacer. Rien n'est perdu au
+     passage.
+
+     ── CE QUE LE CONTRÔLE A DÛ APPRENDRE ──
+
+     Premier jet : on tire en UN point, au centre de la fiche. Il a
+     échoué sur une correction qui marchait, et c'est instructif. Sous
+     le pointeur il peut y avoir un mot cliquable, un label
+     sélectionnable ou rien du tout, et chacun répond autrement : à
+     264 pixels du haut rien ne défilait, à 234 tout défilait. Un
+     contrôle qui vise un point unique mesure ce qu'il y a dessous, non
+     la règle. Il tire donc en CINQ hauteurs, et vérifie les deux
+     moitiés : aucune ne déplace la fenêtre, au moins une fait défiler.
+
+     ── LA HAUTEUR : 55 % DE L'ÉCRAN NE REGARDE RIEN ──
+
+     En mesurant, on a trouvé le second défaut. `window_room` donnait
+     aux fiches 55 % de la hauteur de l'écran, et se trompait aux deux
+     bouts :
+
+       · à 1280x800, elle accorde 440 px là où la zone libre entre les
+         barres en offre 626. Les deux plus longues théories —
+         « drapeaux » et « negatif » — défilaient donc pour 186 pixels
+         de place inutilisée ;
+       · à 800x520, elle en accorde 286 là où la zone n'en a que 346
+         garnitures comprises : la fiche montait sur la barre de menus.
+
+     `place_pour_une_fiche` prend désormais la ZONE DE TRAVAIL, celle
+     que l'application relève déjà à chaque image une fois les barres
+     et le panneau latéral posés. Aucune des cent trente-huit théories
+     ne demande plus de défiler sur un portable courant, et un contrôle
+     le vérifie étape par étape.
+
+     DEUX ESSAIS RETIRÉS, ET LE SECOND EST LE PREMIER PIÈGE D'EGUI.
+     Pour retrancher de cette place ce que la fiche pose autour de son
+     texte, on a d'abord voulu MESURER ces garnitures comme l'écart
+     entre le cadre de la fenêtre et la zone, à l'image précédente.
+     L'idée paraissait sûre : cet écart ne dépend pas de la hauteur
+     qu'on impose. Elle était fausse pour une raison qu'il faut
+     retenir — UNE FENÊTRE `Resize` NE RÉTRÉCIT JAMAIS D'ELLE-MÊME. Le
+     cadre restait à 420 pendant que la zone qu'on bornait tombait de
+     227 à 153 puis à 90, et l'écart « mesuré » enflait de 193 à 330 en
+     trois images. Une dimension lue du parent et mesurée sur l'enfant :
+     c'est le premier piège du catalogue, et il ne pardonne pas.
+
+     CE QUI RESTE EST MESURÉ DANS L'IMAGE MÊME : ce qui précède la zone
+     vaut `ui.cursor().top() - ui.min_rect().top()`, deux bords qui
+     bougent ENSEMBLE avec la fenêtre — leur écart, lui, ne dépend de
+     rien. Ce qui la suit est donné par l'appelant, qui seul sait s'il
+     s'agit d'un bouton posé dans le flux ou d'un panneau ancré.
+
+     CONSTAT LAISSÉ OUVERT : la fiche d'instruction, elle, n'est pas
+     gouvernée par cette hauteur. Son panneau d'action est ANCRÉ, et un
+     panneau ancré réclame à sa fenêtre toute la hauteur disponible
+     pour avoir un bas où s'accrocher — mesuré, 420 px de cadre pour
+     219 de texte. C'est le cinquième piège du catalogue, et son
+     commentaire dans `help_window_ui` explique pourquoi il a été
+     choisi. À reprendre à part : ce n'est pas la fiche du débutant.
+
+     ── CE QUI EST EN COULEUR S'OUVRE, ET CE QUI S'OUVRE EST EN
+        COULEUR ──
+
+     En regardant la fiche agrandie, une troisième chose : elle promet
+     en bas de page que « les mots en couleur ont leur propre fiche :
+     un clic l'ouvre ». Elle ne le tenait pas. Un morceau entre accents
+     graves était peint de la couleur des mnémoniques QU'IL AIT UNE
+     FICHE OU NON, et seul un soulignement à un tiers d'opacité
+     séparait les deux.
+
+     LA MESURE, sur les cent trente-huit théories et dans les deux
+     langues : sur 1127 morceaux colorés, 284 — UN QUART — ne
+     répondaient pas au clic. `rax` (18 fois), `al` (22), `db` (12),
+     `0x88`, `section`, `printf`… On clique, rien ne vient, et l'on en
+     conclut que les clics ne marchent pas ici. C'est la même déception
+     que l'ascenseur : une promesse faite à l'œil et non tenue, par le
+     même lecteur, dans la même fenêtre, le même jour.
+
+     Le code sans fiche reste du code — chasse fixe, couleur du texte.
+     La couleur d'appel est rendue à sa fonction.
+
+     ── ET LA PREMIÈRE PHRASE QU'ON LIT ──
+
+     Le programme d'accueil annonçait le parcours en envoyant dans
+     « Préférences > Modules ». Ce renvoi datait du temps où le module
+     était éteint au départ ; il est allumé pour une installation neuve
+     depuis le 16 novembre 2026 (A 9.109), et précisément parce que le
+     bouton « Exercices… » du premier écran était gris. La phrase, elle,
+     n'avait pas suivi : elle faisait chercher dans un panneau de
+     réglages un bouton qui était à l'écran, en haut, au moment où on la
+     lisait. Elle le nomme désormais. Le manuel se contredisait de la
+     même façon — une page disait le module allumé d'emblée, une autre
+     « éteint par défaut » — et dit maintenant les deux cas.
+
+     SECOND CONSTAT LAISSÉ OUVERT, VU SUR LA CAPTURE DE L'AIDE : dans la
+     fiche d'instruction, le corps passe par `prose`, qui colore tout ce
+     qui est entre accents graves et ne rend RIEN cliquable — pas même
+     les mnémoniques qui ont leur fiche. La même couleur veut donc dire
+     « ça s'ouvre » dans la théorie et « c'est du code » dans la fiche.
+     Ce qui reste vrai partout, c'est le SOULIGNEMENT : il n'est porté
+     que par ce qui répond au clic. Rendre les mentions cliquables dans
+     le corps des 189 fiches serait utile — on lit une fiche pour
+     sauter à une autre —, mais cela veut dire découper leur texte en
+     widgets comme le fait `prose_avec_fiches_et_notions`, c'est-à-dire
+     changer la mise en page de toutes les fiches. À décider, pas à
+     glisser.
+
+     LES QUATRE INVARIANTS :
+     `tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre` (cinq
+     points, deux fiches, la fenêtre immobile et le texte qui descend),
+     `aucune_theorie_ne_demande_de_defiler_sur_un_ecran_de_travail`
+     (les 138 étapes, l'ascenseur relevé dans les formes peintes),
+     `dans_une_fiche_la_couleur_d_appel_ne_va_qu_a_ce_qui_s_ouvre`
+     (`mov` et `rax` côte à côte, les couleurs relevées sur ce qui est
+     peint) et
+     `le_programme_d_accueil_montre_le_bouton_et_non_un_reglage`.
+     Les quatre ont été éprouvés en remettant le défaut, et les quatre
+     le retrouvent en le nommant.
+
+
+9.115 [FAIT] LA THÉORIE ÉNONÇAIT DES RÈGLES, SANS JAMAIS UN NOMBRE
+      À REFAIRE
+
+     Demande du 23 novembre 2026 : « rends le contenu théorique plus
+     complet, c'est destiné aux débutants ».
+
+     LE COMPTE A DONNÉ LE DÉFAUT, et il était plus net que la demande.
+     La fenêtre de théorie promet, dans son propre commentaire, « un
+     exemple avec de vrais nombres » : c'est l'une des trois raisons
+     pour lesquelles elle a quitté la bande de l'exercice (A 9.107).
+     Mesuré sur les cent trente-huit théories livrées, dans les deux
+     langues : QUATRE-VINGT-DIX-SEPT ne citaient aucune instruction
+     avec ses opérandes, et CINQUANTE ET UNE ne portaient pas un
+     chiffre. La promesse était tenue par vingt-neuf d'entre elles.
+
+     Ce qu'elles faisaient à la place est juste et ne s'attrape pas :
+     elles énonçaient. « Lire un octet laisse le haut du registre tel
+     qu'il était » est une règle vraie que personne ne peut refaire.
+     La même avec 0xFF d'un côté et 0x00000000000000FF de l'autre se
+     retient, parce qu'on peut la rejouer de tête.
+
+     CE QUI A ÉTÉ ÉCRIT : les deux cent soixante-seize textes portent
+     chacun un passage chiffré — les valeurs de départ, ce que chaque
+     instruction en fait, le nombre qui sort —, pris sur le programme
+     de l'étape elle-même et non sur un exemple inventé à côté. La
+     médiane d'une théorie passe de 800 à 1597 caractères. Deux
+     contrôles le retiennent : `chaque_theorie_montre_un_exemple_chiffre`
+     (un chiffre quelque part, la mesure la plus grossière possible —
+     une mesure plus fine vérifierait une façon d'écrire) et le
+     plancher de `une_theorie_s_explique_et_se_lit_d_un_trait`, qui
+     passe de 400 à 1200 caractères.
+
+     ── CINQ AFFIRMATIONS TOMBÉES EN CHEMIN ──
+
+     Chaque chiffre écrit a été passé à `namsdec_asm::assemble_one`,
+     c'est-à-dire à l'assembleur que l'onglet Octets montre. Cinq
+     affirmations anciennes n'ont pas survécu :
+
+       — « Mettre à zéro, trois façons » annonçait `mov rax, 0` à SEPT
+         octets, dans la consigne, dans la théorie et deux fois dans le
+         programme. Il en fait CINQ : l'assembleur choisit la forme
+         courte, `b8 00 00 00 00`, qui écrit dans EAX et nettoie RAX au
+         passage. L'onglet Octets le montrait ; le texte disait le
+         contraire, et l'exercice invitait justement à ouvrir l'onglet
+         et à comparer.
+       — « Qui décide de la suite » donnait sept octets à `mov rax, 1`.
+         Même cause, cinq octets.
+       — « Regarder sans écrire : test » donnait deux octets à
+         `test rax, rax`, qui en fait trois — `48 85 c0`. Deux est la
+         taille de `test eax, eax`.
+       — « Ce que coûte une constante » comparait trois écritures que
+         l'assembleur rend IDENTIQUES : cinq octets chacune. L'exercice
+         entier a été refait pour comparer celles qui diffèrent
+         vraiment — deux, cinq, sept et dix octets —, et il fallait un
+         négatif et une valeur au-delà de trente-deux bits pour cela.
+       — « Pourquoi strings ne montre rien » portait une chaîne chiffrée
+         qui se déchiffrait en « SECRDT » : 0x79 au lieu de 0x78 sur le
+         cinquième des six octets. Le but ne testait que le premier
+         caractère, donc rien ne rougissait.
+
+     Et une sixième, de même nature : « Un mot à l'envers » annonçait
+     « le premier octet doit valoir 'c' » sur un programme qui retourne
+     « abcde ». Le but attendait 0x65, c'est-à-dire 'e'.
+
+     ── CE QUE LA LONGUEUR A COÛTÉ ──
+
+     Compléter les théories a mis QUARANTE-NEUF d'entre elles à défiler
+     à 1280x800, mesuré par `aucune_theorie_ne_demande_de_defiler_sur_
+     un_ecran_de_travail` — c'est-à-dire exactement ce que la fenêtre
+     avait été créée pour éviter (A 9.114), et ce que son contrôle
+     avait annoncé : « le jour où une théorie nouvelle sera trop longue,
+     c'est elle qu'il faudra raccourcir ».
+
+     LA RÉPONSE N'A PAS ÉTÉ DE LES RACCOURCIR TOUTES. La place manquait
+     en HAUTEUR, et la fiche faisait 640 pixels de large sur une zone de
+     travail qui en offre près du double. `largeur_pour_une_fiche` lui
+     donne la largeur qu'il y a, comme `place_pour_une_fiche` lui donnait
+     déjà la hauteur, et QUARANTE-CINQ des quarante-neuf ont cessé de
+     défiler sans qu'un mot ne change. Les deux bornes du clamp viennent
+     d'une mesure, et le plafond a été descendu après l'avoir REGARDÉ :
+     à 1100 px la plus longue théorie se peignait en lignes de cent
+     soixante-quinze caractères — aucune ne défilait plus, et l'œil
+     perdait le début de la ligne suivante. Un défaut échangé contre un
+     autre. Le plafond est donc cherché par le bas, à la largeur la plus
+     COURTE qui tienne encore la promesse : 780 px laisse une théorie
+     défiler à 1280x800, 800 n'en laisse aucune, et 840 est ce 800 plus
+     la marge d'une police qui changerait de métrique. Le plancher n'a
+     pas bougé : sous 420 px la fiche devient une colonne de journal et
+     les morceaux de code se coupent.
+
+     LES QUATRE DERNIÈRES ONT APPRIS LE RESTE, et c'est le constat le
+     plus utile de la séance : LE NOMBRE DE PARAGRAPHES COÛTE AUTANT QUE
+     LES CARACTÈRES. Une théorie de 1899 caractères en sept paragraphes
+     tient, là où une de 1708 en huit défile — chaque paragraphe ajoute
+     une dernière ligne partielle et l'air qui le sépare du suivant.
+     Resserrer un texte, ici, c'est d'abord fusionner ce qui dit deux
+     fois la même chose : « compteur » et « négatif » sont passées de
+     huit paragraphes à six sans perdre une idée.
+
+     DERNIER EFFET DE BORD : la plus longue théorie n'est plus « Les
+     quatre indicateurs » mais « Seize registres, quatre largeurs »,
+     et `la_scene_de_la_theorie_porte_la_plus_longue` l'a dit tout seul.
+     La scène du banc a changé d'identifiant. C'est le deuxième service
+     de ce contrôle, et il n'a coûté qu'une ligne.
+
+     ── ET LE GLISSEMENT NE MARCHAIT QU'À CÔTÉ DU TEXTE ──
+
+     Dernier constat, et il vient du contrôle de A 9.114, pas d'un
+     raisonnement : `tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre`
+     a rougi dès que la scène du banc a changé de théorie. Les textes
+     complétés remplissent la colonne du milieu, et un label d'egui est
+     SÉLECTIONNABLE par défaut : il prend donc le glissement pour
+     sélectionner, et la zone défilante ne voit rien passer.
+
+     La promesse « on tire le texte, il défile » ne tenait que là où le
+     pointeur MANQUAIT le texte. Mesuré sur cinq hauteurs de la fiche et
+     cinq théories : elle tenait sur « Les quatre indicateurs » et « Un
+     nombre négatif, vu de près », et tombait sur « Seize registres,
+     quatre largeurs », « La boucle que le processeur connaît » et « Ce
+     que le saut a enjambé ». C'est le genre de promesse qui paraît
+     tenue parce qu'on l'a essayée au bon endroit.
+
+     Les labels d'une zone qu'on LIT ne sont plus sélectionnables
+     (`zone_de_lecture`), et le glissement y défile partout. LE PRIX EST
+     DIT, et il n'est pas nul : on ne sélectionne plus un exemple à la
+     souris pour le recopier. La molette, l'ascenseur et le clavier
+     restent, les mots qui ont une fiche restent cliquables, et le
+     réglage se défait en une ligne si recopier depuis une fiche se
+     révèle compter davantage que tirer pour descendre. À reprendre si
+     l'usage le dit.

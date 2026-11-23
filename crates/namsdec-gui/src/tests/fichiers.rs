@@ -1640,3 +1640,188 @@ fn repartir_à_neuf_laisse_un_programme_neuf() {
     assert!(app.reprise.is_none());
     assert_eq!(app.session_restore, Reprise::Jamais);
 }
+
+/// Le clic droit sur un onglet ferme plus d'un onglet à la fois.
+///
+/// Demandé le 21 novembre 2026, capture de JetBrains à l'appui :
+/// « fermer tous les onglets » et « les onglets situés à gauche ». Ce
+/// que le test tient : les bons rangs partent, ceux qu'on garde restent
+/// à leur place, et un onglet non enregistré arrête le défilé le temps
+/// d'une question — « Annuler » annulant alors la fermeture entière, et
+/// pas seulement celle de l'onglet affiché.
+#[test]
+fn le_menu_d_un_onglet_ferme_les_autres_un_cote_ou_tout() {
+    let dir = tempfile::tempdir().unwrap();
+    let chemins: Vec<std::path::PathBuf> = (0..4)
+        .map(|rang| {
+            let chemin = dir.path().join(format!("f{rang}.asm"));
+            std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+            chemin
+        })
+        .collect();
+    let ouvrir_quatre = || {
+        let mut app = NamsdecApp::default();
+        for chemin in &chemins {
+            app.open_file(chemin.clone());
+        }
+        app
+    };
+    let noms = |app: &NamsdecApp| -> Vec<String> {
+        app.tab_labels().into_iter().map(|(nom, _)| nom).collect()
+    };
+
+    // CEUX DE GAUCHE : on garde celui qu'on a désigné et sa suite.
+    let mut app = ouvrir_quatre();
+    app.go_to_tab(1);
+    let rangs = app.rangs_a_fermer(2, files::FermerLesquels::Gauche);
+    app.close_tabs(&rangs);
+    assert_eq!(
+        noms(&app),
+        vec!["f2.asm".to_string(), "f3.asm".to_string()],
+        "les deux premiers partent, les deux autres gardent leur ordre"
+    );
+
+    // CEUX DE DROITE.
+    let mut app = ouvrir_quatre();
+    let rangs = app.rangs_a_fermer(1, files::FermerLesquels::Droite);
+    app.close_tabs(&rangs);
+    assert_eq!(noms(&app), vec!["f0.asm".to_string(), "f1.asm".to_string()]);
+
+    // LES AUTRES : il n'en reste qu'un, et c'est celui qu'on regarde.
+    let mut app = ouvrir_quatre();
+    let rangs = app.rangs_a_fermer(2, files::FermerLesquels::Autres);
+    app.close_tabs(&rangs);
+    assert_eq!(noms(&app), vec!["f2.asm".to_string()]);
+    assert_eq!(app.active_tab_index, 0);
+    assert_eq!(app.current_file.as_deref(), Some(chemins[2].as_path()));
+
+    // TOUS : le dernier aussi, et l'accueil reprend la place.
+    let mut app = ouvrir_quatre();
+    let rangs = app.rangs_a_fermer(0, files::FermerLesquels::Tous);
+    app.close_tabs(&rangs);
+    assert!(app.tabs.is_empty(), "plus un seul onglet en réserve");
+    assert!(app.current_file.is_none(), "ni fichier sous les yeux");
+    assert!(app.montrer_accueil, "l'accueil prend la place de l'éditeur");
+
+    // UN ONGLET NON ENREGISTRÉ ARRÊTE LE DÉFILÉ.
+    let mut app = ouvrir_quatre();
+    app.go_to_tab(1);
+    app.source.push_str("; pas enregistré\n");
+    app.go_to_tab(3);
+    let rangs = app.rangs_a_fermer(3, files::FermerLesquels::Gauche);
+    app.close_tabs(&rangs);
+    assert!(
+        matches!(app.pending, Some(Pending::CloseTab(1))),
+        "la question porte sur celui qui n'est pas enregistré : {:?}",
+        app.pending
+    );
+    assert_eq!(
+        noms(&app),
+        vec![
+            "f0.asm".to_string(),
+            "f1.asm".to_string(),
+            "f3.asm".to_string()
+        ],
+        "f2 est parti sans rien demander, f0 attend derrière la question"
+    );
+
+    // « Ne pas enregistrer » : la file reprend là où elle s'était
+    // arrêtée, et va jusqu'au bout.
+    let en_attente = app.pending.take().expect("une question en attente");
+    app.perform(en_attente);
+    app.poursuivre_fermetures();
+    assert_eq!(noms(&app), vec!["f3.asm".to_string()]);
+
+    // « Annuler » annule la fermeture entière.
+    let mut app = ouvrir_quatre();
+    app.go_to_tab(1);
+    app.source.push_str("; pas enregistré\n");
+    app.go_to_tab(3);
+    let rangs = app.rangs_a_fermer(3, files::FermerLesquels::Gauche);
+    app.close_tabs(&rangs);
+    app.pending = None;
+    app.abandonner_fermetures();
+    app.poursuivre_fermetures();
+    assert_eq!(
+        noms(&app),
+        vec![
+            "f0.asm".to_string(),
+            "f1.asm".to_string(),
+            "f3.asm".to_string()
+        ],
+        "rien de plus ne part après un « Annuler »"
+    );
+}
+
+/// L'ordre des onglets ne change pas quand on passe de l'un à l'autre.
+///
+/// Relevé le 21 novembre 2026 en écrivant la fermeture groupée : avec
+/// quatre fichiers, aller de f3 à f1 puis à f0 rendait f0, f2, f1, f3.
+/// Deux onglets avaient échangé leur place sans qu'on y touche — ce que
+/// `go_to_tab` promettait justement de ne jamais faire. Le défaut ne se
+/// voyait pas à deux onglets, et c'est pourquoi il a tenu.
+#[test]
+fn passer_d_un_onglet_a_l_autre_ne_les_rearrange_pas() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+    for rang in 0..4 {
+        let chemin = dir.path().join(format!("f{rang}.asm"));
+        std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+        app.open_file(chemin);
+    }
+    let attendu: Vec<String> = (0..4).map(|rang| format!("f{rang}.asm")).collect();
+    let noms = |app: &NamsdecApp| -> Vec<String> {
+        app.tab_labels().into_iter().map(|(nom, _)| nom).collect()
+    };
+    assert_eq!(noms(&app), attendu);
+
+    // Tous les chemins, dans les deux sens, y compris les sauts.
+    for cible in [1usize, 0, 3, 2, 0, 2, 1, 3, 0] {
+        app.go_to_tab(cible);
+        assert_eq!(
+            app.active_tab_index, cible,
+            "on arrive bien sur celui qu'on a demandé"
+        );
+        assert_eq!(
+            noms(&app),
+            attendu,
+            "l'ordre tient après être allé sur l'onglet {cible}"
+        );
+    }
+}
+
+/// Deux fichiers ouverts : l'Établi montre la barre d'onglets.
+///
+/// Elle ne paraissait qu'au TROISIÈME. `tabs` ne porte que les fichiers
+/// qu'on ne regarde pas, et la condition demandait `tabs.len() > 1` —
+/// donc deux en réserve, plus celui sous les yeux. Avec deux fichiers
+/// ouverts, le débutant n'avait aucune barre : rien pour revenir au
+/// premier, et rien pour dire qu'il était encore là. Relevé le
+/// 21 novembre 2026 en montant le menu du clic droit, qui ne s'atteint
+/// que par cette barre.
+#[test]
+fn deux_fichiers_suffisent_a_faire_paraitre_la_barre_de_l_etabli() {
+    let dir = tempfile::tempdir().unwrap();
+    let un = dir.path().join("un.asm");
+    let deux = dir.path().join("deux.asm");
+    for chemin in [&un, &deux] {
+        std::fs::write(chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+    }
+    let mut app = NamsdecApp {
+        debutant: true,
+        ..Default::default()
+    };
+    app.open_file(un);
+    let seul = paint(&mut app);
+    assert!(
+        !seul.contains("un.asm") || app.tabs.is_empty(),
+        "un seul fichier : rien à choisir, et l'Établi garde sa hauteur"
+    );
+
+    app.open_file(deux);
+    let peint = paint(&mut app);
+    assert!(
+        peint.contains("un.asm") && peint.contains("deux.asm"),
+        "les deux fichiers doivent se voir dans la barre : {peint}"
+    );
+}

@@ -466,7 +466,7 @@ réglage est gardé.
 
 ### Les exercices
 
-**Chacun des cent vingt porte sa fiche de théorie.** Ni la consigne,
+**Chacun des cent trente-huit porte sa fiche de théorie.** Ni la consigne,
 ni l'indice : la consigne dit ce qu'on demande, l'indice dit où chercher
 quand on bloque, et la théorie dit la mécanique sur laquelle l'exercice
 repose — ce qu'est une boucle quand le processeur n'en a pas, pourquoi
@@ -479,11 +479,18 @@ l'interface en fait des **renvois cliquables** — vers les instructions
 comme vers les notions, ce qui n'était pas le cas de l'énoncé. Rien
 n'est tenu à la main : un contrôle vérifie que chaque théorie, dans les
 deux langues, cite au moins une fiche qui existe vraiment, qu'elle ne
-recopie pas sa consigne, qu'aucune n'est écrite deux fois, et qu'elle
-tient dans les bornes de lecture de sa bande.
+recopie pas sa consigne, qu'aucune n'est écrite deux fois, qu'elle porte
+un **exemple chiffré**, et qu'elle tient dans les bornes de lecture de
+sa fenêtre.
 
 Elle est écrite **pour qui débute** : une idée par paragraphe, des
 phrases courtes, un exemple avec de vrais nombres, et le piège à la fin.
+L'exemple chiffré n'y était pas : sur les cent trente-huit théories,
+quatre-vingt-dix-sept ne citaient aucune instruction avec ses opérandes
+et cinquante et une ne portaient pas un chiffre. Les deux cent
+soixante-seize textes portent maintenant chacun le leur — les valeurs de
+départ, ce que chaque instruction en fait, le nombre qui sort —, pris
+sur le programme de l'étape et vérifiés contre l'assembleur du dépôt.
 
 Le bouton **La théorie** est dans la rangée des gestes, à côté de
 *Un indice* et *La solution* — l'ordre dans lequel on y vient —, et il
@@ -493,7 +500,7 @@ le pli (quatre contrôles l'ont dit), repliée pour cette raison elle ne
 s'ouvrait jamais. Une fenêtre règle les deux, et donne enfin la place
 qu'un texte pédagogique demande.
 
-Onze exercices demandent de **lire** plutôt que d'écrire : le programme
+Dix-huit exercices demandent de **lire** plutôt que d'écrire : le programme
 est donné complet, une question est posée — « que vaut RAX à l'arrêt ? »
 —, et l'on répond avant d'exécuter. Le verdict ne donne pas la bonne
 réponse : elle s'obtient en exécutant, c'est-à-dire en faisant ce que
@@ -504,7 +511,7 @@ que la machine donne** : un contrôle assemble chacun de ces programmes,
 l'exécute et vérifie — une réponse écrite à la main dans un fichier JSON
 est une affirmation, passée à l'épreuve de l'émulateur c'est un fait.
 
-Cent deux des cent vingt exercices portent un **but vérifiable** (`rax == 0xf`) :
+Cent douze des cent trente-huit exercices portent un **but vérifiable** (`rax == 0xf`) :
 le bandeau de l'état du processeur dit « atteint » ou « pas encore », au
 lieu de laisser vérifier à l'œil. Ce qui a été réussi une fois le reste :
 une pastille dans la liste, un compte en tête de la série, et les deux
@@ -521,19 +528,36 @@ n'atteint serait pire que de n'en pas donner. Une série installée peut en port
 aussi — champ `goal` du fichier JSON, et `question` + `answer` pour un
 exercice de lecture.
 
-Un parcours de cent vingt exercices est livré avec le
+Un parcours de cent trente-huit exercices est livré avec le
 programme, rangé en quatre paliers de difficulté croissante :
 
-- **Découverte** (25) — registres, échange, mise à zéro, `add` et
-  `sub`, boucles, `loop`, bits, comparaisons, indicateurs, signe,
-  nombres négatifs, écritures d'un nombre, `inc` contre `add`, `test`,
-  `xchg`/`bswap`, masques de bits, constantes calculées à
-  l'assemblage, rotations, `setcc`, `not` et `neg`, division signée,
-  coût d'un immédiat. Et trois exercices de **prévision**, placés
-  chacun juste après la théorie qu'ils éprouvent : ce qu'il reste de
-  RAX quand on écrit une tranche de 32 puis de 16 bits, qui est ôté de
-  qui dans une soustraction, et ce qu'il reste des soixante-quatre bits
-  quand on les allume tous puis qu'on les décale.
+- **Découverte** (43) — **le programme d'abord** : les quatre lignes de
+  la charpente (`global`, `section`, l'étiquette, `hlt`), dont trois ne
+  sont pas des ordres ; RIP et le pas à pas, parce qu'un saut n'est rien
+  d'autre qu'une adresse écrite là ; `mov` qui copie au lieu de
+  déplacer, et dont la destination est à gauche. Puis **les bases** : un
+  bit, les poids 1 à 128, l'octet qu'ils forment, le quartet que
+  recouvre un chiffre hexadécimal, pourquoi c'est seize et non dix, et
+  les trois écritures du même nombre que nasm traduit en les mêmes
+  octets. Puis **la structure des registres en entier** : 64, 32, 16 et
+  8 bits — soit huit, quatre, deux ou un octet —, les noms hérités des
+  huit anciens (`rax`, `eax`, `ax`, `al`) et les suffixes des huit
+  numérotés (`r8`, `r8d`, `r8w`, `r8b`), `ah` qui n'est pas le haut, et
+  le fait qu'il n'existe pas de tranche de quatre bits. Puis échange,
+  mise à zéro, `add` et `sub`. Puis **le saut avant la boucle** : une
+  étiquette et un `jmp`, le code qu'un saut en avant laisse derrière
+  lui, et ZF tout seul avant que `jnz` n'entre dans une boucle. Puis
+  boucles, `loop`, bits, comparaisons, indicateurs, signe. Puis **le
+  complément à deux, pas à pas** : fabriqué à la main avec `not` et
+  `inc`, les bornes d'un octet et leur asymétrie, le pas qui fait
+  basculer 127, et `movzx` contre `movsx` pour élargir sans trahir.
+  Puis `inc` contre `add`, `test`, `xchg`/`bswap`, masques de bits,
+  constantes calculées à l'assemblage, rotations, `setcc`, `not` et
+  `neg`, division signée, coût d'un immédiat. **Dix** de ces étapes sont
+  des exercices de **prévision**, placés chacun juste après la théorie
+  qu'ils éprouvent — un sens de lecture, une base de numération ou une
+  largeur de registre ne s'apprennent pas en les recopiant, mais en
+  répondant.
 - **Pratique** (33) — décalages, compte de bits, multiplication,
   division, mémoire, tailles d'opérande, ordre des octets, données
   déclarées, tableaux, matrices, recherche, calcul d'adresse, minimum et

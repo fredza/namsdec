@@ -1,6 +1,6 @@
 //! Répondre à une question en LISANT, et savoir si l'on avait juste.
 //!
-//! **Ce que ce module corrige :** les cent huit exercices font écrire du
+//! **Ce que ce module corrige :** les cent huit exercices à trou font écrire du
 //! code. Douze d'entre eux disent où regarder dans namsdec — c'est déjà
 //! lire —, mais leur but s'atteint en exécutant le programme livré :
 //! rien ne vérifie qu'on a lu quoi que ce soit. On apprend `shl` en

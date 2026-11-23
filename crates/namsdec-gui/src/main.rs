@@ -467,6 +467,16 @@ const DIALOG_POLL_INTERVAL: Duration = Duration::from_millis(100);
 /// appel système par image coûterait.
 const KEYMAP_POLL_INTERVAL: Duration = Duration::from_secs(1);
 
+/// Tous les combien le programme d'une étape du parcours est gardé sur
+/// le disque, pendant qu'on l'écrit.
+///
+/// Une seconde, et pour les deux bouts du compromis : au-delà, une
+/// fermeture brutale emporterait plusieurs phrases de code ; en deçà,
+/// chaque frappe deviendrait une écriture. Le changement d'étape et la
+/// fermeture d'un onglet, eux, écrivent tout de suite — ce délai ne
+/// vaut que pour la frappe courante.
+const RESOLU_DELAI: Duration = Duration::from_secs(1);
+
 /// Numéro de version SemVer — ne JAMAIS le monter sans l'accord explicite
 /// de l'utilisateur (voir memory: feedback_version_bump_approval).
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -563,6 +573,15 @@ impl OpenTab {
     }
 
     fn modifié(&self) -> bool {
+        // UNE ÉTAPE DU PARCOURS N'A RIEN À ENREGISTRER : son programme
+        // est gardé tout seul dans le dossier des résolus (voir
+        // `exercises::resolus_dir`). Demandé le 21 novembre 2026 :
+        // « les exercices ne doivent pas se sauvegarder » ailleurs que
+        // là. Le rond du non-enregistré et la question de fermeture
+        // partent donc avec.
+        if self.path.is_none() && self.current_exercise.is_some() {
+            return false;
+        }
         self.source != self.saved_source
     }
 }
@@ -966,6 +985,17 @@ struct NamsdecApp {
     help_query: String,
     /// L'action suspendue en attendant qu'on décide du tampon modifié.
     pending: Option<Pending>,
+    /// Les onglets qu'une fermeture groupée doit encore fermer, rangés
+    /// en ordre croissant et dépilés par la fin — donc du rang le plus
+    /// grand au plus petit.
+    ///
+    /// Du plus grand au plus petit parce que fermer l'onglet 5 ne
+    /// déplace pas les rangs 0 à 4 : la file reste juste sans avoir à
+    /// la recalculer après chaque fermeture. Elle existe parce qu'un
+    /// onglet non enregistré pose une question, et que la réponse
+    /// n'arrive qu'à l'image suivante — « fermer tous les onglets »
+    /// doit donc pouvoir reprendre là où elle s'est arrêtée.
+    fermetures_en_file: Vec<usize>,
     /// La fermeture a été demandée et accordée : la prochaine demande
     /// passe sans question.
     quitting: bool,
@@ -1543,6 +1573,19 @@ struct NamsdecApp {
     /// voir son programme. Posé au moment où la bande se dispose, lu
     /// quand elle se remplit.
     etabli_enonce_sur_largeur_de_lecture: bool,
+    /// Où garder les programmes écrits pendant le parcours, ou `None`
+    /// pour ne rien écrire du tout.
+    ///
+    /// `None` est le défaut, et pour la même raison que
+    /// `settings_file` : un test qui dessine l'application ne doit pas
+    /// semer des fichiers dans le dossier de données de l'utilisateur.
+    /// Seul le lancement réel donne ce chemin.
+    dossier_resolus: Option<PathBuf>,
+    /// L'étape et la révision du texte au dernier enregistrement d'un
+    /// programme du parcours : ce qui dit qu'il n'y a rien à réécrire.
+    resolu_ecrit: Option<(String, u64)>,
+    /// Quand cette écriture a eu lieu — voir `RESOLU_DELAI`.
+    resolu_quand: Option<std::time::Instant>,
     /// Où écrire les réglages, ou `None` pour ne les écrire nulle part.
     ///
     /// `None` est le défaut, et c'est délibéré : les réglages se
@@ -2105,12 +2148,26 @@ impl PreferencesTab {
 /// Programme de départ affiché au lancement, pour ouvrir sur un exemple
 /// qui fonctionne plutôt qu'un éditeur vide.
 ///
-/// Ce n'est pas un exercice : ceux-là sont un module à part, éteint tant
-/// qu'on ne le demande pas, et l'application doit s'ouvrir sur quelque
-/// chose qui marche même quand il ne l'est pas.
+/// Ce n'est pas un exercice : les exercices sont un module à part, et
+/// l'application doit s'ouvrir sur quelque chose qui marche même quand
+/// il est éteint.
+///
+/// LA DEUXIÈME LIGNE ENVOYAIT DANS LES PRÉFÉRENCES. Elle disait
+/// « Préférences > Modules », et ce renvoi datait du temps où le module
+/// était éteint au départ : il est allumé par défaut depuis
+/// (`exercises: true`), le bouton « Exercices… » est donc à l'écran, en
+/// haut, au moment même où l'on lit la phrase. Envoyer un débutant
+/// chercher dans un panneau de réglages ce qui est sous ses yeux est le
+/// contraire de ce qu'on lui doit.
+///
+/// Le nombre d'étapes, lui, reste : il est gardé par
+/// `le_programme_d_accueil_annonce_le_bon_nombre_d_exercices`, qui le
+/// relit dans la série livrée et l'épelle. Le renvoi, c'est
+/// `le_programme_d_accueil_montre_le_bouton_et_non_un_reglage` qui le
+/// garde.
 const DEFAULT_SOURCE: &str = "\
 ; Bienvenue dans namsdec. Assemblez (Ctrl+Maj+B), puis avancez pas à pas.
-; Un parcours de cent vingt exercices vous attend : Préférences > Modules.
+; Un parcours de cent trente-huit exercices vous attend : bouton « Exercices… ».
 
 global _start
 
@@ -2309,6 +2366,7 @@ impl Default for NamsdecApp {
             find_hits_clé: None,
             help_query: String::new(),
             pending: None,
+            fermetures_en_file: Vec::new(),
             quitting: false,
             saved_source: DEFAULT_SOURCE.to_string(),
             follow_rip: false,
@@ -2452,6 +2510,9 @@ impl Default for NamsdecApp {
             etabli_exercice_gestes_ancres: false,
             etabli_enonce_sur_largeur_de_lecture: false,
             settings_file: None,
+            dossier_resolus: None,
+            resolu_ecrit: None,
+            resolu_quand: None,
             dernière_échelle: None,
             zone_de_travail: egui::Rect::NOTHING,
             bytes_edit: None,
@@ -3372,8 +3433,191 @@ fn caler_à_droite(texte: &str, largeur: usize) -> String {
     out
 }
 
-fn window_room(ui: &egui::Ui) -> f32 {
-    (ui.ctx().input(|i| i.content_rect()).height() * 0.55).max(240.0)
+impl NamsdecApp {
+    /// LA PLACE QU'IL Y A pour une fiche de lecture : la zone de travail
+    /// relevée à l'image précédente, une fois les barres et le panneau
+    /// latéral posés.
+    ///
+    /// C'était 55 % de l'écran — une fraction qui ne regarde rien, et
+    /// qui se trompait aux deux bouts. Mesuré sur les cent trente-huit
+    /// théories livrées : à 1536x928 elle accordait 510 px là où la
+    /// zone en offre 754, et des fiches défilaient que la place portait
+    /// entières ; à 800x520 elle en accordait 286 là où la zone n'en a
+    /// que 346 garnitures comprises, et la fiche montait sur la barre de
+    /// menus — c'est-à-dire sur le seul endroit d'où l'on repart.
+    ///
+    /// Défiler pour lire une explication est exactement ce qu'un
+    /// débutant ne doit pas avoir à faire : on lui donne donc toute la
+    /// place, et rien de plus.
+    pub(crate) fn place_pour_une_fiche(&self, ctx: &egui::Context) -> f32 {
+        if self.zone_de_travail.is_positive() {
+            self.zone_de_travail.height()
+        } else {
+            ctx.input(|i| i.content_rect()).height()
+        }
+    }
+
+    /// LA LARGEUR QU'IL Y A, pour la même raison que la hauteur.
+    ///
+    /// La fiche de théorie faisait 640 px de large, quel que soit
+    /// l'écran. C'était sans conséquence tant que les théories
+    /// tenaient en huit cents caractères ; cela a cessé de l'être le
+    /// jour où elles ont reçu leur passage chiffré et sont montées à
+    /// 1597 de médiane. Mesuré à 1280x800, le format où la règle
+    /// mord : **quarante-neuf des cent trente-huit demandaient de
+    /// défiler**, c'est-à-dire exactement ce que la fenêtre avait été
+    /// créée pour éviter.
+    ///
+    /// Or la place manquait en hauteur et non en largeur : 640 px sur
+    /// une zone de travail qui en offre près du double. Élargir la
+    /// fiche ne coûte rien à l'écran et retire des lignes au texte —
+    /// une ligne de moins est dix-sept pixels de hauteur gagnés.
+    ///
+    /// LES DEUX BORNES VIENNENT D'UNE MESURE, et le plafond a été
+    /// descendu après l'avoir regardé. À 1100 px, la plus longue
+    /// théorie se peignait en lignes de cent soixante-quinze
+    /// caractères : aucune ne défilait plus, et l'œil perdait le début
+    /// de la ligne suivante — on avait échangé un défaut contre un
+    /// autre. Le plafond est donc cherché par le bas, à la largeur la
+    /// plus COURTE qui tienne encore la promesse : 780 px laisse une
+    /// théorie défiler à 1280x800, 800 px n'en laisse aucune. 840 est
+    /// ce 800 plus la marge d'une police qui changerait de métrique.
+    ///
+    /// Le plancher, lui, n'a pas bougé : sous 420 px la fiche devient
+    /// une colonne de journal et ses morceaux de code se coupent.
+    /// Entre les deux, la fiche prend ce qu'il y a.
+    ///
+    /// POURQUOI UN NOMBRE ET NON UN CALCUL. La règle juste serait « la
+    /// plus petite largeur à laquelle CE texte tient encore dans la
+    /// hauteur disponible », et elle se calculerait en mettant le
+    /// paragraphe en page à plusieurs largeurs, à chaque image et pour
+    /// chaque fiche. Le nombre ci-dessus est cette mesure faite une
+    /// fois, sur les cent trente-huit théories et au format où la règle
+    /// mord ; le contrôle qui l'a produite tourne à chaque fois, et
+    /// c'est lui qui dira si elle vieillit.
+    pub(crate) fn largeur_pour_une_fiche(&self, ctx: &egui::Context) -> f32 {
+        let zone = if self.zone_de_travail.is_positive() {
+            self.zone_de_travail.width()
+        } else {
+            ctx.input(|i| i.content_rect()).width()
+        };
+        // La marge de pose, des deux côtés : la fiche ne touche pas le
+        // bord de l'écran, et elle ne se pose pas sous le panneau.
+        (zone - 48.0).clamp(420.0, 840.0)
+    }
+}
+
+/// La hauteur qu'une fiche donne à son texte : la place qu'il y a, moins
+/// ce que sa fenêtre pose autour d'elle.
+///
+/// LES GARNITURES SE MESURENT, et dans l'image même. Elles diffèrent
+/// d'une fiche à l'autre — la fiche d'instruction a une barre de
+/// recherche, des onglets et un panneau d'action que la théorie n'a pas
+/// — et les écrire à la main vieillirait à la première ligne ajoutée.
+///
+/// Ce qui précède la zone se mesure par `ui.cursor().top() -
+/// ui.min_rect().top()` : les deux bords bougent ENSEMBLE avec la
+/// fenêtre, donc leur écart ne dépend pas de la hauteur qu'on impose
+/// plus bas. C'est ce qui sépare cette mesure d'une boucle.
+///
+/// On a d'abord essayé de relever les garnitures comme l'écart entre le
+/// cadre de la fenêtre et la zone, à l'image précédente. C'était le
+/// premier piège d'egui, et il s'est refermé aussitôt : une fenêtre
+/// `Resize` NE RÉTRÉCIT JAMAIS d'elle-même, donc le cadre restait à 420
+/// pendant que la zone qu'on bornait tombait de 227 à 153 puis à 90, et
+/// l'écart « mesuré » enflait de 193 à 330 en trois images. Une
+/// dimension lue du parent et mesurée sur l'enfant : c'est écrit dans le
+/// catalogue, et cela ne pardonne pas.
+///
+/// `après` est ce que la fiche posera SOUS la zone — sa barre d'action.
+/// L'appelant le sait, la zone non.
+fn hauteur_de_fiche(ui: &egui::Ui, place: f32, après: f32) -> f32 {
+    let ctx = ui.ctx();
+    let avant = (ui.cursor().top() - ui.min_rect().top()).max(0.0);
+    let marge = ctx.style_of(ctx.theme()).spacing.window_margin;
+    let corps = egui::TextStyle::Body.resolve(&ctx.style_of(ctx.theme()));
+    let ligne = ctx.fonts_mut(|f| f.row_height(&corps));
+    (place - avant - après - f32::from(marge.top + marge.bottom)).max(ligne * 6.0)
+}
+
+/// La hauteur de la barre d'action d'une fiche : un bouton, et le blanc
+/// qui le sépare du texte.
+fn barre_d_action(ui: &egui::Ui) -> f32 {
+    ui.spacing().interact_size.y + ui.spacing().item_spacing.y + 6.0
+}
+
+/// La même, quand la fiche l'a mise dans un panneau ancré au bas de sa
+/// fenêtre : on lit alors la hauteur que le panneau a prise.
+///
+/// Un panneau est posé AVANT le contenu qu'il surplombe, donc sa mesure
+/// est déjà celle de l'image en cours, et elle ne dépend pas de ce que
+/// la zone prendra plus haut. Faute de panneau — la toute première image
+/// —, la barre ordinaire en donne l'ordre de grandeur.
+fn panneau_d_action(ui: &egui::Ui, id: &str) -> f32 {
+    egui::containers::panel::PanelState::load(ui.ctx(), egui::Id::new(id))
+        .map(|p| p.outer_rect.height())
+        .unwrap_or_else(|| barre_d_action(ui))
+}
+
+/// UNE ZONE QU'ON LIT, et non une zone qu'on déplace.
+///
+/// Une fenêtre à qui l'on retire la barre de titre d'egui — ce que font
+/// les vingt-cinq fenêtres de namsdec, qui portent leur propre bandeau —
+/// bascule en « glisser partout » : `WindowDrag::Anywhere`. La
+/// documentation d'egui le dit elle-même, cela « interfère avec la
+/// sélection et le glissement du contenu ». Dans une fiche qu'on lit,
+/// cela donnait ceci, mesuré : on tire le texte pour descendre, LA
+/// FENÊTRE descend de cent pixels — exactement le geste du pointeur — et
+/// le texte ne défile pas d'une ligne. De l'intérieur, cela se raconte
+/// « l'ascenseur ne fonctionne pas, pas moyen d'aller plus bas », et
+/// c'est ainsi que le défaut est arrivé.
+///
+/// `DragScroll::Always` rend le glissement à la zone : le texte défile,
+/// la fenêtre ne bouge plus, et le bandeau reste là pour la déplacer.
+/// Gardé par `tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre`.
+///
+/// ET LE GLISSEMENT NE MARCHAIT QU'À CÔTÉ DU TEXTE, ce que le même
+/// contrôle a dit le 23 novembre 2026, quand les théories complétées
+/// ont rempli la colonne du milieu. Un label d'egui est
+/// sélectionnable par défaut, donc il PREND le glissement pour
+/// sélectionner, et la zone ne voit rien passer. Mesuré sur cinq
+/// hauteurs de la fiche : la promesse tenait sur « Les quatre
+/// indicateurs » et sur « Un nombre négatif, vu de près », et tombait
+/// sur « Seize registres, quatre largeurs », « La boucle que le
+/// processeur connaît » et « Ce que le saut a enjambé » — c'est-à-dire
+/// qu'elle dépendait de ce qui se trouvait sous le pointeur.
+///
+/// Les labels d'une zone qu'on LIT ne sont donc plus sélectionnables,
+/// et le glissement y scrolle partout. LE PRIX EST DIT : on ne
+/// sélectionne plus un exemple à la souris pour le recopier. La
+/// molette, l'ascenseur et le clavier restent, les mots qui ont une
+/// fiche restent cliquables, et ce réglage se défait en une ligne si
+/// recopier depuis une fiche se révèle compter davantage que tirer
+/// pour descendre.
+fn zone_de_lecture<R>(
+    ui: &mut egui::Ui,
+    id: &'static str,
+    place: f32,
+    après: f32,
+    contenu: impl FnOnce(&mut egui::Ui) -> R,
+) -> R {
+    egui::ScrollArea::vertical()
+        .id_salt(id)
+        .scroll_source(egui::scroll_area::ScrollSource {
+            drag: egui::scroll_area::DragScroll::Always,
+            ..Default::default()
+        })
+        .max_height(hauteur_de_fiche(ui, place, après))
+        // La largeur ne se rétracte pas — une fiche qui se serrerait sur
+        // son plus long paragraphe changerait de largeur à chaque
+        // exercice —, la hauteur si : une fiche courte ne doit pas
+        // laisser deux cents pixels de vide avant son bouton.
+        .auto_shrink([false, true])
+        .show(ui, |ui| {
+            ui.style_mut().interaction.selectable_labels = false;
+            contenu(ui)
+        })
+        .inner
 }
 
 /// Ce qu'on écrit sur une adresse : son nom, ou un commentaire.
@@ -4022,7 +4266,11 @@ impl NamsdecApp {
         // vienne (menu, préférences, palette, raccourci), est sur le
         // disque avant la frame suivante.
         timed(&mut spans, "réglages", || {
-            self.persist_settings_if_changed()
+            self.persist_settings_if_changed();
+            // Et le programme de l'étape en cours, s'il y en a une :
+            // le parcours garde ce qu'on y écrit sans qu'on le lui
+            // demande (voir `RESOLU_DELAI`).
+            self.garder_l_etape_en_cours();
         });
 
         // Cette frame a-t-elle POSÉ le texte, ou seulement relu ce qui
@@ -4214,9 +4462,28 @@ fn prose_avec_fiches_et_notions(
                 entry.kind == namsdec_doc::Kind::Instruction
                     || (notions && entry.kind == namsdec_doc::Kind::Concept)
             });
-            let texte = egui::RichText::new(part).monospace().color(theme.mnemonic);
             match fiche {
                 Some(_) => {
+                    // LA COULEUR D'APPEL NE VA QU'À CE QUI S'OUVRE.
+                    //
+                    // Les deux portaient la même : `mov` et `rax`
+                    // étaient peints pareil, et seul un soulignement à
+                    // un tiers d'opacité les séparait. Or la fiche
+                    // promet, en toutes lettres, que « les mots en
+                    // couleur ont leur propre fiche : un clic
+                    // l'ouvre ». Mesuré sur les cent trente-huit
+                    // théories livrées, dans les deux langues : sur
+                    // 1127 morceaux colorés, 284 — un quart — ne
+                    // répondaient pas au clic. `rax`, `al`, `db`,
+                    // `0x88`… On clique, rien ne vient, et l'on en
+                    // conclut que les clics ne marchent pas ici.
+                    //
+                    // C'est la même déception que l'ascenseur qui ne
+                    // défile pas : une promesse faite à l'œil et non
+                    // tenue. La couleur est donc rendue à sa fonction,
+                    // et le code sans fiche reste du code — chasse
+                    // fixe, couleur du texte.
+                    let texte = egui::RichText::new(part).monospace().color(theme.mnemonic);
                     if cliquable(ui, egui::Label::new(texte))
                         .on_hover_text(strings(lang).help_open_sheet)
                         .clicked()
@@ -4225,7 +4492,7 @@ fn prose_avec_fiches_et_notions(
                     }
                 }
                 None => {
-                    ui.label(texte);
+                    ui.label(egui::RichText::new(part).monospace().color(theme.text));
                 }
             }
         }
@@ -4994,6 +5261,9 @@ fn main() -> eframe::Result<()> {
             // Le seul endroit qui donne ce chemin : c'est ici que
             // l'application devient celle qui écrit vraiment.
             app.settings_file = settings::settings_path();
+            // Et le dossier où le parcours garde ce qu'on y écrit :
+            // même garde, même raison.
+            app.dossier_resolus = exercises::resolus_dir();
             // Et maintenant seulement, les raccourcis de la machine :
             // `from_settings` ne lit pas le disque, pour que les tests
             // qui s'en servent ne dépendent pas de ce que l'utilisateur

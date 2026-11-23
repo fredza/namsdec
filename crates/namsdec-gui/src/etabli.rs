@@ -203,6 +203,42 @@ const EXERCICE_MIN: f32 = 76.0;
 /// AJOUTÉE à la bande et non prise dessus, comme [`EXERCICE_GESTES`].
 const EXERCICE_LECTURE: f32 = 40.0;
 
+/// LA LIGNE QUE COÛTE UNE CONDITION DE BUT AU-DELÀ DE LA DEUXIÈME.
+///
+/// Ajoutée à la bande, jamais prise dessus — la troisième fois que ce
+/// fichier applique ce principe, après [`EXERCICE_GESTES`] et
+/// [`EXERCICE_LECTURE`], et pour la même raison : une hauteur qu'on
+/// déplace coupe autre chose.
+///
+/// MESURÉE SUR UNE CAPTURE, le 21 novembre 2026, en rendant l'étape
+/// « Seize registres, quatre largeurs » — trois conditions, parce
+/// qu'elle fait écrire deux tranches et vérifie que la troisième n'a
+/// pas bougé. La troisième ligne, « R9 vaut 153 — il vaut 0 », était
+/// peinte à moitié : vingt-quatre pixels d'encre, onze visibles. Les
+/// deux cent dix de [`EXERCICE_DEFAUT`] avaient été mesurés sur des
+/// buts d'une et deux conditions, et le commentaire d'alors promettait
+/// « de quoi ne pas se retrouver à un pixel près le jour où une
+/// condition de plus s'ajoute ». Ce jour est venu, et le jeu n'y
+/// était pas.
+///
+/// VINGT-HUIT, et le chiffre vient d'une épreuve, non d'un calcul.
+/// L'écart mesuré entre deux conditions successives sur la capture est
+/// de vingt-quatre pixels ; vingt-quatre ne suffisaient pourtant pas —
+/// `la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne` montrait
+/// encore « Instructions : 3 / 5 » peint sur dix-huit pixels dont
+/// quatorze visibles. Quatre de plus passent, et c'est ce contrôle-là
+/// qui l'a dit, comme pour [`EXERCICE_LECTURE`] avant lui.
+pub(crate) const EXERCICE_CONDITION: f32 = 28.0;
+
+/// Combien de conditions en plus la bande consent à porter.
+///
+/// Deux, ce qui mène à cinq en tout. Au-delà, la bande mangerait le
+/// programme qu'elle demande d'écrire, et c'est la zone défilante qui
+/// prend le relais — elle existe pour cela. Aucune étape livrée n'en
+/// porte plus de trois ; la borne est là pour une série installée, qui
+/// peut écrire ce qu'elle veut.
+const EXERCICE_CONDITIONS_MAX: usize = 2;
+
 /// Ce qu'elle prend au plus.
 const EXERCICE_MAX: f32 = 320.0;
 
@@ -300,6 +336,21 @@ impl NamsdecApp {
             } else {
                 0.0
             };
+            // ET LES CONDITIONS AU-DELÀ DE LA DEUXIÈME, au même seuil
+            // et de la même façon. La bande ne sait pas combien le but
+            // en compte tant qu'on ne le lui dit pas : ses deux cent
+            // dix pixels ont été mesurés sur des buts d'une et deux
+            // lignes, et la troisième se peignait à moitié.
+            let conditions = if ui.available_height() >= 860.0 {
+                let en_plus = self
+                    .exercise_targets()
+                    .map(|but| but.len().saturating_sub(2))
+                    .unwrap_or(0)
+                    .min(EXERCICE_CONDITIONS_MAX);
+                en_plus as f32 * EXERCICE_CONDITION
+            } else {
+                0.0
+            };
             egui::Panel::top("etabli_exercice")
                 .resizable(true)
                 // UNE PART DE CE QUI RESTE, ET NON UN NOMBRE DE
@@ -333,12 +384,13 @@ impl NamsdecApp {
                         .min(ui.available_height() * 0.22)
                         .max(EXERCICE_MIN)
                         + gestes
-                        + lecture,
+                        + lecture
+                        + conditions,
                 )
                 .min_size(EXERCICE_MIN + gestes)
                 .max_size(
-                    (EXERCICE_MAX + gestes + lecture)
-                        .min((ui.available_height() * 0.4).max(EXERCICE_MIN + gestes)),
+                    (EXERCICE_MAX + gestes + lecture + conditions)
+                        .min((ui.available_height() * 0.45).max(EXERCICE_MIN + gestes)),
                 )
                 .frame(
                     egui::Frame::new()
@@ -568,7 +620,15 @@ impl NamsdecApp {
         self.zone_de_travail = ui.available_rect_before_wrap();
 
         // La barre des fichiers, seulement s'il y en a plusieurs.
-        if self.tabs.len() > 1 {
+        //
+        // PLUSIEURS, c'est-à-dire DEUX : `tabs` ne porte que les
+        // fichiers qu'on ne regarde pas, si bien que `len() > 1` en
+        // demandait trois. Avec deux fichiers ouverts, le débutant
+        // n'avait aucune barre — donc aucun moyen de revenir au
+        // premier, ni même de savoir qu'il était encore là. Relevé le
+        // 21 novembre 2026 en montant le menu du clic droit, qui ne
+        // s'atteint que par cette barre.
+        if !self.tabs.is_empty() {
             egui::Panel::top("etabli_fichiers")
                 .frame(egui::Frame::new().fill(theme.bg))
                 .show(ui, |ui| self.tabs_bar_ui(ui));
@@ -603,29 +663,36 @@ impl NamsdecApp {
     /// ce qui reste, et quand il ne reste rien il passe par-dessus.
     /// La barre se coupe donc en deux rangées, et rien ne se recouvre.
     fn etabli_barre_ui(&mut self, ui: &mut egui::Ui) {
-        // Le seuil est mesuré, non deviné : à 800 de large les deux
-        // moitiés se chevauchent de vingt-cinq pixels, et la marge
-        // qu'on prend ici est celle d'un libellé plus long dans une
-        // autre langue.
-        // Mille cent, et non neuf cents : la barre a gagné les trois
-        // pastilles de fenêtre à gauche, la calculatrice et
-        // l'engrenage à droite (A 9.84), et le banc l'a vue se
-        // recouvrir de nouveau à 800 px. Le seuil suit ce que la barre
-        // PORTE, et il est à remonter chaque fois qu'on y ajoute
-        // quelque chose — ce que `panels_do_not_overlap` dit tout seul.
+        // CE QUE LA BARRE DEMANDE EST MESURÉ, ET NON DEVINÉ.
         //
-        // ET LE 16 NOVEMBRE 2026 A MONTRÉ LA LIMITE DE CE SEUIL. Un
-        // sixième geste — « jusqu'au curseur » — faisait se recouvrir
-        // les deux groupes À 1600 PIXELS, c'est-à-dire bien au-dessus
-        // du seuil : le monter aurait fait passer en trois rangées des
-        // écrans qui n'en demandaient pas. Le geste est allé sur la
-        // frise, et « Ouvrir un fichier… » s'écrit court ici. La leçon
-        // est que cette barre est PLEINE : ce qu'on veut y ajouter doit
-        // en déloger autre chose.
-        const UNE_SEULE_RANGÉE: f32 = 1200.0;
-        if ui.available_width() >= UNE_SEULE_RANGÉE {
+        // C'était un seuil en dur — 900 pixels, puis 1100, puis 1200 —,
+        // remonté chaque fois qu'on ajoutait un bouton, et faux dès
+        // qu'on oubliait de le remonter : relevé le 21 novembre 2026 À
+        // 1280 PIXELS, « Ouvrir… » peint par-dessus « Réinitialiser »,
+        // c'est-à-dire bien au-dessus du seuil. Un nombre écrit à la
+        // main ne peut connaître ni la longueur des libellés d'une
+        // autre langue, ni celle du nom du fichier ouvert, ni le bouton
+        // qu'on ajoutera le mois prochain.
+        //
+        // Chaque groupe est donc dessiné une fois dans le vide, loin
+        // hors de l'écran, pour savoir ce qu'il PREND ; la disposition
+        // suit la mesure.
+        let place = ui.available_width();
+        let identite = self.etabli_mesure("identite", ui, |app, ui| app.etabli_identite_ui(ui, 0));
+        let gestes = self.etabli_mesure("gestes", ui, |app, ui| app.etabli_gestes_ui(ui));
+        let sorties = self.etabli_mesure("sorties", ui, |app, ui| app.etabli_sorties_ui(ui));
+
+        // UNE RANGÉE, et le nom se serre pour qu'elle tienne.
+        //
+        // Demandé à l'écran : « oui (ex en concaténant le nom du
+        // fichier) ». C'est la bonne économie — le nom est la seule
+        // chose de cette rangée dont la longueur ne dépend pas de nous,
+        // et une rangée de plus coûte sa hauteur à tout le monde, y
+        // compris au code qu'on est en train de lire.
+        let pour_le_nom = place - (identite + 10.0 + gestes + ÉCART_DES_GROUPES + sorties);
+        if let Some(nom_max) = self.etabli_nom_qui_tient(ui, pour_le_nom) {
             ui.horizontal(|ui| {
-                self.etabli_identite_ui(ui);
+                self.etabli_identite_ui(ui, nom_max);
                 ui.add_space(10.0);
                 self.etabli_gestes_ui(ui);
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -634,15 +701,40 @@ impl NamsdecApp {
             });
             return;
         }
+
+        // DEUX RANGÉES : ce qu'on fait au programme en haut, ce qui
+        // mène ailleurs en dessous.
+        //
+        // C'est la coupure la moins chère — une rangée de plus au lieu
+        // de deux —, et elle sépare au bon endroit : les gestes du
+        // travail d'un côté, les portes de l'autre. Elle vaut tant que
+        // l'identité et les cinq gestes tiennent ensemble.
+        let nom_en_deux = self.etabli_nom_qui_tient(ui, place - (identite + 10.0 + gestes));
+        if let Some(nom_max) = nom_en_deux
+            && sorties <= place
+        {
+            ui.horizontal(|ui| {
+                self.etabli_identite_ui(ui, nom_max);
+                ui.add_space(10.0);
+                self.etabli_gestes_ui(ui);
+            });
+            ui.add_space(5.0);
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.etabli_sorties_ui(ui);
+                });
+            });
+            return;
+        }
+
         // TROIS RANGÉES, UN GROUPE PAR RANGÉE.
         //
-        // Deux rangées ne suffisaient plus : l'identité et les sept
-        // portes se partageaient la première, et à 800 px « sans
-        // titre » se peignait sur « Ouvrir un fichier… ». Chaque
-        // groupe a donc sa ligne — c'est trente pixels de plus, et
-        // seulement sur une fenêtre où la barre ne tenait de toute
-        // façon pas.
-        ui.horizontal(|ui| self.etabli_identite_ui(ui));
+        // À 800 pixels, « sans titre » se peignait sur « Ouvrir un
+        // fichier… » même en deux rangées : l'identité et les sept
+        // portes ne tiennent pas ensemble. Chaque groupe a donc sa
+        // ligne. Le nom y reprend sa longueur entière — la rangée est
+        // à lui seul.
+        ui.horizontal(|ui| self.etabli_identite_ui(ui, NOM_MAX));
         ui.add_space(5.0);
         ui.horizontal(|ui| self.etabli_gestes_ui(ui));
         ui.add_space(5.0);
@@ -651,6 +743,84 @@ impl NamsdecApp {
                 self.etabli_sorties_ui(ui);
             });
         });
+    }
+
+    /// Ce qu'un groupe de la barre PREND, mesuré en le dessinant pour
+    /// de vrai — mais dans le vide.
+    ///
+    /// UN `Ui` À PART, ET NON UN ENFANT DE CELUI-CI. Un enfant, même
+    /// invisible, laisse sa trace : le premier essai mesurait un
+    /// `scope_builder` posé dans la barre, et le rectangle de cent
+    /// mille pixels qu'il demandait a emporté la mise en page entière
+    /// — la barre du haut a disparu de huit contrôles d'un coup.
+    /// Celui-ci est construit sur le contexte, dans sa propre couche,
+    /// invisible et désactivé, à cent mille pixels de l'écran : rien ne
+    /// s'y peint, rien ne s'y survole, aucun clic n'y arrive.
+    pub(crate) fn etabli_mesure(
+        &mut self,
+        quoi: &'static str,
+        ui: &egui::Ui,
+        dessine: impl FnOnce(&mut Self, &mut egui::Ui),
+    ) -> f32 {
+        let loin = egui::Rect::from_min_size(
+            egui::pos2(-100_000.0, -100_000.0),
+            egui::vec2(100_000.0, 200.0),
+        );
+        let id = egui::Id::new(("etabli_mesure", quoi));
+        let mut mesure = egui::Ui::new(
+            ui.ctx().clone(),
+            id,
+            egui::UiBuilder::new()
+                .max_rect(loin)
+                .layer_id(egui::LayerId::new(egui::Order::Background, id))
+                .sizing_pass()
+                .invisible(),
+        );
+        mesure.set_style(ui.style().clone());
+        mesure.horizontal(|ui| dessine(self, ui));
+        // `min_rect` et non le rectangle de la réponse : celui-ci
+        // s'étend à toute la largeur offerte, et l'on vient justement
+        // d'en offrir cent mille.
+        mesure.min_rect().width()
+    }
+
+    /// Le plus long nom qui tienne dans `place`, ou `None` si même un
+    /// nom réduit au minimum n'y entre pas — auquel cas la barre se
+    /// coupe en trois rangées.
+    ///
+    /// Le plancher n'est pas un détail : abrégé à quatre caractères, un
+    /// nom ne dit plus rien, et une rangée de plus vaut mieux qu'une
+    /// étiquette illisible.
+    fn etabli_nom_qui_tient(&mut self, ui: &egui::Ui, place: f32) -> Option<usize> {
+        if place <= 0.0 {
+            return None;
+        }
+        let nom = self.nom_du_tampon();
+        let marque = if self.modifié_vu { " •" } else { "" };
+        let police = egui::FontId::monospace(13.0);
+        let large = |texte: &str| {
+            ui.painter()
+                .layout_no_wrap(
+                    format!("{texte}{marque}"),
+                    police.clone(),
+                    egui::Color32::PLACEHOLDER,
+                )
+                .size()
+                .x
+        };
+        for maximum in (NOM_MIN..=NOM_MAX).rev() {
+            let abrégé = nom_abrégé(&nom, maximum);
+            if large(&abrégé) <= place {
+                return Some(maximum);
+            }
+            // Le nom entier tient déjà sous ce maximum : le réduire
+            // encore ne gagnerait rien, et la boucle tournerait pour
+            // rien jusqu'au plancher.
+            if abrégé == nom && maximum < nom.chars().count() {
+                break;
+            }
+        }
+        None
     }
 
     /// Les pastilles de fenêtre, le nom de l'application, celui du
@@ -664,7 +834,7 @@ impl NamsdecApp {
     /// haut gauche, exactement comme au mode avancé : la fermeture
     /// occupe l'angle qu'une souris lancée vers le haut à gauche
     /// atteint sans viser.
-    fn etabli_identite_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn etabli_identite_ui(&mut self, ui: &mut egui::Ui, nom_max: usize) {
         let s = strings(self.lang);
         let theme = self.theme;
         if !self.system_titlebar {
@@ -706,7 +876,13 @@ impl NamsdecApp {
         // coupant bêtement par la droite.
         //
         // RELISIBLE AU SURVOL, comme partout ailleurs.
-        let abrégé = nom_abrégé(&nom, NOM_MAX);
+        // ZÉRO VEUT DIRE « PAS DE NOM » : c'est ainsi que la barre
+        // mesure ce que les commandes prennent, pour donner le reste au
+        // nom (voir `etabli_barre_sans_le_nom`).
+        if nom_max == 0 {
+            return;
+        }
+        let abrégé = nom_abrégé(&nom, nom_max);
         let marque = if self.modifié_vu {
             format!("{abrégé} •")
         } else {
@@ -757,7 +933,7 @@ impl NamsdecApp {
     /// du mode simple.
     ///
     /// Posé de droite à gauche, donc écrit dans cet ordre-là.
-    fn etabli_sorties_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn etabli_sorties_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         // TOUS LES QUATRE SONT ENCADRÉS, et de la même façon : hors
         // d'un menu, un bouton doit se voir sans qu'on le survole
@@ -854,7 +1030,7 @@ impl NamsdecApp {
     /// pourquoi. Une commande éteinte qui se tait passe pour cassée ;
     /// celle qui dit ce qui manque enseigne l'ordre des gestes — c'est
     /// la règle déjà suivie par la barre d'outils du mode avancé.
-    fn etabli_gestes_ui(&mut self, ui: &mut egui::Ui) {
+    pub(crate) fn etabli_gestes_ui(&mut self, ui: &mut egui::Ui) {
         let s = strings(self.lang);
         let pourquoi_pas = if self.emulator.is_none() {
             s.why_no_program
@@ -1370,7 +1546,7 @@ impl NamsdecApp {
                 // bande fait deux cent dix pixels, la théorie en
                 // prenait cent cinquante — et quatre contrôles l'ont
                 // dit. On avait alors replié par défaut, ce qui
-                // revenait à écrire cent vingt textes que personne
+                // revenait à écrire cent trente-huit textes que personne
                 // n'ouvre.
                 //
                 // Une fenêtre règle les deux : la bande ne perd rien,
@@ -2064,6 +2240,24 @@ fn premiere_phrase(texte: &str) -> &str {
 /// CARACTÈRES et non en pixels, parce que le nom est en chasse fixe —
 /// trente caractères y font toujours la même largeur.
 pub(crate) const NOM_MAX: usize = 30;
+
+/// Et le plus court qu'on accepte d'écrire : en deçà, le nom ne dit
+/// plus rien, et la barre prend une rangée de plus plutôt que de poser
+/// une étiquette illisible.
+///
+/// HUIT, ET LE CHIFFRE A ÉTÉ MESURÉ. À 1366 pixels — la définition la
+/// plus répandue après 1920 —, il reste 77 pixels pour le nom une fois
+/// les cinq gestes et les sept portes posés : un nom de dix caractères
+/// en demande 78, et la barre basculait sur deux rangées pour un demi
+/// pixel, en mangeant une ligne du programme qu'on est en train de
+/// lire. Huit caractères laissent lire « Échanger » là où dix auraient
+/// coûté une ligne de code — et le nom entier reste au survol.
+pub(crate) const NOM_MIN: usize = 8;
+
+/// L'écart minimal entre les gestes et les portes, quand la barre tient
+/// sur une seule rangée. Deux groupes qui se touchent se lisent comme
+/// un seul.
+const ÉCART_DES_GROUPES: f32 = 16.0;
 
 /// Abrège un nom de fichier par le MILIEU, en gardant son extension.
 ///

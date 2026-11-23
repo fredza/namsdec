@@ -1364,12 +1364,14 @@ fn outside_the_menus_a_button_shows_itself_without_being_hovered() {
             // texte, il ne sait pas qu'une ligne est dans la fermeture
             // d'un `MenuButton`. Les trois nommées ici n'ouvrent que
             // des menus : la barre de menus, la barre d'outils (son
-            // menu de débordement), et la rangée d'onglets (le « +N »
-            // qui liste les onglets cachés).
+            // menu de débordement), la rangée d'onglets (le « +N »
+            // qui liste les onglets cachés), et le menu du clic droit
+            // sur un onglet — lequel n'est une fonction à part que pour
+            // pouvoir être nommé ici.
             if plat
                 && !matches!(
                     fonction,
-                    "menu_bar_ui" | "toolbar_ui" | "rangée_d_onglets_repliée"
+                    "menu_bar_ui" | "toolbar_ui" | "rangée_d_onglets_repliée" | "menu_d_un_onglet"
                 )
             {
                 plats.push((
@@ -6188,5 +6190,546 @@ fn une_phrase_ne_se_compose_pas_sur_la_largeur_de_la_fenetre() {
         "{} phrase(s) composées sur plus de {TROP_LONG} caractères :\n  {}",
         fautives.len(),
         fautives.join("\n  ")
+    );
+}
+
+/// Le clic droit sur un onglet ouvre vraiment son menu, et ce menu se
+/// lit en entier.
+///
+/// Le test précédent (`le_menu_d_un_onglet_ferme_les_autres_un_cote_ou_tout`)
+/// tient ce que les entrées FONT ; celui-ci tient qu'elles s'ouvrent au
+/// clic droit, qu'elles sont toutes là, et que le menu tient dans
+/// l'écran plutôt que de sortir par le bas ou par la droite.
+#[test]
+fn le_clic_droit_sur_un_onglet_ouvre_son_menu() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut app = NamsdecApp::default();
+    for rang in 0..3 {
+        let chemin = dir.path().join(format!("f{rang}.asm"));
+        std::fs::write(&chemin, "global _start\nsection .text\n_start:\n    hlt\n").unwrap();
+        app.open_file(chemin);
+    }
+
+    let ctx = egui::Context::default();
+    app.apply_theme(&ctx);
+    let base = écran_du_banc();
+    let frame = |app: &mut NamsdecApp, input: egui::RawInput| {
+        let mut sortie = ctx.run_ui(input, |ui| app.draw(ui));
+        sortie.textures_delta.clear();
+    };
+    // Deux poses avant de viser : la barre d'onglets doit avoir sa
+    // place avant qu'on clique dedans.
+    for _ in 0..2 {
+        frame(&mut app, base.clone());
+    }
+
+    // L'onglet du milieu, là où il est écrit.
+    let (_, écrits) = ce_qui_est_écrit(&ctx, &mut app, None, 2);
+    let onglet = écrits
+        .iter()
+        .find(|(texte, rect)| texte.contains("f1.asm") && rect.top() < 200.0)
+        .map(|(_, rect)| *rect)
+        .expect("l'onglet du milieu est peint dans la barre");
+    let cible = onglet.center();
+
+    let mut presse = base.clone();
+    presse.events.push(egui::Event::PointerMoved(cible));
+    presse.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Secondary,
+        pressed: true,
+        modifiers: egui::Modifiers::NONE,
+    });
+    frame(&mut app, presse);
+    let mut relâche = base.clone();
+    relâche.events.push(egui::Event::PointerButton {
+        pos: cible,
+        button: egui::PointerButton::Secondary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    frame(&mut app, relâche);
+
+    // Le menu est ouvert : on relève ce qu'il écrit, sans bouger la
+    // souris — le pointeur reste sur l'onglet.
+    let mut tenu = base.clone();
+    tenu.events.push(egui::Event::PointerMoved(cible));
+    let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
+    for _ in 0..2 {
+        lignes.clear();
+        let mut sortie = ctx.run_ui(tenu.clone(), |ui| app.draw(ui));
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(t) = &clipped.shape {
+                for ligne in &t.galley.rows {
+                    if ligne.glyphs.is_empty() {
+                        continue;
+                    }
+                    lignes.push((
+                        ligne.text().trim().to_owned(),
+                        egui::Rect::from_min_size(t.pos + ligne.pos.to_vec2(), ligne.size),
+                    ));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+
+    let s = strings(app.lang);
+    let écran = base.screen_rect.unwrap();
+    let mut cadre_du_menu: Option<egui::Rect> = None;
+    // Le menu de l'onglet du milieu : les cinq entrées, puisqu'il a des
+    // voisins des deux côtés.
+    for entrée in [
+        s.tab_menu_close,
+        s.tab_menu_close_others,
+        s.tab_menu_close_all,
+        s.tab_menu_close_left,
+        s.tab_menu_close_right,
+    ] {
+        let posée = lignes
+            .iter()
+            .find(|(texte, _)| texte == entrée)
+            .unwrap_or_else(|| {
+                panic!(
+                    "« {entrée} » doit être dans le menu : {:?}",
+                    lignes.iter().map(|(t, _)| t).take(30).collect::<Vec<_>>()
+                )
+            });
+        assert!(
+            écran.contains_rect(posée.1),
+            "« {entrée} » sort de l'écran : {:?} hors de {écran:?}",
+            posée.1
+        );
+        cadre_du_menu = Some(match cadre_du_menu {
+            Some(cadre) => cadre.union(posée.1),
+            None => posée.1,
+        });
+    }
+    let cadre_du_menu = cadre_du_menu.expect("le menu a au moins une entrée");
+
+    // ET L'INFOBULLE DU NOM NE SE PEINT PAS PAR-DESSUS. Le pointeur est
+    // resté sur l'onglet : sans précaution, egui montrerait le nom du
+    // fichier dans une bulle posée sur les entrées du menu.
+    let sur_le_menu: Vec<&egui::Rect> = lignes
+        .iter()
+        .filter(|(texte, rect)| texte == "f1.asm" && rect.intersects(cadre_du_menu))
+        .map(|(_, rect)| rect)
+        .collect();
+    assert!(
+        sur_le_menu.is_empty(),
+        "l'infobulle du nom se peint sur le menu ({cadre_du_menu:?}) : {sur_le_menu:?}"
+    );
+}
+
+/// DANS UNE FICHE QU'ON LIT, TIRER LE TEXTE NE DÉPLACE PAS LA FENÊTRE.
+///
+/// Le défaut est arrivé par ces mots : « lors de la consultation de
+/// théorie, l'ascenseur ne fonctionnait pas, pas moyen d'aller plus
+/// bas ». Mesuré, il disait autre chose : on tirait le texte pour
+/// descendre, LA FENÊTRE descendait de cent pixels — exactement le
+/// geste du pointeur — et le texte ne défilait pas d'une ligne.
+///
+/// La cause est dans egui : une fenêtre à qui l'on retire sa barre de
+/// titre bascule en « glisser partout » (`WindowDrag::Anywhere`), et sa
+/// propre documentation prévient que cela « interfère avec la sélection
+/// et le glissement du contenu ». Les vingt-cinq fenêtres de namsdec
+/// portent leur propre bandeau, donc toutes y sont.
+///
+/// ON TIRE EN PLUSIEURS POINTS, et non en un seul : sous le pointeur il
+/// peut y avoir un mot cliquable, un label sélectionnable ou rien du
+/// tout, et chacun répond autrement. Un contrôle qui viserait un point
+/// unique mesurerait ce qu'il y a dessous, non la règle. Les deux
+/// moitiés comptent : aucun point ne déplace la fenêtre, et au moins un
+/// fait défiler — une fiche immobile dont rien ne descend serait le
+/// même échec vu de celui qui lit.
+///
+/// IL A SERVI UNE SECONDE FOIS, et c'est pour cela qu'il tire en
+/// plusieurs points. Les théories complétées du 23 novembre 2026
+/// remplissent la colonne du milieu, et le glissement a cessé de
+/// défiler sur trois des cinq théories essayées : un label d'egui est
+/// sélectionnable par défaut, donc il prend le glissement pour
+/// sélectionner et la zone ne voit rien. La promesse ne tenait que là
+/// où le pointeur manquait le texte. Les labels d'une zone qu'on lit
+/// ne sont plus sélectionnables — voir `zone_de_lecture`, qui en dit
+/// le prix.
+#[test]
+fn tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre() {
+    type Fiche = (&'static str, &'static str, fn(&mut NamsdecApp));
+    let fiches: Vec<Fiche> = vec![
+        ("théorie", THEORIE_WINDOW, |app| {
+            app.exercises = true;
+            app.exercise_packs = vec![builtin_pack()];
+            app.load_exercise_now(&format!("namsdec/{THEORIE_DU_BANC}"));
+            app.show_theorie = true;
+        }),
+        ("fiche d'instruction", "instruction_help", |app| {
+            app.show_help = true;
+            app.open_help("cmp");
+        }),
+    ];
+    // Le plus petit écran que l'application accepte : c'est là que les
+    // fiches défilent, et une fiche qui tient en entier ne dit rien de
+    // ce contrôle.
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, MIN_SCREEN.into());
+    let mut fautes = Vec::new();
+    for (nom, id, ouvre) in fiches {
+        let mut déplacements = Vec::new();
+        let mut a_défilé = false;
+        let mut vu_un_ascenseur = false;
+        // Cinq hauteurs dans le corps de la fiche, du quart au trois
+        // quarts : on évite le bandeau en haut et la barre d'action en
+        // bas, qui ne sont pas du texte qu'on lit.
+        for part in [0.3f32, 0.4, 0.5, 0.6, 0.7] {
+            let ctx = egui::Context::default();
+            let mut app = NamsdecApp::default();
+            app.apply_theme(&ctx);
+            ouvre(&mut app);
+            let base = egui::RawInput {
+                screen_rect: Some(écran),
+                ..Default::default()
+            };
+            let image = |ctx: &egui::Context, app: &mut NamsdecApp, events: Vec<egui::Event>| {
+                let mut entrée = base.clone();
+                entrée.events = events;
+                let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+                sortie.textures_delta.clear();
+                sortie
+            };
+            // Huit images : une fenêtre est AMENÉE à sa taille.
+            let mut sortie = None;
+            for _ in 0..8 {
+                sortie = Some(image(&ctx, &mut app, Vec::new()));
+            }
+            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+                .map(|a| a.rect())
+                .unwrap_or(egui::Rect::NOTHING);
+            // Le pouce de l'ascenseur de CETTE fenêtre : le plus court
+            // des rectangles étroits posés contre son bord droit.
+            let pouce = |sortie: &egui::FullOutput| -> Option<egui::Rect> {
+                sortie
+                    .shapes
+                    .iter()
+                    .filter_map(|clipped| match &clipped.shape {
+                        egui::epaint::Shape::Rect(r)
+                            if r.rect.width() < 20.0
+                                && r.rect.height() > 40.0
+                                && cadre.contains(r.rect.center())
+                                && r.rect.center().x > cadre.right() - 40.0 =>
+                        {
+                            Some(r.rect)
+                        }
+                        _ => None,
+                    })
+                    .min_by(|a, b| a.height().total_cmp(&b.height()))
+            };
+            let avant = pouce(sortie.as_ref().expect("une image"));
+            vu_un_ascenseur |= avant.is_some();
+            // On saisit le corps et l'on tire vers le haut : c'est le
+            // geste de qui pousse la page pour voir la suite.
+            let mut pointeur = egui::pos2(cadre.center().x, cadre.top() + cadre.height() * part);
+            image(&ctx, &mut app, vec![egui::Event::PointerMoved(pointeur)]);
+            image(
+                &ctx,
+                &mut app,
+                vec![
+                    egui::Event::PointerMoved(pointeur),
+                    egui::Event::PointerButton {
+                        pos: pointeur,
+                        button: egui::PointerButton::Primary,
+                        pressed: true,
+                        modifiers: Default::default(),
+                    },
+                ],
+            );
+            let mut dernière = None;
+            for _ in 0..4 {
+                pointeur.y -= 25.0;
+                dernière = Some(image(
+                    &ctx,
+                    &mut app,
+                    vec![egui::Event::PointerMoved(pointeur)],
+                ));
+            }
+            let après = egui::AreaState::load(&ctx, egui::Id::new(id))
+                .map(|a| a.rect())
+                .unwrap_or(egui::Rect::NOTHING);
+            let déplacée = (après.min - cadre.min).length();
+            if déplacée > 1.0 {
+                déplacements.push(format!(
+                    "{:.0} % de haut en bas : {déplacée:.0} px",
+                    part * 100.0
+                ));
+            }
+            if let (Some(avant), Some(après)) =
+                (avant, pouce(dernière.as_ref().expect("une image")))
+                && (après.top() - avant.top()).abs() > 1.0
+            {
+                a_défilé = true;
+            }
+        }
+        if !déplacements.is_empty() {
+            fautes.push(format!(
+                "« {nom} » : tirer le texte a DÉPLACÉ la fenêtre — {}",
+                déplacements.join(", ")
+            ));
+        }
+        if !vu_un_ascenseur {
+            fautes.push(format!(
+                "« {nom} » : aucun ascenseur à {:.0}x{:.0} — le contrôle ne \
+                 mesure rien ; donnez-lui une fiche plus longue",
+                écran.width(),
+                écran.height()
+            ));
+        } else if !a_défilé {
+            fautes.push(format!(
+                "« {nom} » : aucun des cinq points tirés n'a fait défiler le texte"
+            ));
+        }
+    }
+    assert!(
+        fautes.is_empty(),
+        "une fiche qu'on lit se tire pour défiler, et non pour se déplacer :\n  {}",
+        fautes.join("\n  ")
+    );
+}
+
+/// SUR UN ÉCRAN DE TRAVAIL COURANT, AUCUNE THÉORIE NE DEMANDE DE
+/// DÉFILER.
+///
+/// C'est une règle pédagogique avant d'être une règle de mise en page :
+/// la théorie s'adresse à qui débute, et quelqu'un qui débute ne sait
+/// pas encore qu'il manque un paragraphe sous le bord. Une explication
+/// qu'il faut faire défiler est une explication qu'on lit à moitié.
+///
+/// La hauteur de ces fiches valait 55 % de l'écran — une fraction qui ne
+/// regarde rien. À 1280x800 elle accordait 440 px là où la zone libre
+/// entre les barres en offre 626, et la plus longue des cent trente-huit
+/// théories en demande 498 : elle défilait pour cent quatre-vingt-six
+/// pixels de place inutilisée. `place_pour_une_fiche` prend désormais la
+/// place qu'il y a.
+///
+/// Ce que le contrôle mesure est l'ascenseur lui-même — un rectangle
+/// étroit et haut contre le bord droit de la fenêtre —, c'est-à-dire ce
+/// que l'œil voit, et non un calcul qu'on referait à l'identique.
+///
+/// Ce contrôle vieillira dans le bon sens : le jour où une théorie
+/// nouvelle sera trop longue pour tenir d'un coup, il le dira, et c'est
+/// la théorie qu'il faudra raccourcir.
+///
+/// CE JOUR EST ARRIVÉ, et il a fait les deux. Les cent trente-huit
+/// théories ont été complétées pour qui débute — un passage chiffré
+/// dans chacune, la médiane passant de 800 à 1597 caractères —, et
+/// **quarante-neuf d'entre elles se sont mises à défiler**. La
+/// réponse n'a pas été de les raccourcir toutes : la place manquait
+/// en HAUTEUR, et la fiche faisait 640 px de large sur une zone de
+/// travail qui en offre près du double. `largeur_pour_une_fiche` lui
+/// donne désormais la largeur qu'il y a, et quarante-cinq des
+/// quarante-neuf ont cessé de défiler sans qu'un mot ne change.
+///
+/// Les quatre dernières ont bel et bien été raccourcies, et elles ont
+/// appris quelque chose : **le nombre de paragraphes coûte autant que
+/// les caractères**. Une théorie de 1899 caractères en sept
+/// paragraphes tient, là où une de 1708 en huit défile — chaque
+/// paragraphe ajoute une dernière ligne partielle et l'air qui le
+/// sépare du suivant. Resserrer un texte, ici, c'est d'abord fusionner
+/// ce qui dit deux fois la même chose.
+#[test]
+fn aucune_theorie_ne_demande_de_defiler_sur_un_ecran_de_travail() {
+    // Un portable courant, et non l'écran large du banc : c'est le
+    // format où la règle a mordu.
+    let écran = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1280.0, 800.0));
+    let pack = builtin_pack();
+    let avec_théorie: Vec<String> = pack
+        .exercises
+        .iter()
+        .filter(|exercice| exercice.theorie.is_some())
+        .map(|exercice| exercice.id.clone())
+        .collect();
+    assert!(
+        avec_théorie.len() > 100,
+        "la série livrée porte plus de cent théories, pas {}",
+        avec_théorie.len()
+    );
+    let mut défilent = Vec::new();
+    for id in &avec_théorie {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp::default();
+        app.apply_theme(&ctx);
+        app.exercises = true;
+        app.exercise_packs = vec![builtin_pack()];
+        app.load_exercise_now(&format!("namsdec/{id}"));
+        app.show_theorie = true;
+        let entrée = egui::RawInput {
+            screen_rect: Some(écran),
+            ..Default::default()
+        };
+        let mut sortie = None;
+        // Huit images : une fenêtre est AMENÉE à sa taille.
+        for _ in 0..8 {
+            let mut image = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            image.textures_delta.clear();
+            sortie = Some(image);
+        }
+        let cadre = egui::AreaState::load(&ctx, egui::Id::new(THEORIE_WINDOW))
+            .map(|a| a.rect())
+            .unwrap_or(egui::Rect::NOTHING);
+        let ascenseur = sortie
+            .as_ref()
+            .expect("une image")
+            .shapes
+            .iter()
+            .any(|clipped| match &clipped.shape {
+                egui::epaint::Shape::Rect(r) => {
+                    r.rect.width() < 20.0
+                        && r.rect.height() > 40.0
+                        && cadre.contains(r.rect.center())
+                        && r.rect.center().x > cadre.right() - 40.0
+                }
+                _ => false,
+            });
+        if ascenseur {
+            défilent.push(id.clone());
+        }
+    }
+    assert!(
+        défilent.is_empty(),
+        "à {:.0}x{:.0}, {} théorie(s) sur {} demandent de défiler — \
+         une explication qu'on lit à moitié :\n  {}",
+        écran.width(),
+        écran.height(),
+        défilent.len(),
+        avec_théorie.len(),
+        défilent.join(", ")
+    );
+}
+
+/// DANS UNE FICHE, LA COULEUR D'APPEL NE VA QU'À CE QUI S'OUVRE.
+///
+/// La théorie promet, en toutes lettres et en bas de chaque fiche, que
+/// « les mots en couleur ont leur propre fiche : un clic l'ouvre ».
+/// Elle ne le tenait pas : un morceau de code entre accents graves était
+/// peint de la couleur des mnémoniques qu'il ait une fiche ou non, et
+/// seul un soulignement à un tiers d'opacité séparait les deux.
+///
+/// Mesuré sur les cent trente-huit théories livrées, dans les deux
+/// langues : sur 1127 morceaux colorés, 284 — un quart — ne répondaient
+/// pas au clic. `rax`, `al`, `db`, `0x88`, `section`… On clique, rien ne
+/// vient, et l'on en conclut que les clics ne marchent pas ici. C'est la
+/// même déception que l'ascenseur qui ne défile pas : une promesse faite
+/// à l'œil, et non tenue.
+///
+/// Le contrôle relève les textes PEINTS, et non ce que le code croit
+/// écrire : un mot qui nomme une instruction porte la couleur d'appel,
+/// un mot qui n'en nomme aucune porte celle du texte.
+#[test]
+fn dans_une_fiche_la_couleur_d_appel_ne_va_qu_a_ce_qui_s_ouvre() {
+    let ctx = egui::Context::default();
+    let app = NamsdecApp::default();
+    app.apply_theme(&ctx);
+    let theme = app.theme;
+    // Deux morceaux, et un seul a une fiche. `rax` est le cas le plus
+    // courant des 284 : un registre, que personne n'a jamais documenté
+    // comme une instruction.
+    assert!(
+        namsdec_doc::lookup("mov").is_some(),
+        "le témoin suppose que `mov` a une fiche"
+    );
+    assert!(
+        namsdec_doc::lookup("rax")
+            .filter(|e| e.kind == namsdec_doc::Kind::Instruction
+                || e.kind == namsdec_doc::Kind::Concept)
+            .is_none(),
+        "le témoin suppose que `rax` n'en a pas"
+    );
+    let entrée = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800.0, 400.0),
+        )),
+        ..Default::default()
+    };
+    let mut couleurs: std::collections::BTreeMap<String, Vec<egui::Color32>> = Default::default();
+    for _ in 0..3 {
+        couleurs.clear();
+        let mut sortie = ctx.run_ui(entrée.clone(), |ui| {
+            prose_avec_fiches_et_notions(
+                ui,
+                theme,
+                Lang::Fr,
+                "On écrit `mov` pour déplacer, et le résultat tombe dans `rax`.",
+                true,
+            );
+        });
+        for clipped in &sortie.shapes {
+            if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                let écrit = texte.galley.job.text.trim().to_owned();
+                if écrit == "mov" || écrit == "rax" {
+                    couleurs
+                        .entry(écrit)
+                        .or_default()
+                        .extend(texte.galley.job.sections.iter().map(|s| s.format.color));
+                }
+            }
+        }
+        sortie.textures_delta.clear();
+    }
+    let couleur = |mot: &str| -> egui::Color32 {
+        *couleurs
+            .get(mot)
+            .and_then(|liste| liste.first())
+            .unwrap_or_else(|| panic!("« {mot} » n'a pas été peint : {couleurs:?}"))
+    };
+    assert_eq!(
+        couleur("mov"),
+        theme.mnemonic,
+        "« mov » a une fiche : il porte la couleur d'appel"
+    );
+    assert_ne!(
+        couleur("rax"),
+        theme.mnemonic,
+        "« rax » n'a pas de fiche : il ne doit pas porter la couleur de ce qui s'ouvre, \
+         sans quoi la fiche promet un clic qui ne vient pas"
+    );
+    assert_eq!(
+        couleur("rax"),
+        theme.text,
+        "« rax » reste du code, en chasse fixe et de la couleur du texte"
+    );
+}
+
+/// LE PROGRAMME D'ACCUEIL MONTRE LE BOUTON, ET NON UN RÉGLAGE.
+///
+/// C'est la toute première phrase qu'un débutant lit dans namsdec, et
+/// elle l'envoyait dans « Préférences > Modules » pour trouver les
+/// exercices. Le renvoi datait du temps où le module était éteint au
+/// départ ; il est allumé par défaut depuis, et le bouton
+/// « Exercices… » est à l'écran, en haut, au moment où l'on lit la
+/// phrase. On ne fait pas chercher dans un panneau de réglages ce qui
+/// est sous les yeux.
+///
+/// Le nombre d'étapes qu'elle annonce est gardé ailleurs, par
+/// `le_programme_d_accueil_annonce_le_bon_nombre_d_exercices` : ce
+/// contrôle-ci ne regarde que l'endroit où la phrase envoie.
+#[test]
+fn le_programme_d_accueil_montre_le_bouton_et_non_un_reglage() {
+    // Le module est allumé au premier lancement : c'est ce qui rend le
+    // renvoi vers les réglages fautif. Si cela changeait un jour, la
+    // phrase devrait changer avec, et ce contrôle le dira.
+    let réglages = Settings::default();
+    assert!(
+        réglages.exercises,
+        "le module des exercices est allumé au départ — sinon, la phrase \
+         d'accueil doit redire où l'allumer"
+    );
+    assert!(
+        !DEFAULT_SOURCE.contains("Préférences"),
+        "le programme d'accueil envoie dans les préférences pour quelque chose \
+         qui est déjà à l'écran :\n{DEFAULT_SOURCE}"
+    );
+    let bouton = strings(Lang::Fr).exercises_open;
+    assert!(
+        DEFAULT_SOURCE.contains(bouton),
+        "le programme d'accueil doit nommer le bouton « {bouton} » tel qu'il est \
+         écrit dessus :\n{DEFAULT_SOURCE}"
     );
 }

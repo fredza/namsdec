@@ -327,8 +327,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
 
         ("h1", "Le premier programme"),
         ("p",
-         "Au premier lancement, l'éditeur contient un programme d'accueil. Trois gestes "
-         "suffisent pour le voir tourner :"),
+         "Au premier lancement, l'éditeur contient un programme d'accueil. Sa deuxième "
+         "ligne annonce le parcours et dit <b>où il se trouve</b> : le bouton "
+         "« Exercices… », en haut. Elle envoyait auparavant dans Préférences › Modules, "
+         "et ce renvoi datait du temps où le module était éteint au départ — il est "
+         "allumé depuis, et la phrase faisait chercher dans un panneau de réglages un "
+         "bouton qui était sous les yeux au moment où on la lisait. Trois gestes "
+         "suffisent ensuite pour voir le programme tourner :"),
         ("liste", [
          "<b>Assembler</b> (Ctrl+Maj+B) : nasm et ld font leur travail, <b>dans un fil à "
          "part</b> — la fenêtre continue de répondre pendant ce temps, la barre d'état dit "
@@ -487,8 +492,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "disent au survol ce qui leur manque. « Exécuter » devient « Stop » pendant "
          "que le programme tourne — le programme court ou il ne court pas, et deux "
          "boutons dont l'un est toujours éteint prendraient la place pour ne rien dire. "
-         "Sur une fenêtre étroite, la barre se coupe en deux rangées plutôt que de se "
-         "recouvrir."),
+         "Sur une fenêtre étroite, la barre se coupe en deux puis en trois rangées "
+         "plutôt que de se recouvrir — et avant d'en arriver là, c'est le <b>nom du "
+         "fichier</b> qui se serre, puisqu'il est la seule largeur de cette rangée "
+         "qui ne dépende pas de namsdec. Ce qu'elle demande est <i>mesuré</i> à "
+         "chaque image, et non comparé à un seuil écrit d'avance&nbsp;: un libellé "
+         "plus long dans une autre langue, ou un bouton de plus, changent la "
+         "décision tout seuls."),
         ("p",
          "<b>Deux de ces bandes se détachent.</b> « Ce que fait la machine » et "
          "« Résultat » portent chacune un bouton <b>Détacher</b> au bord droit de leur "
@@ -772,6 +782,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "« sans titre 2 », « sans titre 3 ». Ctrl+Tab passe au suivant, Ctrl+W ferme, "
          "et <b>Fichier > Ouvrir un fichier…</b> (Ctrl+O) ouvre un fichier existant, "
          "lui aussi dans son onglet."),
+        ("p",
+         "Le <b>clic droit sur un onglet</b> ouvre son menu, pour fermer plus d'un "
+         "fichier sans viser chaque croix&nbsp;: <b>Fermer</b>, <b>Fermer les "
+         "autres</b>, <b>Fermer tous les onglets</b>, <b>Fermer ceux de gauche</b> et "
+         "<b>Fermer ceux de droite</b>. Les deux derniers ne paraissent que s'il y a "
+         "quelque chose de ce côté. Un fichier dont le texte n'est pas enregistré "
+         "<b>arrête le défilé</b> le temps de la question habituelle&nbsp;: "
+         "« Enregistrer » ou « Ne pas enregistrer » laisse la fermeture reprendre son "
+         "cours, « Annuler » l'abandonne tout entière — et non seulement pour "
+         "l'onglet affiché."),
 
         ("h2", "Deux rangées : le fichier, et la façon de le regarder"),
         ("p",
@@ -2006,6 +2026,16 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "Un parcours dont chaque vérification exige de connaître la chaîne de "
          "compilation n'est pas interactif."),
         ("p",
+         "<b>Une étape ne se demande jamais si elle est enregistrée.</b> Ce qu'on "
+         "écrit dans un exercice n'est pas un fichier qu'on a ouvert&nbsp;: il est "
+         "gardé tout seul, dans un dossier à part — "
+         "<font face='Courier'>~/.local/share/namsdec/resolus/</font>, un "
+         "sous-dossier par série —, et relu quand on revient à l'étape, y compris "
+         "au lancement suivant. L'onglet d'une étape ne porte donc pas le rond du "
+         "non-enregistré, et fermer namsdec ne pose aucune question pour lui. "
+         "« Enregistrer » reste là pour une autre chose&nbsp;: sortir son programme "
+         "du parcours, vers le dossier de son choix."),
+        ("p",
          "<b>Deux autres gestes de l'étape.</b> <b>Recommencer</b>, à côté de "
          "« Vérifier », remet le programme de départ — ce qu'on avait écrit est "
          "jeté, brouillon compris, mais la réussite et le meilleur score restent&nbsp;: "
@@ -2023,8 +2053,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "la version française, ce sont ces fiches-ci."),
         ("p",
          "<b>Et tout le parcours se remet à zéro</b>, depuis la fenêtre des "
-         "exercices&nbsp;: réussites, scores et brouillons des cent vingt étapes. Une "
-         "question est posée avant, parce que cela ne se défait pas."),
+         "exercices&nbsp;: réussites, scores et brouillons des %d étapes. Une "
+         "question est posée avant, parce que cela ne se défait pas." % total_exos),
         ("note",
          "<b>Le verdict ne se donne pas tout seul.</b> Une course lancée à la main reste "
          "muette&nbsp;: on exécute aussi pour regarder tourner, et un jugement qu'on n'a "
@@ -2050,8 +2080,8 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Et le carnet dit ce que vous avez vu.</b> Dans la fenêtre des exercices, "
          "sous la barre de progression, <b>Ce que vous avez vu</b> liste les "
          "instructions des étapes <i>réussies</i> — ouvrir un énoncé n'apprend rien —, "
-         "chacune ouvrant sa fiche. « 12/120 » dit le chemin parcouru&nbsp;; le carnet "
-         "dit ce qu'on y a appris, et c'est l'autre moitié de la question."),
+         "chacune ouvrant sa fiche. « 12/%d » dit le chemin parcouru&nbsp;; le carnet "
+         "dit ce qu'on y a appris, et c'est l'autre moitié de la question." % total_exos),
         ("p",
          "<b>Le parcours va dans les deux sens.</b> <b>Étape suivante</b> mène à la "
          "prochaine qu'on n'a pas réussie — reprendre un parcours ne doit pas obliger à "
@@ -2086,9 +2116,112 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "bruit. La théorie, elle, parle de mécanique, et «&nbsp;un saut en arrière "
          "vers une étiquette&nbsp;» doit mener quelque part."),
         ("p",
+         "<b>La couleur d'appel ne va qu'à ce qui s'ouvre.</b> Entre accents graves, "
+         "une fiche cite aussi des choses qui n'ont pas de page à elles&nbsp;: "
+         "<font face='Courier'>rax</font>, <font face='Courier'>al</font>, "
+         "<font face='Courier'>0x88</font>, <font face='Courier'>section</font>. Elles "
+         "étaient peintes de la <b>même couleur</b> que les mots qui s'ouvrent, et seul "
+         "un soulignement discret les séparait — alors que la fiche promet, en bas de "
+         "page, que «&nbsp;les mots en couleur ont leur propre fiche&nbsp;». Mesuré sur "
+         "les cent trente-huit théories livrées, dans les deux langues&nbsp;: sur 1&nbsp;127 "
+         "morceaux colorés, <b>284 — un quart — ne répondaient pas au clic</b>. On "
+         "cliquait, rien ne venait, et l'on en concluait que les clics ne marchent pas "
+         "ici. Le code sans fiche reste désormais du code — chasse fixe, couleur du "
+         "texte —, et la couleur est rendue à sa fonction&nbsp;: elle annonce un clic, "
+         "et le clic répond."),
+        ("p",
+         "<b>La fiche se lit sans se battre avec elle.</b> On la fait défiler à la "
+         "molette, à son ascenseur, et <b>en tirant le texte</b>. Ce dernier geste "
+         "faisait exactement l'inverse&nbsp;: la fenêtre se déplaçait de la hauteur du "
+         "geste — cent pixels mesurés — et le texte ne bougeait pas d'une ligne, parce "
+         "qu'une fenêtre sans barre de titre se déplace, chez egui, en la tirant de "
+         "n'importe où. Le bandeau la déplace, le texte la fait défiler, et chacun son "
+         "geste."),
+        ("p",
+         "<b>Et le glissement ne marchait qu'à côté du texte.</b> Le même contrôle l'a "
+         "dit le jour où les théories complétées ont rempli la colonne du milieu&nbsp;: "
+         "un texte d'egui est sélectionnable par défaut, donc il <b>prend</b> le "
+         "glissement pour sélectionner, et la zone ne voit rien passer. La promesse ne "
+         "tenait que là où le pointeur manquait le texte — vérifié sur cinq hauteurs, "
+         "elle tombait sur trois théories essayées sur cinq. Dans une fiche qu'on "
+         "<b>lit</b>, le texte n'est donc plus sélectionnable, et tirer fait défiler "
+         "partout. Le prix est dit&nbsp;: on ne sélectionne plus un exemple à la souris "
+         "pour le recopier. La molette, l'ascenseur et le clavier restent, et les mots "
+         "qui ont une fiche restent cliquables."),
+        ("p",
+         "<b>Et elle prend la place qu'il y a.</b> Sa hauteur valait auparavant 55&nbsp;% "
+         "de l'écran, une fraction qui ne regarde rien&nbsp;: sur un portable de "
+         "1280×800 elle accordait 440&nbsp;pixels là où la zone libre entre les barres en "
+         "offre 626, et les deux plus longues théories défilaient pour "
+         "186&nbsp;pixels de place inutilisée. Défiler pour lire une explication est "
+         "exactement ce qu'on ne doit pas demander à quelqu'un qui débute&nbsp;: il ne "
+         "sait pas encore qu'il manque un paragraphe sous le bord. <b>Aucune des cent "
+         "trente-huit théories ne demande plus de défiler</b> sur un écran de travail, "
+         "et un contrôle le vérifie à chaque fois — le jour où une théorie nouvelle "
+         "sera trop longue pour tenir d'un coup, c'est elle qu'il faudra raccourcir."),
+        ("p",
          "Elle est écrite <b>pour qui débute</b>&nbsp;: une idée par paragraphe, des "
          "phrases courtes, un exemple avec de vrais nombres, et le piège à la fin quand "
          "il y en a un. Elle ne suppose pas qu'on sache déjà ce qu'elle explique."),
+        ("p",
+         "<b>Et l'exemple avec de vrais nombres n'y était pas.</b> La promesse est "
+         "ancienne — c'est l'une des trois raisons pour lesquelles la théorie a quitté "
+         "la bande de l'exercice pour une fenêtre à elle. Le compte l'a démentie&nbsp;: "
+         "sur les cent trente-huit théories livrées, <b>quatre-vingt-dix-sept</b> ne "
+         "citaient aucune instruction avec ses opérandes, et <b>cinquante et une</b> ne "
+         "portaient pas un chiffre. Elles énonçaient des règles justes — «&nbsp;lire un "
+         "octet laisse le haut du registre tel qu'il était&nbsp;» — qu'un débutant ne "
+         "peut pas <b>refaire</b>."),
+        ("p",
+         "Les deux cent soixante-seize textes — cent trente-huit étapes dans deux "
+         "langues — portent désormais chacun un <b>passage chiffré</b>&nbsp;: les "
+         "valeurs de départ, ce que chaque instruction en fait, et le nombre qui sort, "
+         "pris sur le programme de l'étape elle-même. «&nbsp;AL vaut "
+         "<font face='Courier'>0xFF</font>&nbsp;; "
+         "<font face='Courier'>movzx rax, al</font> écrit "
+         "<font face='Courier'>0x00000000000000FF</font>, donc 255&nbsp;; "
+         "<font face='Courier'>movsx rbx, bl</font> sur le même octet écrit "
+         "<font face='Courier'>0xFFFFFFFFFFFFFFFF</font>, donc -1.&nbsp;» La médiane "
+         "d'une théorie passe de <b>800 à 1&nbsp;597 caractères</b>, et un contrôle "
+         "vérifie qu'aucune n'énonce plus une règle sans un seul nombre à refaire."),
+        ("p",
+         "<b>Chaque chiffre a été vérifié contre l'assembleur du dépôt</b>, et cinq "
+         "affirmations anciennes y sont tombées. «&nbsp;Mettre à zéro, trois "
+         "façons&nbsp;» annonçait <font face='Courier'>mov rax, 0</font> à sept "
+         "octets&nbsp;: il en fait <b>cinq</b>, parce que l'assembleur choisit tout "
+         "seul la forme courte, qui écrit dans "
+         "<font face='Courier'>eax</font> et nettoie RAX au passage — l'onglet Octets "
+         "le montrait, et le texte disait le contraire. «&nbsp;Qui décide de la "
+         "suite&nbsp;» donnait sept octets à <font face='Courier'>mov rax, 1</font>, "
+         "même cause. «&nbsp;Regarder sans écrire&nbsp;» donnait deux octets à "
+         "<font face='Courier'>test rax, rax</font>, qui en fait trois. «&nbsp;Ce que "
+         "coûte une constante&nbsp;» comparait trois écritures que l'assembleur rend "
+         "<b>identiques</b> — cinq octets chacune —, et l'exercice entier a été refait "
+         "pour comparer celles qui diffèrent vraiment&nbsp;: deux, cinq, sept et dix "
+         "octets. Enfin «&nbsp;Pourquoi <font face='Courier'>strings</font> ne montre "
+         "rien&nbsp;» portait une chaîne chiffrée qui se déchiffrait en "
+         "«&nbsp;SECRDT&nbsp;»&nbsp;: un octet sur six était faux."),
+        ("note",
+         "<b>Ce que la longueur a coûté, et ce qui l'a payée.</b> Compléter les cent "
+         "trente-huit théories a mis <b>quarante-neuf d'entre elles</b> à défiler sur "
+         "un écran de 1280×800 — exactement ce que la fenêtre avait été créée pour "
+         "éviter. Elles n'ont pas été raccourcies pour autant&nbsp;: la place manquait "
+         "en <b>hauteur</b>, et la fiche faisait 640&nbsp;pixels de large sur une zone "
+         "de travail qui en offre près du double. Elle prend maintenant la largeur "
+         "qu'il y a, comme elle prenait déjà la hauteur, et quarante-cinq des "
+         "quarante-neuf ont cessé de défiler sans qu'un mot ne change. Les quatre "
+         "dernières ont appris le reste&nbsp;: <b>le nombre de paragraphes coûte autant "
+         "que les caractères</b> — une théorie de 1&nbsp;899 caractères en sept "
+         "paragraphes tient, là où une de 1&nbsp;708 en huit défile."),
+        ("note",
+         "<b>Et la largeur a un plafond, cherché par le bas.</b> Première tentative "
+         "à 1&nbsp;100&nbsp;pixels&nbsp;: plus rien ne défilait, et la plus longue "
+         "théorie se peignait en lignes de <b>cent soixante-quinze caractères</b> — un "
+         "défaut échangé contre un autre, l'œil perdant le début de la ligne suivante. "
+         "Le plafond est donc la largeur la plus <b>courte</b> qui tienne encore la "
+         "promesse&nbsp;: à 780&nbsp;pixels une théorie défile, à 800 aucune, et le "
+         "réglage retenu est 840 — ce 800 plus la marge d'une police qui changerait de "
+         "métrique."),
         ("p",
          "<b>Et elle enseigne ce que son exercice demande d'écrire.</b> Cela paraît "
          "aller de soi&nbsp;; cela n'allait pas de soi. Au palier <b>Découverte</b>, "
@@ -2102,7 +2235,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>setcc</font>&nbsp;» suffit à chercher "
          "<font face='Courier'>setg</font>. Au palier Découverte, c'est la cinquième "
          "ligne d'assembleur d'une vie. Mesuré le 20 novembre 2026 sur les "
-         "vingt-cinq étapes du palier&nbsp;: <b>cinq</b> réclamaient un nom qu'elles "
+         "vingt-cinq étapes que comptait alors le palier&nbsp;: <b>cinq</b> réclamaient un nom qu'elles "
          "n'écrivaient nulle part. «&nbsp;Une boucle qui compte&nbsp;», quatrième étape, "
          "faisait écrire <font face='Courier'>add</font> sans l'avoir jamais nommé — la "
          "consigne disait «&nbsp;ajouter RCX à RAX&nbsp;», en français. «&nbsp;Les quatre "
@@ -2126,13 +2259,93 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "RAX quand on écrit une tranche de 32 puis de 16 bits, et qui est ôté de qui "
          "dans une soustraction. Le palier passe ainsi d'une étape de lecture à trois, "
          "et le piège numéro un du débutant se <b>prévoit</b> au lieu de se raconter."),
+        ("h2", "Ce que le palier Découverte apprend d'abord"),
+        ("p",
+         "<b>Et avant les bases elles-mêmes, le programme.</b> La première étape du "
+         "parcours posait <font face='Courier'>global _start</font>, "
+         "<font face='Courier'>section .text</font>, une étiquette et "
+         "<font face='Courier'>hlt</font> sous les yeux de quelqu'un à qui personne "
+         "n'avait dit ce que c'était — et elle employait "
+         "<font face='Courier'>mov</font> comme si le sens d'une virgule allait de "
+         "soi. Quatre étapes ouvrent maintenant le parcours&nbsp;: "
+         "«&nbsp;Le plus petit programme&nbsp;» explique les quatre lignes de la "
+         "charpente, dont trois ne sont pas des ordres&nbsp;; «&nbsp;Qui décide de la "
+         "suite&nbsp;» fait regarder RIP monter pas à pas, et dit qu'un saut n'est "
+         "rien d'autre qu'une adresse écrite là&nbsp;; «&nbsp;Copier, ce n'est pas "
+         "déplacer&nbsp;» corrige le contresens du nom <i>move</i> et pose la "
+         "destination à gauche&nbsp;; «&nbsp;Dans quel sens&nbsp;?&nbsp;» le fait "
+         "prévoir."),
+        ("p",
+         "<b>Et le saut avant la boucle.</b> «&nbsp;Une boucle qui compte&nbsp;» "
+         "demandait d'un seul trou l'étiquette, le saut, l'indicateur ZF et la boucle "
+         "— quatre notions neuves pour une ligne à écrire. Trois étapes les séparent "
+         "désormais&nbsp;: «&nbsp;Une étiquette, et un saut&nbsp;» pour le "
+         "<font face='Courier'>jmp</font> inconditionnel et ce qu'est une étiquette&nbsp;; "
+         "«&nbsp;Ce que le saut a enjambé&nbsp;» pour suivre le chemin plutôt que les "
+         "lignes&nbsp;; «&nbsp;Le petit bit que le saut lit&nbsp;» pour ZF seul, en "
+         "ligne droite, sans boucle autour. La boucle ne demande plus alors qu'une "
+         "chose&nbsp;: de les mettre ensemble."),
+        ("p",
+         "<b>Le palier commence avant les registres</b>, et il ne l'a pas toujours "
+         "fait&nbsp;: la première étape du parcours montrait les tranches de "
+         "<font face='Courier'>rax</font> à quelqu'un qui n'avait encore vu ni un bit, "
+         "ni un octet, ni ce qu'un chiffre hexadécimal recouvre. Les trois notions sur "
+         "lesquelles tout le reste repose sont maintenant enseignées en premier, chacune "
+         "suivie d'une étape qui la fait <b>prévoir</b> plutôt que relire."),
+        ("p",
+         "<b>Les bases.</b> «&nbsp;Un bit, puis huit&nbsp;» pose un bit, les poids 1, 2, "
+         "4, 8… 128, et l'octet qu'ils forment&nbsp;; «&nbsp;Ce que pèsent huit "
+         "bits&nbsp;» demande de convertir un motif binaire en décimal avant "
+         "d'exécuter&nbsp;; «&nbsp;Quatre bits font un chiffre&nbsp;» montre pourquoi "
+         "l'hexadécimal et non le décimal — seize est une puissance de deux, un chiffre "
+         "recouvre donc exactement un <b>quartet</b> —, et fait séparer les deux quartets "
+         "d'un octet. «&nbsp;Un nombre, trois écritures&nbsp;» les réunit — le même "
+         "trente et un en décimal, en hexadécimal et en binaire, que nasm traduit en les "
+         "mêmes octets&nbsp;: choisir une notation ne change rien au programme, cela ne "
+         "change que ce qu'on lit. Enfin «&nbsp;Ce qui vient après neuf&nbsp;» fait "
+         "prévoir ce que <font face='Courier'>inc</font> donne sur "
+         "<font face='Courier'>0x19</font>, là où la base dix dirait vingt."),
+        ("p",
+         "<b>Les largeurs, toutes.</b> «&nbsp;Seize registres, quatre largeurs&nbsp;» "
+         "nomme la structure entière&nbsp;: 64, 32, 16 et 8 bits — soit huit, quatre, "
+         "deux ou un octet —, les noms hérités des huit anciens "
+         "(<font face='Courier'>rax</font>, <font face='Courier'>eax</font>, "
+         "<font face='Courier'>ax</font>, <font face='Courier'>al</font>) et les "
+         "suffixes des huit numérotés (<font face='Courier'>r8</font>, "
+         "<font face='Courier'>r8d</font>, <font face='Courier'>r8w</font>, "
+         "<font face='Courier'>r8b</font>), qu'aucune étape ne faisait écrire. Elle dit "
+         "aussi qu'il n'y a <b>pas</b> de tranche de quatre bits&nbsp;: un quartet se "
+         "lit, il ne s'adresse pas. «&nbsp;AH n'est pas le haut&nbsp;» fait prévoir le "
+         "piège du nom&nbsp;: <font face='Courier'>ah</font> est le second octet, pas le "
+         "sommet du registre."),
+        ("p",
+         "<b>Le complément à deux, pas à pas.</b> Quatre étapes là où il n'y en avait "
+         "qu'une. «&nbsp;Fabriquer un négatif à la main&nbsp;» refait le chemin que "
+         "<font face='Courier'>neg</font> parcourt d'un coup — "
+         "<font face='Courier'>not</font>, puis <font face='Courier'>inc</font>. "
+         "«&nbsp;Jusqu'où va un octet&nbsp;» fait écrire les trois bornes et explique "
+         "l'<b>asymétrie</b>&nbsp;: autant de motifs des deux côtés, mais un négatif de "
+         "plus que de positifs, parce que zéro occupe une place. «&nbsp;Le pas qui fait "
+         "basculer&nbsp;» fait prévoir ce que 127 + 1 donne sur un octet. Et "
+         "«&nbsp;Élargir sans trahir&nbsp;» oppose <font face='Courier'>movzx</font> à "
+         "<font face='Courier'>movsx</font> sur le même octet "
+         "<font face='Courier'>0xFF</font>, qui vaut alors 255 ou -1&nbsp;: l'extension "
+         "de signe ne figurait nulle part dans le parcours."),
+        ("note",
+         "<b>Pourquoi des étapes de lecture entre les étapes d'écriture.</b> Une base de "
+         "numération et une largeur de registre ne s'apprennent pas en les tapant — on "
+         "recopie la consigne et l'on passe à la suite. Elles s'apprennent en "
+         "<b>répondant</b>&nbsp;: la question est posée, le champ attend, et le verdict "
+         "ne donne pas la réponse. C'est pourquoi chacune des trois notions est suivie "
+         "d'une étape de prévision, et pourquoi le palier compte désormais dix étapes "
+         "de lecture au lieu de trois."),
         ("note",
          "<b>Elle s'ouvre dans sa propre fenêtre, et c'est une mesure qui l'a décidé.</b> "
          "Elle a d'abord été un repli dans la bande de l'exercice, et les deux états "
          "étaient mauvais. Dépliée, elle prenait cent cinquante pixels dans une bande qui "
          "en a deux cent dix et poussait <b>le but</b> sous le pli — quatre contrôles "
          "l'ont dit, et le but est ce qui dit si l'on a réussi. Repliée pour cette "
-         "raison, elle devenait cent vingt textes que personne n'ouvre. Une fenêtre "
+         "raison, elle devenait cent trente-huit textes que personne n'ouvre. Une fenêtre "
          "règle les deux, et elle en règle un troisième&nbsp;: un débutant a besoin de "
          "<b>place</b>, et une bande de deux cent dix pixels n'en donne pas."),
         ("p",
@@ -2142,14 +2355,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<b>Un indice</b> dit où chercher sans dire quoi écrire — et il ne se montre "
          "que si on le demande."),
         ("p",
-         "Pour quatre-vingts étapes, namsdec le <b>calcule</b>&nbsp;: il compare la "
+         "Pour quatre-vingt-huit étapes, namsdec le <b>calcule</b>&nbsp;: il compare la "
          "solution à ce que vous avez tapé et nomme les instructions qui manquent "
          "encore. <b>Elles sont cliquables</b> — chacune ouvre sa fiche, ce qui est le "
          "chemin le plus court entre une étape du parcours et les fiches du manuel. "
          "L'indice <b>s'affine à mesure qu'on écrit</b>&nbsp;: ce qu'on a déjà trouvé "
          "n'est plus proposé. Et il dit ce qu'il est&nbsp;: « la solution livrée "
          "emploie », pas « il faut écrire » — il y a mille façons d'écrire une boucle. "
-         "Les vingt et une étapes dont le trou ne demande aucune instruction nouvelle — "
+         "Les vingt-neuf étapes dont le trou ne demande aucune instruction nouvelle — "
          "une valeur à trouver, un ordre à remettre — portent un indice <b>écrit</b>, "
          "et un contrôle vérifie qu'aucun ne recopie une ligne de la solution."),
         ("p",
@@ -2168,6 +2381,15 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "écrivait donc sans savoir où l'on allait — alors que c'est la cible qui dirige "
          "ce qu'on écrit. Montrer la cible est une aide&nbsp;; la juger avant l'essai "
          "serait un reproche."),
+        ("note",
+         "<b>Et la bande grandit avec le nombre de conditions.</b> Sa hauteur avait été "
+         "mesurée sur des buts d'une et deux lignes&nbsp;; une étape à trois conditions "
+         "voyait la troisième peinte à moitié — vingt-quatre pixels d'encre, onze "
+         "visibles — pendant que le contrôle restait vert, parce qu'il ne regardait pas "
+         "cette forme-là. Chaque condition au-delà de la deuxième est désormais "
+         "<b>ajoutée</b> à la bande, jamais prise sur ce qu'elle montrait déjà, et "
+         "seulement là où l'écran a la place&nbsp;: au plus petit, ce serait une ligne "
+         "de programme en moins."),
         ("p",
          "<b>Le parcours n'apprend pas qu'à écrire.</b> Une douzaine d'étapes apprennent "
          "à <b>lire</b> un binaire — ce qui est l'autre moitié du métier, et ce que font "
@@ -2182,7 +2404,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "un gadget ROP, et l'octet qui change tout. Chacune <b>dit où regarder</b> : "
          "c'est le geste qu'on vient apprendre, pas la syntaxe.",),
         ("p",
-         "<b>Et onze étapes demandent de PRÉVOIR</b>, ce qui est l'autre moitié de la "
+         "<b>Et dix-huit étapes demandent de PRÉVOIR</b>, ce qui est l'autre moitié de la "
          "lecture. Le programme est donné <b>complet</b> — il n'y a rien à écrire —, une "
          "question est posée (« que vaut RAX à l'arrêt ? »), et l'on répond <i>avant</i> "
          "d'exécuter. C'est le même chemin que « prévoir avant d'avancer » dans le "
@@ -2262,9 +2484,13 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>lea</font>, les décalages, ou qu'une boucle se remplace par "
          "une formule." % total_exos),
         ("note",
-         "Le module est éteint par défaut : Préférences › Modules l'allume. Chaque exercice "
-         "ouvert prend son propre onglet, sous son titre — on passe au suivant sans "
-         "abandonner ce qu'on a écrit dans le précédent."),
+         "Une installation neuve ouvre avec le module <b>allumé</b> — le bouton "
+         "« Exercices… » est là, en haut, dès le premier écran. Une configuration qui "
+         "existait avant le mode débutant, elle, le garde éteint : on hérite d'un "
+         "défaut, on ne se fait pas imposer un changement. Préférences › Modules fait "
+         "l'un et l'autre. Chaque exercice ouvert prend son propre onglet, sous son "
+         "titre — on passe au suivant sans abandonner ce qu'on a écrit dans le "
+         "précédent."),
         ("p",
          "Le parcours <b>n'est pas dans le binaire</b> : c'est un fichier de données, "
          "<font face='Courier'>~/.local/share/namsdec/exercises/namsdec.json</font>. "

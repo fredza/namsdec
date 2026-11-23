@@ -88,8 +88,21 @@ impl NamsdecApp {
         // Les brouillons de la série s'en vont avec elle : leurs étapes
         // n'existent plus, et plus rien ne pourrait les rouvrir.
         let préfixe = format!("{id}/");
-        self.exercise_drafts
-            .retain(|étape, _| !étape.starts_with(&préfixe));
+        let partis: Vec<String> = self
+            .exercise_drafts
+            .keys()
+            .filter(|étape| étape.starts_with(&préfixe))
+            .cloned()
+            .collect();
+        for étape in partis {
+            self.exercise_drafts.remove(&étape);
+        }
+        // Et leurs programmes gardés : le dossier de la série entière.
+        if let Some(base) = self.dossier_resolus.clone()
+            && let Some(nom) = nom_de_fichier_sur(id)
+        {
+            let _ = std::fs::remove_dir_all(base.join(nom));
+        }
         self.plugin_note = Some(PluginNote {
             ok: true,
             text: format!("{} — {name}", s.plugins_removed),
@@ -209,9 +222,107 @@ impl NamsdecApp {
             .map(|exercise| exercise.starter_code.as_str());
         if écrit.trim().is_empty() || départ == Some(écrit.as_str()) {
             self.exercise_drafts.remove(&id);
+            self.oublier_le_resolu(&id);
             return;
         }
+        self.ecrire_le_resolu(&id, &écrit);
         self.exercise_drafts.insert(id, écrit);
+    }
+
+    /// Ce qu'on avait écrit à cette étape : en mémoire d'abord, sur le
+    /// disque ensuite.
+    ///
+    /// Le disque est le second regard, et c'est lui qui fait traverser
+    /// les lancements : les brouillons de la séance vivent en mémoire,
+    /// et le dossier des résolus garde ce qu'on a laissé la dernière
+    /// fois qu'on a quitté namsdec.
+    pub(crate) fn brouillon_de_l_etape(&self, id: &str) -> Option<String> {
+        if let Some(écrit) = self.exercise_drafts.get(id) {
+            return Some(écrit.clone());
+        }
+        let base = self.dossier_resolus.as_deref()?;
+        let chemin = chemin_du_resolu(base, id)?;
+        let écrit = std::fs::read_to_string(chemin).ok()?;
+        // Un fichier vide n'est pas un brouillon : il ne rendrait qu'un
+        // éditeur blanc à la place de l'énoncé de départ.
+        (!écrit.trim().is_empty()).then_some(écrit)
+    }
+
+    /// Écrit le programme d'une étape dans le dossier des résolus.
+    ///
+    /// Sans bruit : un dossier de données qu'on ne peut pas écrire ne
+    /// doit pas interrompre une leçon par un message d'erreur. Ce qui
+    /// est perdu, c'est la reprise au lancement suivant ; le brouillon
+    /// de la séance, lui, reste en mémoire.
+    pub(crate) fn ecrire_le_resolu(&mut self, id: &str, écrit: &str) {
+        let Some(base) = self.dossier_resolus.clone() else {
+            return;
+        };
+        let Some(chemin) = chemin_du_resolu(&base, id) else {
+            return;
+        };
+        if let Some(dossier) = chemin.parent() {
+            let _ = std::fs::create_dir_all(dossier);
+        }
+        let _ = std::fs::write(&chemin, écrit);
+        self.resolu_ecrit = Some((id.to_owned(), self.texte_rev));
+        self.resolu_quand = Some(std::time::Instant::now());
+    }
+
+    /// Retire le fichier d'une étape : son brouillon n'existe plus.
+    pub(crate) fn oublier_le_resolu(&mut self, id: &str) {
+        let Some(base) = self.dossier_resolus.clone() else {
+            return;
+        };
+        let Some(chemin) = chemin_du_resolu(&base, id) else {
+            return;
+        };
+        let _ = std::fs::remove_file(chemin);
+        if self.resolu_ecrit.as_ref().is_some_and(|(vu, _)| vu == id) {
+            self.resolu_ecrit = None;
+        }
+    }
+
+    /// Oublie tous les programmes gardés du parcours.
+    pub(crate) fn oublier_tous_les_resolus(&mut self) {
+        let Some(base) = self.dossier_resolus.clone() else {
+            return;
+        };
+        let _ = std::fs::remove_dir_all(base);
+        self.resolu_ecrit = None;
+    }
+
+    /// Garde le programme de l'étape en cours, sans attendre qu'on
+    /// change d'onglet.
+    ///
+    /// Appelée à chaque image, et c'est pourquoi elle compte ses pas :
+    /// une écriture par frappe userait le disque pour rien. Elle écrit
+    /// quand le texte a bougé depuis la dernière fois ET qu'une seconde
+    /// s'est écoulée — de quoi survivre à une fermeture brutale sans
+    /// transformer une leçon en journal d'écriture.
+    pub(crate) fn garder_l_etape_en_cours(&mut self) {
+        if self.dossier_resolus.is_none() {
+            return;
+        }
+        let Some(id) = self.current_exercise.clone() else {
+            return;
+        };
+        // Un exercice ouvert comme fichier n'est plus un exercice : il a
+        // un chemin, et c'est lui qui fait foi.
+        if self.current_file.is_some() {
+            return;
+        }
+        if self.resolu_ecrit.as_ref() == Some(&(id.clone(), self.texte_rev)) {
+            return;
+        }
+        if self
+            .resolu_quand
+            .is_some_and(|vu| vu.elapsed() < RESOLU_DELAI)
+        {
+            return;
+        }
+        let écrit = self.source.clone();
+        self.garder_brouillon(id, écrit);
     }
 
     /// Le rang de l'exercice `id` dans sa série, le nombre d'étapes, et
@@ -322,9 +433,7 @@ impl NamsdecApp {
         // code de départ, comme pour une étape qu'on ouvre pour la
         // première fois.
         let écrit = self
-            .exercise_drafts
-            .get(id)
-            .cloned()
+            .brouillon_de_l_etape(id)
             .unwrap_or_else(|| départ.clone());
         // Sinon un onglet à lui, sauf si le tampon courant est vierge :
         // on garde ainsi son propre programme à côté de l'exercice, et
@@ -441,8 +550,8 @@ impl NamsdecApp {
     /// Deux sources, et la première est écrite : l'exercice peut porter
     /// son propre indice (`hint`). Faute de quoi, namsdec en CALCULE
     /// un — les instructions que la solution emploie et que le tampon
-    /// n'a pas encore. Mesuré le 12 novembre 2026 : quatre-vingts des
-    /// cent une étapes en ont un de cette façon, sans qu'on ait rien à
+    /// n'a pas encore. Mesuré le 21 novembre 2026 : quatre-vingt-cinq
+    /// des cent huit étapes en ont un de cette façon, sans qu'on ait rien à
     /// écrire, et il est toujours juste puisqu'il se lit dans la
     /// solution.
     ///
@@ -715,6 +824,7 @@ impl NamsdecApp {
         // Le brouillon aussi : sans cela, fermer l'onglet puis revenir
         // rendrait le travail qu'on vient justement de jeter.
         self.exercise_drafts.remove(&id);
+        self.oublier_le_resolu(&id);
         self.saved_source = départ.clone();
         self.set_source(départ);
         self.aller_au_trou();
@@ -746,6 +856,7 @@ impl NamsdecApp {
         self.exercises_done.clear();
         self.exercises_best.clear();
         self.exercise_drafts.clear();
+        self.oublier_tous_les_resolus();
         self.status = Status::Note(|s| s.exercises_reset_done);
     }
 
@@ -834,7 +945,7 @@ impl NamsdecApp {
     /// L'exercice en cours est-il une DÉMONSTRATION ?
     ///
     /// C'est-à-dire : un programme à regarder tourner, sans but à
-    /// atteindre. Sept des cent vingt en sont, et le tout
+    /// atteindre. Huit des cent trente-huit en sont, et le tout
     /// premier du parcours aussi — « Registres et largeurs » montre ce
     /// qu'une écriture 32 bits fait à la moitié haute, et il n'y a rien
     /// à y réussir.
@@ -851,7 +962,7 @@ impl NamsdecApp {
 
     /// La question de l'exercice en cours, et où en est la réponse.
     ///
-    /// `None` quand l'exercice n'en pose pas — les cent huit autres,
+    /// `None` quand l'exercice n'en pose pas — les cent vingt-deux autres,
     /// ceux d'écriture.
     pub(crate) fn exercise_question(
         &self,
@@ -1018,6 +1129,59 @@ impl NamsdecApp {
         let atteint = lignes.iter().all(|l| l.tenue);
         Some((lignes, atteint))
     }
+}
+
+/// Où vont les programmes écrits pendant le parcours : un dossier À
+/// PART, et jamais le dossier de travail de l'utilisateur.
+///
+/// Demandé le 21 novembre 2026, capture à l'appui : un exercice ne doit
+/// pas se sauvegarder comme un fichier qu'on a ouvert. Il n'en est pas
+/// un — il vient du parcours, il n'a pas de chemin, et « Enregistrer »
+/// ouvrait un sélecteur de fichiers au milieu d'une leçon. Le travail
+/// est désormais gardé tout seul, ici, et relu quand on revient à
+/// l'étape.
+pub(crate) fn resolus_dir() -> Option<PathBuf> {
+    data_dir().map(|base| base.join("resolus"))
+}
+
+/// Le fichier d'une étape dans le dossier des résolus.
+///
+/// Un sous-dossier par série : `resolus/namsdec/copier.asm`. L'identité
+/// d'une étape est déjà `série/étape`, et la reprendre telle quelle
+/// évite d'inventer un nom qu'il faudrait ensuite savoir relire.
+///
+/// LES NOMS SONT ASSAINIS, et ce n'est pas du zèle : une série est un
+/// fichier de données que n'importe qui peut écrire, et un identifiant
+/// comme `../../.bashrc` ferait écrire namsdec hors de son dossier. Tout
+/// ce qui n'est ni lettre, ni chiffre, ni `.`, ni `-`, ni `_` devient un
+/// tiret, et un morceau qui commence par un point est refusé.
+pub(crate) fn chemin_du_resolu(base: &Path, id: &str) -> Option<PathBuf> {
+    let mut chemin = base.to_path_buf();
+    let morceaux: Vec<&str> = id.split('/').collect();
+    let (dernier, premiers) = morceaux.split_last()?;
+    for morceau in premiers {
+        chemin.push(nom_de_fichier_sur(morceau)?);
+    }
+    chemin.push(format!("{}.asm", nom_de_fichier_sur(dernier)?));
+    Some(chemin)
+}
+
+/// Un morceau de nom dont on est sûr qu'il ne sort pas du dossier.
+fn nom_de_fichier_sur(morceau: &str) -> Option<String> {
+    let sûr: String = morceau
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '.' || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect();
+    if sûr.is_empty() || sûr.starts_with('.') {
+        return None;
+    }
+    Some(sûr)
 }
 
 /// Où vivent les séries d'exercices installées. À côté des thèmes, et

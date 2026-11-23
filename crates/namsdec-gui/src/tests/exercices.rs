@@ -43,7 +43,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
         ..Default::default()
     };
     assert!(
-        !painted(&mut app).contains("Une boucle qui compte"),
+        !painted(&mut app).contains("Le plus petit programme"),
         "la fenêtre ne s'ouvre pas tant que le module est éteint"
     );
 
@@ -52,7 +52,7 @@ fn the_exercises_module_stays_out_of_the_way_until_it_is_asked_for() {
     // seconde.
     painted(&mut app);
     assert!(
-        painted(&mut app).contains("Une boucle qui compte"),
+        painted(&mut app).contains("Le plus petit programme"),
         "et elle s'ouvre quand il est allumé"
     );
 }
@@ -281,12 +281,12 @@ fn a_pack_can_be_set_aside_without_being_uninstalled() {
         texts
     };
 
-    assert!(painted(&mut app).contains("Une boucle qui compte"));
+    assert!(painted(&mut app).contains("Le plus petit programme"));
 
     app.disabled_packs
         .insert(namsdec_exercises::BUILTIN_ID.to_owned());
     assert!(
-        !painted(&mut app).contains("Une boucle qui compte"),
+        !painted(&mut app).contains("Le plus petit programme"),
         "écartée, la série ne se propose plus"
     );
 
@@ -428,20 +428,52 @@ fn the_built_in_pack_is_a_course_in_order() {
     assert_eq!(
         ids,
         [
+            // Le programme lui-même, avant la première notion : la
+            // charpente, `mov`, le pas à pas. Un débutant complet
+            // voyait `global _start` et `hlt` à la première étape sans
+            // que rien ne les ait jamais expliqués.
+            "premier_programme",
+            "rip",
+            "copier",
+            "prevoir_ordre",
+            // Les bases, avant tout le reste : un bit, un octet, un
+            // quartet. On ne lit pas un registre avant de savoir
+            // compter en base deux.
+            "bit_octet",
+            "prevoir_base",
+            "quartet",
+            // Les trois écritures, juste après le quartet qu'elles
+            // nomment : c'est du bloc des bases qu'elle relève.
+            "hexadecimal",
+            "prevoir_apres_neuf",
             "registres",
+            "largeurs_famille",
             "prevoir_largeur",
+            "prevoir_ah",
             "echange",
             "zero",
             "addition",
+            // Sauter, puis l'indicateur qu'un saut lit : « Une boucle
+            // qui compte » demandait l'étiquette, le saut, ZF et la
+            // boucle d'un seul trou.
+            "sauter",
+            "prevoir_saut",
+            "drapeau_zero",
             "boucle",
             "compteur",
             "bits",
+            "prevoir_quartet",
             "comparer",
             "drapeaux",
             "signe",
             "negatif",
+            // Le complément à deux, pas à pas : à la main, puis ses
+            // bornes, puis ce qui arrive au bord, puis l'élargissement.
+            "complement_deux",
+            "intervalle",
+            "prevoir_complement",
+            "signe_etendu",
             "prevoir_soustraction",
-            "hexadecimal",
             "incrementer",
             "test_and",
             "xchg_bswap",
@@ -626,14 +658,27 @@ fn the_exercises_deliver_what_they_promise() {
 ///
 /// Un module qu'on active si on le désire, soit — mais une porte qu'on
 /// ne voit pas n'existe pas. Quelqu'un qui débute ne devinera pas qu'il
-/// y a quarante-quatre exercices derrière un réglage.
+/// y a cent trente-huit exercices derrière un réglage.
+///
+/// LE CHEMIN A CHANGÉ LE 16 NOVEMBRE 2026, et la phrase d'accueil ne
+/// l'avait pas suivi. Ce jour-là, le module est devenu allumé pour une
+/// installation neuve — précisément parce que le bouton « Exercices… »
+/// du premier écran était gris. La phrase, elle, continuait d'envoyer
+/// dans « Préférences > Modules », c'est-à-dire de faire chercher dans
+/// un panneau de réglages un bouton qui était à l'écran, en haut, au
+/// moment où on la lisait. Elle nomme désormais le bouton.
+///
+/// Ce contrôle garde donc ce qui compte : la mention du parcours est à
+/// l'écran dès la première image, et le chemin qu'elle donne est celui
+/// qui marche. Voir aussi
+/// `le_programme_d_accueil_montre_le_bouton_et_non_un_reglage`.
 #[test]
 fn the_course_is_discoverable_before_it_is_loaded() {
     let mut app = NamsdecApp::default();
-    assert!(!app.exercises, "le module est éteint au départ");
-    // Le programme d'accueil dit où aller.
+    // Le programme d'accueil dit où aller — et il nomme le bouton tel
+    // qu'il est écrit dessus.
     assert!(
-        app.source.contains("Préférences > Modules"),
+        app.source.contains(strings(Lang::Fr).exercises_open),
         "{}",
         app.source
     );
@@ -667,7 +712,7 @@ fn the_course_is_discoverable_before_it_is_loaded() {
         output.textures_delta.clear();
     }
     // Le texte d'accueil est à l'écran, avec sa mention du parcours.
-    assert!(painted.contains("cent vingt exercices"), "{painted}");
+    assert!(painted.contains("cent trente-huit exercices"), "{painted}");
 }
 
 /// Le programme d'accueil annonce le bon nombre d'exercices.
@@ -826,8 +871,8 @@ fn the_course_remembers_where_one_stopped() {
         "l'étape en cours se voit sans avoir à la chercher : {painted}"
     );
     // Le rang dans le parcours, aussi : le tableau est la
-    // trente-quatrième des cent vingt étapes.
-    assert!(painted.contains("34/120"), "{painted}");
+    // cinquante-deuxième des cent trente-huit étapes.
+    assert!(painted.contains("52/138"), "{painted}");
 }
 
 /// Un parcours se suit : l'étape suivante est à un clic, sans avoir à
@@ -845,7 +890,7 @@ fn the_course_offers_the_next_step() {
     let (suivant, titre) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/prevoir_largeur");
+    assert_eq!(suivant, "namsdec/largeurs_famille");
     assert!(!titre.is_empty());
 
     // Le dernier n'en a pas : un parcours a une fin, et l'outil ne
@@ -879,7 +924,7 @@ fn the_course_offers_the_next_step() {
     }
     assert!(painted.contains("Étape suivante"), "{painted}");
     assert!(
-        painted.contains("1/120"),
+        painted.contains("10/138"),
         "le rang de l'étape en cours : {painted}"
     );
 }
@@ -1093,7 +1138,7 @@ fn a_solved_exercise_stays_solved() {
     app.show_exercises = true;
     let painted = paint(&mut app);
     assert!(
-        painted.contains(&format!("1/120 {}", strings(app.lang).exercises_done_count)),
+        painted.contains(&format!("1/138 {}", strings(app.lang).exercises_done_count)),
         "{painted}"
     );
 }
@@ -1572,16 +1617,17 @@ fn the_next_step_skips_what_is_already_done() {
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/prevoir_largeur");
+    assert_eq!(suivant, "namsdec/largeurs_famille");
 
     // Les deux d'après déjà réussies : on saute par-dessus.
     app.exercises_done
+        .insert("namsdec/largeurs_famille".to_owned());
+    app.exercises_done
         .insert("namsdec/prevoir_largeur".to_owned());
-    app.exercises_done.insert("namsdec/echange".to_owned());
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/zero");
+    assert_eq!(suivant, "namsdec/prevoir_ah");
 
     // Tout réussi jusqu'au bout : on retombe sur la suivante, plutôt
     // que de ne rien proposer.
@@ -1592,7 +1638,7 @@ fn the_next_step_skips_what_is_already_done() {
     let (suivant, _) = app
         .exercise_after("namsdec/registres")
         .expect("il y a une suite");
-    assert_eq!(suivant, "namsdec/prevoir_largeur");
+    assert_eq!(suivant, "namsdec/largeurs_famille");
 
     // Et la recherche filtre la liste : sur « pile », il reste les
     // étapes qui en parlent, pas les trente-six.
@@ -1888,11 +1934,18 @@ fn a_closed_step_keeps_what_was_written() {
         "ce qu'on avait écrit revient avec l'étape :\n{}",
         app.source
     );
-    // Il n'est écrit nulle part : l'étape porte sa marque de
-    // non-enregistré, comme elle la portait dans son onglet.
+    // ET L'ÉTAPE NE PORTE PLUS DE MARQUE DE NON-ENREGISTRÉ.
+    //
+    // Elle en portait une jusqu'au 21 novembre 2026, et ce test
+    // l'exigeait. La marque était juste — rien n'était écrit — mais
+    // elle promettait un geste qui n'avait pas de sens : « Enregistrer »
+    // sur une étape du parcours ouvrait un sélecteur de fichiers au
+    // milieu d'une leçon. Le programme d'une étape est désormais gardé
+    // tout seul dans le dossier des résolus, et il n'y a donc plus rien
+    // à demander.
     assert!(
-        app.buffer_modified(),
-        "un brouillon rendu n'est pas un fichier enregistré"
+        !app.buffer_modified(),
+        "une étape du parcours ne demande pas d'être enregistrée"
     );
 }
 
@@ -2465,9 +2518,11 @@ fn the_workshop_exercises_are_complete_and_reach_their_goal() {
 /// jamais, et rien ne disait pourquoi. Un parcours dont la PREMIÈRE
 /// étape ne peut pas se finir n'invite pas à faire la deuxième.
 ///
-/// Le contrôle prend le premier exercice sans but que la série porte,
-/// et non un identifiant écrit ici : celui du jour peut changer de nom,
-/// la règle non.
+/// Le contrôle prend le premier exercice sans but NI QUESTION que la
+/// série porte, et non un identifiant écrit ici : celui du jour peut
+/// changer de nom, la règle non. Les deux conditions comptent — une
+/// étape de LECTURE n'a pas de but elle non plus, et elle ne se finit
+/// pas en la regardant tourner mais en répondant.
 #[test]
 fn a_demonstration_is_finished_once_it_has_been_watched_through() {
     if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
@@ -2477,7 +2532,7 @@ fn a_demonstration_is_finished_once_it_has_been_watched_through() {
     let démo = pack
         .exercises
         .iter()
-        .find(|e| e.goal.is_empty())
+        .find(|e| e.goal.is_empty() && e.question.is_none())
         .expect("la série porte au moins un exercice à regarder");
     let id = namsdec_exercises::full_id(&pack, démo);
 
@@ -2528,7 +2583,7 @@ fn a_demonstration_says_that_it_is_one() {
     let démo = pack
         .exercises
         .iter()
-        .find(|e| e.goal.is_empty())
+        .find(|e| e.goal.is_empty() && e.question.is_none())
         .expect("la série porte au moins un exercice à regarder");
     let id = namsdec_exercises::full_id(&pack, démo);
     let mut app = NamsdecApp {
@@ -3049,9 +3104,25 @@ fn la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne() {
     use namsdec_core::{Cpu, Memory};
     const BASE: u64 = 0x40_0000;
 
-    for (étape, attendu) in [
-        ("namsdec/echange", "Instructions"),
-        ("namsdec/prevoir_somme", "Que vaut RAX"),
+    // LE PLAFOND DE LA MESURE SUIT LA BANDE, et non l'inverse. On
+    // borne le relevé à la hauteur de la bande pour ne pas juger
+    // celle-ci sur les lignes du code qui la suivent ; une bande qui
+    // grandit d'une condition déplace donc cette borne d'autant, et
+    // c'est exactement la hauteur que la bande s'est ajoutée.
+    for (étape, attendu, plafond) in [
+        ("namsdec/echange", "Instructions", 300.0),
+        ("namsdec/prevoir_somme", "Que vaut RAX", 300.0),
+        // TROIS CONDITIONS, et c'est une forme de plus. Les deux cent
+        // dix pixels de la bande avaient été mesurés sur des buts
+        // d'une et deux lignes ; la capture du 21 novembre 2026 a
+        // montré « R9 vaut 153 — il vaut 0 » peint sur vingt-quatre
+        // pixels dont onze visibles, pendant que ce contrôle restait
+        // vert. Il ne regardait pas cette forme-là.
+        (
+            "namsdec/largeurs_famille",
+            "Instructions",
+            300.0 + crate::etabli::EXERCICE_CONDITION,
+        ),
     ] {
         let entrée = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
@@ -3096,7 +3167,7 @@ fn la_bande_de_l_exercice_ne_coupe_pas_sa_derniere_ligne() {
                     continue;
                 };
                 let encre = cadre_du_texte(t);
-                if encre.top() > 300.0 {
+                if encre.top() > plafond {
                     continue;
                 }
                 if t.galley.text().contains(attendu) {
@@ -4776,6 +4847,12 @@ fn l_enonce_mene_aux_fiches() {
 /// D'où ce contrôle, qui ne regarde pas une image : il compare des
 /// longueurs. Écrire une théorie plus longue que celle du banc fait
 /// rougir cette ligne, et la correction tient en un identifiant.
+///
+/// IL A SERVI UNE SECONDE FOIS, le jour où les cent trente-huit
+/// théories ont reçu leur passage chiffré : la plus longue n'est plus
+/// « Les quatre indicateurs » mais « Seize registres, quatre
+/// largeurs », à deux mille quatre caractères. Un identifiant changé,
+/// et le banc mesure de nouveau le pire cas.
 #[test]
 fn la_scene_de_la_theorie_porte_la_plus_longue() {
     let pack = builtin_pack();
@@ -5030,4 +5107,134 @@ fn au_demarrage_la_bande_et_l_editeur_disent_la_meme_chose() {
         occupé.source, à_moi,
         "un fichier ouvert ne se fait pas recouvrir par une étape"
     );
+}
+
+/// Le parcours garde ses programmes À PART, dans le dossier des
+/// résolus — jamais dans le dossier de travail de l'utilisateur.
+///
+/// Demandé le 21 novembre 2026, capture à l'appui : « les exercices ne
+/// doivent pas se sauvegarder (dans un répertoire différent
+/// (résolus)) ». Une étape n'est pas un fichier qu'on a ouvert ; lui
+/// poser la question « Modifications non enregistrées » ouvrait un
+/// sélecteur de fichiers au milieu d'une leçon.
+#[test]
+fn le_parcours_garde_ses_programmes_dans_le_dossier_des_resolus() {
+    let dir = tempfile::tempdir().unwrap();
+    let pack = builtin_pack();
+    let premier = namsdec_exercises::full_id(&pack, &pack.exercises[0]);
+    let second = namsdec_exercises::full_id(&pack, &pack.exercises[1]);
+    let neuve = || NamsdecApp {
+        exercises: true,
+        exercise_packs: vec![builtin_pack()],
+        dossier_resolus: Some(dir.path().to_path_buf()),
+        ..Default::default()
+    };
+
+    // UNE APPLICATION DE TEST N'ÉCRIT NULLE PART, et c'est le défaut :
+    // sans ce garde, la suite sèmerait des fichiers dans le dossier de
+    // données de la machine.
+    assert!(
+        NamsdecApp::default().dossier_resolus.is_none(),
+        "seul le lancement réel donne ce dossier"
+    );
+
+    let mut app = neuve();
+    app.load_exercise_now(&premier);
+    app.source.push_str("    ; mon essai\n");
+    // Pendant qu'on écrit : le programme part sur le disque sans qu'on
+    // le demande — c'est ce qui le fait survivre à une fermeture
+    // brutale (voir `RESOLU_DELAI`).
+    app.garder_l_etape_en_cours();
+
+    let chemin = exercises::chemin_du_resolu(dir.path(), &premier).expect("un chemin sûr");
+    assert!(
+        chemin.starts_with(dir.path().join(&pack.id)),
+        "un sous-dossier par série : {chemin:?}"
+    );
+    assert!(
+        std::fs::read_to_string(&chemin)
+            .unwrap_or_default()
+            .contains("; mon essai"),
+        "le programme de l'étape est sur le disque : {chemin:?}"
+    );
+
+    // ET IL REVIENT AU LANCEMENT SUIVANT. L'application neuve n'a aucun
+    // brouillon en mémoire : tout ce qu'elle sait vient du dossier.
+    let mut demain = neuve();
+    assert!(demain.exercise_drafts.is_empty());
+    demain.load_exercise_now(&premier);
+    assert!(
+        demain.source.contains("; mon essai"),
+        "ce qu'on avait écrit revient avec l'étape :\n{}",
+        demain.source
+    );
+    assert!(
+        !demain.buffer_modified(),
+        "et rien ne reste à enregistrer : c'est déjà gardé"
+    );
+
+    // RECOMMENCER EFFACE LE PROGRAMME GARDÉ : on vient justement de
+    // jeter ce travail, et le rendre au retour serait le contraire.
+    demain.recommencer_l_exercice();
+    assert!(!chemin.exists(), "le fichier part avec le brouillon");
+
+    // FERMER L'ONGLET ÉCRIT AUSSI, et tout de suite : c'est l'autre
+    // chemin, celui qui ne passe pas par le délai.
+    let mut app = neuve();
+    app.load_exercise_now(&premier);
+    app.source.push_str("    ; un essai\n");
+    app.load_exercise_now(&second);
+    let rang = app
+        .exercise_tab_index(&premier)
+        .expect("le premier a son onglet");
+    app.close_tab_now(rang);
+    assert!(
+        std::fs::read_to_string(&chemin)
+            .unwrap_or_default()
+            .contains("; un essai"),
+        "l'onglet fermé laisse son programme sur le disque"
+    );
+
+    // ET REVENIR AU CODE DE DÉPART L'EFFACE : un programme identique à
+    // l'énoncé n'est pas un brouillon, et le garder ferait croire au
+    // retour à un travail qu'on n'a pas fait.
+    let départ = namsdec_exercises::find(&app.exercise_packs, &premier)
+        .expect("l'étape existe")
+        .starter_code
+        .clone();
+    app.garder_brouillon(premier.clone(), départ);
+    assert!(
+        !chemin.exists(),
+        "revenu au code de départ, l'étape n'a plus de programme gardé"
+    );
+}
+
+/// Un identifiant d'étape ne fait pas écrire namsdec hors de son
+/// dossier.
+///
+/// Une série est un fichier de données que n'importe qui peut écrire :
+/// `../../.bashrc` comme identifiant d'étape ne doit pas donner un
+/// chemin à écrire.
+#[test]
+fn un_identifiant_d_etape_ne_sort_pas_du_dossier_des_resolus() {
+    let base = std::path::Path::new("/tmp/base-des-resolus");
+    for méchant in [
+        "../evasion",
+        "pack/../../evasion",
+        "../../.bashrc",
+        "pack/.ssh",
+        "/absolu/ailleurs",
+    ] {
+        let chemin = exercises::chemin_du_resolu(base, méchant);
+        if let Some(chemin) = chemin {
+            assert!(
+                chemin.starts_with(base) && !chemin.to_string_lossy().contains(".."),
+                "« {méchant} » mène hors du dossier : {chemin:?}"
+            );
+        }
+    }
+    // Et un identifiant ordinaire marche, sans quoi le contrôle
+    // ci-dessus serait vrai pour une fonction qui refuse tout.
+    let bon = exercises::chemin_du_resolu(base, "namsdec/copier").expect("un chemin");
+    assert_eq!(bon, base.join("namsdec").join("copier.asm"));
 }
