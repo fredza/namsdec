@@ -56,6 +56,10 @@ impl NamsdecApp {
             auto_indent: settings.auto_indent,
             auto_pairs: settings.auto_pairs,
             hover_help: settings.hover_help,
+            // Le choix s'il a été fait, la règle automatique sinon.
+            update_prereleases: settings
+                .update_prereleases
+                .unwrap_or_else(|| prerelease(APP_VERSION).is_some()),
             donation_url: settings.donation_url.clone(),
             exercises: settings.exercises,
             disabled_packs: settings.disabled_packs.iter().cloned().collect(),
@@ -700,6 +704,11 @@ impl NamsdecApp {
             auto_indent: self.auto_indent,
             auto_pairs: self.auto_pairs,
             hover_help: self.hover_help,
+            // Écrit comme un choix : à la première sauvegarde, ce que
+            // la règle automatique avait décidé devient ce que
+            // l'utilisateur garde — et ne changera plus sous ses pieds
+            // le jour où il fait tourner une version définitive.
+            update_prereleases: Some(self.update_prereleases),
             donation_url: self.donation_url.clone(),
             exercises: self.exercises,
             disabled_packs: self.disabled_packs.iter().cloned().collect(),

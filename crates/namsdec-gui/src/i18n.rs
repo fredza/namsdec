@@ -907,6 +907,14 @@ pub struct Strings {
     pub view_sidebar_auto: &'static str,
     pub view_sidebar_auto_hint: &'static str,
     pub preferences_tooltips: &'static str,
+    /// LE CANAL DES MISES À JOUR : les préversions comptent-elles ?
+    ///
+    /// Le libellé dit « AUSSI » parce que c'est exact : les versions
+    /// définitives sont proposées dans les deux cas. Une case qui
+    /// dirait « suivre les préversions » laisserait croire qu'on
+    /// renonce aux autres.
+    pub preferences_prereleases: &'static str,
+    pub preferences_prereleases_hint: &'static str,
     pub preferences_tooltips_hint: &'static str,
     pub preferences_completion: &'static str,
     pub preferences_completion_hint: &'static str,
@@ -2177,6 +2185,8 @@ déclenchera jamais.",
     view_sidebar_auto: "Panneau latéral partagé tout seul",
     view_sidebar_auto_hint: "L'onglet prend ce que le bandeau lui laisse, sans descendre sous une hauteur lisible. Tirer la poignée reprend la main.",
     preferences_tooltips: "Infobulles",
+    preferences_prereleases: "Me proposer aussi les préversions (bêtas)",
+    preferences_prereleases_hint: "Les versions définitives sont proposées dans tous les cas : cette case y ajoute les bêtas. Décochée, namsdec ne vous proposera que du définitif. Par défaut, elle suit la version que vous faites tourner — cochée si c'est elle-même une préversion.",
     preferences_tooltips_hint: "Les bulles d'aide qui apparaissent au survol des boutons.",
     preferences_completion: "Autocomplétion dans l'éditeur",
     preferences_completion_hint: "Propose instructions, registres, directives et étiquettes pendant la frappe. Alt accepte la première.",
@@ -3245,6 +3255,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     view_sidebar_auto: "Side panel shared on its own",
     view_sidebar_auto_hint: "The tab takes what the banner leaves it, never dropping below a readable height. Dragging the handle takes over.",
     preferences_tooltips: "Tooltips",
+    preferences_prereleases: "Also offer me pre-releases (betas)",
+    preferences_prereleases_hint: "Final releases are offered either way: this box adds betas on top. Unchecked, namsdec only offers final releases. By default it follows the version you are running — checked when that is itself a pre-release.",
     preferences_tooltips_hint: "The help bubbles shown when hovering over buttons.",
     preferences_completion: "Completion in the editor",
     preferences_completion_hint: "Suggests instructions, registers, directives and labels as you type. Alt accepts the first one.",

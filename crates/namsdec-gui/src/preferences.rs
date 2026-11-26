@@ -274,6 +274,24 @@ impl NamsdecApp {
         ui.add_space(6.0);
         ui.checkbox(&mut self.hover_help, s.preferences_hover_help);
         ui.weak(s.preferences_hover_help_hint);
+        // LE CANAL DES MISES À JOUR, et non plus une déduction.
+        //
+        // Il se devinait de la version qui tourne : une préversion
+        // acceptait d'en voir d'autres, une version définitive ne se
+        // voyait proposer que du définitif. La règle est bonne par
+        // défaut, mais elle ne laissait aucun moyen de dire le
+        // contraire — qui fait tourner une version définitive et veut
+        // suivre les essais n'avait rien à cocher.
+        //
+        // Les définitives comptent dans les deux cas : la case AJOUTE
+        // les bêtas, elle n'enlève rien.
+        //
+        // EN FIN DE COLONNE, et non au milieu : les quatre réglages
+        // au-dessus parlent tous de l'éditeur, et s'intercaler entre
+        // eux séparait un groupe qui se lit d'un bloc.
+        ui.add_space(6.0);
+        ui.checkbox(&mut self.update_prereleases, s.preferences_prereleases);
+        ui.weak(s.preferences_prereleases_hint);
 
         ui.separator();
 

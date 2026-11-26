@@ -1706,6 +1706,13 @@ struct NamsdecApp {
     /// infobulles ordinaires : celle-ci est grande, et s'ouvre en
     /// écrivant.
     hover_help: bool,
+    /// Les préversions comptent-elles, quand on cherche une mise à
+    /// jour ?
+    ///
+    /// Les versions définitives comptent TOUJOURS — ce réglage n'en
+    /// retire aucune, il ajoute les bêtas. « Suivre les préversions »
+    /// veut donc dire « les deux », et c'est ce que le libellé promet.
+    update_prereleases: bool,
     /// Ce que l'autocomplétion propose en ce moment, recalculé à chaque
     /// frappe. Rien à enregistrer : c'est l'état d'un instant.
     suggestions: Option<completion::Suggestions>,
@@ -2583,6 +2590,11 @@ impl Default for NamsdecApp {
             auto_indent: true,
             auto_pairs: true,
             hover_help: true,
+            // Comme la règle automatique l'aurait décidé pour la
+            // version qu'on compile : une préversion accepte d'en voir
+            // d'autres. `Default` sert aux contrôles, qui ne lisent
+            // aucun fichier de réglages.
+            update_prereleases: prerelease(APP_VERSION).is_some(),
             suggestions: None,
             tracked: None,
             tracked_spans: Vec::new(),

@@ -113,6 +113,22 @@ pub struct Settings {
     /// La fiche de l'instruction au survol du code.
     #[serde(default = "vrai")]
     pub hover_help: bool,
+    /// SUIVRE OU NON LES PRÉVERSIONS, quand on cherche une mise à jour.
+    ///
+    /// `None` veut dire « comme avant » : la règle automatique, qui
+    /// déduit le canal de la version qui tourne — une préversion
+    /// accepte d'en voir d'autres, une version définitive ne se voit
+    /// proposer que du définitif. C'est ce qu'un fichier écrit avant ce
+    /// réglage ne dit pas, et il faut qu'il garde son comportement.
+    ///
+    /// `Some(_)` est un CHOIX, et il l'emporte. Déduire le canal de la
+    /// version qui tourne laissait une lacune : qui fait tourner une
+    /// version définitive n'avait aucun moyen de demander à suivre les
+    /// bêtas. La règle automatique reste le défaut — on ne pousse
+    /// personne vers un essai sans le lui avoir demandé —, mais elle
+    /// n'est plus la seule réponse possible.
+    #[serde(default)]
+    pub update_prereleases: Option<bool>,
     /// Où mène le bouton de don de la fenêtre « À propos ».
     ///
     /// UN RÉGLAGE ET NON UNE CONSTANTE : une adresse de paiement
@@ -483,6 +499,7 @@ impl Default for Settings {
             auto_indent: true,
             auto_pairs: true,
             hover_help: true,
+            update_prereleases: None,
             donation_url: String::new(),
             disabled_packs: Vec::new(),
             located_tools: std::collections::BTreeMap::new(),

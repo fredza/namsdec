@@ -4388,8 +4388,20 @@ def main():
     blocs.append(("h1", "Mises à jour, licence et contact"))
     blocs.append(("p",
         "« À propos › Rechercher une mise à jour » interroge les versions publiées sur "
-        "GitHub et compare avec la vôtre, préversions comprises. Rien n'est téléchargé ni "
+        "GitHub et compare avec la vôtre. Rien n'est téléchargé ni "
         "installé sans vous : namsdec ouvre la page de la version."))
+    blocs.append(("p",
+        "<b>Quelles versions vous sont proposées</b> se règle dans Préférences › Général, "
+        "à « Me proposer aussi les préversions (bêtas) ». Les versions définitives sont "
+        "proposées dans tous les cas : la case <i>ajoute</i> les bêtas, elle n'enlève rien. "
+        "Par défaut elle suit la version que vous faites tourner — cochée si c'est "
+        "elle-même une préversion, décochée sinon. Jusqu'ici cette règle était la seule "
+        "possible, et qui faisait tourner une version définitive n'avait aucun moyen de "
+        "demander à suivre les essais."))
+    blocs.append(("note",
+        "Si votre version est <b>plus récente</b> que tout ce qui est publié — le cas "
+        "quand on compile le dépôt soi-même —, namsdec le dit et donne quand même le lien "
+        "vers la dernière version publiée, pour la comparer ou y revenir."))
     blocs.append(("p",
         "namsdec est publié sous licence <b>MIT</b> : ce que vous comprenez ici est fait "
         "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "

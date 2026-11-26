@@ -6,6 +6,28 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Les mises à jour se choisissent**
+
+- **Le canal des mises à jour se règle, au lieu de se deviner.** Il se
+  déduisait de la version qui tourne : une préversion acceptait d'en
+  voir d'autres, une version définitive ne se voyait proposer que du
+  définitif. La règle est bonne par défaut et le reste, mais elle ne
+  laissait **aucune sortie** — qui fait tourner une version définitive
+  et veut suivre les essais n'avait rien à cocher. Préférences ›
+  Général, « Me proposer aussi les préversions (bêtas) », gardé dans
+  `settings.json`. Les versions définitives sont proposées dans les deux
+  cas : la case **ajoute** les bêtas, elle n'enlève rien, et c'est la
+  moitié de la promesse qu'un contrôle retient.
+- **Être en avance n'est plus une impasse.** Quand la version qui
+  tourne dépasse tout ce qui est publié — le cas de quiconque compile
+  le dépôt —, la boîte « À propos » le disait en gris et s'arrêtait là.
+  Elle donne maintenant le lien vers la dernière version publiée, pour
+  la comparer ou y revenir.
+- Un fichier de réglages écrit avant tout cela garde le comportement
+  d'avant : le champ absent veut dire « la règle automatique », et non
+  « décoché ». Sans quoi la montée aurait éteint les bêtas chez tous
+  ceux qui en font tourner une.
+
 **Rust 1.100 et egui 0.37**
 
 - **La CI serait passée au rouge sans qu'une ligne du dépôt ait

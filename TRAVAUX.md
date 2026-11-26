@@ -5175,6 +5175,25 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
 - [x] **Version 0.4.2-beta.2** (A 9.107) — demandée. Changelog, PDF
       renommé et régénéré, lien du README.
 
+- [x] **Le canal des mises à jour** (A 9.109) — demandé : « je veux des
+      mises à jour de beta et les mises à jour ». La règle existait
+      déjà — une préversion se voit proposer les bêtas ET les
+      définitives — mais elle était DÉDUITE de la version qui tourne,
+      donc sans recours. Elle devient un réglage, gardé dans
+      `settings.json`, la règle d'avant restant le défaut. Retenu par
+      `les_preversions_se_suivent_par_choix`, qui vérifie aussi la
+      moitié qu'on oublierait : décochée, la case laisse passer les
+      définitives. Et `etre_en_avance_mene_quand_meme_a_la_version_publiee`,
+      parce qu'un constat sans lien oblige à chercher à la main.
+
+      **Deux contrôles ont attrapé la nouveauté**, et c'était leur
+      métier : le rythme de la colonne des préférences (la case
+      s'intercalait au milieu d'un groupe qui parle de l'éditeur, elle
+      est passée en fin de colonne) et le relevé des réglages gardés —
+      qui cherchait la forme d'une affectation sèche et déclarait
+      oublié un `Option` lu sur trois lignes. Le relevé compacte
+      désormais les blancs ; éprouvé en retirant l'écriture, il tombe.
+
 - [x] **Version 1.0.0-beta.666** (A 9.108) — demandée, et c'est la
       version PRINCIPALE qui monte : 0.4.2 → 1.0.0. Changelog (section
       neuve, l'entrée de la montée egui 0.37 dedans), PDF renommé et

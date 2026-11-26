@@ -1752,7 +1752,7 @@ fn a_column_of_settings_keeps_one_rhythm() {
             .map(|(_, r)| r.top())
             .fold(f32::INFINITY, f32::min)
     };
-    // Les sept réglages de la page Général, dans l'ordre où on les lit.
+    // Les huit réglages de la page Général, dans l'ordre où on les lit.
     let colonne = [
         (
             s.preferences_system_titlebar,
@@ -1764,6 +1764,7 @@ fn a_column_of_settings_keeps_one_rhythm() {
         (s.preferences_auto_indent, s.preferences_auto_indent_hint),
         (s.preferences_auto_pairs, s.preferences_auto_pairs_hint),
         (s.preferences_hover_help, s.preferences_hover_help_hint),
+        (s.preferences_prereleases, s.preferences_prereleases_hint),
     ];
     let mut écarts: Vec<(String, f32)> = Vec::new();
     for paire in colonne.windows(2) {

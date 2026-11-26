@@ -1027,6 +1027,9 @@ fn every_setting_that_is_written_is_read_back() {
         auto_indent: false,
         auto_pairs: false,
         hover_help: false,
+        // Pas `None` : c'est le défaut, et un réglage perdu s'y
+        // confondrait avec un réglage jamais touché.
+        update_prereleases: Some(false),
         donation_url: "https://exemple.invalid/don".to_owned(),
         disabled_packs: vec!["une-serie".to_owned()],
         located_tools: std::collections::BTreeMap::new(),
@@ -1340,12 +1343,23 @@ fn tout_reglage_bascule_par_l_interface_est_garde() {
     // qu'un réglage est gardé, c'est qu'il est LU des réglages et ÉCRIT
     // dans l'instantané — les deux sens, dans session.rs.
     let session = std::fs::read_to_string(src.join("session.rs")).expect("session.rs");
+    // SANS LES BLANCS, parce qu'un réglage n'est pas toujours recopié
+    // d'un trait. Celui qui porte une réponse ABSENTE — `Option`, pour
+    // « le fichier ne dit rien, garde la règle d'avant » — se lit sur
+    // trois lignes (`settings.x.unwrap_or_else(…)`) et s'écrit
+    // enveloppé (`Some(self.x)`). Le relevé cherchait la forme d'une
+    // affectation sèche et déclarait oublié un réglage qui ne l'était
+    // pas. On compacte donc, et l'on garde les deux sens : LU des
+    // réglages, ÉCRIT dans l'instantané.
+    let compact: String = session.split_whitespace().collect();
     let oublies: Vec<&String> = bascules
         .iter()
         .filter(|nom| !EPHEMERES.iter().any(|(e, _)| *e == nom.as_str()))
         .filter(|nom| {
-            let lu = session.contains(&format!("{nom}: settings."));
-            let ecrit = session.contains(&format!(": self.{nom},"));
+            let lu = compact.contains(&format!("{nom}:settings."));
+            // `,` pour une affectation, `)` pour une valeur enveloppée.
+            let ecrit = compact.contains(&format!("self.{nom},"))
+                || compact.contains(&format!("self.{nom})"));
             !(lu && ecrit)
         })
         .collect();

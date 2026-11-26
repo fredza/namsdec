@@ -107,6 +107,113 @@ fn the_update_check_is_wired_and_installs_nothing() {
     assert!(app.update_result.is_none());
 }
 
+/// Être en avance n'est pas une impasse : la version publiée se nomme
+/// ET se rejoint.
+///
+/// C'est l'état de quiconque compile le dépôt — et c'est justement
+/// celui qui peut vouloir comparer avec ce qui est publié, ou y
+/// revenir. On lisait « votre version est plus récente (v0.4.1) » en
+/// gris, et il fallait aller chercher v0.4.1 à la main.
+#[test]
+fn etre_en_avance_mene_quand_meme_a_la_version_publiee() {
+    let mut app = NamsdecApp {
+        show_about: true,
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+    let publiée = namsdec_update::Release {
+        tag: "v0.0.1".to_owned(),
+        version: "0.0.1".to_owned(),
+        name: "0.0.1".to_owned(),
+        url: "https://github.com/fredza/namsdec/releases/tag/v0.0.1".to_owned(),
+        prerelease: false,
+    };
+    // 0.0.1 est sous toute version que namsdec puisse porter : le
+    // verdict est « en avance », quel que soit le numéro du jour.
+    let verdict = namsdec_update::verdict(APP_VERSION, publiée.clone());
+    assert!(matches!(verdict, namsdec_update::Verdict::Ahead(_)));
+    app.update_result = Some(Ok(verdict));
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_ahead), "{painted}");
+    assert!(painted.contains("v0.0.1"), "{painted}");
+    // Le lien, et non seulement le constat.
+    assert!(painted.contains(s.about_update_open), "{painted}");
+}
+
+/// Les préversions se suivent PAR CHOIX, et le choix s'enregistre.
+///
+/// Le canal se déduisait de la version qui tourne, et cette déduction
+/// ne laissait aucune sortie : qui fait tourner une version définitive
+/// et veut suivre les essais n'avait rien à cocher. La règle d'avant
+/// reste le défaut, elle n'est plus la seule réponse.
+///
+/// LES DÉFINITIVES COMPTENT DANS LES DEUX CAS : la case ajoute les
+/// bêtas, elle n'enlève rien. C'est la moitié de la promesse que le
+/// libellé fait, et c'est celle qu'on oublierait de vérifier.
+#[test]
+fn les_preversions_se_suivent_par_choix() {
+    use namsdec_update::{Release, pick_latest};
+    let r = |v: &str| Release {
+        tag: format!("v{v}"),
+        version: v.to_owned(),
+        name: v.to_owned(),
+        url: String::new(),
+        prerelease: v.contains('-'),
+    };
+    let publiées = [r("0.1.0"), r("0.2.0-beta.3")];
+
+    // Case cochée : la bêta l'emporte, parce qu'elle est plus haute.
+    assert_eq!(
+        pick_latest(&publiées, true).map(|r| r.version),
+        Some("0.2.0-beta.3".to_owned()),
+        "cochée, les bêtas comptent"
+    );
+    // Décochée : la définitive reste proposée. C'est la moitié qu'on
+    // oublierait — une case qui RETIRERAIT les définitives ne rendrait
+    // plus rien ici.
+    assert_eq!(
+        pick_latest(&publiées, false).map(|r| r.version),
+        Some("0.1.0".to_owned()),
+        "décochée, les définitives sont toujours là"
+    );
+
+    // Le défaut suit la version qu'on fait tourner, comme avant.
+    assert_eq!(
+        NamsdecApp::default().update_prereleases,
+        prerelease(APP_VERSION).is_some()
+    );
+
+    // UN FICHIER ÉCRIT AVANT CE RÉGLAGE garde le comportement d'avant :
+    // `None` veut dire « la règle automatique », et non « décoché ».
+    // Sans quoi la montée de version aurait éteint les bêtas chez tous
+    // ceux qui en font tourner une.
+    let muet = settings::Settings {
+        update_prereleases: None,
+        ..settings::Settings::default()
+    };
+    assert_eq!(
+        NamsdecApp::from_settings(muet).update_prereleases,
+        prerelease(APP_VERSION).is_some(),
+        "sans réponse dans le fichier, la règle d'avant"
+    );
+
+    // Un choix écrit l'emporte, dans les deux sens.
+    for voulu in [false, true] {
+        let réglages = settings::Settings {
+            update_prereleases: Some(voulu),
+            ..settings::Settings::default()
+        };
+        let app = NamsdecApp::from_settings(réglages);
+        assert_eq!(app.update_prereleases, voulu, "le choix écrit l'emporte");
+        // Et il repart dans le fichier comme un choix, non redéduit.
+        assert_eq!(
+            app.settings_snapshot().update_prereleases,
+            Some(voulu),
+            "le choix est réécrit tel quel"
+        );
+    }
+}
+
 /// Ce que la recherche de mise à jour va trouver doit exister : le
 /// dépôt publie ses versions, et la façon de les publier est décrite
 /// dans le dépôt lui-même.

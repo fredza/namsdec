@@ -933,6 +933,17 @@ impl NamsdecApp {
                                     theme.dim,
                                     format!("{} ({})", s.about_update_ahead, release.tag),
                                 );
+                                // ET LE LIEN QUAND MÊME. C'était un
+                                // cul-de-sac : une ligne grise, et rien
+                                // à faire. Or celui qui compile le
+                                // dépôt est précisément celui qui peut
+                                // vouloir comparer avec ce qui est
+                                // publié — ou y revenir. Dire qu'une
+                                // version existe sans dire où elle est
+                                // oblige à la chercher à la main.
+                                if !release.url.is_empty() {
+                                    ui.hyperlink_to(s.about_update_open, &release.url);
+                                }
                             }
                             Some(Err(message)) => {
                                 ui.colored_label(theme.bad, message);
