@@ -61,9 +61,9 @@ impl NamsdecApp {
             })
             .collect();
 
-        let (mut query, mut selected, measured_row) = {
+        let (mut query, mut selected, measured_row, measured_head) = {
             let p = self.command_palette.as_ref().unwrap();
-            (p.query.clone(), p.selected, p.row)
+            (p.query.clone(), p.selected, p.row, p.tete)
         };
 
         let query_lower = query.to_lowercase();
@@ -90,26 +90,33 @@ impl NamsdecApp {
         const BOTTOM_MARGIN: f32 = 24.0;
         let screen = ctx.input(|i| i.content_rect()).height();
         let room = (screen - TOP - BOTTOM_MARGIN).max(180.0);
-        // La place du champ de saisie, du séparateur et des marges de la
-        // fenêtre, au-dessus de la liste.
-        const HEAD: f32 = 64.0;
+        // La place du champ de saisie, du séparateur et des marges de
+        // la fenêtre, au-dessus de la liste — MESURÉE à la frame
+        // précédente. La constante n'est que la première estimation,
+        // le temps d'une image : écrite à la main, elle se trompait
+        // dès qu'egui changeait la hauteur d'un champ.
+        const HEAD_ESTIMÉ: f32 = 64.0;
+        let head = measured_head.unwrap_or(HEAD_ESTIMÉ);
         // Avant la première mesure, une estimation : une ligne par
         // commande, à la hauteur d'un élément cliquable.
         let style = ctx.style_of(ctx.theme());
         let row =
             measured_row.unwrap_or(style.spacing.interact_size.y + style.spacing.item_spacing.y);
         let shown = filtered.len().max(1) as f32;
-        let list = (shown * row).min(room - HEAD);
+        let list = (shown * row).min(room - head);
 
-        egui::Window::new("command_palette")
-            .id(egui::Id::new("command_palette"))
+        // Ce que la liste a vraiment occupé, relevé dans la fenêtre et
+        // comparé à sa hauteur totale : la différence est la tête.
+        let mut hauteur_de_la_liste: Option<f32> = None;
+        let fenêtre = egui::Window::new("command_palette")
+            .id(egui::Id::unique("command_palette"))
             .title_bar(false)
             .resizable(false)
             .collapsible(false)
             .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, TOP))
             // Largeur figée, hauteur libre : la fenêtre descend jusqu'à
             // la dernière commande et s'arrête là.
-            .fixed_size(egui::vec2(520.0, list + HEAD))
+            .fixed_size(egui::vec2(520.0, list + head))
             .show(ctx, |ui| {
                 let text_response = ui.add(
                     egui::TextEdit::singleline(&mut query)
@@ -173,7 +180,18 @@ impl NamsdecApp {
                 if let Some(p) = &mut self.command_palette {
                     p.row = Some(area.content_size.y / shown);
                 }
+                // Et ce que la tête a pris : tout ce qui, dans la
+                // fenêtre, n'est pas la liste. On le relit à la frame
+                // suivante plutôt que de l'écrire ici.
+                hauteur_de_la_liste = Some(area.inner_rect.height());
             });
+
+        if let Some(fenêtre) = fenêtre
+            && let Some(liste) = hauteur_de_la_liste
+            && let Some(p) = &mut self.command_palette
+        {
+            p.tete = Some((fenêtre.response.rect.height() - liste).max(0.0));
+        }
 
         ctx.input(|i| {
             if i.key_pressed(egui::Key::Escape) {

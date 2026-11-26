@@ -324,7 +324,7 @@ impl NamsdecApp {
         let mut cliqué: Option<usize> = None;
         let cursor_rect = output.galley.pos_from_cursor(range.primary);
         let at = output.galley_pos + cursor_rect.left_bottom().to_vec2();
-        egui::Area::new(egui::Id::new("completion"))
+        egui::Area::new(egui::Id::unique("completion"))
             .order(egui::Order::Foreground)
             .fixed_pos(at + egui::vec2(0.0, 4.0))
             .show(ui.ctx(), |ui| {

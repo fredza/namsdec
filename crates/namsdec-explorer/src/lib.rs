@@ -211,7 +211,7 @@ impl FileExplorer {
         let height = (ctx.viewport_rect().height() - TOP - 60.0).max(240.0);
 
         let window = egui::Window::new("namsdec_explorer")
-            .id(egui::Id::new("namsdec_explorer"))
+            .id(egui::Id::unique("namsdec_explorer"))
             .title_bar(false)
             .frame(frame)
             .resizable(true)
@@ -1057,8 +1057,8 @@ fn paint_guides(painter: &egui::Painter, rect: egui::Rect, row: &Row, color: egu
     let guide_x = |depth: usize| rect.left() + LEFT_PAD + depth as f32 * INDENT + INDENT * 0.5;
 
     // Continuations verticales des ancêtres qui ont encore des frères.
-    for depth in 0..row.depth - 1 {
-        if row.guides[depth] {
+    for (depth, encore) in row.guides.iter().enumerate().take(row.depth - 1) {
+        if *encore {
             painter.vline(guide_x(depth), rect.y_range(), stroke);
         }
     }

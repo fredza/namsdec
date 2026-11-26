@@ -431,7 +431,7 @@ fn two_texts_of_a_window_never_overlap() {
         sortie.textures_delta.clear();
     }
 
-    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("decompiler_window"))
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::unique("decompiler_window"))
         .expect("la fenêtre est affichée")
         .rect();
     let dedans: Vec<&(String, egui::Rect)> = textes
@@ -513,7 +513,7 @@ fn a_window_separates_with_space_not_with_bars() {
         for _ in 0..3 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             sortie.textures_delta.clear();
-            rect = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+            rect = egui::AreaState::load(&ctx, egui::Id::unique("calculator_window"))
                 .map(|état| état.rect());
         }
         rect.expect("la calculatrice est affichée")
@@ -582,8 +582,7 @@ fn every_panel_fits_the_window_at_any_size() {
             "cpu_state",
             "statusbar",
         ] {
-            let Some(état) = egui::containers::panel::PanelState::load(&ctx, egui::Id::new(nom))
-            else {
+            let Some(état) = crate::panneaux::état(&ctx, nom) else {
                 continue;
             };
             let rect = état.outer_rect;
@@ -657,9 +656,10 @@ fn an_eight_byte_value_is_never_cut_by_the_edge_of_the_panel() {
         app.do_step();
         let ctx = egui::Context::default();
         app.apply_theme(&ctx);
+        let id_panneau = crate::panneaux::id_racine(&ctx, "sidebar");
         ctx.data_mut(|data| {
             data.insert_persisted(
-                egui::Id::new("sidebar"),
+                id_panneau,
                 egui::containers::panel::PanelState {
                     outer_rect: egui::Rect::from_min_size(
                         egui::Pos2::ZERO,
@@ -744,8 +744,8 @@ fn a_window_that_is_left_alone_stays_where_it_is() {
         let mut images: Vec<Vec<(String, i32, i32)>> = Vec::new();
         for _ in 0..20 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            let cadre =
-                id.and_then(|id| egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect()));
+            let cadre = id
+                .and_then(|id| egui::AreaState::load(&ctx, egui::Id::unique(id)).map(|a| a.rect()));
             let mut posés = Vec::new();
             for clipped in &sortie.shapes {
                 if let egui::epaint::Shape::Text(texte) = &clipped.shape
@@ -1061,7 +1061,7 @@ fn every_text_stands_out_from_its_background() {
         app.apply_theme(&ctx);
         ouvre(&mut app);
         let formes = dessine(&ctx, &mut app);
-        let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+        let cadre = egui::AreaState::load(&ctx, egui::Id::unique(id))
             .unwrap_or_else(|| panic!("la fenêtre « {nom} » est affichée"))
             .rect();
         let mesurés = relève(&formes, DEFAULT_THEME.bg, Some(cadre), nom, &mut fautes);
@@ -1875,7 +1875,17 @@ fn two_buttons_side_by_side_share_a_height() {
         app.apply_theme(&ctx);
         ouvre(&mut app);
         let entrée = écran_du_banc();
-        let mut boîtes: Vec<egui::Rect> = Vec::new();
+        // AVEC LA ZONE OÙ CHAQUE BOÎTE EST PEINTE.
+        //
+        // Deux boutons ne sont voisins que dans la même zone. Sans ce
+        // second terme, la règle rapprochait une entrée de la liste de
+        // navigation d'une fenêtre d'analyse — colonne de gauche, 21 px
+        // — d'un bouton du panneau de droite, trente-trois pixels plus
+        // loin et dans un autre panneau : deux choses qui ne se
+        // comparent pas, et que personne ne lit comme une rangée. Le
+        // rectangle de rognage dit de quelle zone une forme vient, et
+        // c'est egui qui le pose, non nous.
+        let mut boîtes: Vec<(egui::Rect, egui::Rect)> = Vec::new();
         for _ in 0..4 {
             boîtes.clear();
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
@@ -1895,13 +1905,17 @@ fn two_buttons_side_by_side_share_a_height() {
                     && (20.0..40.0).contains(&r.rect.height())
                     && (40.0..300.0).contains(&r.rect.width())
                 {
-                    boîtes.push(r.rect);
+                    boîtes.push((r.rect, clipped.clip_rect));
                 }
             }
             sortie.textures_delta.clear();
         }
-        for (i, a) in boîtes.iter().enumerate() {
-            for b in &boîtes[i + 1..] {
+        for (i, (a, zone_a)) in boîtes.iter().enumerate() {
+            for (b, zone_b) in &boîtes[i + 1..] {
+                // Pas la même zone : pas la même rangée.
+                if zone_a != zone_b {
+                    continue;
+                }
                 // Sur la même rangée : six pixels de tolérance, un
                 // bouton plus haut que son voisin décale son centre.
                 if (a.center().y - b.center().y).abs() > 6.0 {
@@ -2445,7 +2459,7 @@ fn a_handle_says_that_it_can_be_pulled() {
         sortie.textures_delta.clear();
     }
     let haut_de = |id: &str| -> f32 {
-        egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
+        crate::panneaux::état(&ctx, id)
             .map(|p| p.outer_rect.top())
             .unwrap_or_else(|| panic!("le panneau « {id} » est posé"))
     };
@@ -3246,7 +3260,7 @@ fn a_window_fits_the_smallest_screen_the_app_accepts() {
         let mut cadre = egui::Rect::NOTHING;
         for _ in 0..12 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-            cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+            cadre = egui::AreaState::load(&ctx, egui::Id::unique(id))
                 .map(|a| a.rect())
                 .unwrap_or(egui::Rect::NOTHING);
             sortie.textures_delta.clear();
@@ -3314,7 +3328,7 @@ fn a_window_of_known_content_does_not_scroll_when_there_is_room() {
         ouvre(&mut app);
         let mut barres: Vec<f32> = Vec::new();
         for _ in 0..12 {
-            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+            let cadre = egui::AreaState::load(&ctx, egui::Id::unique(id))
                 .map(|a| a.rect())
                 .unwrap_or(egui::Rect::NOTHING);
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
@@ -3561,8 +3575,8 @@ fn every_text_size_belongs_to_a_declared_set() {
         app.apply_theme(&ctx);
         ouvre(&mut app);
         for image in 0..6 {
-            let cadre =
-                id.and_then(|id| egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect()));
+            let cadre = id
+                .and_then(|id| egui::AreaState::load(&ctx, egui::Id::unique(id)).map(|a| a.rect()));
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             if image < 5 {
                 sortie.textures_delta.clear();
@@ -5294,7 +5308,7 @@ fn une_fenetre_restauree_retrouve_sa_taille() {
                 let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
                 output.textures_delta.clear();
             }
-            egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect())
+            egui::AreaState::load(ctx, egui::Id::unique(id)).map(|a| a.rect())
         };
         let Some(avant) = mesure(&ctx, &mut app) else {
             continue;
@@ -5921,9 +5935,7 @@ fn la_bande_de_la_ligne_tient_dans_son_cadre() {
         // reste faux une fois tout posé.
         for image in 0..4 {
             let mut sortie = ctx.run_ui(input.clone(), |ui| app.draw(ui));
-            let cadre =
-                egui::containers::panel::PanelState::load(&ctx, egui::Id::new("etabli_ligne"))
-                    .map(|état| état.outer_rect);
+            let cadre = crate::panneaux::état(&ctx, "etabli_ligne").map(|état| état.outer_rect);
             if image < 3 {
                 sortie.textures_delta.clear();
                 continue;
@@ -6400,7 +6412,7 @@ fn tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre() {
             for _ in 0..8 {
                 sortie = Some(image(&ctx, &mut app, Vec::new()));
             }
-            let cadre = egui::AreaState::load(&ctx, egui::Id::new(id))
+            let cadre = egui::AreaState::load(&ctx, egui::Id::unique(id))
                 .map(|a| a.rect())
                 .unwrap_or(egui::Rect::NOTHING);
             // Le pouce de l'ascenseur de CETTE fenêtre : le plus court
@@ -6450,7 +6462,7 @@ fn tirer_le_texte_d_une_fiche_ne_deplace_pas_sa_fenetre() {
                     vec![egui::Event::PointerMoved(pointeur)],
                 ));
             }
-            let après = egui::AreaState::load(&ctx, egui::Id::new(id))
+            let après = egui::AreaState::load(&ctx, egui::Id::unique(id))
                 .map(|a| a.rect())
                 .unwrap_or(egui::Rect::NOTHING);
             let déplacée = (après.min - cadre.min).length();
@@ -6570,7 +6582,7 @@ fn aucune_theorie_ne_demande_de_defiler_sur_un_ecran_de_travail() {
             image.textures_delta.clear();
             sortie = Some(image);
         }
-        let cadre = egui::AreaState::load(&ctx, egui::Id::new(THEORIE_WINDOW))
+        let cadre = egui::AreaState::load(&ctx, egui::Id::unique(THEORIE_WINDOW))
             .map(|a| a.rect())
             .unwrap_or(egui::Rect::NOTHING);
         let ascenseur = sortie

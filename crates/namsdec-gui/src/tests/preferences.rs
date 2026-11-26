@@ -455,8 +455,8 @@ fn no_preferences_page_grows_by_itself() {
             };
             let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
             sortie.textures_delta.clear();
-            if let Some(rect) =
-                egui::AreaState::load(&ctx, egui::Id::new("preferences_window")).map(|a| a.rect())
+            if let Some(rect) = egui::AreaState::load(&ctx, egui::Id::unique("preferences_window"))
+                .map(|a| a.rect())
             {
                 hauteurs.push(rect.height());
             }

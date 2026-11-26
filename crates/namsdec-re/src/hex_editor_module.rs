@@ -491,6 +491,7 @@ impl ReModule for HexEditorModule {
             self.par_ligne = PAR_LIGNE;
         }
         ui.horizontal_wrapped(|ui| {
+            crate::aligne_la_rangée(ui);
             ui.weak(ctx.t("Aller à", "Go to"));
             let champ = ui.add(
                 egui::TextEdit::singleline(&mut self.aller)
@@ -577,6 +578,7 @@ impl ReModule for HexEditorModule {
         ui.add_space(4.0);
         let mut cherche: Option<bool> = None; // Some(précédent)
         ui.horizontal_wrapped(|ui| {
+            crate::aligne_la_rangée(ui);
             ui.weak(ctx.t("Chercher", "Find"));
             let champ = ui.add(
                 egui::TextEdit::singleline(&mut self.recherche)
@@ -991,7 +993,7 @@ impl ReModule for HexEditorModule {
                 }
             }
         });
-        self.décalage_x = sortie.state.offset.x;
+        self.décalage_x = sortie.state.clamped_offset().x;
         let vues = sortie.inner_rect;
         // Ce que l'écran montre, en lignes : le clavier s'en sert pour
         // savoir quand le curseur en sort, et de combien « page
@@ -1644,6 +1646,7 @@ impl HexEditorModule {
             let combien = plage.len();
             let écrits = motif(&self.valeur, true);
             ui.horizontal_wrapped(|ui| {
+                crate::aligne_la_rangée(ui);
                 // Ce qu'on a sous la main, en toutes lettres : « 3
                 // octets, 0x2050 … 0x2052 ». Une sélection qu'on ne
                 // compte pas se compte à l'œil, et l'on se trompe d'un.

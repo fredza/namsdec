@@ -1513,7 +1513,7 @@ fn la_séance_précédente_est_redemandée_au_lancement() {
         };
         ctx.run_ui(input, |ui| app.draw(ui)).textures_delta.clear();
     }
-    let posée = egui::AreaState::load(&ctx, egui::Id::new("session_resume"))
+    let posée = egui::AreaState::load(&ctx, egui::Id::unique("session_resume"))
         .expect("la question est une fenêtre posée")
         .rect();
     assert!(

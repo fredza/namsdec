@@ -8,7 +8,7 @@ edition = "2024"
 # Ne JAMAIS monter ce numéro sans demander d'abord à l'utilisateur — règle
 # explicite (voir memory: feedback_version_bump_approval). Le numéro de
 # build (date de compilation) n'est pas concerné, il se met à jour seul.
-version = "0.4.2-beta.2"
+version = "1.0.0-beta.666"
 license = "MIT"
 
 [workspace.dependencies]
@@ -26,12 +26,34 @@ namsdec-explorer = { path = "crates/namsdec-explorer" }
 # quoi qu'on demande, et l'option ne servirait à rien.
 namsdec-update = { path = "crates/namsdec-update", default-features = false }
 
-egui = "0.36"
-# `links` : sans elle, `open_url` ne fait **rien** — les liens de la
-# boîte « À propos » et des fenêtres d'analyse s'enfonçaient en silence.
-# Elle fait partie des `default` d'eframe, que nous n'activons pas.
-eframe = { version = "0.36", default-features = false, features = ["default_fonts", "glow", "links", "persistence", "wayland", "x11"] }
-egui_code_editor = "0.4"
+# `monochrome_emoji_fonts` : les deux polices d'emojis d'egui, qui
+# faisaient partie du lot jusqu'en 0.36 et sont devenues optionnelles
+# en 0.37. Sans elles, il ne reste qu'`egui-icons` — « la poignée
+# d'icônes de `special_emojis` » — et trois caractères que
+# l'interface écrit se peignent en carré vide : les chevrons de repli
+# `⏵` et `⏷`, et le `↺` de la relance. Deux contrôles le disent
+# (`tout_caractere_peint_existe_dans_la_police` et son jumeau
+# anglais), et epaint 0.37 ne se contente plus d'un carré : il
+# **panique** sous contrôle. Les garder embarquées vaut mieux que de
+# compter sur les polices de la machine : une capture doit donner la
+# même image sur la CI que sur un portable.
+egui = { version = "0.37", features = ["monochrome_emoji_fonts"] }
+# Trois options tiennent par la même raison : elles font partie des
+# `default` d'eframe, que nous n'activons pas, donc chacune est à
+# nommer ici ou elle manque **en silence**.
+#
+# * `links` : sans elle, `open_url` ne fait **rien** — les liens de la
+#   boîte « À propos » et des fenêtres d'analyse s'enfonçaient sans
+#   rien ouvrir.
+# * `clipboard` : nouvelle option d'eframe 0.37, qui n'était pas
+#   séparable avant. Sans elle, Ctrl+C et Ctrl+V ne font plus rien dans
+#   l'éditeur — le même piège que `links`, un cran plus grave.
+# * `system_fonts` : les polices installées sur la machine, en recours.
+#   Sans elle, tout glyphe absent des polices embarquées d'egui se
+#   peint en tofu (`□`). Elle ne touche pas les contrôles : le banc
+#   mesure un `egui::Context` nu, sans eframe, donc les captures
+#   restent les mêmes d'une machine à l'autre.
+eframe = { version = "0.37", default-features = false, features = ["clipboard", "default_fonts", "glow", "links", "persistence", "system_fonts", "wayland", "x11"] }
 # À l'essai : voir le contrôle `kittest_*` de namsdec-gui.
 # `wgpu` + `snapshot` : de quoi RENDRE une image d'une scène, et non
 # seulement la mesurer. Sans cela, les écrans qui n'apparaissent qu'au
@@ -43,15 +65,15 @@ egui_code_editor = "0.4"
 #
 # En dev-dependency uniquement : rien de tout cela n'entre dans le
 # programme livré.
-egui_kittest = { version = "0.36", features = ["wgpu", "snapshot"] }
+egui_kittest = { version = "0.37", features = ["wgpu", "snapshot"] }
 # Pour écrire les images rendues. Déjà tirée par `egui_kittest`.
 image = { version = "0.25", default-features = false, features = ["png"] }
 arboard = "3"
-rfd = "0.17"
+rfd = "0.18"
 # `gas` en plus de `nasm` : la syntaxe du système — celle de gdb, objdump
 # et as. Deux formateurs pèsent plus qu'un, et c'est le prix de lire un
 # rapport d'outil sans le retraduire de tête.
-iced-x86 = { version = "1.21", default-features = false, features = ["std", "decoder", "nasm", "gas", "instr_info"] }
+iced-x86 = { version = "1.22", default-features = false, features = ["std", "decoder", "nasm", "gas", "instr_info"] }
 # `kill(2)` sur un GROUPE de processus : c'est la seule façon qu'un
 # délai atteigne la descendance d'un outil extérieur. Déjà dans l'arbre
 # par les dépendances de fenêtrage ; la nommer ne tire rien de neuf.
@@ -59,7 +81,6 @@ libc = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 thiserror = "2"
-anyhow = "1"
 bitflags = "2"
 tempfile = "3"
 regex = "1"

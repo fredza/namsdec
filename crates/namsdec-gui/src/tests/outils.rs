@@ -199,6 +199,7 @@ fn the_install_button_brings_its_plan_to_the_front() {
             entrée.events.push(egui::Event::PointerMoved(défilement));
             entrée.events.push(egui::Event::MouseWheel {
                 unit: egui::MouseWheelUnit::Point,
+                source: egui::MouseWheelSource::Wheel,
                 delta: egui::vec2(0.0, -120.0),
                 modifiers: egui::Modifiers::NONE,
                 phase: egui::TouchPhase::Move,
@@ -309,7 +310,7 @@ fn the_install_button_brings_its_plan_to_the_front() {
     // présentait en premier.
     let au_premier_plan = ctx.memory(|m| {
         m.layer_ids().any(|id| {
-            id.id == egui::Id::new("installer_window") && id.order == egui::Order::Foreground
+            id.id == egui::Id::unique("installer_window") && id.order == egui::Order::Foreground
         })
     });
     assert!(
@@ -856,6 +857,7 @@ fn the_tools_tab_shows_every_tool_not_just_the_first() {
                     egui::Event::PointerMoved(egui::pos2(640.0, 700.0)),
                     egui::Event::MouseWheel {
                         unit: egui::MouseWheelUnit::Point,
+                        source: egui::MouseWheelSource::Wheel,
                         delta: egui::vec2(0.0, -120.0),
                         modifiers: egui::Modifiers::NONE,
                         phase: egui::TouchPhase::Move,

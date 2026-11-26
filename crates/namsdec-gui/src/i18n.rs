@@ -1230,6 +1230,16 @@ pub struct Strings {
     /// la rangée dit ce qu'on regarde, pas l'outil qui le montre — le
     /// voisin dit « Désassemblage », pas « désassembleur ».
     pub view_source: &'static str,
+    /// LE NOM DU CHAMP OÙ L'ON ÉCRIT LE PROGRAMME, pour qui ne voit pas
+    /// l'écran.
+    ///
+    /// Un champ de saisie sans nom ne se présente pas : un lecteur
+    /// d'écran annonce « zone de texte, plusieurs lignes » et rien de
+    /// plus. L'onglet au-dessus dit « Source », mais il est un onglet,
+    /// pas une étiquette : rien ne le rattache au champ dans l'arbre
+    /// d'accessibilité. egui 0.37 le fait remarquer — il arrête tout
+    /// contrôle qui peint un champ sans nom.
+    pub editor_a11y_name: &'static str,
     /// Les quatre vues dont le titre de fenêtre ne tient pas dans un
     /// onglet. « Déroulement du programme », « Décompiler — outil
     /// extérieur », « Analyse du binaire » et « Patcher le binaire »
@@ -2400,6 +2410,7 @@ déclenchera jamais.",
     why_nothing_running: "Rien ne tourne en ce moment : il n'y a rien à arrêter.",
     tab_open_another: "un programme de plus, dans son propre onglet.",
     view_source: "Source",
+    editor_a11y_name: "Programme en assembleur",
     view_flow: "Déroulement",
     view_decompiler: "Décompilation",
     view_analysis: "Analyse",
@@ -3467,6 +3478,7 @@ other is there to compare — that is how gaps and clashes become visible.",
     why_nothing_running: "Nothing is running: there is nothing to stop.",
     tab_open_another: "one more program, in a tab of its own.",
     view_source: "Source",
+    editor_a11y_name: "Assembly program",
     view_flow: "Flow",
     view_decompiler: "Decompilation",
     view_analysis: "Analysis",

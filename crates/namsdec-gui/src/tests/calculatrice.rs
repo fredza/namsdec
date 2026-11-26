@@ -45,7 +45,7 @@ fn the_calculator_ends_where_its_content_ends() {
         sortie.textures_delta.clear();
     }
 
-    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::unique("calculator_window"))
         .expect("la calculatrice est affichée")
         .rect();
     let vide = fenêtre.bottom() - bas_du_texte;
@@ -243,7 +243,7 @@ fn the_keypad_is_made_of_real_buttons_and_is_centred() {
 
     // Centré dans la fenêtre : le milieu du bloc et celui de la fenêtre
     // tombent au même endroit.
-    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("calculator_window"))
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::unique("calculator_window"))
         .expect("la calculatrice est affichée");
     let gauche = touches
         .iter()

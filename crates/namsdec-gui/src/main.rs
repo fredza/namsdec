@@ -39,6 +39,7 @@ mod menus;
 mod nasm_errors;
 mod notes;
 mod occurrences;
+mod panneaux;
 mod patching;
 mod preferences;
 mod prevision;
@@ -2017,6 +2018,18 @@ struct PendingDialog {
 struct CommandPalette {
     query: String,
     selected: usize,
+    /// La hauteur qu'a réellement prise **la tête** de la palette à la
+    /// frame précédente : le champ de saisie, le séparateur et les
+    /// marges de la fenêtre, tout ce qui est au-dessus de la liste.
+    ///
+    /// C'était soixante-quatre pixels écrits à la main. egui 0.37 a
+    /// donné deux pixels de plus au champ de saisie, et la liste s'est
+    /// mise à défiler alors qu'il restait de la place à l'écran — une
+    /// barre au milieu d'une fenêtre à moitié vide, précisément ce que
+    /// le contrôle `the_command_palette_shows_everything_it_can_\
+    /// without_scrolling` interdit. Un nombre écrit à la main ne
+    /// survit pas à une version de la bibliothèque ; une mesure si.
+    tete: Option<f32>,
     /// La hauteur qu'a réellement prise **une ligne** de la liste, à la
     /// frame précédente.
     ///
@@ -3097,7 +3110,7 @@ impl NamsdecApp {
             // rien : la fenêtre est à l'un des deux rangs, jamais aux
             // deux.
             for rang in [egui::Order::Middle, egui::Order::Foreground] {
-                ctx.move_to_top(egui::LayerId::new(rang, egui::Id::new(*nom)));
+                ctx.move_to_top(egui::LayerId::new(rang, egui::Id::unique(*nom)));
             }
             // Les préférences et le plan d'installation parlent des
             // outils : on redemande à la machine en les ouvrant, parce
@@ -3553,8 +3566,8 @@ fn barre_d_action(ui: &egui::Ui) -> f32 {
 /// est déjà celle de l'image en cours, et elle ne dépend pas de ce que
 /// la zone prendra plus haut. Faute de panneau — la toute première image
 /// —, la barre ordinaire en donne l'ordre de grandeur.
-fn panneau_d_action(ui: &egui::Ui, id: &str) -> f32 {
-    egui::containers::panel::PanelState::load(ui.ctx(), egui::Id::new(id))
+fn panneau_d_action(ui: &egui::Ui, nom: &str) -> f32 {
+    panneaux::état(ui.ctx(), nom)
         .map(|p| p.outer_rect.height())
         .unwrap_or_else(|| barre_d_action(ui))
 }
@@ -4030,9 +4043,9 @@ impl NamsdecApp {
             timed(&mut spans, "établi", || self.etabli_ui(ui));
         } else {
             timed(&mut spans, "barres", || {
-                egui::Panel::top("menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
+                panneaux::haut(ui, "menu_bar").show(ui, |ui| self.menu_bar_ui(ui));
                 if self.show_toolbar {
-                    egui::Panel::top("toolbar").show(ui, |ui| self.toolbar_ui(ui));
+                    panneaux::haut(ui, "toolbar").show(ui, |ui| self.toolbar_ui(ui));
                 }
             });
             if self.show_statusbar {
@@ -4043,7 +4056,7 @@ impl NamsdecApp {
                 let statusbar_frame = egui::Frame::new()
                     .fill(ui.visuals().faint_bg_color)
                     .inner_margin(egui::Margin::symmetric(10, 5));
-                egui::Panel::bottom("statusbar")
+                panneaux::bas(ui, "statusbar")
                     .frame(statusbar_frame)
                     .show(ui, |ui| self.statusbar_ui(ui));
             }
@@ -4061,12 +4074,12 @@ impl NamsdecApp {
                     let cadre = egui::Frame::new()
                         .fill(self.theme.panel)
                         .inner_margin(egui::Margin::symmetric(4, 6));
-                    egui::Panel::left("barre_gauche")
+                    panneaux::gauche(ui, "barre_gauche")
                         .resizable(false)
                         .exact_size(barres::BARRE_LARGEUR)
                         .frame(cadre)
                         .show(ui, |ui| self.barre_gauche_ui(ui));
-                    egui::Panel::right("barre_droite")
+                    panneaux::droite(ui, "barre_droite")
                         .resizable(false)
                         .exact_size(barres::BARRE_LARGEUR)
                         .frame(cadre)
@@ -4081,7 +4094,7 @@ impl NamsdecApp {
                     let plafond =
                         (ui.available_height() * CONSOLE_MAX_FRACTION).max(CONSOLE_MIN_HEIGHT);
                     let voulue = self.console_wanted_height(ui).min(plafond);
-                    let id = egui::Id::new("console");
+                    let id = panneaux::id_dans(ui, "console");
                     // En mode automatique, la hauteur est réécrite à chaque
                     // image : c'est ainsi qu'elle suit ce que la console a à
                     // dire, plutôt que de garder celle d'une image passée.
@@ -4125,7 +4138,7 @@ impl NamsdecApp {
                     } else {
                         CONSOLE_MIN_HEIGHT.min(plafond)
                     };
-                    egui::Panel::bottom(id)
+                    panneaux::bas(ui, "console")
                         .resizable(true)
                         .default_size(self.console_height.unwrap_or(voulue).max(plancher))
                         .min_size(plancher)
@@ -4152,7 +4165,7 @@ impl NamsdecApp {
             timed(&mut spans, "panneau latéral", || {
                 if self.show_sidebar {
                     let minimum = sidebar_min_width(ui);
-                    let id = egui::Id::new("sidebar");
+                    let id = panneaux::id_dans(ui, "sidebar");
                     // `min_size` ne borne que la poignée : une largeur
                     // retenue d'une session précédente — ou d'avant un
                     // changement de police ou de zoom — passe dessous sans
@@ -4169,7 +4182,7 @@ impl NamsdecApp {
                         };
                         ui.ctx().data_mut(|data| data.insert_persisted(id, corrigé));
                     }
-                    egui::Panel::right(id)
+                    panneaux::droite(ui, "sidebar")
                         .resizable(true)
                         .default_size(SIDEBAR_WIDTH)
                         .min_size(minimum)
@@ -4185,7 +4198,7 @@ impl NamsdecApp {
                     let passages = self.line_visits();
                     if !passages.is_empty() {
                         let max = passages.values().copied().max().unwrap_or(1);
-                        egui::Panel::bottom("heat_legend")
+                        panneaux::bas(ui, "heat_legend")
                             .resizable(false)
                             .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(10, 4)))
                             .show(ui, |ui| self.heat_legend_ui(ui, max));
@@ -4298,14 +4311,14 @@ impl NamsdecApp {
 /// replacer son curseur après avoir écrit, ce qui demande de retrouver
 /// son état.
 fn find_field_id() -> egui::Id {
-    egui::Id::new("find_field")
+    egui::Id::unique("find_field")
 }
 
 /// Le drapeau « la commande vient d'être copiée », pour que le bouton
 /// le dise. Volatil : il n'a de sens que le temps que la fenêtre reste
 /// ouverte.
 fn copie_id() -> egui::Id {
-    egui::Id::new("prerequis_copies")
+    egui::Id::unique("prerequis_copies")
 }
 
 /// Un texte court en chasse fixe.
@@ -4798,7 +4811,7 @@ pub(crate) const ANALYSIS_CONTENT_MAX: f32 = 1000.0;
 /// par en cacher un vrai.
 #[cfg(test)]
 fn about_window_id() -> egui::Id {
-    egui::Id::new(ABOUT_WINDOW)
+    egui::Id::unique(ABOUT_WINDOW)
 }
 
 /// Les registres vectoriels, dans l'ordre de leur numéro.

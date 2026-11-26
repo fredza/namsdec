@@ -222,7 +222,7 @@ fn the_title_bar_button_really_maximizes_the_window() {
     let marge_droite = f32::from(style.spacing.window_margin.right);
     let marge_haut = f32::from(style.spacing.window_margin.top);
     let rect = ctx
-        .memory(|m| m.area_rect(egui::Id::new("flow_window")))
+        .memory(|m| m.area_rect(egui::Id::unique("flow_window")))
         .expect("la fenêtre est ouverte");
     let croix = egui::Rect::from_min_size(
         egui::pos2(rect.right() - marge_droite - case, rect.top() + marge_haut),
@@ -259,7 +259,7 @@ fn the_title_bar_button_really_maximizes_the_window() {
     // Et agrandir veut dire tout prendre.
     frame(&mut app, base.clone());
     let agrandie = ctx
-        .memory(|m| m.area_rect(egui::Id::new("flow_window")))
+        .memory(|m| m.area_rect(egui::Id::unique("flow_window")))
         .expect("toujours ouverte");
     assert!(
         agrandie.width() > rect.width() && agrandie.height() > rect.height(),
@@ -578,18 +578,24 @@ fn every_window_is_in_the_table_that_raises_new_ones() {
     // immédiatement, parce que c'est le premier appel de la chaîne.
     let mut vus = std::collections::BTreeSet::new();
     for (position, _) in tout.match_indices("egui::Window::new(") {
-        let suite = &tout[position..(position + 600).min(tout.len())];
+        // SIX CENTS OCTETS, RAMENÉS SUR UNE FRONTIÈRE DE CARACTÈRE.
+        // Sans `floor_char_boundary`, la borne tombait un jour au
+        // milieu d'un « î » et le contrôle s'arrêtait sur un
+        // découpage impossible — un défaut qui dormait là et ne se
+        // réveillait qu'au premier changement de longueur du code
+        // au-dessus. Il n'avait rien à dire des fenêtres.
+        let suite = &tout[position..tout.floor_char_boundary(position + 600)];
         // Certaines fenêtres nomment leur identifiant par une constante,
         // parce que plusieurs endroits s'y réfèrent ; le reste l'écrit
         // sur place. On résout la constante en relisant sa déclaration,
         // plutôt qu'en tenant ici une liste qu'il faudrait allonger à
         // chaque fenêtre — et qu'on oublierait.
         let id = suite
-            .find("egui::Id::new(\"")
-            .map(|i| &suite[i + "egui::Id::new(\"".len()..])
+            .find("egui::Id::unique(\"")
+            .map(|i| &suite[i + "egui::Id::unique(\"".len()..])
             .and_then(|reste| reste.find('"').map(|fin| &reste[..fin]))
             .or_else(|| {
-                let i = suite.find("egui::Id::new(")? + "egui::Id::new(".len();
+                let i = suite.find("egui::Id::unique(")? + "egui::Id::unique(".len();
                 let nom = &suite[i..i + suite[i..].find(')')?];
                 if !nom.chars().all(|c| c.is_ascii_uppercase() || c == '_') {
                     return None;
@@ -663,7 +669,7 @@ fn opening_a_window_puts_it_in_front() {
     let rang = |nom: &str| -> usize {
         ctx.memory(|m| {
             m.layer_ids()
-                .position(|id| id == egui::LayerId::new(egui::Order::Middle, egui::Id::new(nom)))
+                .position(|id| id == egui::LayerId::new(egui::Order::Middle, egui::Id::unique(nom)))
                 .unwrap_or_else(|| panic!("la fenêtre « {nom} » est dessinée"))
         })
     };
@@ -1145,7 +1151,7 @@ fn two_windows_opened_together_do_not_land_on_the_same_spot() {
         if !ouverte {
             continue;
         }
-        let Some(état) = egui::AreaState::load(&ctx, egui::Id::new(nom)) else {
+        let Some(état) = egui::AreaState::load(&ctx, egui::Id::unique(nom)) else {
             continue;
         };
         posées.push((nom, état.rect()));
@@ -1261,7 +1267,7 @@ fn no_window_that_comes_back_is_buried_under_the_others() {
         for id in &ordre {
             for (nom, ouverte) in app.window_states() {
                 if ouverte
-                    && egui::Id::new(nom) == *id
+                    && egui::Id::unique(nom) == *id
                     && let Some(état) = egui::AreaState::load(&ctx, *id)
                 {
                     posées.push((nom, état.rect()));
@@ -1383,7 +1389,7 @@ fn rien_ne_s_ouvre_par_dessus_la_barre_d_etat() {
         for _ in 0..6 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             sortie.textures_delta.clear();
-            cadre = egui::AreaState::load(&ctx, egui::Id::new(id)).map(|a| a.rect());
+            cadre = egui::AreaState::load(&ctx, egui::Id::unique(id)).map(|a| a.rect());
             barres = app.hauteur_des_barres_du_bas(&ctx);
         }
         let cadre = cadre.unwrap_or_else(|| panic!("« {nom} » doit être affichée"));

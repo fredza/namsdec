@@ -16,4 +16,4 @@ thiserror.workspace = true
 # un qui existe VRAIMENT. Sans quoi la promesse est écrite et jamais
 # tenue — et personne ne le verrait, puisqu'un mot sans fiche se peint
 # simplement sans lien.
-namsdec-doc = { path = "../namsdec-doc" }
+namsdec-doc.workspace = true

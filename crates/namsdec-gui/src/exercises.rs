@@ -622,7 +622,7 @@ impl NamsdecApp {
         let mut fermer = false;
         let mut copier = false;
         let fenêtre = egui::Window::new(s.exercise_solution_title)
-            .id(egui::Id::new("exercise_solution"))
+            .id(egui::Id::unique("exercise_solution"))
             .collapsible(false)
             .resizable(true)
             .default_size([520.0, 420.0])

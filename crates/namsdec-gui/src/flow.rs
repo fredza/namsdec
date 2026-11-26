@@ -50,7 +50,7 @@ impl NamsdecApp {
         // emprunté à `self`.
         let mut bascule = false;
         let mut fenêtre = egui::Window::new(s.flow_title)
-            .id(egui::Id::new("flow_window"))
+            .id(egui::Id::unique("flow_window"))
             .open(&mut open)
             .collapsible(false);
         // Agrandie ou libre : deux réglages qui ne se mélangent pas. Les
@@ -501,7 +501,7 @@ impl NamsdecApp {
             // repart de ce que la zone défilante dit d'elle-même :
             // les barres et la molette la déplacent aussi, et les
             // trois doivent parler du même point.
-            self.flow_offset = sortie.state.offset - tiré;
+            self.flow_offset = sortie.state.clamped_offset() - tiré;
         }
         if copier_pseudo && let Some(state) = &self.assemble_state {
             let entier = namsdec_re::cfg::build(&state.disasm);

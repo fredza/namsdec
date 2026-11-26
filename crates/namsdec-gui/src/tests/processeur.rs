@@ -64,9 +64,10 @@ fn the_two_column_banner_fits_the_panel_it_is_given() {
     assert!(app.emulator.is_some(), "il faut un processeur à montrer");
 
     let ctx = egui::Context::default();
+    let id_panneau = crate::panneaux::id_racine(&ctx, "sidebar");
     ctx.data_mut(|d| {
         d.insert_persisted(
-            egui::Id::new("sidebar"),
+            id_panneau,
             egui::containers::PanelState {
                 outer_rect: egui::Rect::from_min_max(
                     egui::pos2(screen.right() - wide, 0.0),
@@ -84,7 +85,7 @@ fn the_two_column_banner_fits_the_panel_it_is_given() {
         let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
         output.textures_delta.clear();
         widths.push(
-            egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+            crate::panneaux::état(&ctx, "sidebar")
                 .expect("le panneau latéral est affiché")
                 .outer_rect
                 .width(),
@@ -238,7 +239,7 @@ fn l_etat_du_processeur_est_un_onglet_et_la_vue_choisie_a_tout_le_panneau() {
             }
             sortie.textures_delta.clear();
         }
-        let part = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+        let part = crate::panneaux::état(&ctx, "sidebar_tab")
             .expect("la vue a sa part du panneau")
             .outer_rect
             .height();
@@ -1377,8 +1378,7 @@ fn the_banner_never_paints_over_the_tab_below() {
             débordements.clear();
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             let Some(onglet) =
-                egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
-                    .map(|état| état.outer_rect)
+                crate::panneaux::état(&ctx, "sidebar_tab").map(|état| état.outer_rect)
             else {
                 output.textures_delta.clear();
                 continue;
@@ -1443,12 +1443,12 @@ fn sonde_bandeau_deborde() {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             sortie.textures_delta.clear();
         }
-        let état = egui::scroll_area::State::load(&ctx, egui::Id::new("sidebar_banner"));
+        let état = egui::scroll_area::State::load(&ctx, egui::Id::unique("sidebar_banner"));
         eprintln!(
             "{l}x{h} : bandeau voulu {:.0}, onglet {:?}, offset {:?}",
             app.sidebar_banner_height,
             app.sidebar_tab_height,
-            état.map(|e| e.offset.y),
+            état.map(|e| e.clamped_offset().y),
         );
     }
 }
@@ -1732,7 +1732,8 @@ fn a_l_ecran_les_registres_se_rangent_sur_une_colonne_de_plus() {
         let état = egui::containers::panel::PanelState {
             outer_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(545.0, hauteur)),
         };
-        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("sidebar"), état));
+        let id_panneau = crate::panneaux::id_racine(&ctx, "sidebar");
+        ctx.data_mut(|d| d.insert_persisted(id_panneau, état));
         let entrée = egui::RawInput {
             screen_rect: Some(egui::Rect::from_min_size(
                 egui::Pos2::ZERO,

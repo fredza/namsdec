@@ -491,8 +491,8 @@ impl NamsdecApp {
     /// servent — le panneau des suites et la fiche d'instruction —,
     /// d'où cette fonction plutôt que deux constantes qui dériveraient.
     pub(crate) fn hauteur_des_barres_du_bas(&self, ctx: &egui::Context) -> f32 {
-        let hauteur = |id: &str| {
-            egui::containers::panel::PanelState::load(ctx, egui::Id::new(id))
+        let hauteur = |nom: &str| {
+            crate::panneaux::état(ctx, nom)
                 .map(|p| p.outer_rect.height())
                 .unwrap_or(0.0)
         };
@@ -567,7 +567,7 @@ impl NamsdecApp {
         // presque rien », alors qu'il écrivait vingt lignes. Une
         // fenêtre se découpe à elle-même, et redevient mesurable.
         egui::Window::new("leader_hints")
-            .id(egui::Id::new("leader_hints"))
+            .id(egui::Id::unique("leader_hints"))
             .title_bar(false)
             .resizable(false)
             .collapsible(false)

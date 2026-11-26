@@ -1961,7 +1961,7 @@ fn tout_ce_qui_ecrit_le_texte_le_dit() {
     const PORTES: &[&str] = &[
         "        self.source = texte;",
         "        &mut self.source",
-        "                    let output = egui::TextEdit::multiline(&mut self.source)",
+        "                        egui::TextEdit::multiline(&mut self.source)",
     ];
     // Ce qui compte comme une écriture : l'affectation, et les méthodes
     // de `String` qui changent son contenu.

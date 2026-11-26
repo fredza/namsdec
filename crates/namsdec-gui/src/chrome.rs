@@ -111,7 +111,7 @@ pub fn window_buttons_ui(ui: &mut egui::Ui, s: &Strings, maximized: bool) -> Opt
         );
         let réponse = ui.interact(
             cible,
-            ui.id().with(("window_button", rang)),
+            ui.scope_id().with(("window_button", rang)),
             egui::Sense::click(),
         );
         paint_pastille(ui, centre, bouton, réponse.hovered());
@@ -243,7 +243,7 @@ pub fn window_head_zoom(
     );
     let réponse = ui.interact(
         cible,
-        ui.id().with("window_head_close"),
+        ui.scope_id().with("window_head_close"),
         egui::Sense::click(),
     );
     paint_pastille(ui, centre, WindowButton::Close, réponse.hovered());
@@ -261,7 +261,7 @@ pub fn window_head_zoom(
         );
         let réponse_zoom = ui.interact(
             cible_zoom,
-            ui.id().with("window_head_zoom"),
+            ui.scope_id().with("window_head_zoom"),
             egui::Sense::click(),
         );
         paint_pastille(
@@ -469,7 +469,7 @@ pub fn resize_edges_ui(ctx: &egui::Context, _theme: &'static Theme) {
     ];
 
     for (index, (rect, direction, curseur)) in prises.into_iter().enumerate() {
-        let aire = egui::Area::new(egui::Id::new(("resize_edge_area", index)))
+        let aire = egui::Area::new(egui::Id::unique(("resize_edge_area", index)))
             .order(egui::Order::Foreground)
             .fixed_pos(rect.min)
             .interactable(true);

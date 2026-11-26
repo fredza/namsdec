@@ -965,7 +965,7 @@ fn choisir_un_octet_ne_fait_pas_enfler_la_fenetre() {
         r7f
     };
     let largeur = |ctx: &egui::Context| {
-        egui::AreaState::load(ctx, egui::Id::new("analysis_window"))
+        egui::AreaState::load(ctx, egui::Id::unique("analysis_window"))
             .map(|a| a.rect().width())
             .expect("la fenêtre est affichée")
     };
@@ -1706,7 +1706,7 @@ fn the_hex_grid_takes_the_keyboard_from_the_editor() {
         // « Octets » du panneau latéral et le listing peignent eux
         // aussi des paires hexadécimales, et le premier relevé cliquait
         // dans le panneau latéral en croyant cliquer dans la grille.
-        let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+        let fenêtre = egui::AreaState::load(&ctx, egui::Id::unique("analysis_window"))
             .and_then(|a| a.rect().into());
         for clipped in &output.shapes {
             if let egui::epaint::Shape::Text(t) = &clipped.shape {

@@ -22,9 +22,10 @@ fn an_absurd_stored_sidebar_width_is_brought_back() {
 
     // Ce que le bug avait laissé dans `app.ron` : le panneau part du
     // cent-unième pixel et va jusqu'au bord droit.
+    let id_panneau = crate::panneaux::id_racine(&ctx, "sidebar");
     ctx.data_mut(|d| {
         d.insert_persisted(
-            egui::Id::new("sidebar"),
+            id_panneau,
             egui::containers::PanelState {
                 outer_rect: egui::Rect::from_min_max(
                     egui::pos2(100.0, 0.0),
@@ -41,7 +42,7 @@ fn an_absurd_stored_sidebar_width_is_brought_back() {
     let mut output = ctx.run_ui(input, |ui| app.draw(ui));
     output.textures_delta.clear();
 
-    let width = egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+    let width = crate::panneaux::état(&ctx, "sidebar")
         .expect("le panneau latéral est affiché")
         .outer_rect
         .width();
@@ -107,7 +108,7 @@ fn no_sidebar_tab_widens_the_panel() {
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             output.textures_delta.clear();
             widths.push(
-                egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+                crate::panneaux::état(&ctx, "sidebar")
                     .expect("le panneau latéral est affiché")
                     .outer_rect
                     .width(),
@@ -380,7 +381,7 @@ fn the_tab_keeps_its_share_of_the_side_panel() {
         output.textures_delta.clear();
     }
 
-    let part = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+    let part = crate::panneaux::état(&ctx, "sidebar_tab")
         .expect("l'onglet a sa part du panneau")
         .outer_rect;
     assert!(
@@ -390,7 +391,7 @@ fn the_tab_keeps_its_share_of_the_side_panel() {
     );
     // Et le bandeau garde la sienne : ce qui vient, puis les registres,
     // au-dessus de l'onglet et non par-dessus.
-    let panneau = egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar"))
+    let panneau = crate::panneaux::état(&ctx, "sidebar")
         .expect("le panneau latéral est affiché")
         .outer_rect;
     assert!(
@@ -442,7 +443,7 @@ fn the_tab_share_can_be_frozen_and_given_back() {
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             output.textures_delta.clear();
         }
-        egui::containers::panel::PanelState::load(ctx, egui::Id::new("sidebar_tab"))
+        crate::panneaux::état(ctx, "sidebar_tab")
             .expect("l'onglet a sa part")
             .outer_rect
             .height()
@@ -555,10 +556,9 @@ fn the_sidebar_banner_never_cuts_a_line_in_half() {
                 coupés.clear();
                 let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
                 // Le haut de l'onglet : ce qui est en dessous est une liste.
-                let onglet =
-                    egui::containers::panel::PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
-                        .map(|é| é.outer_rect.top())
-                        .unwrap_or(f32::INFINITY);
+                let onglet = crate::panneaux::état(&ctx, "sidebar_tab")
+                    .map(|é| é.outer_rect.top())
+                    .unwrap_or(f32::INFINITY);
                 for clipped in &sortie.shapes {
                     if let egui::epaint::Shape::Text(t) = &clipped.shape {
                         let posé = cadre_du_texte(t);
@@ -628,10 +628,6 @@ fn le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit() {
         // La poignée a été tirée quand le panneau était haut : la part
         // gardée pour l'onglet ne tient plus dans ce qui reste.
         app.sidebar_tab_height = Some(543.0);
-        let état = egui::containers::panel::PanelState {
-            outer_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(380.0, 543.0)),
-        };
-        ctx.data_mut(|d| d.insert_persisted(egui::Id::new("sidebar_tab"), état));
         // Un panneau court : une fenêtre ordinaire avec la console
         // ouverte.
         let entrée = egui::RawInput {
@@ -641,6 +637,22 @@ fn le_panneau_lateral_ne_se_recouvre_jamais_meme_a_l_etroit() {
             )),
             ..Default::default()
         };
+        // UNE IMAGE À BLANC AVANT DE SEMER. Depuis egui 0.37, l'`Id`
+        // sous lequel un panneau range son état dépend de la portée du
+        // `Ui` qui le montre, et l'onglet est un panneau DANS le
+        // panneau latéral : son `Id` ne se calcule pas de l'extérieur,
+        // il se demande une fois que le panneau a paru. Ce que la
+        // session précédente avait laissé est donc semé après, et les
+        // quatre images qui suivent le trouvent comme elles l'auraient
+        // trouvé dans `app.ron`.
+        let mut amorce = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+        amorce.textures_delta.clear();
+        let état = egui::containers::panel::PanelState {
+            outer_rect: egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(380.0, 543.0)),
+        };
+        let id_onglet = crate::panneaux::id(&ctx, "sidebar_tab")
+            .expect("l'onglet a paru, donc son identité est connue");
+        ctx.data_mut(|d| d.insert_persisted(id_onglet, état));
         let mut lignes: Vec<(String, egui::Rect)> = Vec::new();
         for _ in 0..4 {
             lignes.clear();

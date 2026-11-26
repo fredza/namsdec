@@ -74,7 +74,7 @@ impl NamsdecApp {
             // Un identifiant explicite : sans lui, egui le dérive du
             // TITRE, qui change avec la langue — passer en anglais
             // ferait perdre à la fenêtre sa position et sa taille.
-            .id(egui::Id::new("bug_report"))
+            .id(egui::Id::unique("bug_report"))
             .open(&mut ouvert)
             .collapsible(false)
             .resizable(true)

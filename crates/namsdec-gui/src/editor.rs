@@ -183,7 +183,7 @@ impl NamsdecApp {
             );
             let gutter_resp = ui.interact(
                 gutter_rect,
-                ui.id().with("gouttiere_listing"),
+                ui.scope_id().with("gouttiere_listing"),
                 egui::Sense::click_and_drag(),
             );
             // La bande du texte : elle porte l'infobulle d'aide, elle dit
@@ -194,7 +194,7 @@ impl NamsdecApp {
                     egui::pos2(gutter_rect.right(), gutter_rect.top()),
                     egui::pos2(ui.max_rect().right(), gutter_rect.bottom()),
                 ),
-                ui.id().with("texte_listing"),
+                ui.scope_id().with("texte_listing"),
                 egui::Sense::click(),
             );
             let lignes =
@@ -1043,15 +1043,26 @@ impl NamsdecApp {
                     // de propositions veut sont retirées de la file,
                     // sans quoi l'éditeur les appliquerait d'abord.
                     self.claim_completion_keys(ui);
-                    let output = egui::TextEdit::multiline(&mut self.source)
-                        .id(editor_id())
-                        .frame(egui::Frame::NONE)
-                        .desired_width(width)
-                        .desired_rows(editor_rows(visible.y, row_height))
-                        .code_editor()
-                        .interactive(self.editor_mode == EditorMode::Insert)
-                        .layouter(&mut layouter)
-                        .show(ui);
+                    // LE CHAMP PORTE SON NOM, pour qui ne voit pas
+                    // l'écran. L'onglet dit « Source » au-dessus, mais
+                    // un onglet n'est pas une étiquette : rien ne le
+                    // rattachait au champ, et un lecteur d'écran
+                    // n'annonçait que « zone de texte ». egui 0.37
+                    // arrête tout contrôle qui peint un champ sans nom,
+                    // et il a raison — c'est le champ principal de
+                    // l'application.
+                    let nom_du_champ = strings(self.lang).editor_a11y_name;
+                    let output = ui.name_inputs(nom_du_champ, |ui| {
+                        egui::TextEdit::multiline(&mut self.source)
+                            .id(editor_id())
+                            .frame(egui::Frame::NONE)
+                            .desired_width(width)
+                            .desired_rows(editor_rows(visible.y, row_height))
+                            .code_editor()
+                            .interactive(self.editor_mode == EditorMode::Insert)
+                            .layouter(&mut layouter)
+                            .show(ui)
+                    });
                     // Le champ écrit dans le tampon lui-même : c'est la
                     // troisième porte par où le texte change, et la
                     // seule qui ne passe pas par `set_source`. Elle le
@@ -1418,7 +1429,7 @@ impl NamsdecApp {
                         );
                         let sur_croix = ui.interact(
                             croix,
-                            egui::Id::new(("tab_close", rang)),
+                            egui::Id::unique(("tab_close", rang)),
                             egui::Sense::click(),
                         );
                         let peintre = ui.painter();
@@ -1716,7 +1727,7 @@ impl NamsdecApp {
             ui.colored_label(theme.good, format!("{combien} ×"));
             let champ = ui.add(
                 egui::TextEdit::singleline(&mut nouveau)
-                    .id(egui::Id::new("rename_field"))
+                    .id(egui::Id::unique("rename_field"))
                     .hint_text(s.rename_placeholder)
                     .font(egui::TextStyle::Monospace)
                     .desired_width(220.0),
@@ -1726,7 +1737,7 @@ impl NamsdecApp {
                 // Tout sélectionné : on remplace le nom, on ne le
                 // complète pas.
                 if let Some(mut état) =
-                    egui::TextEdit::load_state(ui.ctx(), egui::Id::new("rename_field"))
+                    egui::TextEdit::load_state(ui.ctx(), egui::Id::unique("rename_field"))
                 {
                     état
                         .cursor
@@ -1734,7 +1745,7 @@ impl NamsdecApp {
                             egui::text::CCursor::new(0),
                             egui::text::CCursor::new(nouveau.chars().count()),
                         )));
-                    état.store(ui.ctx(), egui::Id::new("rename_field"));
+                    état.store(ui.ctx(), egui::Id::unique("rename_field"));
                 }
             }
             if champ.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -1789,7 +1800,7 @@ impl NamsdecApp {
             let échap = ui.input(|i| i.key_pressed(egui::Key::Escape));
             let champ = ui.add(
                 egui::TextEdit::singleline(&mut texte)
-                    .id(egui::Id::new("note_field"))
+                    .id(egui::Id::unique("note_field"))
                     .hint_text(match genre {
                         NoteKind::Name => s.notes_name_placeholder,
                         NoteKind::Comment => s.notes_comment_placeholder,
@@ -2010,7 +2021,7 @@ fn fin_du_caractère(texte: &str, octet: usize) -> usize {
 }
 
 pub(crate) fn editor_id() -> egui::Id {
-    egui::Id::new("editeur")
+    egui::Id::unique("editeur")
 }
 
 /// Le mot qui entoure `byte` dans `text`.
@@ -2291,7 +2302,7 @@ struct Cache {
 fn jeton_du_contexte(ctx: &egui::Context) -> u64 {
     static SUIVANT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
     ctx.data_mut(|données| {
-        *données.get_temp_mut_or_insert_with(egui::Id::new("namsdec:jeton-du-contexte"), || {
+        *données.get_temp_mut_or_insert_with(egui::Id::unique("namsdec:jeton-du-contexte"), || {
             SUIVANT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         })
     })

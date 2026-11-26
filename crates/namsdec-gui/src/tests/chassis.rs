@@ -34,7 +34,7 @@ fn diagnostics_no_longer_swell_the_status_bar() {
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             output.textures_delta.clear();
         }
-        let bar = egui::containers::PanelState::load(&ctx, egui::Id::new("statusbar"))
+        let bar = crate::panneaux::état(&ctx, "statusbar")
             .expect("la barre de statut est affichée")
             .outer_rect
             .height();

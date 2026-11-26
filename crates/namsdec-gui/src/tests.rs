@@ -121,6 +121,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("loader.rs", include_str!("loader.rs")),
     ("maximize.rs", include_str!("maximize.rs")),
     ("marks.rs", include_str!("marks.rs")),
+    ("panneaux.rs", include_str!("panneaux.rs")),
     ("memfind.rs", include_str!("memfind.rs")),
     ("menus.rs", include_str!("menus.rs")),
     ("nasm_errors.rs", include_str!("nasm_errors.rs")),
@@ -1901,7 +1902,7 @@ fn ce_qui_est_écrit_sur(
         lignes.clear();
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
         let cadre =
-            id.and_then(|id| egui::AreaState::load(ctx, egui::Id::new(id)).map(|a| a.rect()));
+            id.and_then(|id| egui::AreaState::load(ctx, egui::Id::unique(id)).map(|a| a.rect()));
         // SON PROPRE FOND, et l'ordre des formes. Une fenêtre peint
         // d'abord le rectangle opaque de son cadre, puis ce qu'elle a
         // à dire : tout ce qui vient APRÈS ce rectangle est à elle.
@@ -1977,7 +1978,7 @@ fn ce_qui_est_écrit_sur(
         sortie.textures_delta.clear();
     }
     let cadre = id.map(|id| {
-        egui::AreaState::load(ctx, egui::Id::new(id))
+        egui::AreaState::load(ctx, egui::Id::unique(id))
             .unwrap_or_else(|| panic!("la fenêtre « {id} » est affichée"))
             .rect()
     });
@@ -2070,7 +2071,7 @@ fn plus_grand_vide(ctx: &egui::Context, app: &mut NamsdecApp, id: &str) -> (f32,
     for _ in 0..5 {
         bandes.clear();
         let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
-        cadre = egui::AreaState::load(ctx, egui::Id::new(id))
+        cadre = egui::AreaState::load(ctx, egui::Id::unique(id))
             .map(|a| a.rect())
             .unwrap_or(egui::Rect::NOTHING);
         for clipped in &sortie.shapes {

@@ -104,7 +104,17 @@ fn the_command_palette_shows_everything_it_can_without_scrolling() {
                         derniere = Some(text.pos);
                     }
                 }
-                egui::epaint::Shape::Rect(r) if r.rect.width() < 20.0 && r.rect.height() > 40.0 => {
+                // UNE BARRE QUI SE VOIT, et non une forme de largeur
+                // nulle. egui 0.37 pose la barre de défilement même
+                // quand il n'y a rien à faire défiler : elle sort
+                // alors à zéro de large, et rien ne se peint. Compter
+                // cette forme-là faisait dire au contrôle que la
+                // palette défilait, alors que le relevé montrait
+                // poignée et gouttière exactement superposées — donc
+                // tout ce qu'il y avait à voir, visible.
+                egui::epaint::Shape::Rect(r)
+                    if r.rect.width() > 0.5 && r.rect.width() < 20.0 && r.rect.height() > 40.0 =>
+                {
                     barres.push(r.rect);
                 }
                 _ => {}
@@ -1032,7 +1042,7 @@ fn la_palette_garde_sa_largeur_quel_que_soit_le_libelle() {
         for _ in 0..3 {
             coupées.clear();
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
-            let frame = egui::AreaState::load(&ctx, egui::Id::new("command_palette"))
+            let frame = egui::AreaState::load(&ctx, egui::Id::unique("command_palette"))
                 .expect("la palette est affichée")
                 .rect();
             largeur = frame.width();
@@ -1706,11 +1716,10 @@ fn le_panneau_des_suites_reste_au_dessus_des_barres_du_bas() {
         for _ in 0..3 {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             sortie.textures_delta.clear();
-            cadre = egui::AreaState::load(&ctx, egui::Id::new("leader_hints")).map(|a| a.rect());
+            cadre = egui::AreaState::load(&ctx, egui::Id::unique("leader_hints")).map(|a| a.rect());
             barres.clear();
             for id in ["statusbar", "console"] {
-                if let Some(p) = egui::containers::panel::PanelState::load(&ctx, egui::Id::new(id))
-                {
+                if let Some(p) = crate::panneaux::état(&ctx, id) {
                     barres.push((id, p.outer_rect.height()));
                 }
             }

@@ -358,6 +358,7 @@ impl ReModule for DetourModule {
         // même défaut avait été corrigé sur la rangée d'onglets du
         // processeur le 23 octobre 2026.
         ui.horizontal_wrapped(|ui| {
+            crate::aligne_la_rangée(ui);
             ui.label(ctx.t("Détourner depuis", "Detour from"));
             ui.add(
                 egui::TextEdit::singleline(&mut self.site)
@@ -412,7 +413,20 @@ impl ReModule for DetourModule {
             // prend moins, jamais plus.
             egui::ComboBox::from_id_salt("detour_slack")
                 .selected_text(étiquette.clone())
-                .width(ui.available_width().clamp(90.0, 230.0))
+                // LE CHEVRON S'AJOUTE À CE QU'ON DEMANDE. Depuis
+                // egui 0.37, `width` est la largeur du TEXTE : la
+                // liste déroulante alloue en plus son chevron et
+                // l'espace qui l'en sépare. Demander la place offerte
+                // en entier faisait allouer quinze pixels de trop, le
+                // `max_rect` du panneau grandissait d'autant, et les
+                // textes suivants se repliaient sur 235 px dans un
+                // panneau de 220 : six lignes rognées au bord, dont le
+                // message de refus. Le supplément se lit dans les
+                // espacements du thème — il n'est pas à écrire ici.
+                .width(
+                    (ui.available_width() - ui.spacing().icon_width - ui.spacing().icon_spacing)
+                        .clamp(60.0, 230.0),
+                )
                 // TRONQUER, sans quoi le plafond ne sert à rien : une
                 // liste déroulante prend la largeur de son texte si
                 // celui-ci dépasse ce qu'on lui a dit. « 0x00401100 ·
@@ -434,7 +448,16 @@ impl ReModule for DetourModule {
 
         // --- Le code à ajouter -------------------------------------
         ui.add_space(8.0);
-        ui.horizontal(|ui| {
+        // REPLIABLE, comme la rangée du trou au-dessus et pour la même
+        // raison : une rangée qui ne peut pas passer à la ligne déborde
+        // du panneau, et la largeur disponible qu'elle laisse derrière
+        // elle est celle de son débordement. Tout ce qui suit se
+        // repliait alors sur une largeur qu'on ne voit pas. Mesuré à
+        // 220 px avec les espacements d'egui 0.37, qui a élargi le
+        // rembourrage des boutons : la rangée demandait 235 px, et six
+        // lignes étaient rognées au bord — dont le message de refus,
+        // celui qui dit POURQUOI le détour est impossible.
+        ui.horizontal_wrapped(|ui| {
             ui.label(ctx.t("Code à ajouter", "Code to add"));
             ui.selectable_value(
                 &mut self.mode,

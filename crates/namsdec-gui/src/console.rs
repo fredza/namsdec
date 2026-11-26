@@ -1034,7 +1034,7 @@ impl NamsdecApp {
         // Posée en bas du panneau, la saisie ne bouge plus quoi qu'écrive
         // le programme.
         if self.console_shows_input() {
-            let zone = egui::Panel::bottom("console_input")
+            let zone = crate::panneaux::bas(ui, "console_input")
                 .resizable(false)
                 .frame(egui::Frame::NONE)
                 .show(ui, |ui| {
@@ -1263,7 +1263,7 @@ impl NamsdecApp {
             s.input_dialog_title_done
         };
         egui::Window::new(titre)
-            .id(egui::Id::new(INPUT_DIALOG))
+            .id(egui::Id::unique(INPUT_DIALOG))
             .resizable(false)
             .collapsible(false)
             .title_bar(false)

@@ -241,7 +241,7 @@ impl NamsdecApp {
             if self.maximized_windows.contains(clé) || self.à_restaurer.contains(clé) {
                 continue;
             }
-            if let Some(état) = egui::AreaState::load(ctx, egui::Id::new(*id)) {
+            if let Some(état) = egui::AreaState::load(ctx, egui::Id::unique(*id)) {
                 let rect = état.rect();
                 if rect.is_positive() {
                     self.rects_avant_agrandissement

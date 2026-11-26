@@ -140,7 +140,7 @@ impl NamsdecApp {
             // Un identifiant explicite : le titre change avec la
             // langue, et la fenêtre perdrait sa position en passant à
             // l'anglais.
-            .id(egui::Id::new("exercises_reset"))
+            .id(egui::Id::unique("exercises_reset"))
             .open(&mut ouverte)
             .collapsible(false)
             .resizable(false)
@@ -186,7 +186,7 @@ impl NamsdecApp {
             // changé pour qui l'a déjà ouverte une fois. Le prix est
             // qu'elle reprend sa place au centre — pour une fenêtre
             // qu'on jugeait trop étroite, c'est ce qu'on veut.
-            .id(egui::Id::new("exercises_window_v2"))
+            .id(egui::Id::unique("exercises_window_v2"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -688,7 +688,7 @@ impl NamsdecApp {
             // Un identifiant explicite : sans lui, egui dérive celui de
             // la fenêtre de son *titre*, qui change avec la langue —
             // passer en anglais lui faisait perdre sa position.
-            .id(egui::Id::new(ABOUT_WINDOW))
+            .id(egui::Id::unique(ABOUT_WINDOW))
             .open(&mut open)
             .resizable(false)
             .collapsible(false)
@@ -975,7 +975,7 @@ impl NamsdecApp {
         egui::Window::new(s.help_title)
             // Un identifiant explicite : le titre change avec la langue,
             // et la fenêtre perdrait sa position en passant à l'anglais.
-            .id(egui::Id::new("instruction_help"))
+            .id(egui::Id::unique("instruction_help"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -1015,7 +1015,7 @@ impl NamsdecApp {
                 // La fiche prend la place qui reste, la barre d'action
                 // garde la sienne en bas : sans ce panneau, le bouton
                 // était poussé hors de la fenêtre par une fiche longue.
-                egui::Panel::bottom("help_actions")
+                crate::panneaux::bas(ui, "help_actions")
                     .frame(egui::Frame::NONE)
                     .show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1488,7 +1488,7 @@ impl NamsdecApp {
         let mut fermer = false;
         let mut fiche_demandée: Option<String> = None;
         egui::Window::new(s.etabli_exercise_theory)
-            .id(egui::Id::new(THEORIE_WINDOW))
+            .id(egui::Id::unique(THEORIE_WINDOW))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)

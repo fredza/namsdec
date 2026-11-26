@@ -304,6 +304,7 @@ impl ReModule for StringsModule {
         // panneau, ce sont les chaînes, pas le réglage qui a servi à
         // les trier.
         ui.horizontal(|ui| {
+            crate::aligne_la_rangée(ui);
             ui.add(
                 egui::TextEdit::singleline(&mut self.query)
                     .hint_text(ctx.t("chercher…", "search…"))

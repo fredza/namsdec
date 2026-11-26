@@ -1836,6 +1836,7 @@ fn the_profile_ranking_can_be_walked_through() {
                 egui::Event::PointerMoved(egui::pos2(351.0, 1250.0)),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Wheel,
                     delta: egui::vec2(0.0, -200.0),
                     modifiers: egui::Modifiers::NONE,
                     phase: egui::TouchPhase::Move,
@@ -3064,6 +3065,7 @@ fn stepping_brings_the_code_back_into_view() {
                 egui::Event::PointerMoved(pos),
                 egui::Event::MouseWheel {
                     unit: egui::MouseWheelUnit::Point,
+                    source: egui::MouseWheelSource::Wheel,
                     delta: egui::vec2(-600.0, 0.0),
                     phase: egui::TouchPhase::Move,
                     modifiers: egui::Modifiers::NONE,

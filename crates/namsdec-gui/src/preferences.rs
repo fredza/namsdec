@@ -102,7 +102,7 @@ impl NamsdecApp {
             // la fenêtre de son *titre*, qui change avec la langue —
             // passer en anglais lui faisait perdre sa position et sa
             // taille.
-            .id(egui::Id::new("preferences_window"))
+            .id(egui::Id::unique("preferences_window"))
             .open(&mut open)
             .resizable(true)
             // Pas de flèche de repli : replier une boîte de préférences

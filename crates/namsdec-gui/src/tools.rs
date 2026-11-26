@@ -644,7 +644,7 @@ impl NamsdecApp {
         let fait = self.install_job.as_ref().map(|job| job.done).unwrap_or(0);
 
         egui::Window::new(format!("{} — {}", s.install_title, recette.tool))
-            .id(egui::Id::new("installer_window"))
+            .id(egui::Id::unique("installer_window"))
             .open(&mut ouverte)
             // Au premier plan : elle s'ouvre depuis les préférences, qui
             // occupent le centre de l'écran. Rangée comme une fenêtre
@@ -1129,7 +1129,7 @@ impl NamsdecApp {
         let agrandie = self.window_maximized(Self::DECOMPILER_WINDOW);
         let mut bascule = false;
         let mut fenêtre = egui::Window::new(s.decompiler_title)
-            .id(egui::Id::new("decompiler_window"))
+            .id(egui::Id::unique("decompiler_window"))
             .open(&mut open)
             .collapsible(false);
         fenêtre = if agrandie {
@@ -1268,7 +1268,7 @@ impl NamsdecApp {
                 liste_déroulante(
                     ui,
                     theme,
-                    egui::Id::new("decompiler_choice"),
+                    egui::Id::unique("decompiler_choice"),
                     0.0,
                     &mut self.decompiler,
                     &outils,

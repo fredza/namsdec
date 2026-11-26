@@ -4,7 +4,77 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 1.0.0-beta.666 — 26 novembre 2026
+
+**Rust 1.100 et egui 0.37**
+
+- **La CI serait passée au rouge sans qu'une ligne du dépôt ait
+  changé.** Rust 1.100 signale deux dépendances déclarées dans
+  l'espace de travail et employées par personne — `anyhow` et
+  `egui_code_editor`, cette dernière absente jusque de `Cargo.lock` —
+  et une boucle indexée dans l'arborescence de fichiers. Trois
+  avertissements, et la CI tourne avec `-D warnings`. Les trois sont
+  réglés ; `str::floor_char_boundary`, stable depuis Rust 1.91, a servi
+  à réparer au passage un découpage par octets qui dormait dans un
+  contrôle et tombait au milieu d'un « î ».
+- **`clipboard` est devenue une option séparée d'eframe.** Le
+  manifeste prend `default-features = false` : sans la nommer, Ctrl+C
+  et Ctrl+V cessaient de fonctionner dans l'éditeur, en silence —
+  exactement le piège que le commentaire du manifeste raconte déjà
+  pour `links`. Nommée, avec `system_fonts` : les polices de la machine
+  servent de recours, donc plus aucun glyphe absent ne se peint en
+  carré vide.
+- **Trois caractères que l'interface écrit avaient disparu des polices
+  d'egui** : les chevrons de repli `⏵` et `⏷`, et le `↺` de la
+  relance. Les deux polices d'emojis sont devenues optionnelles en
+  0.37, et epaint ne se contente plus d'un carré — il **panique** sous
+  contrôle. L'option `monochrome_emoji_fonts` les rétablit, embarquées
+  : une capture doit donner la même image sur la CI que sur un
+  portable.
+- **Un panneau ne porte plus l'`Id` qu'on lui donne**, mais un sel mêlé
+  à la portée du `Ui` qui le montre. Douze endroits lisaient l'état
+  d'un panneau sous l'ancien nom et auraient continué de compiler en ne
+  mesurant plus que du vide : la barre d'état qui dit sa hauteur pour
+  que rien ne s'ouvre par-dessus, le panneau latéral qui rattrape une
+  largeur absurde enregistrée, l'onglet qui garde sa part, la console
+  qui pose sa saisie au bas. Le module `panneaux.rs` retient
+  l'identité là où le nom et le `Ui` parent sont connus ensemble, et
+  les lectures la retrouvent par le nom.
+- **Le champ où l'on écrit le programme porte son nom**, et celui où
+  l'on pose un registre porte le nom du registre. Un lecteur d'écran
+  n'annonçait que « zone de texte, plusieurs lignes » : l'onglet dit
+  « Source » au-dessus, mais un onglet n'est pas une étiquette. egui
+  0.37 arrête tout contrôle qui peint un champ de saisie sans nom, et
+  il a raison.
+- **Deux pixels par rangée, et six invariants de mise en page.** egui a
+  porté la hauteur minimale d'un contrôle de 18 à 20 px : le panneau
+  latéral débordait à 1024×600, la dernière ligne des bandes
+  d'exercice était coupée, et cinq théories sur cent trente-huit
+  redemandaient de défiler. Les espacements de namsdec sont les siens ;
+  celui-ci aussi, désormais.
+- **Une rangée qui mêle un bouton encadré à autre chose s'aligne.**
+  Seul le bouton encadré se réserve la place de son liseré, et un
+  champ en chasse fixe compose sur une ligne plus courte qu'un texte
+  ordinaire : 25,0 px, 25,1 px et 27,0 px côte à côte dans l'onglet RE.
+  `aligne_la_rangée` relève le plancher une fois, en tête de rangée,
+  plutôt que de reprendre chaque contrôle — ce qu'on y ajoutera demain
+  s'alignera sans qu'on y pense.
+- **Deux seuils écrits à la main sont devenus des mesures.** La tête de
+  la palette de commandes valait soixante-quatre pixels en dur : egui a
+  donné deux pixels de plus au champ de recherche, et la liste s'est
+  mise à défiler dans une fenêtre à moitié vide. Et la liste déroulante
+  du détour demandait toute la place offerte sans compter son chevron,
+  qui s'ajoute par-dessus depuis que la 0.37 la bâtit d'atomes : la
+  rangée réclamait 235 px dans un panneau de 220, et six lignes étaient
+  rognées au bord — dont le message qui dit POURQUOI le détour est
+  impossible.
+- `rfd` 0.18 corrige le filtre « tous les fichiers » : il globait
+  `*.*`, qui ne montre pas un fichier sans extension. C'est
+  précisément ce qu'on cherche quand on va désigner `objdump` ou
+  `nasm` à la main. Et `iced-x86` passe en 1.22.
+
 ## 0.4.2-beta.2 — 20 novembre 2026
+
 
 **La théorie montre maintenant ses nombres** (23 novembre 2026)
 

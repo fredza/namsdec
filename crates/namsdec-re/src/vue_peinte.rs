@@ -754,7 +754,7 @@ struct Frappe {
 /// valide — par la touche Entrée, ou par le bouton qui porte la même
 /// action que le champ.
 fn peindre_champ(ui: &mut egui::Ui, ctx: &ReContext, champ: &Champ, gestes: &mut Gestes) {
-    let id = ui.id().with(("vue_champ", &champ.action));
+    let id = ui.scope_id().with(("vue_champ", &champ.action));
     let gardée = ui.data(|d| d.get_temp::<Frappe>(id));
     // PREMIÈRE IMAGE DE CE CHAMP : rien n'est encore gardé sous son
     // identifiant. C'est le seul moment où l'on peut lui donner le
@@ -788,6 +788,7 @@ fn peindre_champ(ui: &mut egui::Ui, ctx: &ReContext, champ: &Champ, gestes: &mut
     let mut validé = false;
     let mut locaux = Gestes::default();
     ui.horizontal(|ui| {
+        crate::aligne_la_rangée(ui);
         if !champ.étiquette.fragments.is_empty() {
             peindre_ligne(ui, ctx, &champ.étiquette, &mut locaux);
         }
@@ -1379,7 +1380,7 @@ fn profil(
     // suivante : entre le clic et le choix, la souris a quitté la
     // tranche pour aller sur l'entrée du menu, et la relire sous le
     // pointeur mènerait ailleurs qu'où l'on a cliqué.
-    let visée = ui.id().with("tranche_visée");
+    let visée = ui.scope_id().with("tranche_visée");
     if let Some(offset) = cliqué {
         ui.data_mut(|d| d.insert_temp(visée, offset));
     }

@@ -200,10 +200,10 @@ fn the_console_panel_spans_the_window_and_keeps_its_input_at_the_bottom() {
         !app.emulator.as_ref().unwrap().output().is_empty(),
         "le programme doit avoir écrit quelque chose"
     );
-    let console = egui::containers::PanelState::load(&ctx, egui::Id::new("console"))
+    let console = crate::panneaux::état(&ctx, "console")
         .expect("le panneau de la console est affiché")
         .outer_rect;
-    let console_input = egui::containers::PanelState::load(&ctx, egui::Id::new("console_input"))
+    let console_input = crate::panneaux::état(&ctx, "console_input")
         .expect("la saisie de la console est affichée")
         .outer_rect;
 
@@ -1603,11 +1603,7 @@ hlt
         // programme, qui porte « [31m » en toutes lettres — c'est son
         // texte, et l'accuser serait accuser le programme d'être
         // écrit.
-        let console = ctx
-            .memory(|m| {
-                m.data
-                    .get_temp::<egui::containers::panel::PanelState>(egui::Id::new("console"))
-            })
+        let console = crate::panneaux::état(&ctx, "console")
             .map(|état| état.outer_rect)
             .unwrap_or(egui::Rect::EVERYTHING);
         for clipped in &sortie.shapes {

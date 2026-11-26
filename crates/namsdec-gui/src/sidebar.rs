@@ -256,7 +256,7 @@ impl NamsdecApp {
             .sidebar_tab_height
             .map_or(voulue, |gardée| gardée.max(voulue))
             .clamp(SIDEBAR_TAB_MIN.min(plafond), plafond);
-        let id = egui::Id::new("sidebar_tab");
+        let id = crate::panneaux::id_dans(ui, "sidebar_tab");
         // L'état du panneau est RÉÉCRIT tant qu'aucune poignée n'est
         // sous un doigt. Sans cela, egui garde ce qu'il avait à la
         // première image et le partage ne suit plus le bandeau : c'est
@@ -287,7 +287,7 @@ impl NamsdecApp {
             };
             ui.ctx().data_mut(|data| data.insert_persisted(id, état));
         }
-        egui::Panel::bottom(id)
+        crate::panneaux::bas(ui, "sidebar_tab")
             .resizable(true)
             .frame(egui::Frame::new())
             .default_size(voulue)
@@ -2249,11 +2249,20 @@ impl NamsdecApp {
                     // en une seconde, sans réécrire le programme.
                     match &mut edition {
                         Some((nom, saisie)) if *nom == name => {
-                            let champ = ui.add(
-                                egui::TextEdit::singleline(saisie)
-                                    .font(egui::TextStyle::Monospace)
-                                    .desired_width(pair * 0.62),
-                            );
+                            // LE CHAMP PORTE LE NOM DU REGISTRE.
+                            // « RCX, zone de texte » se comprend ; une
+                            // zone de texte sans nom, au milieu de
+                            // seize lignes qui se ressemblent, ne dit
+                            // pas lequel on s'apprête à changer. egui
+                            // 0.37 arrête tout contrôle qui en peint
+                            // une sans nom.
+                            let champ = ui.name_inputs(name, |ui| {
+                                ui.add(
+                                    egui::TextEdit::singleline(saisie)
+                                        .font(egui::TextStyle::Monospace)
+                                        .desired_width(pair * 0.62),
+                                )
+                            });
                             // LE FOCUS SE DEMANDE UNE FOIS, PAS À
                             // CHAQUE IMAGE.
                             //
@@ -3198,7 +3207,7 @@ impl NamsdecApp {
             let maximum = (rendu_zone.content_size.y - rendu_zone.inner_rect.height()).max(0.0);
             voulu.min(maximum)
         });
-        if borné.is_none_or(|voulu| (rendu_zone.state.offset.y - voulu).abs() <= 1.0) {
+        if borné.is_none_or(|voulu| (rendu_zone.state.clamped_offset().y - voulu).abs() <= 1.0) {
             self.follow_rip = false;
         }
     }
@@ -3493,7 +3502,7 @@ impl NamsdecApp {
             crate::liste_déroulante(
                 ui,
                 theme,
-                egui::Id::new("memory_format"),
+                egui::Id::unique("memory_format"),
                 0.0,
                 &mut self.memory_format,
                 &formats,
@@ -5484,7 +5493,7 @@ pub(crate) fn address_field_width(ui: &egui::Ui) -> f32 {
 /// Le champ « Adresse » de l'onglet Mémoire porte un identifiant fixe :
 /// c'est par lui qu'un test retrouve sa largeur.
 pub(crate) fn memory_address_id() -> egui::Id {
-    egui::Id::new("memory_address")
+    egui::Id::unique("memory_address")
 }
 
 /// Les registres d'arguments d'un appel système, dans l'ordre. Jumeaux

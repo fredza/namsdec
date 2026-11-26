@@ -62,7 +62,7 @@ impl NamsdecApp {
         // cette interface.
         let hauteur_libre = (ctx.viewport_rect().height() - 60.0).max(320.0);
         let fenêtre = egui::Window::new(s.calculator_title)
-            .id(egui::Id::new("calculator_window"))
+            .id(egui::Id::unique("calculator_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -258,7 +258,7 @@ impl NamsdecApp {
                                             liste_déroulante(
                                                 ui,
                                                 theme,
-                                                egui::Id::new("calculator_base"),
+                                                egui::Id::unique("calculator_base"),
                                                 liste,
                                                 &mut self.calc_base,
                                                 &bases,
@@ -290,7 +290,7 @@ impl NamsdecApp {
                                             liste_déroulante(
                                                 ui,
                                                 theme,
-                                                egui::Id::new("calculator_width"),
+                                                egui::Id::unique("calculator_width"),
                                                 liste,
                                                 &mut self.calc_width,
                                                 &largeurs,
@@ -676,7 +676,7 @@ fn calculator_pick_widths(ui: &egui::Ui, s: &Strings) -> (f32, f32) {
 /// après un clic sur une touche, et c'est lui qu'un contrôle interroge
 /// pour savoir si le collage ira au bon endroit.
 pub(crate) fn calc_expression_id() -> egui::Id {
-    egui::Id::new("calculator_expression")
+    egui::Id::unique("calculator_expression")
 }
 
 /// La largeur commune de l'écran et du clavier.

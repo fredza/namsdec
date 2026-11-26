@@ -696,7 +696,7 @@ impl NamsdecApp {
         self.refresh_disassembly_rows();
 
         let fenêtre_disassembly_window = egui::Window::new(s.disassembly_title)
-            .id(egui::Id::new("disassembly_window"))
+            .id(egui::Id::unique("disassembly_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -772,7 +772,7 @@ impl NamsdecApp {
         egui::Window::new(s.cyclic_title)
             // Même raison qu'ailleurs : le titre change avec la langue,
             // l'identifiant ne doit pas.
-            .id(egui::Id::new("cyclic_window"))
+            .id(egui::Id::unique("cyclic_window"))
             .open(&mut open)
             .resizable(true)
             // LA HAUTEUR EST IMPOSÉE, ET C'EST MESURÉ.
@@ -905,7 +905,7 @@ impl NamsdecApp {
         let mut fermer_ok = false;
 
         let fenêtre_timeline_window = egui::Window::new(s.timeline_title)
-            .id(egui::Id::new("timeline_window"))
+            .id(egui::Id::unique("timeline_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -1088,7 +1088,7 @@ impl NamsdecApp {
         let mut open = true;
         let mut fermer_ok = false;
         egui::Window::new(s.breakpoints_title)
-            .id(egui::Id::new("breakpoints_window"))
+            .id(egui::Id::unique("breakpoints_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -1133,11 +1133,12 @@ impl NamsdecApp {
         let lignes: Vec<u32> = self.breakpoint_lines.iter().copied().collect();
         for ligne in lignes {
             ui.horizontal(|ui| {
+                aligne_la_rangée(ui);
                 ui.colored_label(theme.accent, format!("{} {ligne}", s.breakpoints_line));
                 let texte = self.breakpoint_conditions.entry(ligne).or_default();
                 let réponse = ui.add(
                     egui::TextEdit::singleline(texte)
-                        .id(egui::Id::new(("bp_cond", ligne)))
+                        .id(egui::Id::unique(("bp_cond", ligne)))
                         .hint_text(s.breakpoints_condition_hint)
                         .font(egui::TextStyle::Monospace)
                         .desired_width(180.0),
@@ -1277,7 +1278,7 @@ impl NamsdecApp {
         let fenêtre_analysis_window = egui::Window::new(s.analysis_title)
             // Un identifiant explicite : le titre change avec la langue,
             // et la fenêtre perdrait sa position en passant à l'anglais.
-            .id(egui::Id::new("analysis_window"))
+            .id(egui::Id::unique("analysis_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -1440,7 +1441,7 @@ impl NamsdecApp {
             .re_registry
             .nav_entries_pour(lang, niveau, &self.analysis_module);
         let theme = self.theme;
-        egui::Panel::left(egui::Id::new("analysis_nav"))
+        crate::panneaux::gauche(ui, "analysis_nav")
             .resizable(true)
             .default_size(200.0)
             .min_size(150.0)
@@ -1640,7 +1641,7 @@ impl NamsdecApp {
         // son propre contenu se reboucle d'une image à l'autre.
         let hauteur_libre = (ctx.viewport_rect().height() - 60.0).max(320.0);
         egui::Window::new(s.vectors_title)
-            .id(egui::Id::new("vectors_window"))
+            .id(egui::Id::unique("vectors_window"))
             .open(&mut open)
             .resizable(true)
             .collapsible(false)
@@ -1781,7 +1782,7 @@ impl NamsdecApp {
         let mut fermer = false;
 
         egui::Window::new(s.patch_title)
-            .id(egui::Id::new(PATCHES_WINDOW))
+            .id(egui::Id::unique(PATCHES_WINDOW))
             .resizable(true)
             .collapsible(false)
             .title_bar(false)

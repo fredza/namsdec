@@ -58,7 +58,7 @@ impl NamsdecApp {
             // Le titre suit la langue, l'identifiant non : une fenêtre
             // qui change d'identité en changeant de langue perd sa
             // place et sa taille.
-            .id(egui::Id::new("scene_window"))
+            .id(egui::Id::unique("scene_window"))
             .open(&mut ouverte)
             .resizable(true)
             // La hauteur n'est PAS imposée : la Scène montre trois

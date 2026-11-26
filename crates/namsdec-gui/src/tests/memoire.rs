@@ -183,9 +183,10 @@ fn the_address_field_is_as_wide_as_an_address_not_as_the_panel() {
         };
         app.do_assemble();
         let ctx = egui::Context::default();
+        let id_panneau = crate::panneaux::id_racine(&ctx, "sidebar");
         ctx.data_mut(|d| {
             d.insert_persisted(
-                egui::Id::new("sidebar"),
+                id_panneau,
                 egui::containers::PanelState {
                     outer_rect: egui::Rect::from_min_max(
                         egui::pos2(screen.right() - sidebar_width, 0.0),
@@ -202,7 +203,7 @@ fn the_address_field_is_as_wide_as_an_address_not_as_the_panel() {
             let mut output = ctx.run_ui(input.clone(), |ui| app.draw(ui));
             output.textures_delta.clear();
         }
-        let sidebar = egui::containers::PanelState::load(&ctx, egui::Id::new("sidebar"))
+        let sidebar = crate::panneaux::état(&ctx, "sidebar")
             .expect("le panneau latéral est affiché")
             .outer_rect;
         let field = ctx

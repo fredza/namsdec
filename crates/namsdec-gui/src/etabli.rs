@@ -260,7 +260,7 @@ impl NamsdecApp {
         let s = strings(self.lang);
         let theme = self.theme;
 
-        egui::Panel::top("etabli_barre")
+        crate::panneaux::haut(ui, "etabli_barre")
             .frame(
                 egui::Frame::new()
                     .fill(theme.panel)
@@ -268,7 +268,7 @@ impl NamsdecApp {
             )
             .show(ui, |ui| self.etabli_barre_ui(ui));
 
-        egui::Panel::top("etabli_frise")
+        crate::panneaux::haut(ui, "etabli_frise")
             .frame(egui::Frame::new().inner_margin(egui::Margin::symmetric(14, 5)))
             .show(ui, |ui| self.etabli_frise_ui(ui));
 
@@ -351,7 +351,7 @@ impl NamsdecApp {
             } else {
                 0.0
             };
-            egui::Panel::top("etabli_exercice")
+            crate::panneaux::haut(ui, "etabli_exercice")
                 .resizable(true)
                 // UNE PART DE CE QUI RESTE, ET NON UN NOMBRE DE
                 // PIXELS. C'est la différence entre lire son programme
@@ -456,7 +456,7 @@ impl NamsdecApp {
             // haute inférieure à la borne basse laisse egui choisir, et
             // ce qu'il choisit n'est pas ce qu'on voulait.
             let plafond = plafond_naturel.max(plancher);
-            egui::Panel::bottom("etabli_resultat")
+            crate::panneaux::bas(ui, "etabli_resultat")
                 .resizable(true)
                 .default_size(RESULTAT_DEFAUT.max(plancher))
                 .min_size(plancher)
@@ -507,7 +507,7 @@ impl NamsdecApp {
             .etabli_ligne_height
             .map_or(LIGNE_MAX, |contenu| contenu + LIGNE_MARGES + LIGNE_JEU)
             .clamp(LIGNE_MIN, LIGNE_MAX);
-        egui::Panel::bottom("etabli_ligne")
+        crate::panneaux::bas(ui, "etabli_ligne")
             .exact_size(hauteur_de_la_bande)
             .frame(
                 egui::Frame::new()
@@ -588,7 +588,7 @@ impl NamsdecApp {
             // passerait dessous sans être corrigée —, donc on la relève
             // nous-mêmes, comme le fait le panneau latéral du mode avancé.
             let machine_minimum = sidebar_min_width(ui);
-            let id_machine = egui::Id::new("etabli_machine");
+            let id_machine = crate::panneaux::id_dans(ui, "etabli_machine");
             if let Some(état) = egui::containers::panel::PanelState::load(ui.ctx(), id_machine)
                 && état.outer_rect.width() < machine_minimum
             {
@@ -601,7 +601,7 @@ impl NamsdecApp {
                 ui.ctx()
                     .data_mut(|data| data.insert_persisted(id_machine, corrigé));
             }
-            egui::Panel::right(id_machine)
+            crate::panneaux::droite(ui, "etabli_machine")
                 .resizable(true)
                 .default_size(MACHINE_LARGEUR.max(machine_minimum))
                 .min_size(machine_minimum)
@@ -629,17 +629,17 @@ impl NamsdecApp {
         // 21 novembre 2026 en montant le menu du clic droit, qui ne
         // s'atteint que par cette barre.
         if !self.tabs.is_empty() {
-            egui::Panel::top("etabli_fichiers")
+            crate::panneaux::haut(ui, "etabli_fichiers")
                 .frame(egui::Frame::new().fill(theme.bg))
                 .show(ui, |ui| self.tabs_bar_ui(ui));
         }
-        egui::Panel::top("etabli_vues")
+        crate::panneaux::haut(ui, "etabli_vues")
             .frame(egui::Frame::new().fill(theme.bg))
             .show(ui, |ui| self.views_bar_ui(ui));
 
         // Le titre de la bande du code est posé au-dessus du listing et
         // non dedans : il ne doit pas défiler avec lui.
-        egui::Panel::top("etabli_titre_code")
+        crate::panneaux::haut(ui, "etabli_titre_code")
             .frame(egui::Frame::new().inner_margin(egui::Margin {
                 left: 14,
                 right: 14,
@@ -766,7 +766,7 @@ impl NamsdecApp {
             egui::pos2(-100_000.0, -100_000.0),
             egui::vec2(100_000.0, 200.0),
         );
-        let id = egui::Id::new(("etabli_mesure", quoi));
+        let id = egui::Id::unique(("etabli_mesure", quoi));
         let mut mesure = egui::Ui::new(
             ui.ctx().clone(),
             id,
@@ -1622,7 +1622,7 @@ impl NamsdecApp {
         // deux fois serait la poser mal.
         let ancrée = self.exercice_a_verifier() && self.etabli_exercice_gestes_ancres;
         if ancrée {
-            egui::Panel::bottom("etabli_exercice_gestes")
+            crate::panneaux::bas(ui, "etabli_exercice_gestes")
                 .frame(egui::Frame::new().inner_margin(egui::Margin {
                     left: 0,
                     right: 0,
@@ -2113,7 +2113,7 @@ impl NamsdecApp {
             let mut ouverte = true;
             let mut fermer = false;
             egui::Window::new(s.etabli_machine)
-                .id(egui::Id::new("etabli_machine_window"))
+                .id(egui::Id::unique("etabli_machine_window"))
                 .open(&mut ouverte)
                 .resizable(true)
                 .default_width(MACHINE_LARGEUR + 120.0)
@@ -2137,7 +2137,7 @@ impl NamsdecApp {
             let mut ouverte = true;
             let mut fermer = false;
             egui::Window::new(s.etabli_result)
-                .id(egui::Id::new("etabli_resultat_window"))
+                .id(egui::Id::unique("etabli_resultat_window"))
                 .open(&mut ouverte)
                 .resizable(true)
                 .default_width(720.0)

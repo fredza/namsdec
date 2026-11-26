@@ -701,6 +701,14 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "compose chaque texte avec le fond qu’il a réellement sous lui, et refuse "
          "la compilation en dessous. Un thème installé ensuite n’y est pas soumis, "
          "et c’est à son auteur d’y veiller."),
+        ("p",
+         "Les deux champs où l’on écrit <b>portent leur nom</b> pour qui ne voit pas "
+         "l’écran : le grand champ du programme s’annonce « Programme en assembleur », "
+         "et celui qui pose la valeur d’un registre s’annonce par le nom du registre — "
+         "« RCX », et non « zone de texte ». L’onglet dit « Source » au-dessus du "
+         "premier, mais un onglet n’est pas une étiquette : rien ne le rattachait au "
+         "champ. Un contrôle refuse désormais la compilation si un champ de saisie se "
+         "peint sans nom."),
         ("note",
          "Préférences › Général rend la barre du système à "
          "qui la préfère. Tout ce que le système faisait — déplacer, "

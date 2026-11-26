@@ -244,7 +244,7 @@ impl NamsdecApp {
         let mut réponse: Option<bool> = None;
         let mut retenir = reprise.retenir;
         egui::Window::new(s.session_resume_title)
-            .id(egui::Id::new("session_resume"))
+            .id(egui::Id::unique("session_resume"))
             .collapsible(false)
             .resizable(false)
             .pivot(egui::Align2::CENTER_CENTER)
@@ -823,6 +823,16 @@ impl NamsdecApp {
             style.spacing.item_spacing = egui::vec2(8.0, 6.0);
             style.spacing.button_padding = egui::vec2(10.0, 5.0);
             style.spacing.window_margin = egui::Margin::from(12);
+            // La hauteur minimale d'un contrôle, épinglée comme les
+            // trois au-dessus. egui l'a portée de 18 à 20 px en 0.37
+            // (« des boutons plus spacieux ») ; ce sont deux pixels par
+            // rangée, et `barre_d_action` les reprend pour toute la
+            // chaîne des hauteurs. Mesurés à l'écran, ils faisaient
+            // déborder le panneau latéral à 1024x600, couper la
+            // dernière ligne des bandes d'exercice, et redemander de
+            // défiler à cinq théories sur cent trente-huit. Les
+            // espacements de namsdec sont les siens : celui-ci aussi.
+            style.spacing.interact_size.y = 18.0;
             // Des barres de défilement qui prennent leur place, au lieu
             // de flotter par-dessus le contenu et de s'effacer dès que la
             // souris s'en va : flottantes, elles n'apparaissaient qu'au

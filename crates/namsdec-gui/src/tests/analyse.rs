@@ -1120,7 +1120,7 @@ fn the_analysis_window_has_margins_and_a_left_aligned_column() {
         sortie.textures_delta.clear();
     }
 
-    let fenêtre = egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+    let fenêtre = egui::AreaState::load(&ctx, egui::Id::unique("analysis_window"))
         .expect("la fenêtre est affichée");
     let bord_gauche = fenêtre.left_top_pos().x;
 
@@ -1372,8 +1372,7 @@ fn la_carte_depliee_ne_couvre_pas_le_bandeau() {
             );
         }
     }
-    use egui::containers::panel::PanelState;
-    let tab = PanelState::load(&ctx, egui::Id::new("sidebar_tab"))
+    let tab = crate::panneaux::état(&ctx, "sidebar_tab")
         .map(|z| z.outer_rect)
         .expect("l'onglet est un panneau");
     // Et l'onglet tient dans la fenêtre : sans la carte bornée, le
@@ -2344,7 +2343,7 @@ fn la_fenetre_d_analyse_ne_grandit_pas_avec_son_contenu() {
             let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
             sortie.textures_delta.clear();
         }
-        egui::AreaState::load(&ctx, egui::Id::new("analysis_window"))
+        egui::AreaState::load(&ctx, egui::Id::unique("analysis_window"))
             .map(|a| a.rect())
             .expect("la fenêtre d'analyse est affichée")
     };
@@ -2459,7 +2458,7 @@ fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
 
     let pastille = où_est_la_verte(&mut app).expect("la pastille verte est peinte");
     let avant = ctx
-        .memory(|m| m.area_rect(egui::Id::new("analysis_window")))
+        .memory(|m| m.area_rect(egui::Id::unique("analysis_window")))
         .expect("la fenêtre est ouverte");
 
     clique(&mut app, pastille);
@@ -2473,7 +2472,7 @@ fn the_analysis_window_grows_by_its_green_pastille_and_comes_back() {
             .clear();
     }
     let agrandie = ctx
-        .memory(|m| m.area_rect(egui::Id::new("analysis_window")))
+        .memory(|m| m.area_rect(egui::Id::unique("analysis_window")))
         .expect("toujours ouverte");
     assert!(
         agrandie.width() > avant.width() && agrandie.height() >= avant.height(),

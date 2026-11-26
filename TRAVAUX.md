@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **23 novembre
-2026**, version 0.4.2-beta.2.
+2026**, version 1.0.0-beta.666.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -976,6 +976,65 @@ La leçon qui se répète : ce qu'un relevé ne cherche pas, aucun contrôle
 ne le retient. Les trois axes de cette passe — l'écran le plus petit,
 l'inventaire des tailles, l'inventaire des commandes — n'étaient pas des
 défauts suspectés, c'étaient des questions qu'on n'avait jamais posées.
+
+---
+
+## 0 quinquadragies. Rust 1.100 et egui 0.37 (26 novembre 2026)
+
+`[x]` **Fait, et retenu par toute la suite.** Quarante et un contrôles
+sont tombés à la montée de version, et aucun ne mentait : chacun
+nommait une conséquence que personne n'aurait vue à l'œil.
+
+**Ce que la montée a appris, et qui vaut pour la prochaine :**
+
+* **Un avertissement de compilateur suffit à casser la CI.** Rust 1.100
+  signale deux dépendances d'espace de travail employées par personne
+  et une boucle indexée ; la CI tourne avec `-D warnings`. L'arbre
+  était rouge avant qu'on ait touché à une crate. **Lancer
+  `cargo clippy --all-targets --all-features -- -D warnings` après
+  chaque `rustup update`**, avant même de regarder les crates.
+* **Une option qui disparaît d'un `default` ne se voit pas.**
+  `clipboard` est devenue une option séparée d'eframe en 0.37, et le
+  manifeste prend `default-features = false` : Ctrl+C et Ctrl+V
+  cessaient de fonctionner, en silence et sans qu'un contrôle le dise.
+  Le commentaire du manifeste racontait déjà ce piège pour `links` —
+  il le raconte maintenant pour les trois. **À chaque montée d'eframe,
+  comparer la liste des `default` d'avant et d'après**, et non
+  seulement lire le journal des ruptures.
+* **Trois glyphes ont disparu des polices embarquées.** `⏵`, `⏷` et
+  `↺` vivaient dans les deux polices d'emojis, devenues optionnelles.
+  epaint 0.37 ne se contente plus d'un carré vide : il panique sous
+  contrôle, et les deux contrôles de police du banc l'ont dit avant
+  l'œil. `monochrome_emoji_fonts` les rétablit embarquées, ce qui vaut
+  mieux que de compter sur la machine.
+* **Un panneau ne porte plus l'`Id` qu'on lui donne.** Il porte un sel
+  mêlé à la portée du `Ui` qui le montre, et `Panel::id` n'est pas
+  public. Douze lectures d'état auraient continué de compiler en ne
+  mesurant plus que du vide. `panneaux.rs` retient l'identité à
+  l'endroit — le seul — où le nom et le `Ui` parent sont connus
+  ensemble. **Ne jamais redeviner la recette d'identité d'une
+  bibliothèque : la lui demander, ou la noter là où elle se fabrique.**
+* **Deux pixels par rangée valent six invariants.** La hauteur
+  minimale d'un contrôle est passée de 18 à 20 px. Le panneau latéral
+  débordait à 1024×600, les bandes d'exercice coupaient leur dernière
+  ligne, cinq théories sur cent trente-huit redemandaient de défiler.
+  Les espacements de namsdec sont les siens : celui-ci est épinglé
+  comme les trois autres.
+* **Deux seuils écrits à la main sont tombés, et c'est la règle « pas
+  de seuil en dur » qui les a trouvés** — la tête de la palette
+  (soixante-quatre pixels) et la largeur de la liste déroulante du
+  détour (le chevron non compté). Les deux sont devenus des mesures.
+  Un troisième défaut, la rangée du mode d'ajout qui ne pouvait pas se
+  replier, était le même que celui corrigé le 23 octobre sur la rangée
+  d'onglets du processeur : **un `ui.horizontal` qui déborde fausse la
+  largeur de tout ce qui le suit.**
+* **egui 0.37 refuse un champ de saisie sans nom**, et il a raison :
+  le champ principal de l'application ne s'annonçait que « zone de
+  texte, plusieurs lignes ». Deux champs portent désormais leur nom.
+* **Un défaut dormait dans un contrôle** : un découpage par octets qui
+  tombait au milieu d'un « î » dès que le code au-dessus changeait de
+  longueur. `str::floor_char_boundary`, stable depuis Rust 1.91, l'a
+  réparé. Il n'avait rien à dire des fenêtres qu'il mesurait.
 
 ---
 
@@ -5115,6 +5174,14 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
 
 - [x] **Version 0.4.2-beta.2** (A 9.107) — demandée. Changelog, PDF
       renommé et régénéré, lien du README.
+
+- [x] **Version 1.0.0-beta.666** (A 9.108) — demandée, et c'est la
+      version PRINCIPALE qui monte : 0.4.2 → 1.0.0. Changelog (section
+      neuve, l'entrée de la montée egui 0.37 dedans), PDF renommé et
+      régénéré, lien du README, en-tête de ce fichier. Le contrôle
+      `the_changelog_covers_the_version_being_built` exige que le
+      journal porte la version compilée **en tête** : il tombe si l'on
+      monte le numéro sans écrire la section.
 
 ## 7. Dette technique
 

@@ -1541,6 +1541,7 @@ fn l_accueil_tient_dans_le_plus_petit_ecran() {
                     egui::Event::PointerMoved(egui::pos2(largeur * 0.4, hauteur * 0.6)),
                     egui::Event::MouseWheel {
                         unit: egui::MouseWheelUnit::Point,
+                        source: egui::MouseWheelSource::Wheel,
                         delta: egui::vec2(0.0, -descendre),
                         modifiers: egui::Modifiers::NONE,
                         phase: egui::TouchPhase::Move,

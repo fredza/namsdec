@@ -1546,7 +1546,7 @@ impl NamsdecApp {
         let mut décision: Option<bool> = None;
         let mut annuler = false;
         egui::Window::new(s.unsaved_title)
-            .id(egui::Id::new("unsaved_changes"))
+            .id(egui::Id::unique("unsaved_changes"))
             .collapsible(false)
             .resizable(false)
             .pivot(egui::Align2::CENTER_CENTER)

@@ -42,7 +42,7 @@ pub(crate) fn ok_bar_inline(ui: &mut egui::Ui, theme: &'static Theme, s: &String
 
 pub(crate) fn ok_bar(ui: &mut egui::Ui, theme: &'static Theme, s: &Strings, id: &str) -> bool {
     let mut fermer = false;
-    egui::Panel::bottom(egui::Id::new(format!("{id}_ok")))
+    crate::panneaux::bas(ui, &format!("{id}_ok"))
         .frame(egui::Frame::NONE)
         .show(ui, |ui| {
             // Du blanc, et non un filet. Une fenêtre qui porte déjà un
@@ -563,8 +563,51 @@ pub(crate) fn small_framed_button(
 /// d'une étiquette qu'au survol.
 pub(crate) fn framed<'a>(theme: &Theme, label: impl Into<egui::WidgetText>) -> egui::Button<'a> {
     egui::Button::new(label)
-        .stroke(egui::Stroke::new(1.0, theme.dim))
+        .stroke(egui::Stroke::new(FILET_DU_BOUTON, theme.dim))
         .corner_radius(egui::CornerRadius::from(6))
+}
+
+/// L'épaisseur du liseré d'un bouton encadré.
+///
+/// Nommée parce que deux endroits en dépendent : le bouton qui le
+/// trace, et `hauteur_d_un_bouton_encadré` qui doit le compter.
+pub(crate) const FILET_DU_BOUTON: f32 = 1.0;
+
+/// RELÈVE LE PLANCHER D'UNE RANGÉE À LA HAUTEUR D'UN BOUTON ENCADRÉ.
+///
+/// À appeler en tête d'une rangée qui mêle un bouton encadré à autre
+/// chose — un bouton plat, une case à cocher, un champ de saisie.
+/// egui 0.37 leur donne des hauteurs différentes : seul le bouton
+/// encadré se réserve la place de son liseré, et un champ en chasse
+/// fixe compose sur une ligne plus courte qu'un texte ordinaire.
+///
+/// Un plancher relevé une fois valant mieux qu'un `min_size` repris
+/// sur chaque contrôle : ce qu'on ajoutera demain dans la rangée
+/// s'alignera sans qu'on y pense.
+pub(crate) fn aligne_la_rangée(ui: &mut egui::Ui) {
+    let hauteur = hauteur_d_un_bouton_encadré(ui);
+    ui.spacing_mut().interact_size.y = hauteur;
+}
+
+/// LA HAUTEUR QU'UN BOUTON ENCADRÉ PREND DANS UNE RANGÉE.
+///
+/// Elle n'est pas « le texte plus les marges » : depuis egui 0.37, un
+/// bouton qui porte un filet demande aussi la place de ce filet — un
+/// pixel en haut, un en bas. Le champ de condition des points d'arrêt
+/// l'a montré : 25,1 px pour lui contre 27 pour le bouton « Retirer »
+/// posé à huit pixels, et la rangée se lisait de travers.
+///
+/// Un champ posé à côté d'un bouton encadré vise donc cette
+/// hauteur-ci, par `min_size`. Elle se mesure — police, marges du
+/// thème et filet — plutôt que de s'écrire à la main : les trois
+/// changent, et un nombre écrit ici ne survivrait pas au premier qui
+/// bouge.
+pub(crate) fn hauteur_d_un_bouton_encadré(ui: &egui::Ui) -> f32 {
+    let texte = ui.text_style_height(&egui::TextStyle::Body);
+    ui.spacing()
+        .interact_size
+        .y
+        .max(texte + 2.0 * ui.spacing().button_padding.y + 2.0 * FILET_DU_BOUTON)
 }
 
 /// La vignette d'un thème, de largeur imposée.
@@ -720,7 +763,7 @@ pub(crate) fn title_bar_maximize_button(
     });
 
     let mut cliqué = double;
-    egui::Area::new(egui::Id::new(("maximize", id)))
+    egui::Area::new(egui::Id::unique(("maximize", id)))
         .order(egui::Order::Foreground)
         .fixed_pos(case.min)
         .show(ctx, |ui| {

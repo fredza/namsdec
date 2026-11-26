@@ -438,8 +438,57 @@ pub fn clickable_label(ui: &mut egui::Ui, étiquette: egui::Label) -> egui::Resp
 /// couleur suit ainsi le thème clair comme le sombre.
 pub fn framed(ui: &egui::Ui, label: impl Into<egui::WidgetText>) -> egui::Button<'static> {
     egui::Button::new(label)
-        .stroke(egui::Stroke::new(1.0, ui.visuals().weak_text_color()))
+        .stroke(egui::Stroke::new(
+            FILET_DU_BOUTON,
+            ui.visuals().weak_text_color(),
+        ))
         .corner_radius(egui::CornerRadius::from(6))
+}
+
+/// L'épaisseur du liseré d'un bouton encadré.
+///
+/// Nommée parce que deux endroits en dépendent : le bouton qui le
+/// trace, et `hauteur_d_un_bouton_encadré` qui doit le compter.
+pub const FILET_DU_BOUTON: f32 = 1.0;
+
+/// LA HAUTEUR QU'UN BOUTON ENCADRÉ PREND DANS UNE RANGÉE.
+///
+/// Elle n'est pas « le texte plus les marges » : depuis egui 0.37, un
+/// bouton à qui l'on pose un liseré se RÉSERVE aussi la place de ce
+/// liseré — un pixel en haut, un en bas. Ce qui est posé à côté de lui
+/// sur la rangée — un champ de saisie, un bouton plat — ne porte pas
+/// de liseré et sortait donc deux pixels plus court. Douze rangées de
+/// l'onglet RE se lisaient de travers : 25,1 px contre 27, à huit
+/// pixels l'un de l'autre.
+///
+/// Les voisins visent donc cette hauteur-ci, par `min_size`. Elle se
+/// mesure — police, marges du thème et liseré — plutôt que de
+/// s'écrire à la main : les trois changent, et un nombre écrit ici ne
+/// survivrait pas au premier qui bouge.
+pub fn hauteur_d_un_bouton_encadré(ui: &egui::Ui) -> f32 {
+    let texte = ui.text_style_height(&egui::TextStyle::Body);
+    ui.spacing()
+        .interact_size
+        .y
+        .max(texte + 2.0 * ui.spacing().button_padding.y + 2.0 * FILET_DU_BOUTON)
+}
+
+/// RELÈVE LE PLANCHER D'UNE RANGÉE À LA HAUTEUR D'UN BOUTON ENCADRÉ.
+///
+/// À appeler en tête d'une rangée qui mêle un bouton encadré à autre
+/// chose — un bouton plat, une case à cocher, une étiquette
+/// sélectionnable, un champ de saisie. egui 0.37 leur donne trois
+/// hauteurs différentes : seul le bouton encadré se réserve la place
+/// de son liseré, et un champ en chasse fixe compose sur une ligne
+/// plus courte qu'un texte ordinaire. Mesuré dans l'onglet RE : 25,0
+/// px, 25,1 px et 27,0 px côte à côte, à huit pixels l'un de l'autre.
+///
+/// Un plancher relevé une fois valant mieux qu'un `min_size` repris
+/// sur chaque contrôle : ce qu'on ajoutera demain dans la rangée
+/// s'alignera sans qu'on y pense.
+pub fn aligne_la_rangée(ui: &mut egui::Ui) {
+    let hauteur = hauteur_d_un_bouton_encadré(ui);
+    ui.spacing_mut().interact_size.y = hauteur;
 }
 
 /// Le même, posé tout de suite.
