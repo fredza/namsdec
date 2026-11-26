@@ -2,6 +2,7 @@
 name = "namsdec-cli"
 version.workspace = true
 edition.workspace = true
+authors.workspace = true
 license.workspace = true
 description = "L'analyse de namsdec en ligne de commande : Markdown ou JSON, sans ouvrir de fenêtre."
 

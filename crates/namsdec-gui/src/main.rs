@@ -482,6 +482,15 @@ const RESOLU_DELAI: Duration = Duration::from_secs(1);
 /// de l'utilisateur (voir memory: feedback_version_bump_approval).
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
+/// QUI A ÉCRIT NAMSDEC.
+///
+/// Écrit ici et nulle part ailleurs dans l'interface : la boîte « À
+/// propos » lit cette constante, et un contrôle la compare au nom de la
+/// LICENCE. Deux copies d'un nom finissent toujours par ne plus dire la
+/// même chose — c'est arrivé à l'adresse de don, qui vivait en dur dans
+/// le binaire.
+const APP_AUTHOR: &str = "Frédéric Zawalski";
+
 /// Le nom de la préversion, quand il y en a une : « beta.2 », « rc.1 ».
 ///
 /// Lu dans le numéro de version lui-même, jamais écrit à la main : le

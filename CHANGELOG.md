@@ -6,6 +6,35 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Un README bilingue, cinq fiches, et le nom de l'auteur**
+
+- **Le README est bilingue**, français et anglais dans un seul fichier,
+  avec une barre de langue en tête. Le dépôt est public : la moitié de
+  ceux qui tomberont dessus ne lisent pas le français, et un atelier
+  dont la vocation est de transmettre ne peut pas s'arrêter à une
+  frontière.
+- **Cinq instructions qu'on lit sans les écrire ont leur fiche** :
+  `crc32`, `rdrand`, `rdseed`, `pclmulqdq` (avec ses quatre pseudo-noms,
+  dont `pclmullqlqdq`) et le préfixe `bnd`. Elles revenaient dans les
+  binaires d'Ubuntu — trente-neuf fois pour `bnd` — sans que le manuel
+  sache les expliquer.
+- Ce que namsdec en fait n'a pas été supposé mais **mesuré** : il refuse
+  les trois premières, et les fiches le disent. Il **exécute** `bnd ret`
+  en ignorant le préfixe, exactement comme un processeur sans MPX — la
+  fiche dit cela, qui vaut mieux qu'un « non simulé » commode.
+- Un contrôle les retient désormais **par leur nom**, sans lire aucun
+  binaire : celui qui lit la machine ne voit que ce que sa distribution
+  a compilé, et passait au vert sur Fedora pendant que la CI tombait.
+- **La boîte « À propos » nomme son auteur**, dans les deux langues, et
+  le nom vient de la LICENCE par un contrôle qui les compare. Un nom
+  écrit deux fois finit par diverger.
+- **Les préférences mènent aux versions publiées**, là où se réglait
+  l'adresse de don. Un champ pour sa propre page de paiement ne sert
+  qu'à qui publie ; ce que cherche qui ouvre les préférences, c'est la
+  version. Le réglage reste lu dans `settings.json` pour qui en avait
+  posé un — et le message de la boîte « À propos », qui envoyait encore
+  vers les préférences, ne ment plus.
+
 **Les mises à jour se choisissent**
 
 - **Le canal des mises à jour se règle, au lieu de se deviner.** Il se

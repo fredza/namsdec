@@ -3,13 +3,24 @@
 **Un atelier pour apprendre l'assembleur NASM x86-64 — et pour lire les
 binaires des autres.**
 
+**A workbench for learning x86-64 NASM assembly — and for reading the
+binaries other people wrote.**
+
+> Interface en français et en anglais. Linux, ELF64, syntaxe NASM.
+> Interface in French and English. Linux, ELF64, NASM syntax.
+> MIT.
+
+### **[Français](#français)** · **[English](#english)**
+
+---
+
+# Français
+
 namsdec exécute votre programme instruction par instruction et vous dit,
 à chaque pas, ce que la machine est sur le point de faire et ce qu'elle
 vient de faire. Il ne se contente pas d'afficher des registres : il
 explique. C'est un outil pédagogique, sous licence MIT, fait pour que ce
 qu'on y comprend puisse se transmettre.
-
-> Interface en français et en anglais. Linux, ELF64, syntaxe NASM.
 
 ---
 
@@ -319,7 +330,7 @@ pour chacun, ce que son état change concrètement. Sur
 votre programme comme sur un binaire du système. Le rapport se copie en
 Markdown, ou s'enregistre, pour être collé dans un compte rendu ou un cours.
 
-Et aussi : documentation de 189 instructions, directives et notions sous **F1** ou
+Et aussi : documentation de 193 instructions, directives et notions sous **F1** ou
 au survol — avec sommaire, renvois d'une fiche à l'autre et export du
 manuel entier en Markdown (menu Aide), parce que ce qu'on apprend ici
 doit pouvoir se lire ailleurs —, autocomplétion qui ne propose que ce qui est documenté,
@@ -1007,25 +1018,501 @@ Ce qui change d'une version à l'autre est dans [CHANGELOG.md](CHANGELOG.md).
 
 ## Licence
 
+Écrit par **Frédéric Zawalski**.
+
 MIT. Voir [LICENSE](LICENSE).
 
 ---
 
-## In English
+# English
 
-namsdec is a workbench for **learning x86-64 NASM assembly** on Linux,
-and for **reading binaries you did not write**. It steps through your
-program and, at every step, says what the machine is about to do and what
-it just did: the effective address an operand resolves to and the byte
-sitting there, the old value beside the new one, whether a conditional
-jump will be taken and by which rule, a system call written out the way
-you would write it in C, the stack read as a stack, where it spends its
-time — a heat band in the gutter and a Profile tab ranking the lines —
-and what to do when it faults.
+namsdec runs your program one instruction at a time and tells you, at
+every step, what the machine is about to do and what it just did. It does
+not merely display registers: it explains. It is a teaching tool, MIT
+licensed, built so that what you understand here can be passed on.
 
-It also reads a binary's armour — PIE, NX, RELRO, stack canary, FORTIFY,
-IBT, W+X segments, symbols, libraries — stating for each what that state
-actually changes, and copies the whole analysis out as Markdown.
+---
 
-Interface in French and English. MIT licensed: what you understand here
-is meant to be passed on.
+## What it shows that the others do not
+
+**The next instruction, resolved.** `mov al, [rsi + rcx*4 + 8]` does not
+tell you *where* that points: you have to hold three registers in your
+head and do the arithmetic. namsdec does it before execution — the
+effective address, its label in your own source (`tampon+2`), and the
+byte sitting there.
+
+**The last step, with the value from before.** `RCX 0x5 → 0x4` under the
+`dec rcx` that did it, and the flags it changed beside it. After a `cmp`,
+the flags *are* the result: the instruction touches no register at all.
+
+**The conditional jump, before it goes.** "The jump will be taken", the
+rule it follows (`CF = 0 and ZF = 0`), and whether the comparison reads
+its numbers as signed. `ja` and `jg` both say "greater" and answer the
+opposite on the same bytes: that is exactly where people get it wrong.
+
+**And, for the learner, a way to make it stick: "predict before you
+step".** The three paragraphs above are an answer handed over before the
+question was asked — you press *Step* to confirm what you just read, and
+never get the chance to be wrong. Being wrong is the only way to find out
+you had not understood. In beginner mode the address and the instruction
+stay on screen, the answer waits for the step, and *Last step* reveals it
+**next to what actually changed**:
+
+```
+Next instruction
+  0x400005  mov ebx, 2
+  What is this going to change?   [Show]
+
+Last step  0x400000  mov eax, 1
+  What it said: EAX = 1
+  RAX 0x0 -> 0x1
+```
+
+*Show* gives the answer straight away, one click, no confession. The
+setting lives in Preferences ▸ Modules, under beginner mode — it only
+makes sense there: an exercise forced on somebody who uses the tool daily
+would be a tax.
+
+**The system call written out.** `syscall` carries no operand at all —
+everything is in the registers, by a convention you either know or go
+looking for somewhere else:
+
+```
+write(fd = 0x1, buf = 0x402000 → "salut\n", count = 0x6)
+```
+
+**The stack read as a stack.** One eight-byte word per line, RSP and RBP
+marked, and any value pointing into the code named for what it is: a
+return address, with its label. What sits above RSP is greyed out —
+those bytes are still there, but the next `push` overwrites them.
+
+**When the listing lies.** A disassembler reads *linearly*; the processor
+goes **where the jumps send it**. One trap byte behind a `jmp` that steps
+over it, and the whole line-by-line reading goes askew — classic
+anti-disassembly, and you meet it in the very things namsdec is built to
+read. The **Code shapes** panel gives you **both readings side by side**
+and the byte that separates them. What you learn on the way is worth more
+than the finding itself: where instructions begin is not a property of
+the bytes, it is a property of where you start reading.
+
+**What stands out, and why.** The analysis window opens on **Signals**: a
+fooled listing, a segment both writable *and* executable, rising entropy,
+a packer recognised by name, anti-debugging, missing protections, flags
+hiding in strings. Nothing new is computed there — it is what the other
+panels already found, gathered to say where to start. Each line gives a
+**fact** (an address, a name, a measurement), **what that fact changes**,
+and **the panel** that explains it. Nothing is added up into a score: a
+score would look like a verdict, and it is the reader who concludes.
+
+**What the binary can do, in six families.** Imports and system calls are
+listed everywhere; here they are also *sorted* — network, execution,
+anti-debugging, memory, cryptography, files. The question is not "which
+functions" but "what does this binary do", and three lit families are
+already a portrait. A `socket` is a `socket` whether it arrives through
+the relocation table or as number 41 in RAX — and a program trying to go
+unnoticed uses precisely the second.
+
+**A decompiler, if you have one.** The **Decompilation** module
+(Preferences ▸ Modules, off by default) runs the tool of your choice. Six
+are known in advance — `objdump`, `ndisasm`, radare2's pseudo-code,
+**Rizin + rz-ghidra**, **RetDec** and **DZF** — with the arguments that
+work. Each card answers **two questions**, and you need both for the tool
+to be of use: is the program **installed on this machine**, and is it
+**enabled in namsdec**? The two are independent. Enabling one **writes a
+file of a few lines**: namsdec downloads nothing and launches nothing on
+its own.
+
+namsdec can also go and fetch them: Preferences ▸ Modules ▸ *Fetch the
+tools and build them*. That module is off by default and more plainly so
+than the others — the others display, this one downloads code and runs
+it. So the window shows **the whole recipe before anything starts**, and
+the log is written live. No step calls `sudo`, no step goes through a
+shell, and nothing is placed outside `~/.local/share/namsdec/tools/`.
+
+**Adding your own** is a JSON file dropped in
+`~/.local/share/namsdec/modules/` — with `{out}` in the arguments if the
+tool writes its result to a file rather than to standard output. Three
+locks, because this means running a program on your machine: the module
+is enabled by hand, the window opens on request, and **the command is
+spelled out in full before it is run**. The work happens alongside — the
+interface does not freeze — and a tool that has not come back after two
+minutes is stopped rather than waited on forever. Progress is readable in
+the status bar **and in the window title**, so in your system's task bar.
+
+**Where this value came from.** Hovering a register says which step wrote
+it last, its rank and its line: "written at step -12, line 7: add rax,
+rcx". Finding that by hand means reading your program backwards, and
+getting it wrong every other time as soon as there is a loop. When there
+is no history — a binary calling an absent library does not run — namsdec
+walks the **code** backwards to the source instead, stopping at the first
+jump: beyond it several paths lead here, and "the last write" no longer
+has a single meaning.
+
+**The shape of the program, not its sequence of instructions.** `Space g`
+opens the **flow graph**: each box is a block you can only enter from the
+top and leave from the bottom, arrows show the taken jump (green), the
+untaken one (red) and the call (blue), and a loop shows up by going back
+up. The block the program is in is brought forward, a click takes you
+there in the editor, and Ctrl+wheel zooms out to see the overall shape.
+That is what you reconstruct in your head while reading a listing — and
+what a beginner cannot see yet.
+
+**Where the program spends its time.** A heat band in the gutter — green
+for a line walked once, red for the hottest, yellow and orange in between
+— with the exact count on hover and a legend under the editor. The
+console's **Profile** tab turns it into a ranking: the number of passes,
+the share of the total, the line itself, and a click that takes you
+there.
+
+**How do you even get there?** In the flow graph, a field takes an
+address — the one where the program accepts, say — and gives you **the
+route to reach it**, with the conditions to satisfy in order: this `jne`
+must not be taken, that one must. The blocks along the path are brought
+forward in the drawing. It is the shortest route, and namsdec says when
+others exist rather than letting you believe in a proof.
+
+**What the code does that is worth noticing.** The **Shapes** module
+picks out constants that are really text (`mov ecx, 0x48555648` →
+`"HVUH"`), length checks, comparisons disguised as XOR — `a XOR b` is
+zero only if the two are equal, so the constant *is* the expected value —
+string comparisons and jump tables. Families are sorted **from the rarest
+to the most common**: in a binary of sixty thousand instructions, seventeen
+hundred zero tests are punctuation, and four XOR comparisons are a lead.
+
+**Where to start reading.** The **Functions** module recovers `main` in a
+stripped binary — the startup code hands its address to
+`__libc_start_main`, in RDI — then cuts the code at call targets, with
+the number of callers for each. And strings from languages without a
+terminating zero (Rust, Go, Zig) are **cut by the code**, where a byte
+scan reads only one blob: there the address travels with its length.
+
+**A binary's armour.** PIE, NX, RELRO, stack canary, FORTIFY, IBT and
+shadow stack, W+X segments, symbols, libraries, RPATH, and the functions
+it borrows — each relocation entry gets its name back, with the number of
+calls leading to it — with, for each, what its state actually changes. On
+your own program as on a system binary. The report copies out as
+Markdown, or saves, to be pasted into a write-up or a course.
+
+**And also:** documentation for 193 instructions, directives and concepts
+under **F1** or on hover — with a table of contents, cross-references and
+an export of the whole manual as Markdown (Help menu), because what you
+learn here must be readable elsewhere — completion that only offers what
+is documented, a De Bruijn cyclic pattern to measure how far an overflow
+went (identical to pwntools', hence comparable), a command palette that
+also reaches your program's labels, a timeline where you click a past
+step to return to it (registers, flags and memory with it), registers and
+flags you can set by hand ("what if ZF were 1?"), breakpoints — with a
+condition (`rcx == 0`), watching a register or an address, calling
+convention checks (what a subroutine borrowed without giving back),
+memory protected by the real permissions of the sections, a simulated
+heap with `brk`, SSE/AVX and the x87 stack.
+
+## Plugins
+
+The [`plugins/`](plugins/) directory holds what can be added to namsdec
+without recompiling it, in two families:
+
+- [**Themes**](plugins/themes/) — colours, and nothing else. A theme does
+  not execute.
+- [**Extra features**](plugins/fonctionnalites/) — the description of a
+  **program** to run: `objdump`, `ndisasm`, `radare2`, Rizin + rz-ghidra,
+  RetDec. Each with its installation instructions and the arguments that
+  work.
+
+The distinction is not a ranking, it is a matter of trust: namsdec never
+goes looking for a program on its own, runs one only on an explicit
+request, and writes the full command out before running it.
+
+## The guide
+
+A **PDF user guide** ships with every release:
+[`docs/guide-namsdec-1.0.0-beta.666.pdf`](docs/guide-namsdec-1.0.0-beta.666.pdf)
+— installing, getting started, every panel, stepping, memory, the manual,
+the flow graph, the exercise path, reverse engineering, the shortcuts and
+the known limits.
+
+It is **produced from the repository** (`python3 docs/guide.py`): the
+version, the number of exercises, the number of documentation cards and
+the shortcut table come from the sources, never from a copy that would
+age.
+
+## Installing
+
+You need **Rust** (`cargo`), **nasm** and **ld** (binutils):
+
+```sh
+# Fedora
+sudo dnf install nasm binutils
+# Debian, Ubuntu
+sudo apt install nasm binutils
+```
+
+Then:
+
+```sh
+git clone https://github.com/fredza/namsdec.git
+cd namsdec
+./install.sh
+```
+
+`install.sh` compiles, puts the binary in `~/.local/bin`, and the icon
+and launcher where the desktop looks for them. Nothing is written outside
+`$HOME` and nothing asks for administrator rights.
+
+**Running it again is an update, not a reinstall.** Nothing is removed:
+your settings, the exercise packs you added and your breakpoints stay
+where they are, and the script says so up front. Each file is written
+beside its target and then renamed, so the target is never missing nor
+half-written.
+
+**And if namsdec is open**, it stays open for the whole job — compiling
+takes a few minutes, and waiting in front of an empty screen helps
+nobody. The binary is replaced under the window, which does not notice.
+Only at the very end, once everything is in place, does the script close
+it cleanly and reopen it on the new version. `--no-restart` prevents
+that. A window that refuses to go — a question on screen, unsaved work —
+is never forced: the script says so and stops there.
+
+`./install.sh --help` lists the options. The most useful ones:
+
+| option | what it does |
+|---|---|
+| `--dry-run`, `-n` | say what would be done, write nothing |
+| `--debug` | install the unoptimised build, ready in seconds |
+| `--prefix DIR` | where icons, launcher and exercises go |
+| `--bin-dir DIR` | where the binary goes |
+| `--no-desktop` | no launcher, no icons |
+| `--no-dock` | do not pin to the dock (GNOME) |
+| `--no-path` | do not touch the shell configuration file |
+| `--no-exercises` | do not install the bundled pack |
+| `--no-strip` | keep debug symbols (two megabytes more) |
+| `--no-build` | do not compile: install the binary already built |
+| `--no-restart` | do not close and reopen namsdec if it is running |
+| `--quiet`, `-q` | say only what matters |
+| `--no-color` | no colours — `NO_COLOR` is honoured too |
+
+**A lighter binary**: `cargo build --release --no-default-features` drops
+the update check, and the TLS stack with it — **16.0 → 14.4 MB** once
+stripped, ten per cent. That is what a distribution packager wants:
+updates are their job, not the application's. The menu then does not show
+the entry, rather than offering a button that can do nothing.
+
+`./uninstall.sh` undoes exactly that, and takes `--prefix`, `--bin-dir`,
+`--dry-run`, `--quiet` and `--no-color` the same way. `--purge` also
+removes your settings and exercise packs — without it they are kept,
+because people usually uninstall in order to reinstall.
+
+To run without installing: `cargo run -p namsdec-gui`.
+
+## Getting started
+
+1. **Ctrl+Shift+B** assembles the program (nasm then ld, for real).
+2. **Space s i** steps one instruction (`stepi`), **Space n i** steps
+   over a `call`, **Space p r** runs, **Space p b** steps one back. The
+   first two keep gdb's letters because they are the most hit keys in the
+   whole program; the rest of the sequences are sorted by family: `p` for
+   what runs the **program**, `/` to search, `m` to **mark**, `v` for the
+   **views**, `u` to run **until** something.
+3. **At beginner level the editor has no modes**: you click, you type, it
+   is written, and the status bar carries no badge. At advanced level the
+   editor has three modes, like vim: **NORMAL** (the `hjkl w b e gg G`
+   motions, and the `5j` counter), **INSERT** (`i`, Escape to leave) and
+   **VISUAL** (`v`: motions extend a selection, `y` copies, `d` cuts).
+4. **F1** on a word in the code gives its card; hovering does too.
+5. A click in the gutter sets a breakpoint; **Ctrl+F10** runs to the line
+   under the cursor.
+6. **Ctrl+Shift+P** opens the palette: every command is in there.
+
+The shortcuts live in Preferences ▸ Shortcuts, and can be changed.
+
+**The console is not there at the start, and that is deliberate.** Before
+you have assembled anything it would have one thing to say: that it is
+empty. It appears by itself as soon as it has something to show — an
+error from nasm, or the first byte the program writes.
+
+### The exercises
+
+A path of **one hundred and thirty-eight exercises** ships with the
+application, in four levels: **Discovery** (43) — the program first,
+**Practice** (33) — shifts, bit counting, multiplication, **Structures**
+(36) — strings, string instructions, **Mastery** (26) — output, input,
+the heap, floating point, SIMD. Each one carries its own **theory card**:
+not the brief, not the hint — the notion the exercise is about, with
+worked numbers.
+
+**The path is not in the binary**: it is a data file, and yours is added
+the same way.
+
+### If you come from pwndbg
+
+The shortcut set follows gdb where it matters, and the panels answer the
+same questions — with the explanation added. The cyclic pattern is
+pwntools', so what you measure here is comparable with what you measure
+there.
+
+### Three ways to read the same instruction
+
+Pseudo-code (`RAX = RAX + RCX` rather than `add rax, rcx`), NASM syntax,
+and the system's own syntax — the one gdb, objdump and as speak. **In
+beginner mode the row offers only three**, because a choice you cannot
+yet judge is not a choice.
+
+### Adding a disassembler
+
+A JSON file in `~/.local/share/namsdec/modules/` describes the command to
+run. **If the tool does not read ELF**, two more markers let it off:
+namsdec hands it the executable bytes and their address instead.
+
+## The code
+
+A Rust workspace, one crate per responsibility:
+
+| crate | what it does |
+|---|---|
+| `namsdec-core` | registers, flags, memory and its permissions |
+| `namsdec-asm` | calling nasm and ld, reading the ELF they produce |
+| `namsdec-disasm` | x86-64 disassembly (iced-x86), NASM syntax |
+| `namsdec-emu` | the interpreter: integers, SSE/AVX, x87, system calls |
+| `namsdec-re` | reverse engineering: signals, anti-disassembly, protections, cross-references, strings and flags, behaviour families, system calls, packers, ROP gadgets, slack space |
+| `namsdec-doc` | the instruction and directive cards |
+| `namsdec-exercises` | the exercise packs and their format |
+| `namsdec-theme` | the themes, including those installed from disk |
+| `namsdec-explorer` | the file explorer |
+| `namsdec-update` | looking up the published release, and SemVer comparison |
+| `namsdec-gui` | the interface (egui / eframe) |
+| `namsdec-cli` | the analysis command: report, JSON, comparing two versions |
+
+The domain crates know nothing of the interface language: their errors
+carry an English message and keep their values in structured variants,
+which the interface translates.
+
+```sh
+cargo test --workspace
+cargo clippy --workspace --all-targets
+```
+
+The tests do not merely check functions: they assemble and run real
+programs with nasm and ld, draw the interface off-screen and read what
+was painted. Every program shipped with the application, and every
+example in the cards, must assemble, link without a warning, and run to
+the end.
+
+### Checking the emulator against a real CPU
+
+Thirteen thousand hand-written lines of semantics cannot be verified by
+re-reading them. A flag computed wrongly does not crash: it returns a
+wrong answer, silently, and the emulated program takes a branch it should
+not have. So the emulator is compared against the real processor, through
+gdb.
+
+## What it does not do
+
+- No 32-bit mode, no `int 0x80`.
+- **No dynamic linker.** namsdec loads a binary the way the kernel would
+  — segments mapped into pages, relocations applied, thread-local memory
+  laid down, the process stack written with `argc`, `argv`, the
+  environment and the auxiliary vector — but it loads no library. A
+  **statically** linked binary therefore runs in full, C library
+  included.
+- Instead, namsdec **provides** one hundred and seventy functions of its
+  own, written in Rust: `printf` and its cousins, `puts`, `fgets`,
+  `scanf` and `sscanf`, the string and memory functions — `strtok`
+  included, which cuts in place — the **character classes** and
+  `<ctype.h>` tables the glibc reads instead of calling, `malloc` and its
+  family — which takes its memory from the heap, where you can see it —
+  and the system call wrappers. An ordinary **dynamic** binary therefore
+  runs too, from prompt to verdict; it stops by **naming** the first
+  function it borrows that namsdec does not provide.
+- Those functions obey the same rules as everything else: the simulated
+  memory permissions apply (a `strcpy` into `.rodata` fails, as it would
+  on the real machine), each call counts as **one step**, and what it
+  writes is undone by *step back*.
+- The simulated system calls are the ones that *do* the work — `read`,
+  `write`, `brk`, `mmap`, `mprotect`, `exit` — the ones that report
+  without changing the world — `getpid`, `getuid`, `geteuid`,
+  `sched_yield`, `nanosleep`, `getrandom`, `uname`, `clock_gettime` — and
+  those of a C library's startup: `arch_prctl`, `set_tid_address`,
+  `fstat`, `lseek`, `ioctl`, `writev`, `prlimit64`, `futex`. Plus the
+  ones that touch **files** — `open`, `openat`, `stat`, `access`: they
+  answer "not found", which is the truth since there is no filesystem,
+  and the program follows its error branch instead of stopping in front
+  of the question. The others — starting a process, opening a connection
+  — are named and reported as not simulated: behind namsdec there is
+  neither network nor second process. `getrandom` returns
+  **reproducible** bytes: exactly what a workshop where you step backwards
+  needs, and exactly what a key must never have.
+- AVX-512, FMA, the `in`/`out` ports and `cmpxchg16b` are not
+  implemented.
+
+### The window
+
+namsdec draws its own title bar: the menus stand in for it, and the three
+buttons are **at the head**, on the left — close, minimise, maximise.
+Closing therefore occupies the corner of the screen, the angle a mouse
+thrown without aiming reaches. Preferences ▸ General hands the desktop
+decoration back to whoever prefers it, and the setting applies without
+restarting.
+
+### Leaving the workshop
+
+File ▸ **Export the binary** writes the program exactly as `ld` produced
+it — an executable ELF, the one the command line would have given: it
+runs in a terminal, reads with `objdump`, compares with what namsdec says
+about it. The Diagnostics tab shows the **two commands actually run**,
+ready to copy:
+
+```sh
+nasm -f elf64 -o programme.o programme.asm
+ld -Ttext 0x400000 -o programme programme.o
+```
+
+A workshop that lets nothing out teaches you to use itself, not the
+assembler.
+
+### Analysis without the window
+
+`namsdec-cli` writes out what the analysis panels show, without opening
+an interface. Same substance, same path: the analysis was moved out of
+the interface, and nothing is painted there.
+
+```sh
+namsdec-cli programme                   # the report, on screen
+namsdec-cli programme -o report.md      # the report, to a file
+namsdec-cli programme --rubriques       # what this file has material for
+namsdec-cli programme -s protections    # a single section
+```
+
+**And what it makes possible, which is its reason to exist: comparing two
+versions of a binary.** A protection that disappears, a string that
+appears, a function that grows — a byte `diff` would say "the file
+changed at offset 0x15604", which teaches nothing.
+
+```sh
+namsdec-cli programme.v2 --contre programme.v1
+```
+
+### Updates
+
+*About ▸ Check for updates* asks GitHub for the published releases and
+compares with yours — nothing is sent, nothing is downloaded, nothing is
+installed. Which releases you are offered is set in Preferences ▸
+General: final releases are offered either way, and the box **adds** the
+betas on top. Updating is done by hand:
+
+```sh
+git pull && ./install.sh
+```
+
+A workshop that rewrites itself while you are working inside it is not a
+workshop.
+
+## Changelog
+
+What changes from one version to the next is in
+[CHANGELOG.md](CHANGELOG.md).
+
+## Licence
+
+Written by **Frédéric Zawalski**.
+
+MIT. See [LICENSE](LICENSE).

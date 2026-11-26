@@ -5175,6 +5175,29 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
 - [x] **Version 0.4.2-beta.2** (A 9.107) — demandée. Changelog, PDF
       renommé et régénéré, lien du README.
 
+- [x] **README bilingue, cinq fiches, et l'auteur nommé** (A 9.110) —
+      le dépôt est passé public. Le README porte les deux langues dans
+      un seul fichier, le français intact parce que sept invariants en
+      lisent les phrases. Les cinq instructions qu'Ubuntu employait
+      sans fiche sont écrites, chaque nom passé par nasm et relu par
+      objdump ; ce que l'émulateur en fait a été MESURÉ avant d'être
+      écrit — il refuse `crc32`, `rdrand` et `pclmulqdq`, il exécute
+      `bnd ret` en ignorant le préfixe. Retenues par
+      `ce_qu_une_autre_distribution_emploie_a_sa_fiche`, qui ne lit
+      aucun binaire et dit donc la même chose partout.
+
+      Le nom de l'auteur est une constante du code (`APP_AUTHOR`), lue
+      par la boîte « À propos » dans les deux langues et comparée à la
+      LICENCE par un contrôle. Et les préférences ne proposent plus
+      l'adresse de don mais les versions publiées — en découvrant au
+      passage que la boîte « À propos » envoyait encore y régler une
+      adresse qui ne s'y règle plus.
+
+      **Reste pour la publication** : les deux contrôles qui lisent la
+      machine (`posing_the_same_detour_twice…`,
+      `la_barre_de_la_console…`) tombent sur Ubuntu et pas ici. Et le
+      site GitHub Pages, demandé, n'est pas commencé.
+
 - [x] **Le canal des mises à jour** (A 9.109) — demandé : « je veux des
       mises à jour de beta et les mises à jour ». La règle existait
       déjà — une préversion se voit proposer les bêtas ET les
@@ -5201,6 +5224,19 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       `the_changelog_covers_the_version_being_built` exige que le
       journal porte la version compilée **en tête** : il tombe si l'on
       monte le numéro sans écrire la section.
+
+      **Publiée le 26 novembre 2026**, le dépôt étant passé public :
+      `main` avancé jusqu'ici, étiquette `v1.0.0-beta.666` poussée, et
+      `release.yml` s'en charge — il republie les trois mêmes barrières
+      que la CI avant de livrer le binaire, et marque la version comme
+      une préversion parce que l'étiquette porte un tiret.
+
+      **La CI de `main` était rouge depuis le 20 novembre**, et pour
+      exactement les trois points corrigés ce jour-là : `anyhow`,
+      `egui_code_editor` et la boucle indexée de l'explorateur. Rust
+      1.100 était arrivé sur le coureur avant d'arriver ici. La leçon
+      est écrite plus haut (section 0 quinquadragies) : après chaque
+      `rustup update`, lancer clippy AVANT de regarder les crates.
 
 ## 7. Dette technique
 

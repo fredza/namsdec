@@ -996,6 +996,135 @@ fn the_readme_tells_the_truth() {
     }
 }
 
+/// LE NOM DE L'AUTEUR SE LIT DANS LA BOÎTE, ET C'EST CELUI DE LA
+/// LICENCE.
+///
+/// Un nom écrit deux fois finit par ne plus dire la même chose — c'est
+/// exactement ce qui était arrivé à l'adresse de don, en dur dans le
+/// binaire et pointant vers un domaine de documentation. Ici la source
+/// est la LICENCE : c'est elle qui engage, l'interface ne fait que la
+/// citer.
+#[test]
+fn la_boite_a_propos_nomme_l_auteur_de_la_licence() {
+    let licence = include_str!("../../../../LICENSE");
+    assert!(
+        licence.contains(APP_AUTHOR),
+        "le nom affiché « {APP_AUTHOR} » n'est pas celui de la LICENCE"
+    );
+    // Et il est peint, dans les deux langues : une boîte « À propos »
+    // qui ne nomme personne en anglais ne nomme personne.
+    for lang in [Lang::Fr, Lang::En] {
+        let mut app = NamsdecApp {
+            show_about: true,
+            lang,
+            ..Default::default()
+        };
+        let painted = paint(&mut app);
+        assert!(
+            painted.contains(APP_AUTHOR),
+            "« À propos » ne nomme pas l'auteur en {lang:?} : {painted}"
+        );
+        assert!(
+            painted.contains(strings(lang).about_author),
+            "la phrase qui l'introduit manque en {lang:?}"
+        );
+    }
+}
+
+/// LES PRÉFÉRENCES MÈNENT AUX VERSIONS, ET NON À UNE PAGE DE PAIEMENT.
+///
+/// Le champ qui s'y trouvait servait à qui PUBLIE namsdec — une
+/// personne — et occupait une place que cherche quiconque ouvre les
+/// préférences : où sont les versions. Le réglage reste lu dans
+/// `settings.json` pour qui en avait posé un, il ne s'offre plus ici.
+#[test]
+fn les_preferences_menent_aux_versions_publiees() {
+    let source = include_str!("../preferences.rs");
+    assert!(
+        !source.contains("self.donation_url"),
+        "les préférences proposent encore l'adresse de don"
+    );
+    assert!(
+        source.contains("releases_url"),
+        "les préférences ne mènent pas aux versions publiées"
+    );
+    // Et le lien mène au dépôt de namsdec, non à une page inventée.
+    let url = namsdec_update::releases_url(namsdec_update::OWNER, namsdec_update::REPO);
+    assert!(url.contains("namsdec"), "{url}");
+    assert!(url.starts_with("https://"), "{url}");
+
+    // ET PLUS AUCUN TEXTE N'Y ENVOIE. La boîte « À propos » disait
+    // encore « posez la vôtre dans Préférences › Général » : un mode
+    // d'emploi vers un endroit qui ne l'offre plus est pire qu'un
+    // silence, parce qu'on le suit.
+    for lang in [Lang::Fr, Lang::En] {
+        let s = strings(lang);
+        assert!(
+            !s.about_donate_unset.contains("Préférences")
+                && !s.about_donate_unset.contains("Preferences"),
+            "le message du don renvoie encore aux préférences en {lang:?}"
+        );
+        assert!(
+            s.about_donate_unset.contains("settings.json"),
+            "il faut bien dire où l'adresse se pose, en {lang:?}"
+        );
+    }
+}
+
+/// CE QU'UNE AUTRE DISTRIBUTION EMPLOIE, ET QUE CELLE-CI N'EMPLOIE PAS.
+///
+/// `what_this_machine_runs_can_be_explained` lit les binaires de la
+/// machine où il tourne : il ne voit donc que ce que cette
+/// distribution-là a compilé. Sur Fedora il passait au vert pendant que
+/// la CI — Ubuntu 24.04 — nommait cinq instructions sans fiche :
+/// `bnd`, `crc32`, `pclmullqlqdq`, `rdrand` et `rdseed`. Un contrôle
+/// qui ne regarde qu'une machine ne peut pas dire ce qui manque pour
+/// les autres.
+///
+/// Celui-ci les retient PAR LEUR NOM. Il ne dépend d'aucun binaire,
+/// donc il dit la même chose partout — et la prochaine liste trouvée
+/// ailleurs vient s'y ajouter au lieu de se reperdre entre deux
+/// journaux de CI.
+#[test]
+fn ce_qu_une_autre_distribution_emploie_a_sa_fiche() {
+    // Relevées sur Ubuntu 24.04 le 26 novembre 2026, dans soixante
+    // binaires de `/usr/bin`, avec le nombre de fois qu'elles y
+    // revenaient.
+    let ailleurs = [
+        ("bnd", 39),
+        ("crc32", 32),
+        ("pclmullqlqdq", 4),
+        ("rdrand", 3),
+        ("rdseed", 12),
+    ];
+    let sans_fiche: Vec<&str> = ailleurs
+        .iter()
+        .filter(|(nom, _)| namsdec_doc::lookup(nom).is_none())
+        .map(|(nom, _)| *nom)
+        .collect();
+    assert!(
+        sans_fiche.is_empty(),
+        "ces instructions reviennent dans les binaires d'une distribution \
+         courante sans pouvoir s'expliquer : {sans_fiche:?}"
+    );
+    // ET LA FICHE DIT CE QU'ON EN FAIT. Une fiche qui décrit une
+    // instruction sans dire si namsdec l'exécute promet une exécution
+    // qui n'aura pas lieu — c'est la règle que
+    // `every_documented_example_assembles_and_runs` applique déjà, et
+    // ces cinq-là sont précisément celles qu'on lit sans les écrire.
+    for (nom, _) in ailleurs {
+        let fiche = namsdec_doc::lookup(nom).expect("la fiche existe");
+        assert!(
+            fiche.body.fr.contains("namsdec"),
+            "la fiche de {nom} ne dit pas ce que namsdec en fait"
+        );
+        assert!(
+            fiche.body.en.contains("namsdec"),
+            "the {nom} card does not say what namsdec does with it"
+        );
+    }
+}
+
 /// `int 0x80` est le piège du vieux tutoriel : namsdec ne le simule pas,
 /// et dit pourquoi plutôt que de refuser une instruction de plus.
 #[test]

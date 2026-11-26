@@ -951,6 +951,68 @@ Hence the shape one reads in a real binary: a transactional path, and **always**
     },
     Entry {
         kind: Kind::Instruction,
+        names: &["crc32"],
+        title: Text {
+            fr: "Somme de contrôle CRC-32C",
+            en: "CRC-32C checksum",
+        },
+        body: Text {
+            fr: "Mélange l'opérande source dans l'accumulateur et rend le résultat : c'est la somme CRC-32C, celle d'iSCSI, câblée dans le processeur depuis SSE4.2. On la rencontre dans les bibliothèques qui vérifient un bloc de données, et dans les tables de hachage qui s'en servent comme d'une empreinte rapide. Ce n'est PAS du chiffrement : une somme de contrôle dit qu'un octet a changé, elle ne cache rien. namsdec ne la simule pas : on la lit dans les binaires des autres, et une somme de contrôle fausse serait pire qu'une absence.",
+            en: "Mixes the source operand into the accumulator and returns the result: this is the CRC-32C checksum, the iSCSI one, wired into the processor since SSE4.2. You meet it in libraries that verify a block of data, and in hash tables that use it as a quick fingerprint. It is NOT encryption: a checksum says a byte changed, it hides nothing. namsdec does not simulate it: you read it in other people's binaries, and a wrong checksum would be worse than none.",
+        },
+        flags: "",
+        example: "crc32 eax, ebx\ncrc32 rax, rbx",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &["rdrand", "rdseed"],
+        title: Text {
+            fr: "Tirer un nombre au hasard",
+            en: "Draw a random number",
+        },
+        body: Text {
+            fr: "Prennent leur nombre dans le générateur matériel du processeur et le posent dans le registre. `rdrand` rend un nombre déjà mis en forme, `rdseed` rend la graine brute, celle qu'on donne à un générateur logiciel. Les deux posent `CF` à 1 quand le nombre est bon et à 0 quand il ne l'est pas : **il faut donc réessayer**, et le code qui les emploie boucle toujours. C'est le piège de ces deux instructions — qui oublie le test prend un zéro pour un tirage. namsdec ne les simule pas : un atelier où l'on revient en arrière ne peut pas rendre deux fois un nombre tiré au hasard, et prétendre le contraire tromperait sur les deux.",
+            en: "They take their number from the processor's hardware generator and put it in the register. `rdrand` returns a number already conditioned, `rdseed` returns the raw seed, the one you feed to a software generator. Both set `CF` to 1 when the number is good and to 0 when it is not: **you must retry**, and code that uses them always loops. That is the trap of these two instructions — whoever forgets the test takes a zero for a draw. namsdec does not simulate them: a workshop where you step backwards cannot return a random number twice, and pretending otherwise would mislead on both counts.",
+        },
+        flags: "CF",
+        example: "rdrand eax\nrdseed ebx",
+    },
+    Entry {
+        kind: Kind::Instruction,
+        names: &[
+            "pclmulqdq",
+            "pclmullqlqdq",
+            "pclmulhqlqdq",
+            "pclmullqhqdq",
+            "pclmulhqhqdq",
+        ],
+        title: Text {
+            fr: "Multiplier sans retenue",
+            en: "Carry-less multiply",
+        },
+        body: Text {
+            fr: "Multiplie deux moitiés de 64 bits **sans aucune retenue** : chaque bit du résultat est un XOR, non une addition. C'est l'arithmétique des polynômes sur deux éléments, et c'est ce dont AES-GCM a besoin pour son étiquette d'authentification — d'où sa présence dans toute bibliothèque de chiffrement moderne. Le dernier opérande choisit laquelle des deux moitiés multiplier de chaque côté ; les désassembleurs écrivent ce choix dans le nom, d'où `pclmullqlqdq` pour « la basse par la basse ». namsdec ne la simule pas ; la fiche est là parce qu'on la rencontre en lisant, pas en écrivant.",
+            en: "Multiplies two 64-bit halves **with no carry at all**: every bit of the result is a XOR, not an addition. This is polynomial arithmetic over two elements, and it is what AES-GCM needs for its authentication tag — hence its presence in every modern cryptography library. The last operand picks which half to take on each side; disassemblers write that choice into the name, which is why you see `pclmullqlqdq` for \"low by low\". namsdec does not simulate it; the card is here because you meet it while reading, not while writing.",
+        },
+        flags: "",
+        example: "pclmulqdq xmm0, xmm1, 0x00",
+    },
+    Entry {
+        kind: Kind::Concept,
+        names: &["bnd"],
+        title: Text {
+            fr: "Le préfixe `bnd`",
+            en: "The `bnd` prefix",
+        },
+        body: Text {
+            fr: "Ce n'est pas une instruction : c'est un octet posé **devant** un saut ou un `ret`, écrit `bnd jmp` ou `bnd ret` par les désassembleurs. Il vient de MPX, la vérification de bornes qu'Intel a proposée puis abandonnée. Sur un processeur sans MPX — c'est-à-dire sur tous ceux d'aujourd'hui — il ne fait **rien** : le saut part comme si le préfixe n'était pas là. On le trouve surtout dans les tremplins de la table de liaison, parce que l'éditeur de liens les assemblait ainsi quand MPX existait encore. Le rencontrer ne dit donc rien du programme, sinon l'âge de la chaîne qui l'a construit. namsdec l'exécute comme s'il n'était pas là — c'est-à-dire comme le ferait la machine.",
+            en: "This is not an instruction: it is a byte placed **in front of** a jump or a `ret`, written `bnd jmp` or `bnd ret` by disassemblers. It comes from MPX, the bounds checking Intel proposed and then abandoned. On a processor without MPX — that is, on every processor today — it does **nothing**: the jump goes as if the prefix were not there. You mostly find it in linking-table trampolines, because the linker assembled them that way while MPX still existed. Meeting it therefore says nothing about the program, except the age of the toolchain that built it. namsdec runs it as though it were not there — that is, as the machine would.",
+        },
+        flags: "",
+        example: "bnd ret",
+    },
+    Entry {
+        kind: Kind::Instruction,
         names: &["rdtsc", "rdtscp"],
         title: Text {
             fr: "Lire l'horloge",

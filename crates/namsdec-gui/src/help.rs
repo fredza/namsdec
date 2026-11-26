@@ -827,6 +827,11 @@ impl NamsdecApp {
                         }
 
                         ui.add_space(6.0);
+                        // QUI L'A ÉCRIT, à côté de ce qu'il en permet.
+                        // Le nom vient d'`APP_AUTHOR`, pas d'une chaîne
+                        // traduite : un nom propre ne se traduit pas, et
+                        // deux copies finiraient par diverger.
+                        ui.colored_label(theme.dim, format!("{} {APP_AUTHOR}", s.about_author));
                         ui.horizontal_wrapped(|ui| {
                             ui.colored_label(theme.dim, s.about_license);
                             ui.hyperlink_to(s.about_license_link, MIT_LICENSE_URL);

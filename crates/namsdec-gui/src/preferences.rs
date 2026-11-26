@@ -315,20 +315,21 @@ impl NamsdecApp {
 
         ui.separator();
 
-        // L'ADRESSE DE DON SE RÈGLE ICI, et nulle part dans le binaire.
+        // LES VERSIONS PUBLIÉES, et non une adresse de paiement.
         //
-        // Elle était une constante, et valait `https://example.com/…` —
-        // un domaine réservé à la documentation, où personne ne reçoit
-        // rien. Le bouton d'« À propos » paraissait donc actif et menait
-        // nulle part. Une adresse de paiement appartient à qui reçoit :
-        // namsdec ne peut que la lire.
-        ui.label(s.preferences_donation);
-        ui.add(
-            egui::TextEdit::singleline(&mut self.donation_url)
-                .desired_width(ui.available_width().min(420.0))
-                .hint_text("https://ko-fi.com/…"),
+        // Un champ où taper l'adresse de sa propre page de don n'a de
+        // sens que pour qui publie namsdec — c'est-à-dire une personne,
+        // pas ceux qui s'en servent. Ce que veut quelqu'un qui ouvre
+        // les préférences, c'est la version : laquelle il fait tourner,
+        // et où sont les autres. Le réglage de l'adresse reste LU dans
+        // `settings.json` pour qui en avait posé une ; il ne s'offre
+        // simplement plus ici.
+        ui.label(s.preferences_releases);
+        ui.hyperlink_to(
+            s.preferences_releases_link,
+            namsdec_update::releases_url(namsdec_update::OWNER, namsdec_update::REPO),
         );
-        ui.weak(s.preferences_donation_hint);
+        ui.weak(s.preferences_releases_hint);
 
         ui.separator();
 
