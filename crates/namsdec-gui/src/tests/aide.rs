@@ -1051,11 +1051,57 @@ fn le_site_ne_montre_rien_qui_manque() {
             "docs/{nom} ne nomme pas l'auteur"
         );
 
-        // La feuille de style qu'elles partagent.
-        assert!(page.contains("style.css"));
+        // La feuille de style et l'interrupteur du thème, partagés.
+        assert!(
+            page.contains("style.css"),
+            "docs/{nom} ne charge pas la feuille de style"
+        );
+        assert!(
+            page.contains("theme.js"),
+            "docs/{nom} ne charge pas le choix du thème"
+        );
+        assert!(
+            page.contains("id=\"bascule-theme\""),
+            "docs/{nom} n'a pas de bouton pour changer de thème"
+        );
+
+        // CE QUI DOIT RESTER À PORTÉE DE CLIC. La barre est collante :
+        // le téléchargement et le dépôt y vivent, et doivent y rester.
+        // Une page qui les perdrait au fil d'une refonte ne le dirait
+        // pas — on ne remarque pas l'absence d'un bouton.
+        let barre = &page[page.find("<header").expect("une barre")
+            ..page.find("</header>").expect("une barre fermée")];
+        assert!(
+            barre.contains("https://github.com/fredza/namsdec/releases/latest"),
+            "docs/{nom} : le téléchargement n'est pas dans la barre toujours visible"
+        );
+        assert!(
+            barre.contains("https://github.com/fredza/namsdec\""),
+            "docs/{nom} : le lien du dépôt n'est pas dans la barre toujours visible"
+        );
+        // `releases/latest` et non un numéro : GitHub redirige vers la
+        // dernière publiée, donc le lien ne vieillit jamais. Écrire
+        // « v1.0.0-beta.666 » dans un bouton serait un numéro de plus à
+        // tenir à jour, et celui qu'on oublierait.
+        assert!(
+            !barre.contains(env!("CARGO_PKG_VERSION")),
+            "docs/{nom} : la barre écrit un numéro de version, qui vieillira"
+        );
     }
 
     assert!(docs.join("style.css").is_file(), "docs/style.css est là");
+    assert!(docs.join("theme.js").is_file(), "docs/theme.js est là");
+    // Les deux thèmes sont définis : sans le bloc clair, l'interrupteur
+    // bascule un attribut que personne ne lit.
+    let css = std::fs::read_to_string(docs.join("style.css")).expect("style.css");
+    assert!(
+        css.contains("[data-theme=\"clair\"]"),
+        "le thème clair n'est pas défini"
+    );
+    assert!(
+        css.contains("prefers-color-scheme"),
+        "sans JavaScript, la page doit suivre le système"
+    );
     // `.nojekyll` : sans lui, GitHub Pages passe le dossier à Jekyll,
     // qui écarte ce qui commence par un souligné et transforme ce
     // qu'on n'avait pas demandé. Le site est du HTML servi tel quel.

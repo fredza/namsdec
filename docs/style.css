@@ -1,107 +1,202 @@
 /* La feuille de style du site de namsdec.
  *
  * Écrite à la main, sans aucun outil de construction : on ouvre le
- * fichier, on change une valeur, on recharge la page. Il n'y a rien à
- * compiler et rien à installer.
+ * fichier, on change une valeur, on recharge la page.
  *
- * Les couleurs sont celles du thème de l'application — VS Code Dark+ —,
- * pour que le site et les captures se ressemblent. Elles sont toutes
- * ici, en haut : changer `--accent` change le site entier. */
+ * DEUX THÈMES. Les couleurs sont toutes ici, en haut, en deux blocs —
+ * sombre et clair. `theme.js` pose `data-theme` sur <html> ; sans lui,
+ * la page suit ce que le système demande. Changer `--accent` dans les
+ * deux blocs change le site entier. */
 
+/* ── Sombre : les couleurs de l'application (VS Code Dark+) ───────── */
 :root {
-  --fond: #1e1e1e;
-  --fond-carte: #252526;
-  --bord: #3c3c3c;
-  --texte: #d4d4d4;
-  --attenue: #858585;
-  --accent: #569cd6;
-  --vert: #6a9955;
-  --jaune: #dcdcaa;
-  --largeur: 54rem;
+  --fond: #16181c;
+  --fond-2: #1e2127;
+  --carte: #22262e;
+  --bord: #313742;
+  --texte: #d7dbe3;
+  --attenue: #8b93a1;
+  --accent: #6cb6ff;
+  --accent-fort: #8fd0ff;
+  --encre-bouton: #0b1a26;
+  --vert: #7fc07a;
+  --jaune: #e2cc87;
+  --ombre: 0 1px 2px rgba(0,0,0,.5), 0 8px 28px rgba(0,0,0,.35);
+  --lueur: radial-gradient(70rem 32rem at 50% -14rem, rgba(108,182,255,.16), transparent 70%);
 }
 
+/* ── Clair ─────────────────────────────────────────────────────────── */
+:root[data-theme="clair"] {
+  --fond: #fbfcfe;
+  --fond-2: #f2f5f9;
+  --carte: #ffffff;
+  --bord: #d9dfe8;
+  --texte: #1b2027;
+  --attenue: #5c6677;
+  --accent: #0b63c5;
+  --accent-fort: #084a96;
+  --encre-bouton: #ffffff;
+  --vert: #2f7a34;
+  --jaune: #8a6d1f;
+  --ombre: 0 1px 2px rgba(16,24,40,.06), 0 10px 30px rgba(16,24,40,.08);
+  --lueur: radial-gradient(70rem 32rem at 50% -14rem, rgba(11,99,197,.10), transparent 70%);
+}
+
+/* Sans JavaScript, on suit le système. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="sombre"]) {
+    --fond: #fbfcfe;
+    --fond-2: #f2f5f9;
+    --carte: #ffffff;
+    --bord: #d9dfe8;
+    --texte: #1b2027;
+    --attenue: #5c6677;
+    --accent: #0b63c5;
+    --accent-fort: #084a96;
+    --encre-bouton: #ffffff;
+    --vert: #2f7a34;
+    --jaune: #8a6d1f;
+    --ombre: 0 1px 2px rgba(16,24,40,.06), 0 10px 30px rgba(16,24,40,.08);
+    --lueur: radial-gradient(70rem 32rem at 50% -14rem, rgba(11,99,197,.10), transparent 70%);
+  }
+}
+
+:root { --largeur: 58rem; --rayon: 10px; }
+
 * { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; }
 
 body {
   margin: 0;
   background: var(--fond);
+  background-image: var(--lueur);
+  background-repeat: no-repeat;
   color: var(--texte);
-  font: 16px/1.65 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font: 16px/1.68 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .18s ease, color .18s ease;
 }
 
-code, pre, .mono { font-family: "Hack", "JetBrains Mono", ui-monospace, monospace; }
+code, pre, .mono { font-family: "Hack", "JetBrains Mono", ui-monospace, SFMono-Regular, monospace; }
 
 .enveloppe { max-width: var(--largeur); margin: 0 auto; padding: 0 1.25rem; }
 
-/* La barre du haut : le nom, et le passage d'une langue à l'autre. */
+/* ── La barre du haut. Elle ne quitte jamais l'écran : le
+ *    téléchargement et le dépôt doivent rester à portée de clic où
+ *    qu'on soit dans la page. ──────────────────────────────────────── */
 header.barre {
+  position: sticky; top: 0; z-index: 20;
   border-bottom: 1px solid var(--bord);
-  position: sticky; top: 0;
-  background: rgba(30, 30, 30, 0.92);
-  backdrop-filter: blur(6px);
-  z-index: 10;
+  background: color-mix(in srgb, var(--fond) 86%, transparent);
+  backdrop-filter: saturate(1.4) blur(10px);
 }
 header.barre .enveloppe {
-  display: flex; align-items: center; gap: 1rem;
-  padding-top: 0.75rem; padding-bottom: 0.75rem;
+  display: flex; align-items: center; gap: .9rem;
+  padding-top: .6rem; padding-bottom: .6rem;
 }
-header.barre .nom { font-weight: 700; letter-spacing: 0.02em; }
-header.barre nav { margin-left: auto; display: flex; gap: 1rem; flex-wrap: wrap; }
-header.barre a { color: var(--attenue); text-decoration: none; }
-header.barre a:hover, header.barre a[aria-current] { color: var(--accent); }
+.nom { font-weight: 700; letter-spacing: .01em; color: var(--texte); text-decoration: none; font-size: 1.05rem; }
+.nom:hover { color: var(--accent); }
 
-/* Le haut de page : la promesse, et les deux boutons. */
-.hero { padding: 3.5rem 0 2rem; }
-.hero h1 { font-size: 2.6rem; margin: 0 0 0.5rem; letter-spacing: -0.02em; }
-.hero .promesse { font-size: 1.25rem; color: var(--texte); margin: 0 0 1rem; }
-.hero .sous { color: var(--attenue); margin: 0 0 1.75rem; }
+nav.sections { display: flex; gap: 1rem; margin-left: .5rem; }
+nav.sections a { color: var(--attenue); text-decoration: none; font-size: .94rem; }
+nav.sections a:hover { color: var(--accent); }
 
-.boutons { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+.actions { margin-left: auto; display: flex; align-items: center; gap: .5rem; }
+
+/* ── Boutons ───────────────────────────────────────────────────────── */
 .bouton {
-  display: inline-block; padding: 0.6rem 1.1rem;
-  border: 1px solid var(--bord); border-radius: 6px;
-  color: var(--texte); text-decoration: none; background: var(--fond-carte);
+  display: inline-flex; align-items: center; gap: .45rem;
+  padding: .55rem 1rem; border-radius: var(--rayon);
+  border: 1px solid var(--bord); background: var(--carte);
+  color: var(--texte); text-decoration: none; font-weight: 500;
+  transition: border-color .15s, color .15s, transform .15s, box-shadow .15s;
 }
-.bouton:hover { border-color: var(--accent); color: var(--accent); }
-.bouton.fort { background: var(--accent); border-color: var(--accent); color: #0b1a26; font-weight: 600; }
-.bouton.fort:hover { filter: brightness(1.12); color: #0b1a26; }
+.bouton:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
+.bouton.fort {
+  background: var(--accent); border-color: var(--accent);
+  color: var(--encre-bouton); font-weight: 650;
+}
+.bouton.fort:hover { background: var(--accent-fort); border-color: var(--accent-fort); color: var(--encre-bouton); }
+.bouton.mini { padding: .38rem .7rem; font-size: .9rem; }
 
-h2 { font-size: 1.6rem; margin: 3rem 0 0.5rem; letter-spacing: -0.01em; }
-h3 { font-size: 1.15rem; margin: 2rem 0 0.35rem; }
-p { margin: 0.6rem 0; }
+/* L'interrupteur du thème : un caractère, un carré, rien de plus. */
+#bascule-theme {
+  width: 2.1rem; height: 2.1rem; flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--bord); border-radius: var(--rayon);
+  background: var(--carte); color: var(--texte);
+  font-size: 1rem; line-height: 1; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+#bascule-theme:hover { border-color: var(--accent); color: var(--accent); }
+
+.langue { color: var(--attenue); text-decoration: none; font-size: .9rem; padding: .38rem .5rem; }
+.langue:hover { color: var(--accent); }
+
+/* ── Le haut de page ───────────────────────────────────────────────── */
+.hero { padding: 4rem 0 2.25rem; }
+.hero h1 {
+  font-size: clamp(2.4rem, 6vw, 3.4rem); margin: 0 0 .6rem;
+  letter-spacing: -.03em; line-height: 1.05;
+}
+.hero .promesse { font-size: clamp(1.1rem, 2.4vw, 1.35rem); margin: 0 0 1rem; }
+.hero .sous { color: var(--attenue); margin: 0 0 1.9rem; max-width: 46rem; }
+.boutons { display: flex; gap: .75rem; flex-wrap: wrap; }
+
+h2 {
+  font-size: clamp(1.5rem, 3.4vw, 1.95rem); margin: 3.5rem 0 .5rem;
+  letter-spacing: -.02em; scroll-margin-top: 5rem;
+}
+h3 { font-size: 1.1rem; margin: 2rem 0 .35rem; }
+p { margin: .65rem 0; }
 a { color: var(--accent); }
+strong { font-weight: 650; }
 
-/* Une capture, avec sa légende sous elle. */
-figure { margin: 1.5rem 0 2.25rem; }
+/* ── Captures ──────────────────────────────────────────────────────── */
+figure { margin: 1.75rem 0 2.5rem; }
 figure img {
   width: 100%; height: auto; display: block;
-  border: 1px solid var(--bord); border-radius: 8px;
+  border: 1px solid var(--bord); border-radius: var(--rayon);
+  box-shadow: var(--ombre);
 }
-figcaption { color: var(--attenue); font-size: 0.92rem; margin-top: 0.6rem; }
+figcaption { color: var(--attenue); font-size: .92rem; margin-top: .7rem; }
 
-/* Les blocs de code : ce que montre l'application, tel quel. */
+/* ── Code ──────────────────────────────────────────────────────────── */
 pre {
-  background: var(--fond-carte); border: 1px solid var(--bord);
-  border-radius: 8px; padding: 0.9rem 1.1rem; overflow-x: auto;
-  font-size: 0.9rem; line-height: 1.55;
+  background: var(--fond-2); border: 1px solid var(--bord);
+  border-radius: var(--rayon); padding: .95rem 1.15rem; overflow-x: auto;
+  font-size: .9rem; line-height: 1.6;
 }
 pre .cl { color: var(--vert); }
 pre .vl { color: var(--jaune); }
-code { background: var(--fond-carte); padding: 0.1em 0.35em; border-radius: 4px; font-size: 0.92em; }
+code { background: var(--fond-2); padding: .12em .38em; border-radius: 5px; font-size: .92em; }
 pre code { background: none; padding: 0; }
 
-/* La grille des points saillants. */
-.grille { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); margin-top: 1rem; }
-.carte { background: var(--fond-carte); border: 1px solid var(--bord); border-radius: 8px; padding: 1rem 1.15rem; }
-.carte h3 { margin: 0 0 0.35rem; font-size: 1rem; color: var(--accent); }
-.carte p { margin: 0; color: var(--attenue); font-size: 0.95rem; }
+/* ── Grille de cartes ──────────────────────────────────────────────── */
+.grille { display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); margin-top: 1.25rem; }
+.carte {
+  background: var(--carte); border: 1px solid var(--bord);
+  border-radius: var(--rayon); padding: 1.05rem 1.2rem;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+.carte:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--ombre); }
+.carte h3 { margin: 0 0 .35rem; font-size: 1rem; color: var(--accent); }
+.carte p { margin: 0; color: var(--attenue); font-size: .95rem; }
 
 footer {
-  border-top: 1px solid var(--bord); margin-top: 4rem;
-  padding: 2rem 0 3rem; color: var(--attenue); font-size: 0.95rem;
+  border-top: 1px solid var(--bord); margin-top: 4.5rem;
+  padding: 2.25rem 0 3.5rem; color: var(--attenue); font-size: .95rem;
 }
 
-@media (max-width: 40rem) {
-  .hero h1 { font-size: 2rem; }
-  .hero { padding-top: 2.25rem; }
+@media (max-width: 52rem) {
+  nav.sections { display: none; }
+}
+@media (max-width: 34rem) {
+  .actions .bouton.mini.depot { display: none; }
+  .hero { padding-top: 2.5rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; }
+  html { scroll-behavior: auto; }
 }

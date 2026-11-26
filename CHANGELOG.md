@@ -6,6 +6,26 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Le site : télécharger d'où qu'on soit, et choisir son thème**
+
+- **Une barre qui ne quitte jamais l'écran**, avec le téléchargement et
+  le dépôt. Les deux étaient en haut de page : il fallait remonter.
+- Le bouton mène à `releases/latest`, que GitHub redirige vers la
+  dernière version publiée. **Aucun numéro n'est écrit** dans la page —
+  un numéro de plus à tenir à jour est un numéro qu'on oublie, et un
+  contrôle refuse désormais qu'il en apparaisse un dans la barre.
+- **Thème sombre ou clair, au choix, et il se retient.** Au premier
+  chargement le site suit ce que le système demande ; dès qu'on clique,
+  c'est le choix qui gagne. Quarante lignes de JavaScript, sans
+  bibliothèque, et l'attribut est posé avant que la page ne se peigne —
+  posé après, le site clignotait du sombre au clair à chaque
+  chargement. Sans JavaScript du tout, la page suit encore le système.
+- Une allure plus nette : une lueur en tête, des cartes qui se
+  soulèvent au survol, une échelle typographique qui suit la largeur de
+  l'écran, et les ombres portées qui manquaient aux captures. Les deux
+  palettes sont en tête de `style.css`, en deux blocs qu'on lit d'un
+  coup d'œil.
+
 **Un site, et deux pages au lieu d'une**
 
 - **L'anglais a sa page** : `README.en.md`, reliée par un lien depuis

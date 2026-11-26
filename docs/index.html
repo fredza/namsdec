@@ -25,20 +25,31 @@
 <title>namsdec — apprendre l'assembleur x86-64, et lire les binaires des autres</title>
 <meta name="description" content="Un atelier libre pour apprendre l'assembleur NASM x86-64 sur Linux : il exécute votre programme pas à pas et explique, à chaque instruction, ce que la machine fait.">
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 </head>
 <body>
 
 <header class="barre">
   <div class="enveloppe">
-    <span class="nom mono">namsdec</span>
-    <nav>
+    <a class="nom mono" href="index.html">namsdec</a>
+    <nav class="sections">
       <a href="#ce-qu-il-montre">Ce qu'il montre</a>
       <a href="#apprendre">Apprendre</a>
       <a href="#lire">Lire un binaire</a>
       <a href="#installer">Installer</a>
-      <a href="https://github.com/fredza/namsdec">GitHub</a>
-      <a href="en.html" aria-label="Read in English">🇬🇧 English</a>
     </nav>
+    <div class="actions">
+      <!-- TOUJOURS VISIBLES : la barre est collante, donc ces deux
+           boutons restent à portée de clic où qu'on soit dans la page.
+           Le lien de téléchargement pointe sur `releases/latest`, que
+           GitHub redirige vers la dernière version publiée : aucun
+           numéro n'est écrit ici, donc rien ne vieillit. -->
+      <button id="bascule-theme" type="button"
+              data-clair="Passer au thème clair" data-sombre="Passer au thème sombre">☀</button>
+      <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Dépôt</a>
+      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/latest">Télécharger</a>
+      <a class="langue" href="en.html" aria-label="Read in English">EN</a>
+    </div>
   </div>
 </header>
 
@@ -53,9 +64,9 @@
       faire. Il ne se contente pas d'afficher des registres : il explique.
       Linux, ELF64, syntaxe NASM. Licence MIT.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
+      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/latest">Télécharger la dernière version</a>
+      <a class="bouton" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
       <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">Le guide en PDF</a>
-      <a class="bouton" href="https://github.com/fredza/namsdec/releases">Les versions publiées</a>
     </div>
   </section>
 

@@ -24,20 +24,31 @@
 <title>namsdec — learn x86-64 assembly, and read other people's binaries</title>
 <meta name="description" content="A free workbench for learning x86-64 NASM assembly on Linux: it steps through your program and explains, at every instruction, what the machine is doing.">
 <link rel="stylesheet" href="style.css">
+<script src="theme.js"></script>
 </head>
 <body>
 
 <header class="barre">
   <div class="enveloppe">
-    <span class="nom mono">namsdec</span>
-    <nav>
+    <a class="nom mono" href="en.html">namsdec</a>
+    <nav class="sections">
       <a href="#what-it-shows">What it shows</a>
       <a href="#learning">Learning</a>
       <a href="#reading">Reading a binary</a>
       <a href="#installing">Installing</a>
-      <a href="https://github.com/fredza/namsdec">GitHub</a>
-      <a href="index.html" aria-label="Lire en français">🇫🇷 Français</a>
     </nav>
+    <div class="actions">
+      <!-- ALWAYS VISIBLE: the bar is sticky, so these two buttons stay
+           one click away wherever you are on the page. The download
+           link points at `releases/latest`, which GitHub redirects to
+           the newest published release: no version number is written
+           here, so nothing goes stale. -->
+      <button id="bascule-theme" type="button"
+              data-clair="Switch to the light theme" data-sombre="Switch to the dark theme">☀</button>
+      <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Repository</a>
+      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/latest">Download</a>
+      <a class="langue" href="index.html" aria-label="Lire en français">FR</a>
+    </div>
   </div>
 </header>
 
@@ -52,9 +63,9 @@
       merely display registers: it explains.
       Linux, ELF64, NASM syntax. MIT licensed.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec">The code on GitHub</a>
+      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/latest">Download the latest release</a>
+      <a class="bouton" href="https://github.com/fredza/namsdec">The code on GitHub</a>
       <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">The PDF guide</a>
-      <a class="bouton" href="https://github.com/fredza/namsdec/releases">Published releases</a>
     </div>
   </section>
 
