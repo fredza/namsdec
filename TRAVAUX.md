@@ -5214,10 +5214,22 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       passage que la boîte « À propos » envoyait encore y régler une
       adresse qui ne s'y règle plus.
 
+      **MESURÉ SUR LA CI LE 26 NOVEMBRE À 20:54** : les fiches ont
+      réglé leur blocage. `what_this_machine_runs_can_be_explained`
+      passe désormais sur Ubuntu 24.04 — la CI tombe sur **deux**
+      contrôles au lieu de trois, 897 passés contre 2 échoués. C'est la
+      seule preuve qui vaille pour un contrôle qu'on ne peut pas
+      reproduire ici.
+
       **Reste pour la publication** : les deux contrôles qui lisent la
-      machine (`posing_the_same_detour_twice…`,
-      `la_barre_de_la_console…`) tombent sur Ubuntu et pas ici. Et le
-      site GitHub Pages, demandé, n'est pas commencé.
+      machine. `posing_the_same_detour_twice_changes_nothing_the_second_time`
+      dit « le binaire fabriqué porte du bourrage exécutable » —
+      l'éditeur de liens du coureur n'en laisse pas — et
+      `la_barre_de_la_console_efface_sans_rien_remettre_a_zero` lit RIP
+      à `0x400000` au lieu de `0x400031`, parce que le programme assemblé
+      là-bas n'a pas la même disposition. Tous deux veulent une
+      précondition explicite, comme en ont déjà ceux qui s'arrêtent
+      quand `nasm` manque — ou une reproduction sur Ubuntu.
 
 - [x] **Le canal des mises à jour** (A 9.109) — demandé : « je veux des
       mises à jour de beta et les mises à jour ». La règle existait
