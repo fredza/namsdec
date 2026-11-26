@@ -1462,16 +1462,80 @@ fn la_barre_de_la_console_efface_sans_rien_remettre_a_zero() {
         "trois commandes au moins : relancer, arrêter, effacer — {bande:?}"
     );
 
-    // Le clic sur la corbeille : elle est à gauche du bouton des
-    // arguments, donc parmi les icônes, la troisième en partant de la
-    // gauche de ce groupe.
-    let mut xs: Vec<f32> = bande.iter().map(|r| r.center().x).collect();
-    xs.sort_by(f32::total_cmp);
-    let corbeille = bande
-        .iter()
-        .map(|r| r.center())
-        .rfind(|p| (p.x - xs[2]).abs() < 12.0)
-        .expect("la corbeille est repérée");
+    // LA CORBEILLE SE RECONNAÎT À CE QU'ELLE DIT, et non à sa place.
+    //
+    // Elle était désignée comme « la troisième en partant de la
+    // gauche » — c'est-à-dire par un rang dans une liste de TRAITS, car
+    // une icône en pose plusieurs et leur compte change avec ce que la
+    // rangée montre. Sur l'Ubuntu de la CI, ce rang tombait sur
+    // « relancer » : le contrôle cliquait Réinitialiser, voyait RIP
+    // revenir à 0x400000, et accusait ensuite la corbeille de l'avoir
+    // fait. Un contrôle qui ne distingue pas les deux boutons qu'il
+    // nomme ne regarde rien.
+    //
+    // On survole donc chaque candidate et on lit son infobulle. Le
+    // bouton se désigne par ce qu'il promet, ce qui vaut sur toute
+    // machine et dans les deux langues.
+    // LE POINTEUR SE POSE UNE FOIS, PUIS NE BOUGE PLUS.
+    //
+    // Une infobulle d'egui attend que le pointeur se repose. Un
+    // `PointerMoved` répété à chaque image remet ce compteur à zéro :
+    // elle ne paraît alors jamais, et le relevé conclut « aucune icône
+    // ne dit Effacer » alors qu'elles le disent toutes. C'est la même
+    // recette que `le_survol_du_titre_dit_le_chemin_complet`, qui
+    // l'avait payée avant nous.
+    let survole = |app: &mut NamsdecApp, p: egui::Pos2| -> String {
+        let mut pointeur = Some(p);
+        let mut dit = String::new();
+        for _ in 0..40 {
+            let entrée = egui::RawInput {
+                screen_rect: Some(écran),
+                events: pointeur
+                    .take()
+                    .map(egui::Event::PointerMoved)
+                    .into_iter()
+                    .collect(),
+                focused: true,
+                ..Default::default()
+            };
+            let mut sortie = ctx.run_ui(entrée, |ui| app.draw(ui));
+            for clipped in &sortie.shapes {
+                if let egui::epaint::Shape::Text(texte) = &clipped.shape {
+                    dit.push_str(texte.galley.text());
+                    dit.push('\n');
+                }
+            }
+            sortie.textures_delta.clear();
+        }
+        dit
+    };
+    // La rangée des commandes est la plus HAUTE du relevé : le panneau
+    // de la console en pose d'autres plus bas, qui n'en sont pas.
+    let rangée = bande.iter().map(|r| r.center().y).fold(f32::MAX, f32::min);
+    assert!(rangée.is_finite(), "la rangée de la console est repérée");
+
+    // On balaie de droite à gauche jusqu'à l'icône qui dit « effacer ».
+    // De droite, parce que c'est l'ordre où elles sont posées — le
+    // tiret au bord, puis la corbeille, le carré, la flèche.
+    //
+    // Repérer par le dessin ne marchait pas : une icône pose plusieurs
+    // traits, tous ne passent pas le filtre, et le centre d'une grappe
+    // de traits n'est pas le centre du bouton. Mesuré ici : la
+    // corbeille vit entre 1508 et 1516, et aucun centre de grappe n'y
+    // tombait.
+    let attendu = strings(app.lang).console_clear;
+    let mut corbeille = None;
+    let mut x = écran.right() - 40.0;
+    while x > écran.right() - 280.0 {
+        let p = egui::pos2(x, rangée);
+        if survole(&mut app, p).contains(attendu) {
+            corbeille = Some(p);
+            break;
+        }
+        x -= 6.0;
+    }
+    let corbeille = corbeille
+        .unwrap_or_else(|| panic!("aucune icône de la rangée de la console ne dit « {attendu} »"));
     let clic = |app: &mut NamsdecApp, pressé: bool| {
         let entrée = egui::RawInput {
             screen_rect: Some(écran),

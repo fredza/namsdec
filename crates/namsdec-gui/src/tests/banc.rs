@@ -2720,12 +2720,16 @@ fn every_abstention_names_its_reason() {
     // le prochain qui voudra une abstention nouvelle devra dire ici
     // pourquoi se taire est la bonne réponse. Ce qu'on refuse n'est pas
     // le silence, c'est le silence anonyme.
-    const RAISONS: [(&str, &str); 9] = [
+    const RAISONS: [(&str, &str); 10] = [
         ("find_nasm", "sans assembleur, rien à assembler"),
         ("find_linker", "sans éditeur de liens, rien à lier"),
         (
             "binaire_fabriqué",
             "le binaire d'épreuve demande nasm et ld",
+        ),
+        (
+            "binaire_avec_place_libre",
+            "le binaire qui déclare sa place libre demande nasm et ld",
         ),
         ("compile_c", "pas de compilateur C sur cette machine"),
         (

@@ -3711,18 +3711,27 @@ fn two_crossing_detours_break_the_program_and_are_refused() {
 /// posée ailleurs que là où l'on écrit dépend de qui appelle.
 #[test]
 fn posing_the_same_detour_twice_changes_nothing_the_second_time() {
-    let Some(octets) = binaire_fabriqué() else {
+    // LE BINAIRE QUI DÉCLARE SA PLACE LIBRE, et non celui qui
+    // l'empruntait au remplissage de `ld` : voir
+    // `PROGRAMME_AVEC_PLACE_LIBRE`. La quantité que l'éditeur de liens
+    // laisse derrière le code change d'une version de binutils à
+    // l'autre, et ce contrôle mesurait cette quantité-là au lieu de
+    // mesurer le détour.
+    let Some(octets) = binaire_avec_place_libre() else {
         return;
     };
     let mut app = NamsdecApp::default();
-    assert!(app.load_elf(&octets, NOM_FABRIQUÉ), "le binaire s'ouvre");
+    assert!(
+        app.load_elf(&octets, NOM_AVEC_PLACE_LIBRE),
+        "le binaire s'ouvre"
+    );
 
     let state = app.assemble_state.as_ref().expect("un état d'assemblage");
     let origine = state.output.file.clone();
     let place = namsdec_re::slack::find(&origine)
         .into_iter()
         .find(|t| t.executable && t.len > 64)
-        .expect("le binaire fabriqué porte du bourrage exécutable");
+        .expect("le binaire déclare deux cent cinquante-six octets de place libre exécutable");
 
     // Le premier site détournable du listing. On cherche plutôt que de
     // viser une adresse écrite en clair : ce que nasm produit peut

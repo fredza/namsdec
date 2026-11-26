@@ -6,6 +6,28 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Les deux contrôles qui lisaient la machine**
+
+- **Le détour mesurait la version de `ld`.** Il cherchait du bourrage
+  exécutable dans le binaire d'épreuve, et ce bourrage n'y est que
+  parce que l'éditeur de liens en laisse — en quantité variable selon
+  les binutils. Sur Fedora plus de soixante-quatre octets, sur l'Ubuntu
+  de la CI non. Le binaire d'épreuve du détour **déclare** maintenant
+  sa place libre : deux cent cinquante-six octets nuls à la fin de
+  `.text`, derrière un `exit`, donc sur toute machine.
+- **La corbeille de la console se reconnaît à ce qu'elle dit.** Elle
+  était désignée comme « la troisième icône en partant de la gauche » —
+  un rang dans une liste de *traits*, car une icône en pose plusieurs.
+  Sur Ubuntu ce rang tombait sur « relancer » : le contrôle cliquait
+  Réinitialiser, voyait RIP revenir à `0x400000`, et accusait ensuite la
+  corbeille de l'avoir fait. Il ne distinguait pas les deux boutons
+  qu'il nomme. On survole désormais la rangée jusqu'à l'infobulle qui
+  dit « effacer ».
+- Au passage, une recette retrouvée : **un `PointerMoved` répété à
+  chaque image empêche toute infobulle de paraître**, puisqu'il remet à
+  zéro le compteur de repos du pointeur. Le pointeur se pose une fois,
+  puis on laisse tourner.
+
 **Le site : télécharger d'où qu'on soit, et choisir son thème**
 
 - **Une barre qui ne quitte jamais l'écran**, avec le téléchargement et

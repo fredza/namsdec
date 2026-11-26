@@ -641,6 +641,71 @@ fn binaire_fabriqué() -> Option<Vec<u8>> {
         .clone()
 }
 
+/// UN BINAIRE QUI PORTE SA PLACE LIBRE, au lieu de l'emprunter à
+/// l'éditeur de liens.
+///
+/// `binaire_fabriqué` en portait une PAR ACCIDENT : `ld` laisse du
+/// remplissage derrière le code, et sa taille dépend de la version des
+/// binutils. Sur cette machine elle dépasse soixante-quatre octets ;
+/// sur l'Ubuntu de la CI, non — et le contrôle du détour y tombait en
+/// disant « le binaire fabriqué porte du bourrage exécutable », ce qui
+/// était vrai ici et faux ailleurs. Mesurer un détour sur une place
+/// que personne ne garantit, c'est mesurer la version de `ld`.
+///
+/// Celui-ci la DÉCLARE : deux cent cinquante-six octets nuls à la fin
+/// de `.text`, donc dans le segment exécutable, donc vus par
+/// `slack::find` — et ils y sont sur toute machine. Ils suivent un
+/// `exit` : aucun chemin ne passe dessus.
+const PROGRAMME_AVEC_PLACE_LIBRE: &str = "\
+global _start
+
+section .data
+message db \"salut\", 10
+longueur equ $ - message
+
+section .text
+_start:
+    mov rax, 1
+    mov rdi, 1
+    mov rsi, message
+    mov rdx, longueur
+    syscall
+
+    mov rax, 60
+    xor edi, edi
+    syscall
+
+; LA PLACE LIBRE, déclarée et non espérée.
+    times 256 db 0
+";
+
+/// Le nom sous lequel il se charge.
+const NOM_AVEC_PLACE_LIBRE: &str = "detour-place-libre";
+
+/// Le binaire ci-dessus, assemblé une fois pour toutes.
+///
+/// `None` quand nasm ou l'éditeur de liens manquent : c'est le seul
+/// cas où un contrôle qui s'en sert n'a rien à dire.
+fn binaire_avec_place_libre() -> Option<Vec<u8>> {
+    static OCTETS: std::sync::OnceLock<Option<Vec<u8>>> = std::sync::OnceLock::new();
+    OCTETS
+        .get_or_init(|| {
+            if namsdec_asm::find_nasm().is_none() || !namsdec_asm::find_linker() {
+                return None;
+            }
+            let dossier = tempfile::tempdir().ok()?;
+            let chemin = dossier.path().join(NOM_AVEC_PLACE_LIBRE);
+            let mut app = NamsdecApp {
+                source: PROGRAMME_AVEC_PLACE_LIBRE.to_owned(),
+                ..Default::default()
+            };
+            app.do_assemble();
+            app.export_binary(&chemin);
+            std::fs::read(&chemin).ok()
+        })
+        .clone()
+}
+
 /// Le nom sous lequel le binaire fabriqué se charge.
 ///
 /// Les contrôles le passaient en clair — `"crackme-01"` —, ce qui était
