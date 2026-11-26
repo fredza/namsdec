@@ -996,6 +996,161 @@ fn the_readme_tells_the_truth() {
     }
 }
 
+/// LE SITE MONTRE DES IMAGES QUI EXISTENT, ET LE GUIDE DE CETTE
+/// VERSION.
+///
+/// Un site est la seule partie du dépôt que personne ne compile : une
+/// image renommée, un PDF qui change de numéro, et la page affiche un
+/// cadre vide sans que rien ne tombe. Ce contrôle lui rend ce que le
+/// reste du dépôt a — quelqu'un qui dit non.
+///
+/// Il ne juge pas la mise en page : il vérifie que ce que les pages
+/// DÉSIGNENT est là.
+#[test]
+fn le_site_ne_montre_rien_qui_manque() {
+    let docs = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
+    let guide = format!("guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION"));
+    let mut vues = std::collections::BTreeSet::new();
+
+    for (nom, autre) in [("index.html", "en.html"), ("en.html", "index.html")] {
+        let page =
+            std::fs::read_to_string(docs.join(nom)).unwrap_or_else(|_| panic!("docs/{nom} est là"));
+
+        // Chaque image désignée existe vraiment.
+        let mut reste = page.as_str();
+        let mut images = 0;
+        while let Some(i) = reste.find("src=\"images/") {
+            reste = &reste[i + "src=\"".len()..];
+            let fin = reste.find('"').expect("un attribut fermé");
+            let fichier = &reste[..fin];
+            assert!(
+                docs.join(fichier).is_file(),
+                "docs/{nom} montre « {fichier} », qui n'existe pas. \
+                 Les captures se refont par \
+                 `cargo test -p namsdec-gui -- --ignored releve_du_site`"
+            );
+            vues.insert(fichier.to_owned());
+            images += 1;
+            reste = &reste[fin..];
+        }
+        assert!(images >= 4, "docs/{nom} ne montre que {images} capture(s)");
+
+        // Le guide est celui de la version qu'on compile.
+        assert!(
+            page.contains(&guide),
+            "docs/{nom} ne mène pas à « {guide} »"
+        );
+        assert!(docs.join(&guide).is_file(), "le guide annoncé n'est pas là");
+
+        // L'autre langue se trouve depuis celle-ci.
+        assert!(page.contains(autre), "docs/{nom} ne mène pas à {autre}");
+
+        // Et le site dit qui l'écrit, dans les deux langues.
+        assert!(
+            page.contains(APP_AUTHOR),
+            "docs/{nom} ne nomme pas l'auteur"
+        );
+
+        // La feuille de style qu'elles partagent.
+        assert!(page.contains("style.css"));
+    }
+
+    assert!(docs.join("style.css").is_file(), "docs/style.css est là");
+    // `.nojekyll` : sans lui, GitHub Pages passe le dossier à Jekyll,
+    // qui écarte ce qui commence par un souligné et transforme ce
+    // qu'on n'avait pas demandé. Le site est du HTML servi tel quel.
+    assert!(docs.join(".nojekyll").is_file(), "docs/.nojekyll est là");
+
+    // ET LES DEUX PAGES MONTRENT LA MÊME CHOSE. Une page anglaise qui
+    // perd la moitié des captures est la même dérive que la page
+    // anglaise qui perd la moitié de son texte.
+    for (nom, autre) in [("index.html", "en.html"), ("en.html", "index.html")] {
+        let a = std::fs::read_to_string(docs.join(nom)).expect("page");
+        let b = std::fs::read_to_string(docs.join(autre)).expect("page");
+        for image in &vues {
+            assert_eq!(
+                a.contains(image.as_str()),
+                b.contains(image.as_str()),
+                "« {image} » n'est que dans une des deux pages"
+            );
+        }
+    }
+}
+
+/// LA PAGE ANGLAISE DIT LA MÊME CHOSE QUE LA FRANÇAISE.
+///
+/// Le dépôt est public, et la moitié de ceux qui tomberont dessus ne
+/// lisent pas le français. Une page anglaise qui dérive en résumé est
+/// pire qu'une absence : elle promet une traduction et donne un
+/// dépliant. C'est arrivé dès le premier jour — la moitié anglaise
+/// faisait 495 lignes contre 1 007, et personne ne l'aurait vu sans
+/// qu'on le dise.
+///
+/// Ce contrôle ne compare pas des phrases : elles sont dans deux
+/// langues. Il compare ce qui se vérifie — les nombres, les noms, les
+/// liens — et la TAILLE, qui est le seul signe qu'une page se soit
+/// vidée de sa substance.
+#[test]
+fn les_deux_pages_du_readme_disent_la_meme_chose() {
+    let racine = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let fr = std::fs::read_to_string(racine.join("README.md")).expect("README.md");
+    let en = std::fs::read_to_string(racine.join("README.en.md")).expect("README.en.md");
+
+    // Chacune mène à l'autre : une page qu'on ne trouve pas n'existe pas.
+    assert!(
+        fr.contains("README.en.md"),
+        "le français ne mène pas à l'anglais"
+    );
+    assert!(
+        en.contains("(README.md)"),
+        "l'anglais ne ramène pas au français"
+    );
+
+    // Les nombres qu'on peut vérifier, des deux côtés.
+    let fiches = namsdec_doc::count();
+    assert!(
+        en.contains(&format!("{fiches} instructions")),
+        "la page anglaise annonce un autre nombre de fiches que les {fiches} existantes"
+    );
+    let guide = format!("docs/guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION"));
+    for (nom, page) in [("français", &fr), ("anglais", &en)] {
+        assert!(
+            page.contains(&guide),
+            "le README {nom} n'annonce pas « {guide} »"
+        );
+    }
+
+    // Le tableau des crates, des deux côtés : c'est par là qu'on entre
+    // dans le code, et une page qui l'oublie laisse son lecteur dehors.
+    let crates = racine.join("crates");
+    for entrée in std::fs::read_dir(&crates).expect("le dossier des crates se lit") {
+        let chemin = entrée.expect("une entrée lisible").path();
+        if !chemin.join("Cargo.toml").is_file() {
+            continue;
+        }
+        let nom = chemin
+            .file_name()
+            .expect("un nom")
+            .to_string_lossy()
+            .into_owned();
+        assert!(
+            en.contains(&format!("`{nom}`")),
+            "le tableau des crates de la page anglaise oublie {nom}"
+        );
+    }
+
+    // ET ELLE N'EST PAS UN RÉSUMÉ. Les deux langues ne font pas le même
+    // nombre de lignes — l'anglais est plus court à dire —, mais un
+    // écart de plus d'un quart n'est plus une différence de langue,
+    // c'est une section qui manque.
+    let (l_fr, l_en) = (fr.lines().count(), en.lines().count());
+    assert!(
+        l_en * 4 >= l_fr * 3,
+        "la page anglaise fait {l_en} lignes contre {l_fr} : il y manque des sections, \
+         ce n'est pas une différence de langue"
+    );
+}
+
 /// LE NOM DE L'AUTEUR SE LIT DANS LA BOÎTE, ET C'EST CELUI DE LA
 /// LICENCE.
 ///

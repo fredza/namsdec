@@ -6,6 +6,32 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Un site, et deux pages au lieu d'une**
+
+- **L'anglais a sa page** : `README.en.md`, reliée par un lien depuis
+  `README.md`. Les deux moitiés dans un seul fichier obligeaient à
+  dérouler mille lignes de français pour atteindre l'anglais.
+- **Et elle est complète.** Elle ne l'était pas : 495 lignes contre
+  1 007, un dépliant qui se faisait passer pour une traduction. Elle en
+  fait maintenant 862, section pour section — les exercices palier par
+  palier, le tableau pwndbg, les trois syntaxes, le banc du détour, les
+  codes de retour de la ligne de commande. Un contrôle compare ce qui se
+  vérifie — les nombres, les noms de crates, les liens — **et la
+  taille** : un écart de plus d'un quart n'est plus une différence de
+  langue, c'est une section qui manque.
+- **Un site**, dans `docs/`, prêt pour GitHub Pages : deux pages — une
+  par langue —, une feuille de style où toutes les couleurs sont en
+  tête, et rien à compiler. C'est du HTML que le navigateur lit tel
+  quel : on ouvre le fichier, on change le texte, on recharge.
+- **Ses captures se refont d'une commande**
+  (`cargo test -p namsdec-gui -- --ignored releve_du_site`), rendues
+  **sans écran** par lavapipe, sur les scènes que le banc déclare déjà.
+  Ce que le site montre est donc ce que les contrôles mesurent, et non
+  une pose prise un bon jour. Un contrôle vérifie que chaque image
+  désignée existe, que le PDF annoncé est celui de la version, que
+  chaque page mène à l'autre, et que les deux montrent les mêmes
+  captures.
+
 **Un README bilingue, cinq fiches, et le nom de l'auteur**
 
 - **Le README est bilingue**, français et anglais dans un seul fichier,

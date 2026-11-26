@@ -4963,6 +4963,67 @@ fn choisir_un_octet_ne_retrecit_pas_le_vidage_quand_la_place_y_est() {
     );
 }
 
+/// LES CAPTURES DU SITE, rendues depuis le dépôt.
+///
+/// `cargo test -p namsdec-gui -- --ignored releve_du_site`
+///
+/// Le site montre l'application : il lui faut donc des images, et des
+/// images qui ne vieillissent pas en silence. Celles-ci se refont d'une
+/// commande, sur les scènes que le banc déclare déjà — ce qui est
+/// capturé est donc ce qui est mesuré ailleurs, et non une pose
+/// choisie un bon jour.
+///
+/// Rendues **sans écran** : `egui_kittest` passe par lavapipe, donc ni
+/// serveur d'affichage, ni carte graphique, ni droits. Deux rendus par
+/// scène, et le premier est jeté — l'atlas de glyphes se construit en
+/// peignant, et la première image emploie encore l'ancien.
+#[test]
+#[ignore]
+fn releve_du_site() {
+    use egui_kittest::Harness;
+    let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/images");
+    std::fs::create_dir_all(&dossier).expect("dossier");
+    // Ce que le site montre, et le nom du fichier qu'il attend.
+    let voulues = [
+        ("établi", "etabli"),
+        ("établi (en marche)", "etabli-en-marche"),
+        ("application / accueil, plus rien d'ouvert", "accueil"),
+        ("application / cpu (en marche)", "processeur"),
+        ("vue / points d'arrêt posés", "points-d-arret"),
+        ("analyse / hex_editor (en marche)", "editeur-binaire"),
+        ("analyse / binary_info (en marche)", "protections"),
+        ("analyse / call_graph (en marche)", "graphe-d-appels"),
+    ];
+    let mut écrites = 0;
+    for (nom, _, ouvre) in scènes() {
+        let Some((_, fichier)) = voulues.iter().find(|(v, _)| *v == nom) else {
+            continue;
+        };
+        let mut app = NamsdecApp::default();
+        ouvre(&mut app);
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1600.0, 1100.0))
+            .wgpu()
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        for _ in 0..8 {
+            harness.step();
+        }
+        let _ = harness.render();
+        harness.step();
+        harness
+            .render()
+            .expect("rendu")
+            .save(dossier.join(format!("{fichier}.png")))
+            .expect("écriture");
+        println!("écrit {fichier}.png");
+        écrites += 1;
+    }
+    assert!(écrites > 0, "aucune scène rendue : les noms ont changé");
+}
+
 /// Les captures de l'éditeur binaire, à quatre tailles.
 ///
 /// À part des scènes du banc, et pour une raison écrite dans `scènes()` :

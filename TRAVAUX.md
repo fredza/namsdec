@@ -5175,6 +5175,27 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
 - [x] **Version 0.4.2-beta.2** (A 9.107) — demandée. Changelog, PDF
       renommé et régénéré, lien du README.
 
+- [x] **Le site, et l'anglais sur sa propre page** (A 9.111) — demandé.
+      Les deux langues dans un seul README obligeaient à dérouler le
+      français en entier ; l'anglais a sa page, reliée par un lien. Et
+      il était incomplet — 495 lignes contre 1 007 —, ce qu'aucun
+      contrôle ne pouvait dire. `les_deux_pages_du_readme_disent_la_
+      meme_chose` compare les nombres, les noms de crates, les liens et
+      **la taille** : éprouvé en tronquant la page, il tombe.
+
+      Le site est dans `docs/`, servi tel quel par GitHub Pages
+      (`.nojekyll`) : deux pages, une feuille de style, aucune
+      construction. Ses huit captures se refont par `releve_du_site`,
+      rendues sans écran sur les scènes du banc — ce que le site montre
+      est ce que les contrôles mesurent. `le_site_ne_montre_rien_qui_
+      manque` vérifie que chaque image existe, que le PDF est celui de
+      la version, que chaque page mène à l'autre et nomme l'auteur ;
+      éprouvé en retirant une image, il tombe et dit la commande qui la
+      refait.
+
+      **Reste** : activer Pages sur `docs/` dans les réglages du dépôt —
+      c'est un geste d'interface GitHub, pas du code.
+
 - [x] **README bilingue, cinq fiches, et l'auteur nommé** (A 9.110) —
       le dépôt est passé public. Le README porte les deux langues dans
       un seul fichier, le français intact parce que sept invariants en

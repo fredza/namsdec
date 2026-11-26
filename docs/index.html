@@ -1,0 +1,196 @@
+<!doctype html>
+<!--
+  Le site de namsdec — page française.
+
+  POUR LE MODIFIER : ouvrez ce fichier, changez le texte, enregistrez.
+  Il n'y a ni outil de construction, ni cadre, ni dépendance : c'est du
+  HTML que le navigateur lit tel quel, et GitHub Pages le sert tel quel.
+  Les couleurs sont toutes en haut de `style.css`.
+
+  LES CAPTURES se refont d'une commande, depuis le dépôt :
+
+      cargo test -p namsdec-gui -- --ignored releve_du_site
+
+  Elles sortent dans `docs/images/`, rendues sans écran, sur les scènes
+  que le banc de contrôle déclare déjà. Une capture qui vieillit en
+  silence est pire qu'une absence : celles-ci se refont au lieu de se
+  reprendre à la main.
+
+  La page anglaise est `en.html`. Les deux doivent dire la même chose.
+-->
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>namsdec — apprendre l'assembleur x86-64, et lire les binaires des autres</title>
+<meta name="description" content="Un atelier libre pour apprendre l'assembleur NASM x86-64 sur Linux : il exécute votre programme pas à pas et explique, à chaque instruction, ce que la machine fait.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="barre">
+  <div class="enveloppe">
+    <span class="nom mono">namsdec</span>
+    <nav>
+      <a href="#ce-qu-il-montre">Ce qu'il montre</a>
+      <a href="#apprendre">Apprendre</a>
+      <a href="#lire">Lire un binaire</a>
+      <a href="#installer">Installer</a>
+      <a href="https://github.com/fredza/namsdec">GitHub</a>
+      <a href="en.html" aria-label="Read in English">🇬🇧 English</a>
+    </nav>
+  </div>
+</header>
+
+<main class="enveloppe">
+
+  <section class="hero">
+    <h1>namsdec</h1>
+    <p class="promesse">Un atelier pour apprendre l'assembleur NASM x86-64 —
+      et pour lire les binaires des autres.</p>
+    <p class="sous">Il exécute votre programme instruction par instruction et vous dit,
+      à chaque pas, ce que la machine est sur le point de faire et ce qu'elle vient de
+      faire. Il ne se contente pas d'afficher des registres : il explique.
+      Linux, ELF64, syntaxe NASM. Licence MIT.</p>
+    <div class="boutons">
+      <a class="bouton fort" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
+      <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">Le guide en PDF</a>
+      <a class="bouton" href="https://github.com/fredza/namsdec/releases">Les versions publiées</a>
+    </div>
+  </section>
+
+  <figure>
+    <img src="images/etabli.png" alt="L'Établi : l'écran du mode débutant, avec l'éditeur au centre et le panneau de la machine à droite.">
+    <figcaption><strong>L'Établi</strong> — l'écran de celui qui débute. Quatre bandes
+      fixes, rien à ouvrir, rien à régler : le programme au centre, ce que fait la
+      machine à droite, le résultat en bas.</figcaption>
+  </figure>
+
+  <h2 id="ce-qu-il-montre">Ce qu'il montre que les autres ne montrent pas</h2>
+
+  <div class="grille">
+    <div class="carte">
+      <h3>L'instruction suivante, résolue</h3>
+      <p><code>mov al, [rsi + rcx*4 + 8]</code> ne dit pas <em>où</em> ça pointe.
+        namsdec le calcule avant l'exécution : l'adresse effective, son étiquette dans
+        votre source, et l'octet qui s'y trouve.</p>
+    </div>
+    <div class="carte">
+      <h3>Le dernier pas, avec la valeur d'avant</h3>
+      <p><code>RCX 0x5 → 0x4</code> sous le <code>dec rcx</code> qui l'a fait, et les
+        indicateurs modifiés à côté. Après un <code>cmp</code>, ce sont eux le résultat.</p>
+    </div>
+    <div class="carte">
+      <h3>Le saut, avant qu'il parte</h3>
+      <p>« Le saut sera pris », la règle qu'il suit (<code>CF = 0 et ZF = 0</code>), et
+        si la comparaison lit ses nombres comme signés. <code>ja</code> et <code>jg</code>
+        disent tous deux « plus grand » et répondent l'inverse.</p>
+    </div>
+    <div class="carte">
+      <h3>L'appel système en clair</h3>
+      <p><code>syscall</code> ne porte aucun opérande — tout est dans les registres.
+        namsdec l'écrit comme on l'écrirait en C.</p>
+    </div>
+  </div>
+
+  <pre><code>write(fd = 0x1, buf = 0x402000 → "salut\n", count = 0x6)</code></pre>
+
+  <h2 id="apprendre">Apprendre</h2>
+
+  <p><strong>Prévoir avant d'avancer.</strong> Dire ce que fait l'instruction suivante
+    avant qu'on appuie, c'est donner la réponse avant la question : on n'a jamais
+    l'occasion de se tromper, or se tromper est la seule façon de savoir qu'on n'avait
+    pas compris. En mode débutant, la réponse attend le pas.</p>
+
+  <pre><code><span class="cl">Prochaine instruction</span>
+  0x400005  mov ebx, 2
+  Qu'est-ce que ça va changer ?   [Montrer]
+
+<span class="cl">Dernier pas</span>  0x400000  mov eax, 1
+  Ce que ça disait : EAX = 1
+  <span class="vl">RAX 0x0 -&gt; 0x1</span></code></pre>
+
+  <p><strong>Cent trente-huit exercices</strong> sont livrés avec le programme, en quatre
+    paliers : Découverte, Pratique, Structures, Maîtrise. Chacun porte sa fiche de
+    théorie — ni la consigne, ni l'indice : la mécanique sur laquelle il repose, avec un
+    exemple chiffré pris sur son propre programme. Cent douze portent un but vérifiable
+    (<code>rax == 0xf</code>), et chacun un budget d'instructions : l'égaler est normal,
+    descendre en dessous est le vrai exercice.</p>
+
+  <figure>
+    <img src="images/points-d-arret.png" alt="La vue des points d'arrêt, avec une condition par ligne et la valeur des registres à ce passage.">
+    <figcaption><strong>Les points d'arrêt</strong> — avec leur condition
+      (<code>rcx == 0</code>), et ce que valent les registres à ce passage-là.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="images/processeur.png" alt="L'interface complète en mode avancé : éditeur, panneau du processeur, pile et console.">
+    <figcaption><strong>Le mode avancé</strong> — les registres, les sept indicateurs,
+      la pile lue comme une pile, et la console du programme.</figcaption>
+  </figure>
+
+  <h2 id="lire">Lire les binaires des autres</h2>
+
+  <p>Le même atelier ouvre un ELF qu'on n'a pas écrit, et en dit ce qu'il sait :
+    ses protections, ce qu'il emprunte, ce qu'il cache, et par où commencer à le lire.
+    Rien n'est additionné en score — un score donnerait l'illusion d'un verdict, et
+    c'est le lecteur qui conclut.</p>
+
+  <figure>
+    <img src="images/protections.png" alt="Le panneau des protections : PIE, NX, RELRO, canari de pile, et ce que chaque état change.">
+    <figcaption><strong>Les protections</strong> — PIE, NX, RELRO, canari, FORTIFY, IBT,
+      segments W+X — avec, pour chacune, ce que son état change concrètement.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="images/editeur-binaire.png" alt="L'éditeur binaire : les octets du fichier, leur adresse en mémoire, et le texte à droite.">
+    <figcaption><strong>L'éditeur binaire</strong> — la position dans le fichier
+      <em>et</em> l'adresse en mémoire, côte à côte. On choisit un octet, on en pose un
+      autre, et chaque écriture se défait.</figcaption>
+  </figure>
+
+  <figure>
+    <img src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
+    <figcaption><strong>Le graphe d'appels</strong> — une adresse qu'un <code>call</code>
+      vise est une fonction, même dépouillée de son nom ; celle qui est appelée de
+      partout est celle par laquelle on commence.</figcaption>
+  </figure>
+
+  <p><strong>Et sans la fenêtre.</strong> <code>namsdec-cli</code> écrit le même rapport
+    en Markdown, et compare deux versions d'un binaire — une protection qui disparaît,
+    une chaîne qui apparaît. Un <code>diff</code> d'octets dirait « le fichier a changé
+    à l'offset 0x15604 », ce qui n'apprend rien.</p>
+
+  <pre><code>namsdec-cli programme.v2 --contre programme.v1 -s protections \
+  || echo "une protection a bougé"</code></pre>
+
+  <h2 id="installer">Installer</h2>
+
+  <p>Il faut <strong>Rust</strong> (<code>cargo</code>), <strong>nasm</strong> et
+    <strong>ld</strong> (binutils). Rien n'est écrit hors de <code>$HOME</code>, et rien
+    ne demande les droits d'administrateur.</p>
+
+  <pre><code>git clone https://github.com/fredza/namsdec.git
+cd namsdec
+./install.sh</code></pre>
+
+  <p>Relancer le script est une <strong>mise à jour</strong>, pas une réinstallation :
+    vos réglages, vos séries et vos points d'arrêt restent où ils sont. Le
+    <a href="guide-namsdec-1.0.0-beta.666.pdf">guide en PDF</a> reprend tout cela en
+    détail, et il est produit depuis le dépôt — la version, le nombre d'exercices et la
+    table des raccourcis viennent des sources, jamais d'une copie qui vieillirait.</p>
+
+</main>
+
+<footer class="enveloppe">
+  <p>namsdec est écrit par <strong>Frédéric Zawalski</strong>, sous licence
+    <a href="https://github.com/fredza/namsdec/blob/main/LICENSE">MIT</a> : ce qu'on y
+    comprend est fait pour être transmis.</p>
+  <p><a href="https://github.com/fredza/namsdec">Le code</a> ·
+     <a href="https://github.com/fredza/namsdec/issues">Signaler un défaut</a> ·
+     <a href="https://github.com/fredza/namsdec/blob/main/CHANGELOG.md">Journal des versions</a> ·
+     <a href="en.html">English</a></p>
+</footer>
+
+</body>
+</html>
