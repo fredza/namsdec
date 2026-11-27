@@ -1138,6 +1138,16 @@ fn le_site_ne_montre_rien_qui_manque() {
             page.contains("data-pour=\"sha256\""),
             "docs/{nom} : la somme s'affiche mais rien ne la copie"
         );
+        // ET LE TÉLÉCHARGEMENT LA MET DANS LE PRESSE-PAPIERS, en le
+        // disant. Vérifier une somme suppose de l'avoir sous la main
+        // au moment où l'on a le fichier ; la chercher après coup,
+        // c'est ne pas vérifier. Les DEUX boutons — celui de la barre
+        // et celui du haut de page — portent de quoi le faire.
+        assert_eq!(
+            page.matches("data-somme=").count(),
+            2,
+            "docs/{nom} : les deux boutons de téléchargement doivent copier la somme"
+        );
         // Et le nom du fichier qu'elle vérifie est celui de la version.
         assert!(
             page.contains(&format!(
@@ -1153,6 +1163,14 @@ fn le_site_ne_montre_rien_qui_manque() {
         assert!(
             page.matches("<details class=\"capture\"").count() >= 4,
             "docs/{nom} : les captures ne se replient pas"
+        );
+        // ET ELLES NE SE CHARGENT QU'EN ARRIVANT DESSUS : deux
+        // mégaoctets d'images ne doivent pas retarder la première
+        // ligne qu'on lit.
+        assert_eq!(
+            page.matches("<img loading=\"lazy\"").count(),
+            page.matches("src=\"images/").count(),
+            "docs/{nom} : toutes les captures ne sont pas différées"
         );
 
         // ET L'INSTALLATION DIT QU'ELLE NE VAUT QUE DEPUIS LES SOURCES.

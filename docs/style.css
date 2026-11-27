@@ -212,7 +212,14 @@ footer {
  * les siennes, en clair comme en sombre. Un contrôle vérifie que la
  * copie est identique à l'original. */
 .logo { width: 1.9rem; height: 1.9rem; flex: 0 0 auto; display: block; }
-.nom { display: inline-flex; align-items: center; gap: .55rem; }
+/* `center` et `line-height: 1` : sans eux le mot « namsdec » se pose
+ * sur sa ligne de base et le logo sur son cadre, d'où deux ou trois
+ * pixels d'écart qu'on voit sans savoir les nommer. Et l'écart entre
+ * les deux est celui d'un mot, non d'une lettre. */
+.nom {
+  display: inline-flex; align-items: center; gap: .85rem;
+  line-height: 1; padding: .2rem 0;
+}
 
 /* ── Une capture qui se replie ─────────────────────────────────────────
  *
@@ -235,10 +242,24 @@ details.capture > summary::before {
   transition: transform .15s; display: inline-block;
 }
 details.capture[open] > summary::before { transform: rotate(90deg); }
+/* UNE CAPTURE S'ADAPTE À L'ÉCRAN, en largeur comme en hauteur.
+ *
+ * `width: 100%` seul suffit à ce qu'elle ne déborde jamais ; il ne
+ * suffit pas à ce qu'elle tienne. Une capture de 1600×1100 occupait
+ * les deux tiers d'un écran de portable et poussait le texte qui la
+ * commente hors de vue — on ne lit plus la légende de ce qu'on
+ * regarde. Le plafond en `vh` la ramène dans l'écran, et
+ * `object-fit: contain` la réduit sans la déformer. */
 details.capture > img {
-  width: 100%; height: auto; display: block; margin-top: .75rem;
+  display: block; margin-top: .75rem;
+  width: 100%; height: auto;
+  max-height: 62vh; object-fit: contain; object-position: top left;
   border: 1px solid var(--bord); border-radius: var(--rayon);
   box-shadow: var(--ombre);
+  background: var(--fond-2);
+}
+@media (max-width: 40rem) {
+  details.capture > img { max-height: 48vh; }
 }
 
 /* ── Le bloc de téléchargement : le fichier, sa somme, et de quoi la
@@ -264,3 +285,27 @@ details.capture > img {
 }
 .copier:hover { border-color: var(--accent); color: var(--accent); }
 .copier[data-fait] { border-color: var(--vert); color: var(--vert); }
+
+/* ── L'infobulle du téléchargement ─────────────────────────────────────
+ *
+ * Elle paraît au clic, pas au survol : ce qu'elle annonce — « la somme
+ * est dans votre presse-papiers » — n'est vrai qu'une fois le clic
+ * donné. Posée sous le bouton, elle ne cache pas ce qu'on vient de
+ * presser. */
+.bulle {
+  position: absolute; z-index: 40;
+  max-width: min(26rem, calc(100vw - 2rem));
+  padding: .7rem .85rem;
+  background: var(--carte); color: var(--texte);
+  border: 1px solid var(--accent); border-radius: var(--rayon);
+  box-shadow: var(--ombre); font-size: .88rem; line-height: 1.5;
+  opacity: 0; transform: translateY(-4px);
+  transition: opacity .16s ease, transform .16s ease;
+  pointer-events: none;
+}
+.bulle[data-vue] { opacity: 1; transform: none; }
+.bulle code {
+  display: block; margin-top: .4rem; padding: 0;
+  background: none; font-size: .76rem; word-break: break-all;
+  color: var(--attenue);
+}

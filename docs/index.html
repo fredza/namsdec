@@ -47,7 +47,7 @@
       <button id="bascule-theme" type="button"
               data-clair="Passer au thème clair" data-sombre="Passer au thème sombre">☀</button>
       <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Dépôt</a>
-      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger</a>
+      <a class="bouton mini fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger</a>
       <a class="langue" href="en.html" aria-label="Read in English">EN</a>
     </div>
   </div>
@@ -64,7 +64,7 @@
       faire. Il ne se contente pas d'afficher des registres : il explique.
       Linux, ELF64, syntaxe NASM. Licence MIT.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger la dernière version</a>
+      <a class="bouton fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger la dernière version</a>
       <a class="bouton" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
       <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">Le guide en PDF</a>
     </div>
@@ -88,7 +88,7 @@
     <summary><strong>L'Établi</strong> — l'écran de celui qui débute. Quatre bandes
       fixes, rien à ouvrir, rien à régler : le programme au centre, ce que fait la
       machine à droite, le résultat en bas.</summary>
-    <img src="images/etabli.png" alt="L'Établi : l'écran du mode débutant, avec l'éditeur au centre et le panneau de la machine à droite.">
+    <img loading="lazy" decoding="async" src="images/etabli.png" alt="L'Établi : l'écran du mode débutant, avec l'éditeur au centre et le panneau de la machine à droite.">
   </details>
 
   <h2 id="ce-qu-il-montre">Ce qu'il montre que les autres ne montrent pas</h2>
@@ -145,13 +145,13 @@
   <details class="capture" open>
     <summary><strong>Les points d'arrêt</strong> — avec leur condition
       (<code>rcx == 0</code>), et ce que valent les registres à ce passage-là.</summary>
-    <img src="images/points-d-arret.png" alt="La vue des points d'arrêt, avec une condition par ligne et la valeur des registres à ce passage.">
+    <img loading="lazy" decoding="async" src="images/points-d-arret.png" alt="La vue des points d'arrêt, avec une condition par ligne et la valeur des registres à ce passage.">
   </details>
 
   <details class="capture" open>
     <summary><strong>Le mode avancé</strong> — les registres, les sept indicateurs,
       la pile lue comme une pile, et la console du programme.</summary>
-    <img src="images/processeur.png" alt="L'interface complète en mode avancé : éditeur, panneau du processeur, pile et console.">
+    <img loading="lazy" decoding="async" src="images/processeur.png" alt="L'interface complète en mode avancé : éditeur, panneau du processeur, pile et console.">
   </details>
 
   <h2 id="lire">Lire les binaires des autres</h2>
@@ -164,21 +164,21 @@
   <details class="capture" open>
     <summary><strong>Les protections</strong> — PIE, NX, RELRO, canari, FORTIFY, IBT,
       segments W+X — avec, pour chacune, ce que son état change concrètement.</summary>
-    <img src="images/protections.png" alt="Le panneau des protections : PIE, NX, RELRO, canari de pile, et ce que chaque état change.">
+    <img loading="lazy" decoding="async" src="images/protections.png" alt="Le panneau des protections : PIE, NX, RELRO, canari de pile, et ce que chaque état change.">
   </details>
 
   <details class="capture" open>
     <summary><strong>L'éditeur binaire</strong> — la position dans le fichier
       <em>et</em> l'adresse en mémoire, côte à côte. On choisit un octet, on en pose un
       autre, et chaque écriture se défait.</summary>
-    <img src="images/editeur-binaire.png" alt="L'éditeur binaire : les octets du fichier, leur adresse en mémoire, et le texte à droite.">
+    <img loading="lazy" decoding="async" src="images/editeur-binaire.png" alt="L'éditeur binaire : les octets du fichier, leur adresse en mémoire, et le texte à droite.">
   </details>
 
   <details class="capture" open>
     <summary><strong>Le graphe d'appels</strong> — une adresse qu'un <code>call</code>
       vise est une fonction, même dépouillée de son nom ; celle qui est appelée de
       partout est celle par laquelle on commence.</summary>
-    <img src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
+    <img loading="lazy" decoding="async" src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
   </details>
 
   <p><strong>Et sans la fenêtre.</strong> <code>namsdec-cli</code> écrit le même rapport

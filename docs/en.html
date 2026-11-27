@@ -46,7 +46,7 @@
       <button id="bascule-theme" type="button"
               data-clair="Switch to the light theme" data-sombre="Switch to the dark theme">☀</button>
       <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Repository</a>
-      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download</a>
+      <a class="bouton mini fort" data-somme="SHA-256 of the file" data-copie="<b>The SHA-256 is in your clipboard.</b> Compare it with what <code style='display:inline;font-size:.8rem'>sha256sum</code> prints on the downloaded file." data-sans-copie="<b>Here is the SHA-256 to check</b> — the clipboard could not be reached, select it by hand." href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download</a>
       <a class="langue" href="index.html" aria-label="Lire en français">FR</a>
     </div>
   </div>
@@ -63,7 +63,7 @@
       merely display registers: it explains.
       Linux, ELF64, NASM syntax. MIT licensed.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download the latest release</a>
+      <a class="bouton fort" data-somme="SHA-256 of the file" data-copie="<b>The SHA-256 is in your clipboard.</b> Compare it with what <code style='display:inline;font-size:.8rem'>sha256sum</code> prints on the downloaded file." data-sans-copie="<b>Here is the SHA-256 to check</b> — the clipboard could not be reached, select it by hand." href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download the latest release</a>
       <a class="bouton" href="https://github.com/fredza/namsdec">The code on GitHub</a>
       <a class="bouton" href="guide-namsdec-1.0.0-beta.666-en.pdf">The PDF guide</a>
     </div>
@@ -97,7 +97,7 @@
     <summary><strong>The Workbench</strong> — the screen of somebody starting out.
       Four fixed bands, nothing to open, nothing to configure: the program in the
       middle, what the machine does on the right, the result at the bottom.</summary>
-    <img src="images/etabli.png" alt="The Workbench: the beginner screen, with the editor in the middle and the machine panel on the right.">
+    <img loading="lazy" decoding="async" src="images/etabli.png" alt="The Workbench: the beginner screen, with the editor in the middle and the machine panel on the right.">
   </details>
 
   <h2 id="what-it-shows">What it shows that the others do not</h2>
@@ -156,13 +156,13 @@
     <summary><strong>Breakpoints</strong> — with their condition
       (<code>rcx == 0</code>), and what the registers hold at that particular
       pass.</summary>
-    <img src="images/points-d-arret.png" alt="The breakpoints view, with a condition per line and the register values at that pass.">
+    <img loading="lazy" decoding="async" src="images/points-d-arret.png" alt="The breakpoints view, with a condition per line and the register values at that pass.">
   </details>
 
   <details class="capture" open>
     <summary><strong>Advanced mode</strong> — the registers, the seven flags, the
       stack read as a stack, and the program's console.</summary>
-    <img src="images/processeur.png" alt="The full interface in advanced mode: editor, processor panel, stack and console.">
+    <img loading="lazy" decoding="async" src="images/processeur.png" alt="The full interface in advanced mode: editor, processor panel, stack and console.">
   </details>
 
   <h2 id="reading">Reading other people's binaries</h2>
@@ -175,21 +175,21 @@
   <details class="capture" open>
     <summary><strong>Binary hardening</strong> — PIE, NX, RELRO, canary, FORTIFY,
       IBT, W+X segments — with, for each, what its state actually changes.</summary>
-    <img src="images/protections.png" alt="The hardening panel: PIE, NX, RELRO, stack canary, and what each state changes.">
+    <img loading="lazy" decoding="async" src="images/protections.png" alt="The hardening panel: PIE, NX, RELRO, stack canary, and what each state changes.">
   </details>
 
   <details class="capture" open>
     <summary><strong>The binary editor</strong> — the position in the file
       <em>and</em> the address in memory, side by side. You pick a byte, you put another
       one there, and every write can be undone.</summary>
-    <img src="images/editeur-binaire.png" alt="The binary editor: the file's bytes, their address in memory, and the text on the right.">
+    <img loading="lazy" decoding="async" src="images/editeur-binaire.png" alt="The binary editor: the file's bytes, their address in memory, and the text on the right.">
   </details>
 
   <details class="capture" open>
     <summary><strong>The call graph</strong> — an address a <code>call</code> aims at
       is a function, even stripped of its name; the one called from everywhere is the
       one to start from.</summary>
-    <img src="images/graphe-d-appels.png" alt="A binary's call graph, with the number of callers of each function.">
+    <img loading="lazy" decoding="async" src="images/graphe-d-appels.png" alt="A binary's call graph, with the number of callers of each function.">
   </details>
 
   <p><strong>And without the window.</strong> <code>namsdec-cli</code> writes the same

@@ -78,3 +78,59 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// Télécharger : la somme part dans le presse-papiers, et on le dit.
+//
+// Vérifier une somme suppose de l'avoir sous la main AU MOMENT où l'on
+// a le fichier. La chercher après coup, c'est remonter sur le site,
+// sélectionner soixante-quatre caractères et espérer n'en pas perdre un
+// — autant dire ne pas vérifier. Elle est donc copiée au clic, et une
+// infobulle dit ce qui vient de se passer, parce qu'une copie
+// silencieuse ne se distingue pas d'une absence de copie.
+//
+// Le téléchargement n'est pas retenu : le navigateur le lance, la page
+// reste, et l'infobulle avec elle.
+document.addEventListener("DOMContentLoaded", () => {
+  const somme = document.getElementById("sha256");
+  const boutons = document.querySelectorAll("a[data-somme]");
+  if (!somme || !boutons.length) return;
+  const valeur = somme.textContent.trim();
+
+  const montrer = (ancre, texte) => {
+    document.querySelectorAll(".bulle").forEach((b) => b.remove());
+    const bulle = document.createElement("div");
+    bulle.className = "bulle";
+    bulle.setAttribute("role", "status");
+    bulle.innerHTML = `${texte}<code>${valeur}</code>`;
+    document.body.appendChild(bulle);
+    const cadre = ancre.getBoundingClientRect();
+    // Sous le bouton, et ramenée dans la fenêtre si elle en sortait.
+    const gauche = Math.min(
+      cadre.left + window.scrollX,
+      window.scrollX + document.documentElement.clientWidth - bulle.offsetWidth - 12,
+    );
+    bulle.style.top = `${cadre.bottom + window.scrollY + 8}px`;
+    bulle.style.left = `${Math.max(window.scrollX + 12, gauche)}px`;
+    requestAnimationFrame(() => bulle.setAttribute("data-vue", ""));
+    setTimeout(() => {
+      bulle.removeAttribute("data-vue");
+      setTimeout(() => bulle.remove(), 250);
+    }, 6000);
+  };
+
+  for (const ancre of boutons) {
+    // L'infobulle du navigateur aussi : elle se lit au survol, avant
+    // même d'avoir cliqué, et elle survit à tout refus du presse-papiers.
+    ancre.setAttribute("title", `${ancre.dataset.somme}\n${valeur}`);
+    ancre.addEventListener("click", () => {
+      if (!navigator.clipboard) {
+        montrer(ancre, ancre.dataset.sansCopie || ancre.dataset.somme);
+        return;
+      }
+      navigator.clipboard.writeText(valeur).then(
+        () => montrer(ancre, ancre.dataset.copie || ancre.dataset.somme),
+        () => montrer(ancre, ancre.dataset.sansCopie || ancre.dataset.somme),
+      );
+    });
+  }
+});
