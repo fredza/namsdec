@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **27 novembre
-2026**, version 1.0.1-beta.1.
+2026**, version 1.0.2-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -5306,6 +5306,18 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       oublié un `Option` lu sur trois lignes. Le relevé compacte
       désormais les blancs ; éprouvé en retirant l'écriture, il tombe.
 
+- [x] **Version 1.0.2-beta.1** (28 novembre 2026) — demandée, pour
+      éprouver dans la vraie fenêtre la mise à jour qui s'installe : le
+      binaire qu'on compile portait déjà 1.0.1-beta.1, c'est-à-dire la
+      version publiée, et le verdict était donc « vous avez la
+      dernière » — aucun bouton à essayer. Il fallait une publication
+      PLUS RÉCENTE que le binaire en main.
+
+      Au passage, une entrée de journal remise à sa place : le bloc de
+      l'installation était écrit sous 1.0.1-beta.1, **alors que ce
+      binaire-là est parti avant qu'elle existe**. Un changelog qui
+      promet à une version ce qu'elle ne porte pas est pire qu'un
+      changelog muet : il se vérifie en téléchargeant, et il perd.
 - [x] **La mise à jour s'installe — après accord** (28 novembre 2026,
       demandé) — le crate ne savait que REGARDER : chercher, comparer,
       dire, et s'arrêter là. Son en-tête donnait la raison — « un

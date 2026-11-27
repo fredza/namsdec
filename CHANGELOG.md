@@ -4,7 +4,7 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
-## 1.0.1-beta.1 — 27 novembre 2026
+## 1.0.2-beta.1 — 28 novembre 2026
 
 **namsdec sait s'installer lui-même, après votre accord**
 
@@ -28,6 +28,8 @@ entrée par version, et ce qui change pour qui s'en sert.
   jour est alors le travail du gestionnaire de paquets.
 - Rien de tout cela ne se déclenche au démarrage, et rien ne part sans
   qu'on l'ait demandé. C'est la même règle qu'avant, tenue autrement.
+
+## 1.0.1-beta.1 — 27 novembre 2026
 
 **Un thème de Noël, et les thèmes livrés enfin mesurés**
 
