@@ -144,9 +144,11 @@ document.addEventListener("DOMContentLoaded", () => {
 document.addEventListener("DOMContentLoaded", () => {
   const flèche = document.querySelector(".haut");
   if (!flèche) return;
+  // La moitié d'un écran suffit : au-delà, le haut de la page est déjà
+  // hors de vue, et c'est là qu'on commence à vouloir y revenir.
   const regarde = () => {
-    const assez = window.scrollY > window.innerHeight * 0.9;
-    flèche.toggleAttribute("data-vue", assez);
+    const enHaut = window.scrollY < window.innerHeight * 0.5;
+    flèche.toggleAttribute("data-en-haut", enHaut);
   };
   // `passive` : le défilement ne doit pas attendre que ce calcul finisse.
   window.addEventListener("scroll", regarde, { passive: true });

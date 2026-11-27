@@ -1089,15 +1089,23 @@ fn le_site_ne_montre_rien_qui_manque() {
             "docs/{nom} ne porte pas le logo"
         );
 
-        // La feuille de style et l'interrupteur du thème, partagés.
-        assert!(
-            page.contains("style.css"),
-            "docs/{nom} ne charge pas la feuille de style"
-        );
-        assert!(
-            page.contains("theme.js"),
-            "docs/{nom} ne charge pas le choix du thème"
-        );
+        // LA FEUILLE DE STYLE ET LE SCRIPT PORTENT LA VERSION.
+        //
+        // GitHub Pages les sert avec `max-age=600` : dix minutes
+        // durant, un navigateur qui a déjà vu la page garde les
+        // anciens, et l'on croit à un défaut du site là où c'est le
+        // cache. C'est arrivé. Le numéro dans l'adresse suffit à ce
+        // qu'une version neuve soit toujours rechargée — et il doit
+        // être celui qu'on compile, sinon il ne casse plus rien.
+        for ressource in ["style.css", "theme.js"] {
+            let attendu = format!("{ressource}?v={}", env!("CARGO_PKG_VERSION"));
+            assert!(
+                page.contains(&attendu),
+                "docs/{nom} ne charge pas « {attendu} ».\n\
+                 Les deux pages se remettent à jour par \
+                 `python3 docs/maj-telechargement.py`"
+            );
+        }
         assert!(
             page.contains("id=\"bascule-theme\""),
             "docs/{nom} n'a pas de bouton pour changer de thème"

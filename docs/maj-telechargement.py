@@ -76,6 +76,14 @@ def main():
         )
         # Le nom du fichier, dans la phrase qui dit de quoi est la somme.
         texte = re.sub(r"namsdec-[0-9][^<\" ]*-x86_64-linux", binaire, texte)
+        # ET LE NUMÉRO QUI CASSE LE CACHE. GitHub Pages sert la feuille
+        # de style et le script avec `max-age=600` : dix minutes durant,
+        # un navigateur qui a déjà vu la page garde les anciens. On a
+        # cru deux fois à un défaut du site là où c'était le cache. Le
+        # numéro de version dans l'adresse suffit à ce qu'une version
+        # neuve soit toujours rechargée.
+        texte = re.sub(r'(href="style\.css\?v=)[^"]*', r"\g<1>" + v, texte)
+        texte = re.sub(r'(src="theme\.js\?v=)[^"]*', r"\g<1>" + v, texte)
         if somme:
             texte = re.sub(
                 r'(<code id="sha256">)[0-9a-f]{64}(</code>)',

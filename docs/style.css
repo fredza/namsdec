@@ -328,11 +328,18 @@ details.capture > img {
   background: var(--accent); color: var(--encre-bouton);
   font-size: 1.15rem; line-height: 1; cursor: pointer;
   box-shadow: var(--ombre);
-  opacity: 0; visibility: hidden; transform: translateY(8px);
+  /* VISIBLE PAR DÉFAUT, cachée en haut de page — et non l'inverse.
+   *
+   * Écrite dans l'autre sens, elle n'existait que si le script
+   * tournait : un script en cache, une erreur plus haut dans le
+   * fichier, et le bouton restait invisible sans que rien ne le dise.
+   * Dans ce sens-ci, le pire qu'une panne de script puisse faire est
+   * de la montrer tout le temps — ce qui reste utilisable. */
+  opacity: 1; visibility: visible; transform: none;
   transition: opacity .18s ease, transform .18s ease, visibility .18s,
               background-color .15s;
 }
-.haut[data-vue] { opacity: 1; visibility: visible; transform: none; }
+.haut[data-en-haut] { opacity: 0; visibility: hidden; transform: translateY(8px); }
 .haut:hover { background: var(--accent-fort); }
 .haut:focus-visible { outline: 2px solid var(--texte); outline-offset: 3px; }
 
