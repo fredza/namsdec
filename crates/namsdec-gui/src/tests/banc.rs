@@ -4997,6 +4997,9 @@ fn releve_du_site() {
         ("analyse / hex_editor (en marche)", "editeur-binaire"),
         ("analyse / binary_info (en marche)", "protections"),
         ("analyse / call_graph (en marche)", "graphe-d-appels"),
+        // L'ENTROPIE : elle se lit sur n'importe quel fichier, même
+        // court, parce qu'elle mesure les octets et non le code.
+        ("analyse / entropy (en marche)", "entropie"),
     ];
     let mut écrites = 0;
     for (nom, _, ouvre) in scènes() {
@@ -5026,6 +5029,49 @@ fn releve_du_site() {
         écrites += 1;
     }
     assert!(écrites > 0, "aucune scène rendue : les noms ont changé");
+
+    // LES PANNEAUX AVANCÉS, SUR UN BINAIRE QUI A DE QUOI LES REMPLIR.
+    //
+    // Les scènes du banc tournent sur le programme du banc : vingt
+    // lignes, un saut, une chaîne. Les fragments ROP y répondent « le
+    // programme est trop court », les références croisées « une
+    // boucle » — on montrerait des panneaux vides, ce qui dessert
+    // mieux qu'on ne montre. Le crackme fabriqué, lui, a des appels,
+    // des chaînes et une comparaison de mot de passe : c'est le plus
+    // petit sujet qui ait quelque chose à dire.
+    let Some(octets) = binaire_fabriqué() else {
+        return;
+    };
+    for (module, fichier) in [
+        ("xrefs", "references-croisees"),
+        ("functions", "fonctions"),
+        ("slack", "place-libre"),
+    ] {
+        let mut app = NamsdecApp::default();
+        if !app.load_elf(&octets, NOM_FABRIQUÉ) {
+            continue;
+        }
+        app.show_analysis = true;
+        app.analysis_module = module.to_owned();
+        let mut harness = Harness::builder()
+            .with_size(egui::vec2(1600.0, 1100.0))
+            .wgpu()
+            .build_ui(move |ui| {
+                app.apply_theme(ui.ctx());
+                app.draw(ui)
+            });
+        for _ in 0..8 {
+            harness.step();
+        }
+        let _ = harness.render();
+        harness.step();
+        harness
+            .render()
+            .expect("rendu")
+            .save(dossier.join(format!("{fichier}.png")))
+            .expect("écriture");
+        println!("écrit {fichier}.png");
+    }
 }
 
 /// Les captures de l'éditeur binaire, à quatre tailles.

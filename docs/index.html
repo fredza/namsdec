@@ -181,6 +181,41 @@
     <img loading="lazy" decoding="async" src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
   </details>
 
+  <details class="capture" open>
+    <summary><strong>L'entropie, tranche par tranche</strong> — chaque barre mesure le
+      désordre de 256 octets. Du texte monte peu, du code machine monte plus, et ce qui
+      frôle 8 est compressé ou chiffré. La légende dit quel régime correspond à quelle
+      hauteur ; un bloc de code dense monte à 6,5 sans être chiffré pour autant, et
+      namsdec le dit plutôt que de conclure à votre place.</summary>
+    <img loading="lazy" decoding="async" src="images/entropie.png" alt="Le panneau d'entropie : un histogramme par tranches de 256 octets, une légende des régimes, et le tableau des plages.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>Retrouver les fonctions d'un binaire dépouillé</strong> — le code est
+      découpé sur les cibles d'appel, avec la taille de chacune et <em>le nombre
+      d'appelants</em>. Celle qui est appelée de partout est celle par laquelle on commence
+      à lire. Un nom qu'on donne ici vaut partout : listing, arbre d'appels, références
+      croisées — et il survit à la fermeture.</summary>
+    <img loading="lazy" decoding="async" src="images/fonctions.png" alt="Le panneau des fonctions : deux fonctions retrouvées, leur adresse, leur taille et le nombre d'appels qui y mènent.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>La place libre, celle où un détour tient</strong> — entre deux
+      fonctions, entre deux sections, à la fin d'un segment, l'éditeur de liens comble
+      avec un octet neutre jusqu'au prochain alignement. Ces trous se voient : adresse,
+      taille, octet de remplissage, section, et s'ils sont exécutables. C'est là qu'on
+      pose du code sans décaler le fichier d'un octet.</summary>
+    <img loading="lazy" decoding="async" src="images/place-libre.png" alt="Le panneau de la place libre : six zones listées avec leur adresse, leur taille, leur octet de remplissage et leur section.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>Qui appelle quoi, et où ça boucle</strong> — pour chaque adresse, qui
+      l'appelle, qui y saute, qui la désigne. Une adresse qu'un <code>call</code> vise est
+      une fonction même sans son nom ; un saut qui revient en arrière ferme un chemin, et
+      combien de fois on y tourne ne se sait qu'en exécutant.</summary>
+    <img loading="lazy" decoding="async" src="images/references-croisees.png" alt="Le panneau des références croisées : les fonctions appelées, la boucle repérée, les étiquettes et les adresses de données.">
+  </details>
+
   <p><strong>Et sans la fenêtre.</strong> <code>namsdec-cli</code> écrit le même rapport
     en Markdown, et compare deux versions d'un binaire — une protection qui disparaît,
     une chaîne qui apparaît. Un <code>diff</code> d'octets dirait « le fichier a changé

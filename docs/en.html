@@ -192,6 +192,41 @@
     <img loading="lazy" decoding="async" src="images/graphe-d-appels.png" alt="A binary's call graph, with the number of callers of each function.">
   </details>
 
+  <details class="capture" open>
+    <summary><strong>Entropy, slice by slice</strong> — each bar measures the disorder of
+      256 bytes. Text rises little, machine code rises more, and anything close to 8 is
+      compressed or encrypted. The legend says which regime matches which height; a dense
+      block of code reaches 6.5 without being encrypted, and namsdec says so rather than
+      concluding for you.</summary>
+    <img loading="lazy" decoding="async" src="images/entropie.png" alt="The entropy panel: a histogram of 256-byte slices, a legend of the regimes, and the table of ranges.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>Recovering the functions of a stripped binary</strong> — the code is
+      cut at call targets, with the size of each and <em>the number of callers</em>. The
+      one called from everywhere is the one to start reading from. A name you give here
+      holds everywhere: listing, call graph, cross-references — and it survives
+      closing.</summary>
+    <img loading="lazy" decoding="async" src="images/fonctions.png" alt="The functions panel: two recovered functions with their address, size and number of incoming calls.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>Slack space, where a detour fits</strong> — between two functions,
+      between two sections, at the end of a segment, the linker fills with a neutral byte
+      up to the next alignment. Those holes are shown: address, size, filler byte,
+      section, and whether they are executable. That is where code goes without shifting
+      the file by a single byte.</summary>
+    <img loading="lazy" decoding="async" src="images/place-libre.png" alt="The slack panel: six regions listed with their address, size, filler byte and section.">
+  </details>
+
+  <details class="capture" open>
+    <summary><strong>Who calls what, and where it loops</strong> — for each address, who
+      calls it, who jumps to it, who names it. An address a <code>call</code> aims at is a
+      function even without its name; a jump that goes back up closes a path, and how many
+      times you go round is only known by running it.</summary>
+    <img loading="lazy" decoding="async" src="images/references-croisees.png" alt="The cross-references panel: the called functions, the loop found, the labels and the data addresses.">
+  </details>
+
   <p><strong>And without the window.</strong> <code>namsdec-cli</code> writes the same
     report as Markdown, and compares two versions of a binary — a protection that
     disappears, a string that appears. A byte <code>diff</code> would say "the file
