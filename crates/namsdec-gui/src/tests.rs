@@ -983,6 +983,47 @@ fn fenêtres_ouvrables() -> Vec<Ouverture> {
             app.show_preferences = true;
         }),
         ("à propos", ABOUT_WINDOW, |app| app.show_about = true),
+        // LA MISE À JOUR PROPOSÉE, ET L'ACCORD DEMANDÉ. C'est le seul
+        // endroit de l'application où l'on parle de remplacer le
+        // programme, et c'est une scène à part parce que la boîte
+        // « À propos » ordinaire ne la montre pas : il y faut un
+        // verdict. Sans elle, les douze phrases de la mise à jour
+        // n'étaient mesurées par aucun contraste et vues sur aucune
+        // capture.
+        #[cfg(feature = "reseau")]
+        ("à propos / mise à jour", ABOUT_WINDOW, |app| {
+            app.show_about = true;
+            let version = "99.0.0";
+            let nom = namsdec_update::install::asset_name(version);
+            app.update_result = Some(Ok(namsdec_update::verdict(
+                APP_VERSION,
+                namsdec_update::Release {
+                    tag: format!("v{version}"),
+                    version: version.to_owned(),
+                    name: format!("namsdec {version}"),
+                    url: format!("https://github.com/fredza/namsdec/releases/tag/v{version}"),
+                    prerelease: false,
+                    assets: vec![
+                        namsdec_update::install::Asset {
+                            name: nom.clone(),
+                            url: String::new(),
+                            size: 22_807_136,
+                        },
+                        namsdec_update::install::Asset {
+                            name: format!("{nom}.sha256"),
+                            url: String::new(),
+                            size: 100,
+                        },
+                    ],
+                },
+            )));
+            // Posés plutôt que relevés : la scène doit montrer la même
+            // chose sur toute machine, et le droit d'écrire à côté du
+            // binaire d'un test n'est pas le sujet.
+            app.update_replaceable = Some(true);
+            app.update_target = Some(std::path::PathBuf::from("namsdec"));
+            app.update_consent = true;
+        }),
         ("calculatrice", "calculator_window", |app| {
             app.show_calculator = true;
         }),

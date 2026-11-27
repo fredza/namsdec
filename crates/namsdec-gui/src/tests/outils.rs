@@ -78,6 +78,7 @@ fn the_update_check_is_wired_and_installs_nothing() {
         name: v.to_owned(),
         url: format!("https://github.com/fredza/namsdec/releases/tag/v{v}"),
         prerelease: v.contains('-'),
+        assets: Vec::new(),
     };
     app.update_result = Some(Ok(namsdec_update::verdict(APP_VERSION, release("9.9.9"))));
     let painted = paint(&mut app);
@@ -107,6 +108,126 @@ fn the_update_check_is_wired_and_installs_nothing() {
     assert!(app.update_result.is_none());
 }
 
+/// LA MISE À JOUR SE PROPOSE, ET RIEN NE PART AVANT UN OUI.
+///
+/// C'est la promesse entière, et elle se vérifie en trois temps :
+/// le premier bouton n'ouvre qu'une explication ; l'explication dit
+/// quel fichier sera remplacé et ce qui va se passer ; et tant que le
+/// second bouton n'a pas été pressé, aucun fil n'a été lancé.
+///
+/// Le réseau n'est pas touché : c'est l'ENCHAÎNEMENT qu'on mesure,
+/// pas ce que GitHub répond. Ce que vaut une somme ou un remplacement
+/// de fichier se vérifie chez `namsdec-update`, là où ça se fait.
+#[test]
+fn la_mise_a_jour_se_propose_et_rien_ne_part_avant_un_oui() {
+    let publiée = namsdec_update::Release {
+        tag: "v9.9.9".to_owned(),
+        version: "9.9.9".to_owned(),
+        name: "namsdec 9.9.9".to_owned(),
+        url: "https://github.com/fredza/namsdec/releases/tag/v9.9.9".to_owned(),
+        prerelease: false,
+        assets: vec![
+            namsdec_update::install::Asset {
+                name: namsdec_update::install::asset_name("9.9.9"),
+                url: "https://example.invalid/namsdec".to_owned(),
+                size: 22_807_136,
+            },
+            namsdec_update::install::Asset {
+                name: format!("{}.sha256", namsdec_update::install::asset_name("9.9.9")),
+                url: "https://example.invalid/namsdec.sha256".to_owned(),
+                size: 100,
+            },
+        ],
+    };
+    let dossier = tempfile::tempdir().expect("un dossier d'essai");
+    std::fs::write(dossier.path().join("namsdec"), b"programme").expect("le binaire d'essai");
+    let mut app = NamsdecApp {
+        show_about: true,
+        update_result: Some(Ok(namsdec_update::verdict(APP_VERSION, publiée.clone()))),
+        // Relevé d'ordinaire en essayant d'écrire à côté du programme ;
+        // posé ici pour que le contrôle mesure l'enchaînement et non
+        // les droits de la machine qui le fait tourner.
+        update_replaceable: Some(true),
+        // UN VRAI CHEMIN, SEMÉ POUR L'OCCASION. Un chemin inventé
+        // sous « /home/quelquun/ » ferait un contrôle dont l'entrée
+        // n'existe que sur une machine — la règle du banc
+        // (`no_control_reads_a_path_from_someones_home`), et elle a
+        // raison : ce qu'on montre ici est le fichier qu'on
+        // remplacerait, et il doit exister quelque part.
+        update_target: Some(dossier.path().join("namsdec")),
+        ..Default::default()
+    };
+    let s = strings(app.lang);
+
+    // 1. On propose, et c'est tout ce qu'on fait.
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_install), "{painted}");
+    assert!(
+        !painted.contains(s.about_update_consent_yes),
+        "l'accord ne se demande pas avant qu'on ait ouvert la question : {painted}"
+    );
+    assert!(app.update_install.is_none(), "rien n'est lancé");
+    assert!(app.update_install_result.is_none());
+
+    // 2. La question posée dit SUR QUOI elle porte, et ce qu'elle fera.
+    app.update_consent = true;
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_consent_title), "{painted}");
+    let cible = dossier.path().join("namsdec");
+    assert!(
+        painted.contains(&cible.display().to_string()),
+        "le fichier remplacé doit être nommé : {painted}"
+    );
+    assert!(painted.contains(s.about_update_consent_yes), "{painted}");
+    assert!(painted.contains(s.dialog_cancel), "{painted}");
+    // Ce que l'explication promet, dans les deux langues : la somme
+    // vérifiée, et l'ancienne version gardée.
+    for texte in [strings(Lang::Fr), strings(Lang::En)] {
+        assert!(
+            texte.about_update_consent_steps.contains("SHA-256"),
+            "l'accord doit dire que la somme est vérifiée"
+        );
+        assert!(
+            texte.about_update_consent_steps.contains("ancien"),
+            "et que l'ancienne version est gardée"
+        );
+    }
+    // ET TOUJOURS RIEN LANCÉ : lire la question ne la répond pas.
+    assert!(
+        app.update_install.is_none(),
+        "la question ne télécharge rien"
+    );
+
+    // 3. Un dossier qu'on ne peut pas écrire ne se voit rien proposer
+    // du tout — ni bouton, ni question.
+    app.update_consent = false;
+    app.update_replaceable = Some(false);
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_readonly), "{painted}");
+    assert!(
+        !painted.contains(s.about_update_install),
+        "un bouton qui ne peut pas aboutir ne se montre pas : {painted}"
+    );
+
+    // 4. Et une publication sans binaire pour cette machine le dit,
+    // au lieu d'offrir le fichier d'une autre.
+    app.update_replaceable = Some(true);
+    app.update_result = Some(Ok(namsdec_update::verdict(
+        APP_VERSION,
+        namsdec_update::Release {
+            assets: vec![namsdec_update::install::Asset {
+                name: "namsdec-9.9.9-aarch64-macos".to_owned(),
+                url: "https://example.invalid/ailleurs".to_owned(),
+                size: 1,
+            }],
+            ..publiée
+        },
+    )));
+    let painted = paint(&mut app);
+    assert!(painted.contains(s.about_update_no_asset), "{painted}");
+    assert!(!painted.contains(s.about_update_install), "{painted}");
+}
+
 /// Être en avance n'est pas une impasse : la version publiée se nomme
 /// ET se rejoint.
 ///
@@ -127,6 +248,7 @@ fn etre_en_avance_mene_quand_meme_a_la_version_publiee() {
         name: "0.0.1".to_owned(),
         url: "https://github.com/fredza/namsdec/releases/tag/v0.0.1".to_owned(),
         prerelease: false,
+        assets: Vec::new(),
     };
     // 0.0.1 est sous toute version que namsdec puisse porter : le
     // verdict est « en avance », quel que soit le numéro du jour.
@@ -159,6 +281,7 @@ fn les_preversions_se_suivent_par_choix() {
         name: v.to_owned(),
         url: String::new(),
         prerelease: v.contains('-'),
+        assets: Vec::new(),
     };
     let publiées = [r("0.1.0"), r("0.2.0-beta.3")];
 

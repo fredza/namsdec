@@ -4461,8 +4461,36 @@ def main():
         blocs.append(("h1", "Mises à jour, licence et contact"))
         blocs.append(("p",
             "« À propos › Rechercher une mise à jour » interroge les versions publiées sur "
-            "GitHub et compare avec la vôtre. Rien n'est téléchargé ni "
-            "installé sans vous : namsdec ouvre la page de la version."))
+            "GitHub et compare avec la vôtre. Rien n'est envoyé, et rien ne part tant que "
+            "vous n'avez pas cliqué — aucune recherche au démarrage."))
+        blocs.append(("p",
+            "<b>Depuis le 27 novembre 2026, namsdec sait s'installer lui-même — après votre "
+            "accord.</b> Quand une version plus récente existe, « Installer cette version… » "
+            "ouvre une question qui dit <i>quel fichier</i> sera remplacé et <i>ce qui va se "
+            "passer</i> ; c'est le second bouton qui lance quelque chose. Le premier clic ne "
+            "télécharge rien."))
+        blocs.append(("p",
+            "Ce qui se passe alors, dans l'ordre : le binaire est pris sur la publication "
+            "GitHub ; <b>sa somme SHA-256 est vérifiée pendant qu'il arrive</b>, et s'il ne "
+            "correspond pas il est effacé sans que rien n'ait bougé ; on s'assure que c'est "
+            "bien un exécutable et non une page d'erreur arrivée sans erreur ; l'actuel est "
+            "gardé à côté sous <font face='Courier'>.ancien</font> ; et la nouvelle version "
+            "prend sa place par un <i>renommage</i>, qui est atomique — à aucun instant la "
+            "place du programme ne contient un fichier à moitié écrit. La barre de "
+            "progression dit où en est le téléchargement, et « Arrêter » le coupe."))
+        blocs.append(("note",
+            "La nouvelle version ne démarre qu'au <b>lancement suivant</b> : la session en "
+            "cours continue de tourner sur l'ancienne, et c'est voulu — remplacer le code "
+            "sous les pieds d'un programme qui travaille n'est pas une mise à jour, c'est un "
+            "accident. Si le dossier du programme ne s'écrit pas — paquet d'une "
+            "distribution, binaire posé par root —, namsdec ne propose rien et le dit : la "
+            "mise à jour est alors le travail du gestionnaire de paquets."))
+        blocs.append(("note",
+            "<b>Ce que la somme prouve, et ce qu'elle ne prouve pas.</b> Elle vient de la "
+            "même publication que le binaire : elle démontre que les octets sont arrivés "
+            "entiers, pas qu'ils sont honnêtes. Ce qui tient la provenance, c'est le "
+            "chiffrement du transport et le compte GitHub du dépôt. Le jour où les "
+            "publications seront signées, c'est la signature qui prendra ce rôle."))
         blocs.append(("p",
             "<b>Quelles versions vous sont proposées</b> se règle dans Préférences › Général, "
             "à « Me proposer aussi les préversions (bêtas) ». Les versions définitives sont "

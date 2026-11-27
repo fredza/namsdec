@@ -829,11 +829,24 @@ says all the rest.
 ### Updates
 
 *About ▸ Check for updates* asks GitHub for the published releases and
-compares with yours — nothing is sent, nothing is downloaded, nothing is
-installed. **Which releases you are offered** is set in Preferences ▸
+compares with yours — nothing is sent, and nothing leaves until you
+click. **Which releases you are offered** is set in Preferences ▸
 General: final releases are offered either way, and the box *adds* the
-betas on top. By default it follows the version you are running. Updating
-is done by hand:
+betas on top. By default it follows the version you are running.
+
+**namsdec can install itself, once you agree.** When a newer release
+exists, *Install this release…* opens a question naming the file that
+would be replaced and what is about to happen; only the second button
+starts anything. The binary is then taken from the GitHub release,
+**its SHA-256 is checked before anything moves**, the current one is
+kept beside it as `.ancien`, and the new one takes its place in a
+single rename. It starts at the next launch: this session keeps running
+on the old one. None of this happens at startup, and never unasked.
+
+If the program's folder is not writable — a distribution package, a
+binary installed by root — namsdec offers nothing and says so: updating
+is then the package manager's job. From source, it is done by hand as
+before:
 
 ```sh
 git pull && ./install.sh
@@ -842,8 +855,9 @@ git pull && ./install.sh
 You can run that with namsdec open: the window stays there during the
 compilation, and reopens by itself on the new version at the end.
 
-A workshop that rewrites itself while you are working inside it is not a
-workshop.
+A workshop that rewrites itself *while you are working inside it* is not
+a workshop — which is why the installation asks first, and why nothing
+is ever checked or fetched on startup.
 
 On the repository side, pushing a `v…` tag compiles, checks (`fmt`,
 `clippy`, every test) and publishes the binary with its SHA-256 sum; a

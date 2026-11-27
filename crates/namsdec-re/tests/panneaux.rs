@@ -622,7 +622,16 @@ const SOURCES_DES_PANNEAUX: &[(&str, &str)] = &[
     ("cfg.rs", include_str!("../src/cfg.rs")),
     ("cyclic.rs", include_str!("../src/cyclic.rs")),
     ("detour_module.rs", include_str!("../src/detour_module.rs")),
-    ("digest.rs", include_str!("../src/digest.rs")),
+    // Monté dans le socle le 27 novembre 2026 pour que la mise à
+    // jour puisse vérifier une somme sans traîner tout le moteur
+    // d'analyse. Il reste dans la liste : `namsdec_re::digest` le
+    // réexporte, les contrôles de lecture de code le regardent
+    // comme avant, et une source qui ne peint rien doit le
+    // PROUVER plutôt que de disparaître.
+    (
+        "digest.rs",
+        include_str!("../../namsdec-core/src/digest.rs"),
+    ),
     ("dump_module.rs", include_str!("../src/dump_module.rs")),
     ("dzf.rs", include_str!("../src/dzf.rs")),
     ("elf_scan.rs", include_str!("../src/elf_scan.rs")),

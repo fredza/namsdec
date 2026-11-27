@@ -650,10 +650,37 @@ def queue():
         ("h1", "Updates, licence and contact"),
         ("p",
          "<i>About › Check for updates</i> asks GitHub for the published releases and "
-         "compares with yours. Nothing is sent, nothing is downloaded, nothing is "
-         "installed. <b>Which releases you are offered</b> is set in Preferences › "
-         "General: final releases are offered either way, and the box <i>adds</i> the "
-         "betas on top. By default it follows the version you are running."),
+         "compares with yours. Nothing is sent, and nothing leaves until you click — "
+         "there is no check at startup. <b>Which releases you are offered</b> is set in "
+         "Preferences › General: final releases are offered either way, and the box "
+         "<i>adds</i> the betas on top. By default it follows the version you are "
+         "running."),
+        ("p",
+         "<b>Since 27 November 2026 namsdec can install itself — once you agree.</b> "
+         "When a newer release exists, <i>Install this release…</i> opens a question "
+         "naming <i>which file</i> would be replaced and <i>what is about to happen</i>; "
+         "only the second button starts anything. The first click downloads nothing."),
+        ("p",
+         "What happens then, in order: the binary is taken from the GitHub release; "
+         "<b>its SHA-256 is checked as it arrives</b>, and a file that does not match is "
+         "deleted without anything having moved; it is checked to be an executable and "
+         "not an error page that arrived without an error; the current one is kept "
+         "beside it as <font face='Courier'>.ancien</font>; and the new one takes its "
+         "place by a <i>rename</i>, which is atomic — at no instant does the program's "
+         "place hold a half-written file. A progress bar says where the download is, and "
+         "<i>Stop</i> cuts it."),
+        ("note",
+         "The new version only starts at the <b>next launch</b>: this session keeps "
+         "running on the old one, and that is deliberate — replacing the code under a "
+         "working program is not an update, it is an accident. If the program's folder "
+         "is not writable — a distribution package, a binary installed by root — namsdec "
+         "offers nothing and says so: updating is then the package manager's job."),
+        ("note",
+         "<b>What the checksum proves, and what it does not.</b> It comes from the same "
+         "release as the binary: it shows the bytes arrived whole, not that they are "
+         "honest. What holds provenance here is transport encryption and the "
+         "repository's GitHub account. The day releases are signed, the signature will "
+         "take that role."),
         ("code", "git pull && ./install.sh"),
         ("p",
          "You can run that with namsdec open: the window stays there during the "

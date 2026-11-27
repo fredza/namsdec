@@ -1,6 +1,7 @@
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub mod cpu;
+pub mod digest;
 pub mod flags;
 pub mod memory;
 pub mod registers;

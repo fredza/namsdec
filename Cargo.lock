@@ -1831,8 +1831,10 @@ dependencies = [
 name = "namsdec-update"
 version = "1.0.1-beta.1"
 dependencies = [
+ "namsdec-core",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.21",
  "ureq",
 ]

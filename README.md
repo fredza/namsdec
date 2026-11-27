@@ -986,11 +986,27 @@ passerait pour analysé —, `4` les deux analyses comparées diffèrent.
 ### Les mises à jour
 
 « À propos ▸ Rechercher une mise à jour » demande à GitHub les versions
-publiées et compare avec la vôtre — rien n'est envoyé, rien n'est
-téléchargé, rien n'est installé. **Quelles versions vous sont
+publiées et compare avec la vôtre — rien n'est envoyé, et rien ne part
+tant que vous n'avez pas cliqué. **Quelles versions vous sont
 proposées** se règle dans Préférences ▸ Général : les définitives le
 sont dans tous les cas, et la case y *ajoute* les préversions. Par
-défaut, elle suit la version que vous faites tourner. La mise à jour se fait à la main :
+défaut, elle suit la version que vous faites tourner.
+
+**namsdec sait s'installer lui-même, après votre accord.** Quand une
+version plus récente existe, « Installer cette version… » ouvre une
+question qui dit quel fichier sera remplacé et ce qui va se passer ;
+c'est le second bouton qui lance quoi que ce soit. Le binaire est alors
+pris sur la publication GitHub, **sa somme SHA-256 est vérifiée avant
+que rien ne bouge**, l'actuel est gardé à côté sous `.ancien`, et la
+nouvelle version prend sa place d'un seul renommage. Elle ne démarre
+qu'au lancement suivant : la session en cours continue de tourner sur
+l'ancienne. Rien de tout cela ne se déclenche au démarrage, et jamais
+sans qu'on l'ait demandé.
+
+Si le dossier du programme ne s'écrit pas — un paquet de distribution,
+un binaire posé par root —, namsdec ne propose rien et le dit : la mise
+à jour est alors le travail du gestionnaire de paquets. Depuis les
+sources, elle se fait comme avant :
 
 ```sh
 git pull && ./install.sh

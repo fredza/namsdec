@@ -442,6 +442,152 @@ impl NamsdecApp {
         });
     }
 
+    /// Télécharge la version publiée et la met à la place de celle-ci.
+    ///
+    /// **Appelée par un clic qui a dit oui**, jamais autrement : la
+    /// boîte « À propos » montre d'abord ce qui va se passer et où,
+    /// et c'est le second bouton qui arrive ici. Le premier n'ouvre
+    /// que l'explication.
+    ///
+    /// Tout se passe sur un fil : trois allers-retours réseau et une
+    /// copie de vingt-trois mégaoctets n'ont rien à faire dans la
+    /// boucle de rendu. Le fil rend compte à chaque morceau reçu, et
+    /// regarde le drapeau d'arrêt au même rythme.
+    #[cfg(feature = "reseau")]
+    pub(crate) fn start_update_install(&mut self, release: namsdec_update::Release) {
+        use namsdec_update::install;
+
+        if self.update_install.is_some() {
+            return;
+        }
+        self.update_consent = false;
+        self.update_install_result = None;
+
+        // CE QUI NE DEMANDE PAS LE RÉSEAU SE DÉCIDE ICI, avant de
+        // lancer quoi que ce soit : où est le programme, peut-on le
+        // remplacer, cette publication porte-t-elle un binaire pour
+        // cette machine. Échouer après vingt-trois mégaoctets sur une
+        // question qu'on pouvait poser d'abord serait une perte de
+        // temps et de données.
+        let s = strings(self.lang);
+        let cible = match install::current_exe() {
+            Ok(chemin) => chemin,
+            Err(souci) => {
+                self.update_install_result =
+                    Some(Err(format!("{} : {souci}", s.about_update_install_failed)));
+                return;
+            }
+        };
+        if install::replaceable(&cible).is_err() {
+            self.update_install_result = Some(Err(s.about_update_readonly.to_owned()));
+            return;
+        }
+        let (Some(binaire), Some(somme)) = (
+            install::binary_asset(&release),
+            install::checksum_asset(&release),
+        ) else {
+            self.update_install_result = Some(Err(s.about_update_no_asset.to_owned()));
+            return;
+        };
+        let (url_binaire, url_somme) = (binaire.url.clone(), somme.url.clone());
+        let taille = binaire.size;
+
+        let (sender, receiver) = mpsc::channel();
+        let arrêt = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let drapeau = arrêt.clone();
+        let échec = s.about_update_install_failed.to_owned();
+        std::thread::spawn(move || {
+            let étape =
+                |résultat: Result<std::path::PathBuf, install::InstallError>| match résultat {
+                    Ok(sauvegarde) => UpdateStep::Posée(sauvegarde),
+                    Err(install::InstallError::Cancelled) => {
+                        UpdateStep::Échec(String::from("cancelled"))
+                    }
+                    Err(souci) => UpdateStep::Échec(format!("{échec} : {souci}")),
+                };
+            let travail = (|| {
+                let attendue = install::fetch_checksum(&url_somme)?;
+                let neuf = install::staging_path(&cible);
+                let envoi = sender.clone();
+                install::download(&url_binaire, attendue, &neuf, &mut |avance| {
+                    let _ = envoi.send(UpdateStep::Avance {
+                        reçus: avance.reçus,
+                        // Ce que le serveur annonce quand il l'annonce,
+                        // et à défaut ce que la publication disait de
+                        // la taille du fichier : une barre sans total
+                        // ne dit rien de ce qui reste.
+                        total: avance.total.or(Some(taille)).filter(|t| *t > 0),
+                    });
+                    !drapeau.load(std::sync::atomic::Ordering::Relaxed)
+                })?;
+                let _ = sender.send(UpdateStep::Vérifie);
+                install::install_over(&neuf, &cible)
+            })();
+            let _ = sender.send(étape(travail));
+        });
+
+        self.update_install = Some(UpdateInstall {
+            étapes: receiver,
+            arrêt,
+            reçus: 0,
+            total: Some(taille).filter(|t| *t > 0),
+            vérifie: false,
+        });
+    }
+
+    /// Relève où en est l'installation.
+    ///
+    /// Tous les messages en attente sont lus à chaque frame, et non
+    /// un seul : un téléchargement en envoie plusieurs centaines, et
+    /// n'en prendre qu'un par image ferait une progression qui traîne
+    /// derrière la réalité — puis un canal qui gonfle.
+    #[cfg(feature = "reseau")]
+    pub(crate) fn poll_update_install(&mut self, ctx: &egui::Context) {
+        let Some(installation) = &mut self.update_install else {
+            return;
+        };
+        let fini;
+        loop {
+            match installation.étapes.try_recv() {
+                Ok(UpdateStep::Avance { reçus, total }) => {
+                    installation.reçus = reçus;
+                    if total.is_some() {
+                        installation.total = total;
+                    }
+                }
+                Ok(UpdateStep::Vérifie) => installation.vérifie = true,
+                Ok(UpdateStep::Posée(sauvegarde)) => {
+                    fini = Ok(sauvegarde);
+                    break;
+                }
+                Ok(UpdateStep::Échec(raison)) => {
+                    fini = Err(raison);
+                    break;
+                }
+                // Toujours en route : sans ce réveil, la progression
+                // attendrait le prochain mouvement de souris.
+                Err(TryRecvError::Empty) => {
+                    ctx.request_repaint_after(DIALOG_POLL_INTERVAL);
+                    return;
+                }
+                // Le fil s'est éteint sans rien dire. Ce n'est pas
+                // arrivé, et le dire vaut mieux que de laisser une
+                // progression figée pour toujours.
+                Err(TryRecvError::Disconnected) => {
+                    fini = Err(strings(self.lang).about_update_install_failed.to_owned());
+                    break;
+                }
+            }
+        }
+        self.update_install = None;
+        // UN ARRÊT DEMANDÉ N'EST PAS UN ÉCHEC : on ne peint pas de
+        // rouge sur un bouton qu'on vient de presser soi-même.
+        self.update_install_result = match fini {
+            Err(raison) if raison == "cancelled" => None,
+            autre => Some(autre),
+        };
+    }
+
     /// Relève la réponse de la recherche, si elle est arrivée.
     #[cfg(feature = "reseau")]
     pub(crate) fn poll_update_check(&mut self, ctx: &egui::Context) {

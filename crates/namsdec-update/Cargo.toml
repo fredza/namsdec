@@ -18,7 +18,13 @@ default = ["reseau"]
 reseau = ["dep:ureq"]
 
 [dependencies]
+# Pour SHA-256, et pour lui seul : vérifier qu'un binaire téléchargé
+# est bien celui qu'on a annoncé. Le socle ne tire rien derrière lui.
+namsdec-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 ureq = { workspace = true, optional = true }
+
+[dev-dependencies]
+tempfile.workspace = true

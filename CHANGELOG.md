@@ -6,6 +6,29 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.1-beta.1 — 27 novembre 2026
 
+**namsdec sait s'installer lui-même, après votre accord**
+
+- **« Installer cette version… »** paraît dans « À propos » quand une
+  version plus récente existe. Le bouton n'ouvre qu'une **question** :
+  quel fichier sera remplacé, et ce qui va se passer. C'est le second
+  bouton qui lance quelque chose — le premier ne télécharge rien.
+- Le binaire est pris sur la publication GitHub, **sa somme SHA-256 est
+  vérifiée pendant qu'il arrive**, et un fichier qui ne correspond pas
+  est effacé sans que rien n'ait bougé. On vérifie aussi que c'est un
+  exécutable : une page d'erreur arrive parfois sans erreur.
+- **L'ancienne version est gardée** à côté, sous `.ancien`, et la neuve
+  prend sa place par un renommage — à aucun instant la place du
+  programme ne contient un fichier à moitié écrit.
+- Elle démarre au **lancement suivant** : la session en cours continue
+  de tourner sur l'ancienne. Remplacer le code sous les pieds d'un
+  programme qui travaille n'est pas une mise à jour.
+- Une barre dit où en est le téléchargement, et **« Arrêter » le coupe**.
+- **Si le dossier ne s'écrit pas** — paquet d'une distribution, binaire
+  posé par root —, rien n'est proposé, et la raison est dite : la mise à
+  jour est alors le travail du gestionnaire de paquets.
+- Rien de tout cela ne se déclenche au démarrage, et rien ne part sans
+  qu'on l'ait demandé. C'est la même règle qu'avant, tenue autrement.
+
 **Un thème de Noël, et les thèmes livrés enfin mesurés**
 
 - **Un quatrième thème : Noël**, sombre et sobre — l'épicéa pour les

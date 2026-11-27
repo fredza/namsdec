@@ -684,6 +684,38 @@ impl NamsdecApp {
         // `cfg` évite deux avertissements plutôt que de les taire.
         #[cfg(feature = "reseau")]
         let mut lancer_recherche = false;
+        // Même raison : la fenêtre emprunte `self`, et ces gestes-ci
+        // demandent à l'écrire. L'accord, l'installation et l'arrêt se
+        // relèvent dedans et s'agissent dehors.
+        #[cfg(feature = "reseau")]
+        let mut demander_accord = false;
+        #[cfg(feature = "reseau")]
+        let mut annuler_accord = false;
+        #[cfg(feature = "reseau")]
+        let mut arrêter_installation = false;
+        #[cfg(feature = "reseau")]
+        let mut installer: Option<namsdec_update::Release> = None;
+
+        // PEUT-ON SE REMPLACER ? La question s'écrit sur le disque —
+        // c'est un essai, pas une lecture de permissions — et elle ne
+        // se repose donc pas à chaque image : la réponse est retenue
+        // tant que le verdict ne change pas, et jetée avec lui quand
+        // la boîte se referme.
+        #[cfg(feature = "reseau")]
+        if matches!(
+            self.update_result,
+            Some(Ok(namsdec_update::Verdict::Newer(_)))
+        ) && self.update_replaceable.is_none()
+        {
+            let cible = namsdec_update::install::current_exe().ok();
+            self.update_replaceable = Some(
+                cible
+                    .as_deref()
+                    .map(|chemin| namsdec_update::install::replaceable(chemin).is_ok())
+                    .unwrap_or(false),
+            );
+            self.update_target = cible;
+        }
         egui::Window::new(s.about_title)
             // Un identifiant explicite : sans lui, egui dérive celui de
             // la fenêtre de son *titre*, qui change avec la langue —
@@ -928,9 +960,65 @@ impl NamsdecApp {
                                 if !release.url.is_empty() {
                                     ui.hyperlink_to(s.about_update_open, &release.url);
                                 }
-                                // Ce que namsdec ne fera pas : se remplacer tout
-                                // seul. Dire comment mettre à jour vaut mieux que
-                                // de le faire dans le dos de celui qui travaille.
+                                // CE QUE NAMSDEC PEUT FAIRE, et à quelles
+                                // conditions. Trois cas, et chacun se dit :
+                                // la publication porte un binaire pour cette
+                                // machine et le dossier s'écrit — on propose ;
+                                // le dossier ne s'écrit pas — c'est le
+                                // gestionnaire de paquets qui met à jour ;
+                                // la publication ne porte rien pour nous — le
+                                // lien ci-dessus mène à ce qu'elle contient.
+                                let porte_un_binaire =
+                                    namsdec_update::install::binary_asset(release).is_some()
+                                        && namsdec_update::install::checksum_asset(release)
+                                            .is_some();
+                                let en_cours = self.update_install.is_some();
+                                if !porte_un_binaire {
+                                    ui.colored_label(theme.dim, s.about_update_no_asset);
+                                } else if self.update_replaceable == Some(false) {
+                                    ui.colored_label(theme.dim, s.about_update_readonly);
+                                } else if !self.update_consent && !en_cours {
+                                    ui.add_enabled_ui(self.update_install_result.is_none(), |ui| {
+                                        if framed_button(ui, theme, s.about_update_install)
+                                            .on_hover_text(s.about_update_install_hint)
+                                            .clicked()
+                                        {
+                                            demander_accord = true;
+                                        }
+                                    });
+                                }
+
+                                // L'ACCORD : ce qui va se passer, où, et
+                                // deux boutons. Rien n'a encore été
+                                // téléchargé à cet instant — le premier
+                                // clic n'ouvre que cette explication.
+                                if self.update_consent && !en_cours {
+                                    ui.add_space(4.0);
+                                    ui.colored_label(theme.warn, s.about_update_consent_title);
+                                    if let Some(cible) = &self.update_target {
+                                        ui.horizontal_wrapped(|ui| {
+                                            ui.colored_label(
+                                                theme.dim,
+                                                s.about_update_consent_where,
+                                            );
+                                            ui.label(
+                                                egui::RichText::new(cible.display().to_string())
+                                                    .monospace(),
+                                            );
+                                        });
+                                    }
+                                    ui.colored_label(theme.dim, s.about_update_consent_steps);
+                                    ui.horizontal_wrapped(|ui| {
+                                        if framed_button(ui, theme, s.about_update_consent_yes)
+                                            .clicked()
+                                        {
+                                            installer = Some(release.clone());
+                                        }
+                                        if framed_button(ui, theme, s.dialog_cancel).clicked() {
+                                            annuler_accord = true;
+                                        }
+                                    });
+                                }
                                 ui.colored_label(theme.dim, s.about_update_how);
                             }
                             Some(Ok(namsdec_update::Verdict::Ahead(release))) => {
@@ -955,6 +1043,68 @@ impl NamsdecApp {
                             }
                             None => {}
                         }
+
+                        // L'INSTALLATION EN COURS, et ce qu'elle a
+                        // donné. Hors du `match` : elle survit au
+                        // verdict qui l'a lancée, et une progression
+                        // qui disparaîtrait parce qu'on a rouvert la
+                        // boîte ferait croire à un arrêt.
+                        #[cfg(feature = "reseau")]
+                        if let Some(installation) = &self.update_install {
+                            let mégas = |octets: u64| octets as f64 / 1_000_000.0;
+                            ui.colored_label(
+                                theme.accent,
+                                if installation.vérifie {
+                                    s.about_update_checking_sum.to_owned()
+                                } else if let Some(total) = installation.total {
+                                    format!(
+                                        "{} : {:.1} / {:.1} Mo",
+                                        s.about_update_downloading,
+                                        mégas(installation.reçus),
+                                        mégas(total)
+                                    )
+                                } else {
+                                    format!(
+                                        "{} : {:.1} Mo",
+                                        s.about_update_downloading,
+                                        mégas(installation.reçus)
+                                    )
+                                },
+                            );
+                            if let Some(total) = installation.total.filter(|t| *t > 0) {
+                                ui.add(
+                                    egui::ProgressBar::new(
+                                        installation.reçus as f32 / total as f32,
+                                    )
+                                    .desired_height(6.0),
+                                );
+                            }
+                            if framed_button(ui, theme, s.about_update_stop).clicked() {
+                                arrêter_installation = true;
+                            }
+                        }
+                        #[cfg(feature = "reseau")]
+                        match &self.update_install_result {
+                            Some(Ok(sauvegarde)) => {
+                                ui.colored_label(theme.good, s.about_update_installed);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.colored_label(theme.dim, s.about_update_installed_backup);
+                                    ui.label(
+                                        egui::RichText::new(
+                                            sauvegarde
+                                                .file_name()
+                                                .map(|n| n.to_string_lossy().into_owned())
+                                                .unwrap_or_default(),
+                                        )
+                                        .monospace(),
+                                    );
+                                });
+                            }
+                            Some(Err(message)) => {
+                                ui.colored_label(theme.bad, message);
+                            }
+                            None => {}
+                        }
                     });
 
                 ui.separator();
@@ -969,11 +1119,47 @@ impl NamsdecApp {
         if lancer_recherche {
             self.start_update_check();
         }
+        #[cfg(feature = "reseau")]
+        {
+            if demander_accord {
+                self.update_consent = true;
+            }
+            if annuler_accord {
+                self.update_consent = false;
+            }
+            if arrêter_installation && let Some(installation) = &self.update_install {
+                installation
+                    .arrêt
+                    .store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+            if let Some(release) = installer {
+                self.start_update_install(release);
+            }
+        }
         self.show_about = open && !close;
         if !self.show_about {
             // La réponse ne survit pas à la fermeture : on rouvre, on
             // redemande — l'état du dépôt a pu changer entre-temps.
-            self.update_result = None;
+            //
+            // SAUF SI UNE INSTALLATION EST EN ROUTE OU VIENT DE SE
+            // FAIRE. Elle, on ne la jette pas : elle continue de
+            // tourner sans la fenêtre — on ne coupe pas un
+            // remplacement de fichier parce qu'une boîte se ferme —,
+            // et rouvrir doit montrer où elle en est ou ce qu'elle a
+            // donné, plutôt qu'un écran qui a tout oublié.
+            #[cfg(feature = "reseau")]
+            let en_route = self.update_install.is_some() || self.update_install_result.is_some();
+            #[cfg(not(feature = "reseau"))]
+            let en_route = false;
+            if !en_route {
+                self.update_result = None;
+                #[cfg(feature = "reseau")]
+                {
+                    self.update_consent = false;
+                    self.update_replaceable = None;
+                    self.update_target = None;
+                }
+            }
         }
     }
 

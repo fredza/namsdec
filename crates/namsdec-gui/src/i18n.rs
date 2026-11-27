@@ -1529,6 +1529,40 @@ pub struct Strings {
     pub about_update_open: &'static str,
     #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     pub about_update_how: &'static str,
+    /// La mise à jour en place : le bouton qui la propose, l'accord
+    /// qu'elle demande, ce qu'elle fait pendant, et ce qu'elle laisse.
+    ///
+    /// Gardés même sans l'option `reseau`, comme les précédents : une
+    /// traduction ne pèse rien, et le banc compare les deux langues
+    /// champ par champ.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_install: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_install_hint: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_consent_title: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_consent_where: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_consent_steps: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_consent_yes: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_downloading: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_checking_sum: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_stop: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_installed: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_installed_backup: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_install_failed: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_readonly: &'static str,
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    pub about_update_no_asset: &'static str,
 }
 
 const FR: Strings = Strings {
@@ -2601,7 +2635,21 @@ déclenchera jamais.",
     about_update_failed: "La recherche a échoué",
     about_update_private: "Le dépôt ne répond pas publiquement : il n'existe pas, ou il est privé. Vu de l'extérieur, les deux se ressemblent.",
     about_update_open: "Voir cette version",
-    about_update_how: "La mise à jour se fait à la main : git pull, puis ./install.sh. namsdec ne se remplace jamais tout seul.",
+    about_update_how: "namsdec ne se met à jour que si vous le lui demandez, et jamais au démarrage. Depuis les sources : git pull, puis ./install.sh.",
+    about_update_install: "Installer cette version…",
+    about_update_install_hint: "Télécharge le binaire publié, vérifie sa somme SHA-256, et le met à la place de celui-ci. Vous aurez à confirmer.",
+    about_update_consent_title: "Remplacer ce programme par la version publiée ?",
+    about_update_consent_where: "Le fichier remplacé :",
+    about_update_consent_steps: "Ce qui va se passer : le binaire est téléchargé depuis la publication GitHub, sa somme SHA-256 est vérifiée avant que rien ne bouge, l'actuel est gardé à côté sous « .ancien », et la nouvelle version prend sa place. Elle ne démarrera qu'au prochain lancement : la session en cours continue de tourner sur l'ancienne.",
+    about_update_consent_yes: "Oui, installer",
+    about_update_downloading: "Téléchargement",
+    about_update_checking_sum: "Somme vérifiée, mise en place…",
+    about_update_stop: "Arrêter",
+    about_update_installed: "Installée. Relancez namsdec pour en profiter.",
+    about_update_installed_backup: "L'ancienne version est gardée sous",
+    about_update_install_failed: "L'installation a échoué",
+    about_update_readonly: "Ce namsdec-ci ne peut pas se remplacer : son dossier ne s'écrit pas. C'est le cas d'un paquet posé par la distribution ou d'un binaire installé par root — la mise à jour est alors le travail du gestionnaire de paquets.",
+    about_update_no_asset: "Cette publication ne porte pas de binaire pour cette machine. Le lien ci-dessus mène à ce qu'elle contient.",
 };
 
 const EN: Strings = Strings {
@@ -3672,7 +3720,21 @@ other is there to compare — that is how gaps and clashes become visible.",
     about_update_failed: "The check failed",
     about_update_private: "The repository does not answer publicly: either it does not exist, or it is private. From the outside the two look alike.",
     about_update_open: "See that release",
-    about_update_how: "Updating is done by hand: git pull, then ./install.sh. namsdec never replaces itself.",
+    about_update_how: "namsdec updates only when you ask it to, and never at startup. From source: git pull, then ./install.sh.",
+    about_update_install: "Install this release…",
+    about_update_install_hint: "Downloads the published binary, checks its SHA-256, and puts it in place of this one. You will be asked to confirm.",
+    about_update_consent_title: "Replace this program with the published release?",
+    about_update_consent_where: "The file being replaced:",
+    about_update_consent_steps: "What will happen: the binary is downloaded from the GitHub release, its SHA-256 is checked before anything moves, the current one is kept beside it as \".ancien\", and the new one takes its place. It only starts at the next launch: this session keeps running on the old one.",
+    about_update_consent_yes: "Yes, install",
+    about_update_downloading: "Downloading",
+    about_update_checking_sum: "Sum checked, putting it in place…",
+    about_update_stop: "Stop",
+    about_update_installed: "Installed. Restart namsdec to use it.",
+    about_update_installed_backup: "The old version is kept as",
+    about_update_install_failed: "The installation failed",
+    about_update_readonly: "This namsdec cannot replace itself: its folder is not writable. That is the case for a distribution package or a binary installed by root — updating is then the package manager's job.",
+    about_update_no_asset: "This release carries no binary for this machine. The link above leads to what it does contain.",
 };
 
 pub fn strings(lang: Lang) -> &'static Strings {

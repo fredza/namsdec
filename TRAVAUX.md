@@ -5306,6 +5306,74 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       oublié un `Option` lu sur trois lignes. Le relevé compacte
       désormais les blancs ; éprouvé en retirant l'écriture, il tombe.
 
+- [x] **La mise à jour s'installe — après accord** (28 novembre 2026,
+      demandé) — le crate ne savait que REGARDER : chercher, comparer,
+      dire, et s'arrêter là. Son en-tête donnait la raison — « un
+      atelier qui se réécrit tout seul pendant qu'on travaille dedans
+      n'est pas un atelier » —, et cette phrase visait l'automatisme,
+      non le service. Elle est tenue autrement : **rien au démarrage,
+      rien sans un premier clic, rien d'installé sans un second**. Le
+      premier n'ouvre qu'une question, qui nomme le fichier à
+      remplacer et dit ce qui va se passer.
+
+      Ce qui se passe, dans l'ordre : la somme publiée est lue, le
+      binaire est téléchargé et **haché pendant qu'il s'écrit** — ni
+      gardé en mémoire ni relu —, comparé à la somme, vérifié comme
+      ELF (une page d'erreur arrive avec le code 200), l'ancien est
+      copié sous `.ancien`, et le neuf prend sa place par un
+      **renommage**, qui est atomique. Un échec à n'importe quelle
+      étape efface le fichier d'attente et ne touche à rien. On
+      n'écrit jamais DANS le binaire qui tourne (`ETXTBSY`) : on le
+      renomme, ce que le noyau permet.
+
+      Trois refus dits plutôt que subis : dossier non inscriptible
+      (paquet de distribution, binaire de root) — rien n'est proposé ;
+      publication sans binaire pour cette machine — le lien reste ;
+      somme qui ne tombe pas juste — le fichier est effacé. La
+      capacité d'écrire est **éprouvée en écrivant**, une fois, et
+      retenue : les permissions seules mentent (montage en lecture
+      seule, attribut immuable), et un essai par image serait une
+      écriture disque à soixante hertz.
+
+      Ce qu'on ne prétend pas : la somme vient de la même publication
+      que le binaire. Elle prouve que les octets sont arrivés entiers,
+      pas qu'ils sont honnêtes — la provenance tient à TLS et au
+      compte GitHub du dépôt, et c'est écrit tel quel dans le module,
+      le README et les deux manuels. La place d'une signature est
+      nommée.
+
+      **SHA-256 est monté dans le socle** (`namsdec-core::digest`,
+      réexporté par `namsdec_re::digest`) et sait désormais hacher au
+      fil de l'eau. Le type neuf a eu un défaut, et c'est le plus
+      instructif de la séance : nourri morceau par morceau, il
+      oubliait le bloc entamé dès qu'un appel s'arrêtait pile dedans —
+      exactement le cas d'un téléchargement. Les contrôles de la
+      norme, qui durent un millième de seconde, ont **tourné plus
+      d'une minute** : le rembourrage cherchait ses cinquante-six
+      octets dans une boucle sans fin. Corrigé deux fois : le retour
+      manquant, et la boucle remplacée par un calcul — une erreur de
+      comptage doit rendre une empreinte FAUSSE, qu'un vecteur d'essai
+      attrape, jamais un programme qui ne rend pas la main.
+
+      **Contrôles** : six dans `namsdec-update` (somme lisible ou non,
+      ELF ou page web, fichiers d'une publication, remplacement avec
+      sauvegarde et droits, dossier en lecture seule — celui-ci passe
+      son tour si le test tourne en root, et le dit), un dans
+      `namsdec-core` (le découpage n'a aucun effet sur l'empreinte,
+      éprouvé en remettant le défaut : il tombe en nommant
+      l'empreinte fausse), un dans l'interface (la proposition, la
+      question, et **rien de lancé** tant que le oui n'est pas
+      pressé), et une scène de banc neuve — « à propos / mise à
+      jour » — qui met les douze phrases sous le plancher de
+      contraste et sur une capture.
+
+      **Éprouvé en vrai**, enfin, parce qu'aucun test ne peut toucher
+      le réseau : `cargo run -p namsdec-update --example
+      essai_mise_a_jour -- --preversions` fait l'enchaînement complet
+      contre la vraie publication, dans un dossier temporaire et sur
+      un leurre. Mesuré le 27 novembre au soir : 22,8 Mo téléchargés
+      et vérifiés en 2,6 s, somme identique à celle du site, leurre
+      remplacé, ancien gardé.
 - [x] **Version 1.0.1-beta.1** (27 novembre 2026) — demandée, pour
       **éprouver le système de mise à jour** : il faut une version
       publiée plus récente que celle qu'on a installée, sans quoi la

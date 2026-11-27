@@ -1,15 +1,21 @@
 //! Savoir s'il existe une version plus récente, et où la prendre.
 //!
 //! Le dépôt publie ses versions sur GitHub ; namsdec demande la
-//! dernière, compare avec la sienne, et dit ce qu'il en est. Rien de
-//! plus : **aucun téléchargement, aucune installation automatique**. Un
+//! dernière, compare avec la sienne, et dit ce qu'il en est.
+//!
+//! **Et depuis le 27 novembre 2026, il sait aussi l'installer** —
+//! voir [`install`]. Ce module-ci garde pourtant la règle qui le
+//! fondait, qui n'a jamais visé le service mais l'automatisme : *un
 //! atelier qui se réécrit tout seul pendant qu'on travaille dedans
-//! n'est pas un atelier, et la mise à jour d'un binaire installé à la
-//! main se fait à la main — `install.sh` est là pour ça.
+//! n'est pas un atelier.* Rien ne se cherche au démarrage, rien ne se
+//! télécharge sans un clic, et l'installation en demande un second,
+//! après avoir dit ce qu'elle va faire et où.
 //!
 //! Rien n'est envoyé : la requête ne porte ni identifiant, ni numéro de
 //! version, ni quoi que ce soit sur la machine. Elle n'est faite que
 //! lorsqu'on clique.
+
+pub mod install;
 
 #[cfg(feature = "reseau")]
 use std::time::Duration;
@@ -33,6 +39,12 @@ pub struct Release {
     pub url: String,
     /// Une préversion au sens de GitHub — la case cochée en publiant.
     pub prerelease: bool,
+    /// Les fichiers attachés : le binaire, sa somme, ce qu'on y a mis.
+    ///
+    /// Vide tant que personne ne les demandait — et c'est ce qui a
+    /// changé : pour installer, il faut savoir OÙ est le binaire de
+    /// cette machine, et quelle somme l'accompagne.
+    pub assets: Vec<install::Asset>,
 }
 
 /// Ce qu'on apprend en comparant.
@@ -201,6 +213,28 @@ fn read_release(value: &serde_json::Value) -> Result<Release, UpdateError> {
             .get("prerelease")
             .and_then(|v| v.as_bool())
             .unwrap_or(false),
+        // Un fichier sans nom ou sans adresse n'est pas un fichier
+        // qu'on peut prendre : il est écarté ici plutôt que d'être
+        // trouvé vide au moment de télécharger.
+        assets: value
+            .get("assets")
+            .and_then(|v| v.as_array())
+            .map(|liste| {
+                liste
+                    .iter()
+                    .filter_map(|fichier| {
+                        Some(install::Asset {
+                            name: fichier.get("name")?.as_str()?.to_owned(),
+                            url: fichier.get("browser_download_url")?.as_str()?.to_owned(),
+                            size: fichier
+                                .get("size")
+                                .and_then(|v| v.as_u64())
+                                .unwrap_or_default(),
+                        })
+                    })
+                    .collect()
+            })
+            .unwrap_or_default(),
         tag,
         version,
     })
@@ -367,6 +401,7 @@ mod tests {
             name: v.to_owned(),
             url: String::new(),
             prerelease: v.contains('-'),
+            assets: Vec::new(),
         };
         assert!(matches!(
             verdict("0.2.1-beta.2", release("0.3.0")),

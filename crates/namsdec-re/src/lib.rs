@@ -12,7 +12,18 @@ pub mod cfg;
 pub mod comparaison;
 pub mod cyclic;
 pub mod detour_module;
-pub mod digest;
+/// L'empreinte d'un fichier, vécue ici et **écrite dans le socle**.
+///
+/// Elle y est montée le 27 novembre 2026, le jour où la mise à jour en
+/// a eu besoin : `namsdec-update` doit vérifier la somme d'un binaire
+/// téléchargé, et il ne peut pas dépendre de tout un moteur d'analyse
+/// pour soixante lignes de SHA-256. Une seconde copie aurait divergé —
+/// c'est toujours ainsi que deux empreintes finissent par ne plus
+/// s'accorder.
+///
+/// Réexporté, et non déplacé à la vue de tous : `namsdec_re::digest`
+/// reste le chemin que les modules d'analyse écrivent depuis le début.
+pub use namsdec_core::digest;
 mod digest_module;
 pub mod dump_module;
 pub mod dzf;

@@ -308,6 +308,37 @@ struct BackgroundJob {
     limit: Option<std::time::Duration>,
 }
 
+/// Une installation de mise à jour en cours.
+///
+/// Le fil écrit où il en est, l'interface lit : rien n'est partagé
+/// qu'un canal et un drapeau. L'arrêt passe par le drapeau et non par
+/// l'abandon du canal — un téléchargement qu'on cesse d'écouter
+/// continuerait d'écrire sur le disque jusqu'au bout.
+#[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+struct UpdateInstall {
+    étapes: mpsc::Receiver<UpdateStep>,
+    /// Levé par le bouton « Arrêter ». Le fil le regarde à chaque
+    /// morceau reçu.
+    arrêt: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Ce qu'on a reçu et ce qu'on attend, pour la ligne de
+    /// progression.
+    reçus: u64,
+    total: Option<u64>,
+    /// La somme est vérifiée en même temps que les octets arrivent ;
+    /// ce drapeau dit seulement que le téléchargement est fini et
+    /// qu'on en est au dernier contrôle.
+    vérifie: bool,
+}
+
+/// Ce qu'un fil d'installation raconte.
+#[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+enum UpdateStep {
+    Avance { reçus: u64, total: Option<u64> },
+    Vérifie,
+    Posée(std::path::PathBuf),
+    Échec(String),
+}
+
 /// Un assemblage en cours dans un fil à part.
 ///
 /// Ce qu'il porte tient en une idée : **à quoi ce résultat se
@@ -1047,6 +1078,39 @@ struct NamsdecApp {
     /// et dans trois contrôles — beaucoup de bruit pour huit octets.
     #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
     update_check: Option<mpsc::Receiver<Result<namsdec_update::Release, String>>>,
+    /// L'installation de la version publiée, quand elle est en route.
+    ///
+    /// Elle tient sur un thread pour la même raison que la recherche —
+    /// vingt-trois mégaoctets ne se téléchargent pas dans la boucle de
+    /// rendu — et elle rend compte au fil de l'eau, parce qu'une
+    /// attente muette de trente secondes passe pour un gel.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    update_install: Option<UpdateInstall>,
+    /// Ce que l'installation a donné : le chemin de la sauvegarde, ou
+    /// la raison de l'échec.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    update_install_result: Option<Result<std::path::PathBuf, String>>,
+    /// L'ACCORD, et c'est tout ce qu'il est : vrai pendant qu'on lit ce
+    /// que l'installation va faire, avant d'avoir dit oui.
+    ///
+    /// Un booléen et non un réglage : il ne survit ni à la fermeture de
+    /// la boîte ni au lancement suivant. Un accord donné une fois ne
+    /// vaut pas pour toujours — c'est la différence entre proposer et
+    /// s'installer tout seul.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    update_consent: bool,
+    /// Peut-on remplacer le fichier de ce programme ?
+    ///
+    /// Retenu plutôt que redemandé : la réponse s'obtient en ESSAYANT
+    /// d'écrire dans le dossier — les permissions seules mentent
+    /// (montage en lecture seule, attribut immuable) —, et un essai
+    /// par image serait une écriture disque à soixante hertz.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    update_replaceable: Option<bool>,
+    /// Le fichier qui serait remplacé, montré avant qu'on dise oui :
+    /// on ne demande pas d'accord sans dire sur quoi il porte.
+    #[cfg_attr(not(feature = "reseau"), allow(dead_code))]
+    update_target: Option<std::path::PathBuf>,
     /// Le module d'installation d'outils : éteint par défaut, et plus
     /// franchement encore que les autres.
     ///
@@ -2406,6 +2470,11 @@ impl Default for NamsdecApp {
             treat_texture: None,
             icon_texture: None,
             update_check: None,
+            update_install: None,
+            update_install_result: None,
+            update_consent: false,
+            update_replaceable: None,
+            update_target: None,
             show_installer_module: false,
             install_job: None,
             install_plan: None,
@@ -3947,6 +4016,8 @@ impl NamsdecApp {
         self.poll_file_dialog(&ctx);
         #[cfg(feature = "reseau")]
         self.poll_update_check(&ctx);
+        #[cfg(feature = "reseau")]
+        self.poll_update_install(&ctx);
         self.poll_decompile(&ctx);
         self.poll_tool_run(&ctx);
         self.poll_upx(&ctx);
