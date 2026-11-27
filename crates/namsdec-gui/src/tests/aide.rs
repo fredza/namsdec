@@ -1067,6 +1067,20 @@ fn le_site_ne_montre_rien_qui_manque() {
             "docs/{nom} ne nomme pas l'auteur"
         );
 
+        // REMONTER AU DÉBUT, sans faire défiler à la main. Les deux
+        // pages font plusieurs écrans, et la barre collante ne ramène
+        // nulle part. Un vrai `<button>` et non un lien `#` : il se
+        // nomme pour un lecteur d'écran, et il n'ajoute rien à
+        // l'historique du navigateur.
+        assert!(
+            page.contains("class=\"haut\""),
+            "docs/{nom} n'a pas de flèche pour remonter"
+        );
+        assert!(
+            page.contains("aria-label=") && page.contains("<button class=\"haut\""),
+            "docs/{nom} : la flèche doit être un bouton, et se nommer"
+        );
+
         // LE LOGO EST CELUI DU PROGRAMME. Une marque qui diffère de
         // celle qu'on voit dans sa barre des tâches n'est pas une
         // marque : on ne la reconnaît pas.

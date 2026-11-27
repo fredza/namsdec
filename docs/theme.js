@@ -134,3 +134,29 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+// La flèche qui remonte au début.
+//
+// Elle ne paraît qu'une fois un écran dépassé : plus haut, elle
+// couvrirait un contenu qu'on voit déjà en entier. Le seuil est la
+// hauteur de la fenêtre, et non un nombre de pixels écrit à la main —
+// un téléphone et un écran de bureau n'ont pas le même « un écran ».
+document.addEventListener("DOMContentLoaded", () => {
+  const flèche = document.querySelector(".haut");
+  if (!flèche) return;
+  const regarde = () => {
+    const assez = window.scrollY > window.innerHeight * 0.9;
+    flèche.toggleAttribute("data-vue", assez);
+  };
+  // `passive` : le défilement ne doit pas attendre que ce calcul finisse.
+  window.addEventListener("scroll", regarde, { passive: true });
+  window.addEventListener("resize", regarde, { passive: true });
+  regarde();
+  flèche.addEventListener("click", () => {
+    // `scroll-behavior` de la feuille de style s'applique, et il est
+    // coupé par `prefers-reduced-motion` : qui demande moins de
+    // mouvement remonte d'un coup.
+    window.scrollTo({ top: 0 });
+    document.querySelector("header.barre a")?.focus({ preventScroll: true });
+  });
+});

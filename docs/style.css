@@ -309,3 +309,33 @@ details.capture > img {
   background: none; font-size: .76rem; word-break: break-all;
   color: var(--attenue);
 }
+
+/* ── Remonter au début ─────────────────────────────────────────────────
+ *
+ * Les deux pages font plusieurs écrans de haut, et la barre du haut est
+ * collante mais ne ramène nulle part : arrivé en bas, on faisait
+ * défiler à la main. La flèche paraît quand on a dépassé un écran —
+ * avant, elle couvrirait un contenu qu'on voit déjà en entier.
+ *
+ * CONTRASTÉE, et pas discrète : un bouton qu'on cherche ne sert à rien.
+ * Fond d'accent, encre du bouton, et un liseré du fond de page pour
+ * qu'elle se détache aussi par-dessus une capture claire. */
+.haut {
+  position: fixed; right: 1.25rem; bottom: 1.25rem; z-index: 30;
+  width: 2.9rem; height: 2.9rem;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid var(--fond); border-radius: 50%;
+  background: var(--accent); color: var(--encre-bouton);
+  font-size: 1.15rem; line-height: 1; cursor: pointer;
+  box-shadow: var(--ombre);
+  opacity: 0; visibility: hidden; transform: translateY(8px);
+  transition: opacity .18s ease, transform .18s ease, visibility .18s,
+              background-color .15s;
+}
+.haut[data-vue] { opacity: 1; visibility: visible; transform: none; }
+.haut:hover { background: var(--accent-fort); }
+.haut:focus-visible { outline: 2px solid var(--texte); outline-offset: 3px; }
+
+@media (max-width: 34rem) {
+  .haut { right: .8rem; bottom: .8rem; width: 2.6rem; height: 2.6rem; }
+}
