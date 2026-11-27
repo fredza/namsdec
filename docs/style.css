@@ -200,3 +200,67 @@ footer {
   * { transition: none !important; }
   html { scroll-behavior: auto; }
 }
+
+/* ── Le logo, à gauche du nom ──────────────────────────────────────────
+ *
+ * C'est L'ICÔNE DU PROGRAMME — un engrenage au-dessus d'un convoyeur,
+ * l'atelier d'assemblage —, copiée depuis `assets/namsdec.svg` et non
+ * redessinée pour le site : une marque qui diffère de celle qu'on voit
+ * dans sa barre des tâches n'est pas une marque.
+ *
+ * Ses couleurs ne suivent pas le thème, et c'est voulu : un logo garde
+ * les siennes, en clair comme en sombre. Un contrôle vérifie que la
+ * copie est identique à l'original. */
+.logo { width: 1.9rem; height: 1.9rem; flex: 0 0 auto; display: block; }
+.nom { display: inline-flex; align-items: center; gap: .55rem; }
+
+/* ── Une capture qui se replie ─────────────────────────────────────────
+ *
+ * `<details>` plutôt qu'un bouton et du JavaScript : le navigateur sait
+ * déjà plier et déplier, au clavier comme à la souris, et la page garde
+ * son sens sans script. Ouvertes par défaut — on vient pour les voir. */
+details.capture { margin: 1.75rem 0 2.25rem; }
+details.capture > summary {
+  cursor: pointer; list-style: none;
+  color: var(--attenue); font-size: .92rem;
+  padding: .45rem .7rem; border: 1px solid var(--bord);
+  border-radius: var(--rayon); background: var(--fond-2);
+  display: flex; align-items: baseline; gap: .55rem;
+  transition: border-color .15s, color .15s;
+}
+details.capture > summary::-webkit-details-marker { display: none; }
+details.capture > summary:hover { border-color: var(--accent); color: var(--texte); }
+details.capture > summary::before {
+  content: "▸"; color: var(--accent); flex: 0 0 auto;
+  transition: transform .15s; display: inline-block;
+}
+details.capture[open] > summary::before { transform: rotate(90deg); }
+details.capture > img {
+  width: 100%; height: auto; display: block; margin-top: .75rem;
+  border: 1px solid var(--bord); border-radius: var(--rayon);
+  box-shadow: var(--ombre);
+}
+
+/* ── Le bloc de téléchargement : le fichier, sa somme, et de quoi la
+ *    copier. Une somme qu'on ne peut pas copier ne sert à personne : on
+ *    ne la retape pas à la main. ──────────────────────────────────── */
+.somme {
+  margin: 1.25rem 0 0; padding: .85rem 1rem;
+  background: var(--fond-2); border: 1px solid var(--bord);
+  border-radius: var(--rayon);
+}
+.somme .quoi { color: var(--attenue); font-size: .9rem; margin: 0 0 .5rem; }
+.somme .ligne { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.somme code {
+  background: none; padding: 0; font-size: .82rem;
+  word-break: break-all; color: var(--texte);
+}
+.copier {
+  flex: 0 0 auto; cursor: pointer;
+  padding: .32rem .7rem; font-size: .85rem;
+  border: 1px solid var(--bord); border-radius: 6px;
+  background: var(--carte); color: var(--texte);
+  transition: border-color .15s, color .15s;
+}
+.copier:hover { border-color: var(--accent); color: var(--accent); }
+.copier[data-fait] { border-color: var(--vert); color: var(--vert); }

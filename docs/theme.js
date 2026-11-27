@@ -41,3 +41,40 @@
     });
   });
 })();
+
+// Copier la somme de contrôle.
+//
+// Une somme qu'on ne peut pas copier ne sert à personne : soixante-quatre
+// caractères hexadécimaux ne se retapent pas, et une sélection à la
+// souris en oublie toujours un bout. Le bouton dit ce qu'il a fait, et
+// le redit en clair pour les lecteurs d'écran.
+document.addEventListener("DOMContentLoaded", () => {
+  for (const bouton of document.querySelectorAll(".copier")) {
+    bouton.addEventListener("click", async () => {
+      const cible = document.getElementById(bouton.dataset.pour);
+      if (!cible) return;
+      const texte = cible.textContent.trim();
+      try {
+        await navigator.clipboard.writeText(texte);
+      } catch {
+        // Le presse-papiers est refusé — hors HTTPS, par exemple. On
+        // sélectionne alors le texte : il reste un Ctrl+C à faire, mais
+        // la ligne est prise en entier et rien n'est perdu.
+        const plage = document.createRange();
+        plage.selectNodeContents(cible);
+        const choix = window.getSelection();
+        choix.removeAllRanges();
+        choix.addRange(plage);
+        bouton.textContent = bouton.dataset.selection || "Selected";
+        return;
+      }
+      const avant = bouton.textContent;
+      bouton.textContent = bouton.dataset.fini || "Copied";
+      bouton.setAttribute("data-fait", "");
+      setTimeout(() => {
+        bouton.textContent = avant;
+        bouton.removeAttribute("data-fait");
+      }, 1600);
+    });
+  }
+});

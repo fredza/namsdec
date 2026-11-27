@@ -4115,9 +4115,41 @@ def styles():
     return s
 
 
-def rendre(chemin, v, blocs):
+# Les mots du cadre — couverture, en-tête, pied, sommaire. Le CORPS du
+# guide vit ailleurs : en français dans `contenu` ci-dessus, en anglais
+# dans `guide_en.py`. Ici, seulement ce que reportlab doit écrire autour.
+CADRE = {
+    "fr": {
+        "guide": "guide de l'utilisateur",
+        "couverture": "Guide de l'utilisateur",
+        "version": "version <b>%s</b> &nbsp;·&nbsp; %s",
+        "promesse": "Apprendre l'assembleur x86-64 sous Linux,<br/>et lire les binaires "
+                    "qu'on n'a pas écrits.",
+        "licence": "Logiciel libre, licence MIT &nbsp;·&nbsp; namsdec.io",
+        "sommaire": "Sommaire",
+        "page": "page %d",
+        "sujet": "Atelier d'assembleur x86-64 et de rétro-ingénierie",
+        "date": "%d/%m/%Y",
+    },
+    "en": {
+        "guide": "user guide",
+        "couverture": "User guide",
+        "version": "version <b>%s</b> &nbsp;·&nbsp; %s",
+        "promesse": "Learning x86-64 assembly on Linux,<br/>and reading the binaries "
+                    "other people wrote.",
+        "licence": "Free software, MIT licence &nbsp;·&nbsp; namsdec.io",
+        "sommaire": "Contents",
+        "page": "page %d",
+        "sujet": "An x86-64 assembly and reverse-engineering workbench",
+        "date": "%Y-%m-%d",
+    },
+}
+
+
+def rendre(chemin, v, blocs, lang="fr"):
     """Écrit le PDF. Une page de titre, puis le corps à deux niveaux."""
-    aujourdhui = date.today().strftime("%d/%m/%Y")
+    mots = CADRE[lang]
+    aujourdhui = date.today().strftime(mots["date"])
 
     def décor(canvas, doc):
         """L'en-tête et le pied : la version d'un côté, la page de l'autre."""
@@ -4127,21 +4159,21 @@ def rendre(chemin, v, blocs):
             canvas.setFont("Helvetica", 7.6)
             canvas.setFillColor(DOUX)
             canvas.drawString(20 * mm, hauteur - 12 * mm,
-                              "namsdec %s — guide de l'utilisateur" % v)
+                              "namsdec %s — %s" % (v, mots["guide"]))
             canvas.setStrokeColor(FILET)
             canvas.setLineWidth(0.4)
             canvas.line(20 * mm, hauteur - 14 * mm, largeur - 20 * mm, hauteur - 14 * mm)
             canvas.line(20 * mm, 15 * mm, largeur - 20 * mm, 15 * mm)
             canvas.drawString(20 * mm, 11 * mm, "namsdec.io")
-            canvas.drawRightString(largeur - 20 * mm, 11 * mm, "page %d" % doc.page)
+            canvas.drawRightString(largeur - 20 * mm, 11 * mm, mots["page"] % doc.page)
         canvas.restoreState()
 
     doc = BaseDocTemplate(
         str(chemin), pagesize=A4,
         leftMargin=20 * mm, rightMargin=20 * mm,
         topMargin=20 * mm, bottomMargin=20 * mm,
-        title="namsdec %s — guide de l'utilisateur" % v,
-        author="namsdec", subject="Atelier d'assembleur x86-64 et de rétro-ingénierie",
+        title="namsdec %s — %s" % (v, mots["guide"]),
+        author="namsdec", subject=mots["sujet"],
     )
     cadre = Frame(doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="corps")
     doc.addPageTemplates([PageTemplate(id="page", frames=[cadre], onPage=décor)])
@@ -4152,21 +4184,20 @@ def rendre(chemin, v, blocs):
     # --- Page de titre ---
     flux.append(Spacer(1, 52 * mm))
     flux.append(Paragraph("namsdec", st["titre"]))
-    flux.append(Paragraph("Guide de l'utilisateur", st["sous_titre"]))
+    flux.append(Paragraph(mots["couverture"], st["sous_titre"]))
     flux.append(Spacer(1, 6 * mm))
     flux.append(Paragraph(
-        "version <b>%s</b> &nbsp;·&nbsp; %s" % (v, aujourdhui), st["sous_titre"]))
+        mots["version"] % (v, aujourdhui), st["sous_titre"]))
     flux.append(Spacer(1, 22 * mm))
     flux.append(Paragraph(
-        "Apprendre l'assembleur x86-64 sous Linux,<br/>et lire les binaires "
-        "qu'on n'a pas écrits.", st["sous_titre"]))
+        mots["promesse"], st["sous_titre"]))
     flux.append(Spacer(1, 40 * mm))
     flux.append(Paragraph(
-        "Logiciel libre, licence MIT &nbsp;·&nbsp; namsdec.io", st["sous_titre"]))
+        mots["licence"], st["sous_titre"]))
     flux.append(PageBreak())
 
     # --- Sommaire, dressé depuis les titres ---
-    flux.append(Paragraph("Sommaire", st["h1"]))
+    flux.append(Paragraph(mots["sommaire"], st["h1"]))
     chapitres = [texte for genre, texte in blocs if genre == "h1"]
     lignes = [[Paragraph("%d." % (rang + 1), st["p"]), Paragraph(titre, st["p"])]
               for rang, titre in enumerate(chapitres)]
@@ -4305,125 +4336,172 @@ def _verifie_les_glyphes(blocs):
 
 
 def main():
+    # UNE LANGUE, DEUX SORTIES. `--lang en` écrit le guide anglais, qui
+    # n'est pas une traduction du français mais un guide à lui : mêmes
+    # chapitres, écrits pour son lecteur. Les deux partagent le cadre
+    # (couverture, sommaire, pied) et les nombres, qui viennent du
+    # dépôt dans les deux cas.
+    lang = "fr"
+    if "--lang" in sys.argv:
+        lang = sys.argv[sys.argv.index("--lang") + 1]
+    if lang not in ("fr", "en"):
+        raise SystemExit("langue inconnue : %s — attendues : fr, en" % lang)
+
     v = version()
     total, avec_but, paliers = exercices()
     total_atelier, atelier_paliers = atelier()
-    blocs = contenu(v, total, avec_but, paliers, fiches(), tests(),
-                    fonctions_de_la_calculatrice(), total_atelier, atelier_paliers)
+    if lang == "en":
+        import guide_en
+        blocs = guide_en.contenu(v, total, avec_but, paliers, fiches(), tests(),
+                                 fonctions_de_la_calculatrice(), total_atelier,
+                                 atelier_paliers)
+    else:
+        blocs = contenu(v, total, avec_but, paliers, fiches(), tests(),
+                        fonctions_de_la_calculatrice(), total_atelier, atelier_paliers)
     # Les raccourcis, en dernier chapitre : ils viennent du code.
-    table = [["Action", "Raccourci"]]
+    table = [["Action", "Raccourci"] if lang == "fr" else ["Action", "Shortcut"]]
     for action, touches in raccourcis():
-        table.append([_lisible(action), touches])
+        table.append([_lisible(action, lang), touches])
     blocs.append(("table", table))
-    blocs.append(("h1", "Où vivent les fichiers"))
-    blocs.append(("table", [
-        ["Chemin", "Ce qu'il contient"],
-        ["~/.local/bin/namsdec", "le programme"],
-        ["~/.config/namsdec/settings.json", "tous vos réglages, dont `donation_url`"],
-        ["~/.config/namsdec/keymap.json", "le jeu de raccourcis actif"],
-        ["~/.config/namsdec/keymaps/", "les jeux de raccourcis enregistrés"],
-        ["~/.local/share/namsdec/exercises/", "le parcours et vos séries"],
-        ["~/.local/share/namsdec/themes/", "les thèmes installés"],
-        ["~/.local/share/namsdec/modules/", "les outils extérieurs déclarés"],
-    ]))
-    blocs.append(("h1", "Ce que namsdec ne fait pas"))
-    blocs.append(("liste", [
-        "Pas de mode 32 bits, ni d'interruption `int 0x80` : seul le x86-64 est simulé.",
-        "Pas de bibliothèque C <i>chargée</i> : namsdec n'est pas un éditeur de liens "
-        "dynamique, et le code de `printf` n'est nulle part dans la mémoire simulée. "
-        "À la place il en <b>fournit cent soixante-dix</b>, écrites en Rust — afficher, "
-        "lire, découper et comparer des chaînes, classer des caractères, demander de la "
-        "mémoire. Un binaire qui emprunte autre chose s'arrête en <b>nommant</b> la "
-        "fonction ; un binaire lié statiquement (`gcc -static`) n'emprunte rien et "
-        "s'exécute entier.",
-        "Pas de système de fichiers : `fopen` répond « introuvable », ce qui est la "
-        "vérité — il n'y a pas de fichier — et laisse le programme suivre sa branche "
-        "d'erreur, souvent la moitié intéressante. La console le dit la première fois. "
-        "<b>L'appel système répond de même</b> : `open`, `openat`, `stat`, `access`. "
-        "Cette réponse-là ne valait d'abord que pour un binaire lié dynamiquement, qui "
-        "passe par la fonction ; un binaire lié statiquement fait le même travail par "
-        "l'appel système et s'arrêtait net. La même question recevait deux réponses "
-        "selon la façon dont le programme avait été lié.",
-        "Pas de processus ni de bibliothèque chargée à l'exécution : `fork`, `execvp`, "
-        "`dlopen` restent refusés en se nommant, et le resteront.",
-        "Les appels système : namsdec rend ce qu'un programme demande pour tourner seul "
-        "— lire, écrire, prendre de la mémoire, se renseigner sur lui-même, et tout ce "
-        "qu'une bibliothèque C fait avant d'arriver à <font face='Courier'>main</font>. "
-        "Ceux qui touchent au dehors — `execve`, `socket`, `connect` — sont <b>nommés</b> "
-        "mais pas exécutés : namsdec le dit dès l'assemblage, avec la ligne, et le "
-        "module <b>Appels système</b> marque chacun d'eux. Un appel refusé s'arrête en "
-        "donnant son numéro <i>et</i> son nom.",
-        "Le x87 à sa pleine précision : le mot de contrôle est honoré — arrondi dirigé, "
-        "précision à 24 et 53 bits —, mais la précision <b>étendue</b> à 64 bits, qui est "
-        "le réglage par défaut, est approximée par la double. Les transcendantes "
-        "(`fsin`, `fcos`, `fyl2x`…) viennent de la bibliothèque de Rust et non du "
-        "polynôme du coprocesseur, et aucune exception flottante n'est levée. Sept "
-        "points en tout, recensés dans la fiche <b>F1</b> « arrondi », annoncés dans "
-        "l'onglet Diagnostics quand un programme les touche, et mesurés par "
-        "`cargo run -p namsdec-emu --example oracle_x87`.",
-        "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
-    ]))
-    blocs.append(("h1", "Signaler une anomalie"))
-    blocs.append(("p",
-        "<b>Aide › Signaler une anomalie…</b> rassemble le contexte d'un défaut — version, "
-        "système, outils trouvés, forme du fichier ouvert, et ce que namsdec disait au "
-        "moment du clic. C'est la moitié du travail qui coûte du temps à qui signale, et "
-        "c'est elle qui fait qu'une anomalie n'est jamais signalée."))
-    blocs.append(("liste", [
-        "<b>Rien ne part tout seul.</b> Aucune requête n'est faite en ouvrant la fenêtre. "
-        "Le texte reste sur la machine tant qu'on n'a pas cliqué.",
-        "<b>Ce qui part est montré avant</b>, en entier, dans un champ qu'on lit et qu'on "
-        "corrige. Un rapport qu'on n'a pas lu est un rapport qu'on n'a pas consenti à "
-        "envoyer.",
-        "<b>Ni le fichier, ni son chemin.</b> Un binaire analysé est souvent ce qu'on a de "
-        "plus privé — un échantillon, un travail en cours, le code de quelqu'un d'autre —, "
-        "et un rapport part sur un tracker public. Le rapport dit sa FORME — « ELF64 "
-        "x86-64 · PIE · dyn · dépouillé, 84&nbsp;548 octets » — et jamais son nom ni son "
-        "contenu. Une case, décochée, joint le chemin pour qui le veut vraiment.",
-        "<b>Deux sorties, les deux au clic</b> : copier le rapport dans le presse-papiers, "
-        "ou ouvrir le formulaire du dépôt avec le titre et le corps déjà remplis. namsdec "
-        "n'héberge pas de serveur, et ce qu'il met dans l'adresse est exactement ce que la "
-        "fenêtre montrait.",
-    ]))
-    blocs.append(("h1", "Mises à jour, licence et contact"))
-    blocs.append(("p",
-        "« À propos › Rechercher une mise à jour » interroge les versions publiées sur "
-        "GitHub et compare avec la vôtre. Rien n'est téléchargé ni "
-        "installé sans vous : namsdec ouvre la page de la version."))
-    blocs.append(("p",
-        "<b>Quelles versions vous sont proposées</b> se règle dans Préférences › Général, "
-        "à « Me proposer aussi les préversions (bêtas) ». Les versions définitives sont "
-        "proposées dans tous les cas : la case <i>ajoute</i> les bêtas, elle n'enlève rien. "
-        "Par défaut elle suit la version que vous faites tourner — cochée si c'est "
-        "elle-même une préversion, décochée sinon. Jusqu'ici cette règle était la seule "
-        "possible, et qui faisait tourner une version définitive n'avait aucun moyen de "
-        "demander à suivre les essais."))
-    blocs.append(("note",
-        "Si votre version est <b>plus récente</b> que tout ce qui est publié — le cas "
-        "quand on compile le dépôt soi-même —, namsdec le dit et donne quand même le lien "
-        "vers la dernière version publiée, pour la comparer ou y revenir."))
-    blocs.append(("p",
-        "namsdec est publié sous licence <b>MIT</b> : ce que vous comprenez ici est fait "
-        "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "
-        "GitHub, et la boîte « À propos » mène aux deux ainsi qu'au salon Discord."))
-    blocs.append(("p",
-        "La même boîte porte une image — un café et un hamburger — qui ouvre une page de "
-        "don. <b>Elle est éteinte tant qu'aucune adresse n'est réglée</b>, et elle se voit "
-        "éteinte : le dessin reste reconnaissable, mais sa lumière est baissée, pour qu'on "
-        "ne croie pas pouvoir cliquer sur ce qui ne mène nulle part. L'adresse se pose dans "
-        "<b>Préférences › Général</b>, ou dans le champ <font face='Courier'>donation_url</font> "
-        "de <font face='Courier'>settings.json</font> ; namsdec n'en privilégie aucune et "
-        "ouvre ce qu'on lui donne, dans votre navigateur, à votre clic."))
+    # LA QUEUE DU GUIDE : où vivent les fichiers, ce que namsdec ne
+    # fait pas, comment signaler une anomalie, les mises à jour. Elle
+    # est écrite ici depuis toujours parce qu'elle tient en quelques
+    # blocs ; l'anglaise vit dans `guide_en.queue`, pour la même raison.
+    if lang == "en":
+        blocs.extend(guide_en.queue())
+    else:
+        blocs.append(("h1", "Où vivent les fichiers"))
+        blocs.append(("table", [
+            ["Chemin", "Ce qu'il contient"],
+            ["~/.local/bin/namsdec", "le programme"],
+            ["~/.config/namsdec/settings.json", "tous vos réglages, dont `donation_url`"],
+            ["~/.config/namsdec/keymap.json", "le jeu de raccourcis actif"],
+            ["~/.config/namsdec/keymaps/", "les jeux de raccourcis enregistrés"],
+            ["~/.local/share/namsdec/exercises/", "le parcours et vos séries"],
+            ["~/.local/share/namsdec/themes/", "les thèmes installés"],
+            ["~/.local/share/namsdec/modules/", "les outils extérieurs déclarés"],
+        ]))
+        blocs.append(("h1", "Ce que namsdec ne fait pas"))
+        blocs.append(("liste", [
+            "Pas de mode 32 bits, ni d'interruption `int 0x80` : seul le x86-64 est simulé.",
+            "Pas de bibliothèque C <i>chargée</i> : namsdec n'est pas un éditeur de liens "
+            "dynamique, et le code de `printf` n'est nulle part dans la mémoire simulée. "
+            "À la place il en <b>fournit cent soixante-dix</b>, écrites en Rust — afficher, "
+            "lire, découper et comparer des chaînes, classer des caractères, demander de la "
+            "mémoire. Un binaire qui emprunte autre chose s'arrête en <b>nommant</b> la "
+            "fonction ; un binaire lié statiquement (`gcc -static`) n'emprunte rien et "
+            "s'exécute entier.",
+            "Pas de système de fichiers : `fopen` répond « introuvable », ce qui est la "
+            "vérité — il n'y a pas de fichier — et laisse le programme suivre sa branche "
+            "d'erreur, souvent la moitié intéressante. La console le dit la première fois. "
+            "<b>L'appel système répond de même</b> : `open`, `openat`, `stat`, `access`. "
+            "Cette réponse-là ne valait d'abord que pour un binaire lié dynamiquement, qui "
+            "passe par la fonction ; un binaire lié statiquement fait le même travail par "
+            "l'appel système et s'arrêtait net. La même question recevait deux réponses "
+            "selon la façon dont le programme avait été lié.",
+            "Pas de processus ni de bibliothèque chargée à l'exécution : `fork`, `execvp`, "
+            "`dlopen` restent refusés en se nommant, et le resteront.",
+            "Les appels système : namsdec rend ce qu'un programme demande pour tourner seul "
+            "— lire, écrire, prendre de la mémoire, se renseigner sur lui-même, et tout ce "
+            "qu'une bibliothèque C fait avant d'arriver à <font face='Courier'>main</font>. "
+            "Ceux qui touchent au dehors — `execve`, `socket`, `connect` — sont <b>nommés</b> "
+            "mais pas exécutés : namsdec le dit dès l'assemblage, avec la ligne, et le "
+            "module <b>Appels système</b> marque chacun d'eux. Un appel refusé s'arrête en "
+            "donnant son numéro <i>et</i> son nom.",
+            "Le x87 à sa pleine précision : le mot de contrôle est honoré — arrondi dirigé, "
+            "précision à 24 et 53 bits —, mais la précision <b>étendue</b> à 64 bits, qui est "
+            "le réglage par défaut, est approximée par la double. Les transcendantes "
+            "(`fsin`, `fcos`, `fyl2x`…) viennent de la bibliothèque de Rust et non du "
+            "polynôme du coprocesseur, et aucune exception flottante n'est levée. Sept "
+            "points en tout, recensés dans la fiche <b>F1</b> « arrondi », annoncés dans "
+            "l'onglet Diagnostics quand un programme les touche, et mesurés par "
+            "`cargo run -p namsdec-emu --example oracle_x87`.",
+            "AVX-512 : ses <b>trente-deux registres de 512 bits</b> (`zmm`), ses huit <b>registres de masque</b> (`k0` à `k7`) et les instructions qui les remplissent, et l'<b>application</b> du masque — les voies retenues reçoivent le résultat, les autres gardent leur valeur ou tombent à zéro. Une instruction dont namsdec ne sait pas nommer l'élément s'arrête en le disant, plutôt que de décaler les voies et de rendre un résultat faux sans avertissement. FMA, `in`/`out` et `cmpxchg16b` ne sont pas implémentés ; SSE, SSE2, SSSE3, SSE4.1, SSE4.2, AVX et AVX2 le sont entièrement.",
+        ]))
+        blocs.append(("h1", "Signaler une anomalie"))
+        blocs.append(("p",
+            "<b>Aide › Signaler une anomalie…</b> rassemble le contexte d'un défaut — version, "
+            "système, outils trouvés, forme du fichier ouvert, et ce que namsdec disait au "
+            "moment du clic. C'est la moitié du travail qui coûte du temps à qui signale, et "
+            "c'est elle qui fait qu'une anomalie n'est jamais signalée."))
+        blocs.append(("liste", [
+            "<b>Rien ne part tout seul.</b> Aucune requête n'est faite en ouvrant la fenêtre. "
+            "Le texte reste sur la machine tant qu'on n'a pas cliqué.",
+            "<b>Ce qui part est montré avant</b>, en entier, dans un champ qu'on lit et qu'on "
+            "corrige. Un rapport qu'on n'a pas lu est un rapport qu'on n'a pas consenti à "
+            "envoyer.",
+            "<b>Ni le fichier, ni son chemin.</b> Un binaire analysé est souvent ce qu'on a de "
+            "plus privé — un échantillon, un travail en cours, le code de quelqu'un d'autre —, "
+            "et un rapport part sur un tracker public. Le rapport dit sa FORME — « ELF64 "
+            "x86-64 · PIE · dyn · dépouillé, 84&nbsp;548 octets » — et jamais son nom ni son "
+            "contenu. Une case, décochée, joint le chemin pour qui le veut vraiment.",
+            "<b>Deux sorties, les deux au clic</b> : copier le rapport dans le presse-papiers, "
+            "ou ouvrir le formulaire du dépôt avec le titre et le corps déjà remplis. namsdec "
+            "n'héberge pas de serveur, et ce qu'il met dans l'adresse est exactement ce que la "
+            "fenêtre montrait.",
+        ]))
+        blocs.append(("h1", "Mises à jour, licence et contact"))
+        blocs.append(("p",
+            "« À propos › Rechercher une mise à jour » interroge les versions publiées sur "
+            "GitHub et compare avec la vôtre. Rien n'est téléchargé ni "
+            "installé sans vous : namsdec ouvre la page de la version."))
+        blocs.append(("p",
+            "<b>Quelles versions vous sont proposées</b> se règle dans Préférences › Général, "
+            "à « Me proposer aussi les préversions (bêtas) ». Les versions définitives sont "
+            "proposées dans tous les cas : la case <i>ajoute</i> les bêtas, elle n'enlève rien. "
+            "Par défaut elle suit la version que vous faites tourner — cochée si c'est "
+            "elle-même une préversion, décochée sinon. Jusqu'ici cette règle était la seule "
+            "possible, et qui faisait tourner une version définitive n'avait aucun moyen de "
+            "demander à suivre les essais."))
+        blocs.append(("note",
+            "Si votre version est <b>plus récente</b> que tout ce qui est publié — le cas "
+            "quand on compile le dépôt soi-même —, namsdec le dit et donne quand même le lien "
+            "vers la dernière version publiée, pour la comparer ou y revenir."))
+        blocs.append(("p",
+            "namsdec est publié sous licence <b>MIT</b> : ce que vous comprenez ici est fait "
+            "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "
+            "GitHub, et la boîte « À propos » mène aux deux ainsi qu'au salon Discord."))
+        blocs.append(("p",
+            "La même boîte porte une image — un café et un hamburger — qui ouvre une page de "
+            "don. <b>Elle est éteinte tant qu'aucune adresse n'est réglée</b>, et elle se voit "
+            "éteinte : le dessin reste reconnaissable, mais sa lumière est baissée, pour qu'on "
+            "ne croie pas pouvoir cliquer sur ce qui ne mène nulle part. L'adresse se pose dans "
+            "<b>Préférences › Général</b>, ou dans le champ <font face='Courier'>donation_url</font> "
+            "de <font face='Courier'>settings.json</font> ; namsdec n'en privilégie aucune et "
+            "ouvre ce qu'on lui donne, dans votre navigateur, à votre clic."))
 
     _verifie_les_glyphes(blocs)
-    sortie = RACINE / "docs" / ("guide-namsdec-%s.pdf" % v)
-    rendre(sortie, v, blocs)
+    # Le nom porte la langue, sauf en français : le guide français
+    # garde le nom qu'il a toujours eu, parce que le README et le site
+    # y renvoient.
+    suffixe = "" if lang == "fr" else "-%s" % lang
+    sortie = RACINE / "docs" / ("guide-namsdec-%s%s.pdf" % (v, suffixe))
+    rendre(sortie, v, blocs, lang)
     print("écrit : %s" % sortie)
     return 0
 
 
-def _lisible(action):
-    """Le nom d'une action, tel qu'on le dit."""
+def _lisible(action, lang="fr"):
+    """Le nom d'une action, tel qu'on le dit.
+
+    En anglais ce sont les noms de l'interface anglaise, et non une
+    traduction du français : un lecteur du guide anglais doit retrouver
+    dans Préférences le mot qu'il vient de lire.
+    """
+    if lang == "en":
+        return {
+            "ToggleExplorer": "File explorer", "Assemble": "Assemble",
+            "Run": "Run", "StepInto": "Step into", "StepOver": "Step over",
+            "StepBack": "Step back", "Stop": "Stop", "Reset": "Reset",
+            "Save": "Save", "OpenFile": "Open a file", "OpenFolder": "Open a folder",
+            "InstructionHelp": "Instruction help", "RunToCursor": "Run to cursor",
+            "RunToCall": "Run to next call", "RunToReturn": "Run to next return",
+            "RunToSyscall": "Run to next system call",
+            "GoToLabel": "Go to label", "Find": "Find", "New": "New file",
+            "ShowFlow": "Program flow", "NextTab": "Next file",
+            "PreviousTab": "Previous file", "CloseTab": "Close the file",
+            "ToggleCalculator": "Calculator",
+        }.get(action, action)
     noms = {
         "ToggleExplorer": "Explorateur de fichiers", "Assemble": "Assembler",
         "Run": "Exécuter", "StepInto": "Pas à pas détaillé",

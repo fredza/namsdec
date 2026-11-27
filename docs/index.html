@@ -31,7 +31,7 @@
 
 <header class="barre">
   <div class="enveloppe">
-    <a class="nom mono" href="index.html">namsdec</a>
+    <a class="nom mono" href="index.html"><img class="logo" src="logo.svg" alt="" width="30" height="30">namsdec</a>
     <nav class="sections">
       <a href="#ce-qu-il-montre">Ce qu'il montre</a>
       <a href="#apprendre">Apprendre</a>
@@ -47,7 +47,7 @@
       <button id="bascule-theme" type="button"
               data-clair="Passer au thème clair" data-sombre="Passer au thème sombre">☀</button>
       <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Dépôt</a>
-      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/latest">Télécharger</a>
+      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger</a>
       <a class="langue" href="en.html" aria-label="Read in English">EN</a>
     </div>
   </div>
@@ -64,18 +64,32 @@
       faire. Il ne se contente pas d'afficher des registres : il explique.
       Linux, ELF64, syntaxe NASM. Licence MIT.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/latest">Télécharger la dernière version</a>
+      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Télécharger la dernière version</a>
       <a class="bouton" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
       <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">Le guide en PDF</a>
     </div>
+
+    <!-- LA SOMME DE CONTRÔLE, à côté du bouton qui télécharge. Elle est
+         publiée avec la version ; la donner ailleurs reviendrait à la
+         cacher. Le bouton la copie : soixante-quatre caractères ne se
+         retapent pas, et une sélection à la souris en oublie un bout. -->
+    <div class="somme">
+      <p class="quoi">Somme SHA-256 attendue pour <code>namsdec-1.0.0-beta.666-x86_64-linux</code> — vérifiez-la avant de lancer le fichier :</p>
+      <div class="ligne">
+        <code id="sha256">0a207762b1c2b49ecf4054494d272dc90900dbe5d49e44f1145629286ed08b7e</code>
+        <button class="copier" type="button" data-pour="sha256"
+                data-fini="Copié" data-selection="Sélectionné">Copier</button>
+      </div>
+      <p class="quoi" style="margin:.55rem 0 0"><code>sha256sum namsdec-1.0.0-beta.666-x86_64-linux</code> doit rendre exactement cette ligne.</p>
+    </div>
   </section>
 
-  <figure>
-    <img src="images/etabli.png" alt="L'Établi : l'écran du mode débutant, avec l'éditeur au centre et le panneau de la machine à droite.">
-    <figcaption><strong>L'Établi</strong> — l'écran de celui qui débute. Quatre bandes
+  <details class="capture" open>
+    <summary><strong>L'Établi</strong> — l'écran de celui qui débute. Quatre bandes
       fixes, rien à ouvrir, rien à régler : le programme au centre, ce que fait la
-      machine à droite, le résultat en bas.</figcaption>
-  </figure>
+      machine à droite, le résultat en bas.</summary>
+    <img src="images/etabli.png" alt="L'Établi : l'écran du mode débutant, avec l'éditeur au centre et le panneau de la machine à droite.">
+  </details>
 
   <h2 id="ce-qu-il-montre">Ce qu'il montre que les autres ne montrent pas</h2>
 
@@ -128,17 +142,17 @@
     (<code>rax == 0xf</code>), et chacun un budget d'instructions : l'égaler est normal,
     descendre en dessous est le vrai exercice.</p>
 
-  <figure>
+  <details class="capture" open>
+    <summary><strong>Les points d'arrêt</strong> — avec leur condition
+      (<code>rcx == 0</code>), et ce que valent les registres à ce passage-là.</summary>
     <img src="images/points-d-arret.png" alt="La vue des points d'arrêt, avec une condition par ligne et la valeur des registres à ce passage.">
-    <figcaption><strong>Les points d'arrêt</strong> — avec leur condition
-      (<code>rcx == 0</code>), et ce que valent les registres à ce passage-là.</figcaption>
-  </figure>
+  </details>
 
-  <figure>
+  <details class="capture" open>
+    <summary><strong>Le mode avancé</strong> — les registres, les sept indicateurs,
+      la pile lue comme une pile, et la console du programme.</summary>
     <img src="images/processeur.png" alt="L'interface complète en mode avancé : éditeur, panneau du processeur, pile et console.">
-    <figcaption><strong>Le mode avancé</strong> — les registres, les sept indicateurs,
-      la pile lue comme une pile, et la console du programme.</figcaption>
-  </figure>
+  </details>
 
   <h2 id="lire">Lire les binaires des autres</h2>
 
@@ -147,25 +161,25 @@
     Rien n'est additionné en score — un score donnerait l'illusion d'un verdict, et
     c'est le lecteur qui conclut.</p>
 
-  <figure>
+  <details class="capture" open>
+    <summary><strong>Les protections</strong> — PIE, NX, RELRO, canari, FORTIFY, IBT,
+      segments W+X — avec, pour chacune, ce que son état change concrètement.</summary>
     <img src="images/protections.png" alt="Le panneau des protections : PIE, NX, RELRO, canari de pile, et ce que chaque état change.">
-    <figcaption><strong>Les protections</strong> — PIE, NX, RELRO, canari, FORTIFY, IBT,
-      segments W+X — avec, pour chacune, ce que son état change concrètement.</figcaption>
-  </figure>
+  </details>
 
-  <figure>
-    <img src="images/editeur-binaire.png" alt="L'éditeur binaire : les octets du fichier, leur adresse en mémoire, et le texte à droite.">
-    <figcaption><strong>L'éditeur binaire</strong> — la position dans le fichier
+  <details class="capture" open>
+    <summary><strong>L'éditeur binaire</strong> — la position dans le fichier
       <em>et</em> l'adresse en mémoire, côte à côte. On choisit un octet, on en pose un
-      autre, et chaque écriture se défait.</figcaption>
-  </figure>
+      autre, et chaque écriture se défait.</summary>
+    <img src="images/editeur-binaire.png" alt="L'éditeur binaire : les octets du fichier, leur adresse en mémoire, et le texte à droite.">
+  </details>
 
-  <figure>
-    <img src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
-    <figcaption><strong>Le graphe d'appels</strong> — une adresse qu'un <code>call</code>
+  <details class="capture" open>
+    <summary><strong>Le graphe d'appels</strong> — une adresse qu'un <code>call</code>
       vise est une fonction, même dépouillée de son nom ; celle qui est appelée de
-      partout est celle par laquelle on commence.</figcaption>
-  </figure>
+      partout est celle par laquelle on commence.</summary>
+    <img src="images/graphe-d-appels.png" alt="Le graphe d'appels d'un binaire, avec le nombre d'appelants de chaque fonction.">
+  </details>
 
   <p><strong>Et sans la fenêtre.</strong> <code>namsdec-cli</code> écrit le même rapport
     en Markdown, et compare deux versions d'un binaire — une protection qui disparaît,
@@ -176,6 +190,8 @@
   || echo "une protection a bougé"</code></pre>
 
   <h2 id="installer">Installer</h2>
+
+  <p class="sous"><b>Cette section ne concerne que l'installation depuis les sources.</b> Si vous avez pris le binaire par le bouton <i>Télécharger</i>, il n'y a rien à compiler : rendez-le exécutable (<code>chmod +x</code>) et lancez-le. Ce qui suit est pour qui clone le dépôt et construit namsdec lui-même.</p>
 
   <p>Il faut <strong>Rust</strong> (<code>cargo</code>), <strong>nasm</strong> et
     <strong>ld</strong> (binutils). Rien n'est écrit hors de <code>$HOME</code>, et rien

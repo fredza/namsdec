@@ -30,7 +30,7 @@
 
 <header class="barre">
   <div class="enveloppe">
-    <a class="nom mono" href="en.html">namsdec</a>
+    <a class="nom mono" href="en.html"><img class="logo" src="logo.svg" alt="" width="30" height="30">namsdec</a>
     <nav class="sections">
       <a href="#what-it-shows">What it shows</a>
       <a href="#learning">Learning</a>
@@ -46,7 +46,7 @@
       <button id="bascule-theme" type="button"
               data-clair="Switch to the light theme" data-sombre="Switch to the dark theme">☀</button>
       <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Repository</a>
-      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/latest">Download</a>
+      <a class="bouton mini fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download</a>
       <a class="langue" href="index.html" aria-label="Lire en français">FR</a>
     </div>
   </div>
@@ -63,9 +63,23 @@
       merely display registers: it explains.
       Linux, ELF64, NASM syntax. MIT licensed.</p>
     <div class="boutons">
-      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/latest">Download the latest release</a>
+      <a class="bouton fort" href="https://github.com/fredza/namsdec/releases/download/v1.0.0-beta.666/namsdec-1.0.0-beta.666-x86_64-linux">Download the latest release</a>
       <a class="bouton" href="https://github.com/fredza/namsdec">The code on GitHub</a>
-      <a class="bouton" href="guide-namsdec-1.0.0-beta.666.pdf">The PDF guide</a>
+      <a class="bouton" href="guide-namsdec-1.0.0-beta.666-en.pdf">The PDF guide</a>
+    </div>
+
+    <!-- LA SOMME DE CONTRÔLE, à côté du bouton qui télécharge. Elle est
+         publiée avec la version ; la donner ailleurs reviendrait à la
+         cacher. Le bouton la copie : soixante-quatre caractères ne se
+         retapent pas, et une sélection à la souris en oublie un bout. -->
+    <div class="somme">
+      <p class="quoi">Expected SHA-256 for <code>namsdec-1.0.0-beta.666-x86_64-linux</code> — check it before you run the file:</p>
+      <div class="ligne">
+        <code id="sha256">0a207762b1c2b49ecf4054494d272dc90900dbe5d49e44f1145629286ed08b7e</code>
+        <button class="copier" type="button" data-pour="sha256"
+                data-fini="Copied" data-selection="Selected">Copy</button>
+      </div>
+      <p class="quoi" style="margin:.55rem 0 0"><code>sha256sum namsdec-1.0.0-beta.666-x86_64-linux</code> must print exactly this line.</p>
     </div>
   </section>
 
@@ -79,12 +93,12 @@
     documentation cards and the theory of each exercise are written in both
     languages.</p>
 
-  <figure>
-    <img src="images/etabli.png" alt="The Workbench: the beginner screen, with the editor in the middle and the machine panel on the right.">
-    <figcaption><strong>The Workbench</strong> — the screen of somebody starting out.
+  <details class="capture" open>
+    <summary><strong>The Workbench</strong> — the screen of somebody starting out.
       Four fixed bands, nothing to open, nothing to configure: the program in the
-      middle, what the machine does on the right, the result at the bottom.</figcaption>
-  </figure>
+      middle, what the machine does on the right, the result at the bottom.</summary>
+    <img src="images/etabli.png" alt="The Workbench: the beginner screen, with the editor in the middle and the machine panel on the right.">
+  </details>
 
   <h2 id="what-it-shows">What it shows that the others do not</h2>
 
@@ -138,18 +152,18 @@
     (<code>rax == 0xf</code>), and each one an instruction budget: matching it is
     normal, going below is the real exercise.</p>
 
-  <figure>
-    <img src="images/points-d-arret.png" alt="The breakpoints view, with a condition per line and the register values at that pass.">
-    <figcaption><strong>Breakpoints</strong> — with their condition
+  <details class="capture" open>
+    <summary><strong>Breakpoints</strong> — with their condition
       (<code>rcx == 0</code>), and what the registers hold at that particular
-      pass.</figcaption>
-  </figure>
+      pass.</summary>
+    <img src="images/points-d-arret.png" alt="The breakpoints view, with a condition per line and the register values at that pass.">
+  </details>
 
-  <figure>
+  <details class="capture" open>
+    <summary><strong>Advanced mode</strong> — the registers, the seven flags, the
+      stack read as a stack, and the program's console.</summary>
     <img src="images/processeur.png" alt="The full interface in advanced mode: editor, processor panel, stack and console.">
-    <figcaption><strong>Advanced mode</strong> — the registers, the seven flags, the
-      stack read as a stack, and the program's console.</figcaption>
-  </figure>
+  </details>
 
   <h2 id="reading">Reading other people's binaries</h2>
 
@@ -158,25 +172,25 @@
     added up into a score — a score would look like a verdict, and it is the reader who
     concludes.</p>
 
-  <figure>
+  <details class="capture" open>
+    <summary><strong>Binary hardening</strong> — PIE, NX, RELRO, canary, FORTIFY,
+      IBT, W+X segments — with, for each, what its state actually changes.</summary>
     <img src="images/protections.png" alt="The hardening panel: PIE, NX, RELRO, stack canary, and what each state changes.">
-    <figcaption><strong>Binary hardening</strong> — PIE, NX, RELRO, canary, FORTIFY,
-      IBT, W+X segments — with, for each, what its state actually changes.</figcaption>
-  </figure>
+  </details>
 
-  <figure>
-    <img src="images/editeur-binaire.png" alt="The binary editor: the file's bytes, their address in memory, and the text on the right.">
-    <figcaption><strong>The binary editor</strong> — the position in the file
+  <details class="capture" open>
+    <summary><strong>The binary editor</strong> — the position in the file
       <em>and</em> the address in memory, side by side. You pick a byte, you put another
-      one there, and every write can be undone.</figcaption>
-  </figure>
+      one there, and every write can be undone.</summary>
+    <img src="images/editeur-binaire.png" alt="The binary editor: the file's bytes, their address in memory, and the text on the right.">
+  </details>
 
-  <figure>
-    <img src="images/graphe-d-appels.png" alt="A binary's call graph, with the number of callers of each function.">
-    <figcaption><strong>The call graph</strong> — an address a <code>call</code> aims at
+  <details class="capture" open>
+    <summary><strong>The call graph</strong> — an address a <code>call</code> aims at
       is a function, even stripped of its name; the one called from everywhere is the
-      one to start from.</figcaption>
-  </figure>
+      one to start from.</summary>
+    <img src="images/graphe-d-appels.png" alt="A binary's call graph, with the number of callers of each function.">
+  </details>
 
   <p><strong>And without the window.</strong> <code>namsdec-cli</code> writes the same
     report as Markdown, and compares two versions of a binary — a protection that
@@ -188,6 +202,8 @@
 
   <h2 id="installing">Installing</h2>
 
+  <p class="sous"><b>This section is only about installing from source.</b> If you took the binary from the <i>Download</i> button there is nothing to compile: make it executable (<code>chmod +x</code>) and run it. What follows is for whoever clones the repository and builds namsdec.</p>
+
   <p>You need <strong>Rust</strong> (<code>cargo</code>), <strong>nasm</strong> and
     <strong>ld</strong> (binutils). Nothing is written outside <code>$HOME</code>, and
     nothing asks for administrator rights.</p>
@@ -198,7 +214,7 @@ cd namsdec
 
   <p>Running the script again is an <strong>update</strong>, not a reinstall: your
     settings, your exercise packs and your breakpoints stay where they are. The
-    <a href="guide-namsdec-1.0.0-beta.666.pdf">PDF guide</a> covers all of this in
+    <a href="guide-namsdec-1.0.0-beta.666-en.pdf">PDF guide</a> covers all of this in
     detail, and it is produced from the repository — the version, the number of
     exercises and the shortcut table come from the sources, never from a copy that
     would age.</p>

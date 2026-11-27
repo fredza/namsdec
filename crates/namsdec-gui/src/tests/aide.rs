@@ -1008,11 +1008,22 @@ fn the_readme_tells_the_truth() {
 /// DÉSIGNENT est là.
 #[test]
 fn le_site_ne_montre_rien_qui_manque() {
-    let docs = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs");
-    let guide = format!("guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION"));
+    let racine_du_dépôt = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let docs = racine_du_dépôt.join("docs");
     let mut vues = std::collections::BTreeSet::new();
 
-    for (nom, autre) in [("index.html", "en.html"), ("en.html", "index.html")] {
+    for (nom, autre, guide) in [
+        (
+            "index.html",
+            "en.html",
+            format!("guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION")),
+        ),
+        (
+            "en.html",
+            "index.html",
+            format!("guide-namsdec-{}-en.pdf", env!("CARGO_PKG_VERSION")),
+        ),
+    ] {
         let page =
             std::fs::read_to_string(docs.join(nom)).unwrap_or_else(|_| panic!("docs/{nom} est là"));
 
@@ -1035,12 +1046,17 @@ fn le_site_ne_montre_rien_qui_manque() {
         }
         assert!(images >= 4, "docs/{nom} ne montre que {images} capture(s)");
 
-        // Le guide est celui de la version qu'on compile.
+        // Le guide est celui de la version qu'on compile, ET DE LA
+        // LANGUE DE LA PAGE : tendre un PDF français à un lecteur
+        // anglophone, c'est ne pas lui donner de manuel.
         assert!(
             page.contains(&guide),
             "docs/{nom} ne mène pas à « {guide} »"
         );
-        assert!(docs.join(&guide).is_file(), "le guide annoncé n'est pas là");
+        assert!(
+            docs.join(&guide).is_file(),
+            "« {guide} » est annoncé par docs/{nom} et n'existe pas"
+        );
 
         // L'autre langue se trouve depuis celle-ci.
         assert!(page.contains(autre), "docs/{nom} ne mène pas à {autre}");
@@ -1049,6 +1065,14 @@ fn le_site_ne_montre_rien_qui_manque() {
         assert!(
             page.contains(APP_AUTHOR),
             "docs/{nom} ne nomme pas l'auteur"
+        );
+
+        // LE LOGO EST CELUI DU PROGRAMME. Une marque qui diffère de
+        // celle qu'on voit dans sa barre des tâches n'est pas une
+        // marque : on ne la reconnaît pas.
+        assert!(
+            page.contains("src=\"logo.svg\""),
+            "docs/{nom} ne porte pas le logo"
         );
 
         // La feuille de style et l'interrupteur du thème, partagés.
@@ -1071,26 +1095,89 @@ fn le_site_ne_montre_rien_qui_manque() {
         // pas — on ne remarque pas l'absence d'un bouton.
         let barre = &page[page.find("<header").expect("une barre")
             ..page.find("</header>").expect("une barre fermée")];
+        // LE BOUTON MÈNE AU BINAIRE, et non à une page de versions où
+        // il faut encore chercher. Le fichier porte donc le numéro de
+        // version, et ce numéro doit être CELUI QU'ON COMPILE : un lien
+        // d'une version passée télécharge un programme qui n'est pas
+        // celui que la page décrit.
+        let binaire = format!(
+            "https://github.com/fredza/namsdec/releases/download/v{0}/namsdec-{0}-x86_64-linux",
+            env!("CARGO_PKG_VERSION")
+        );
         assert!(
-            barre.contains("https://github.com/fredza/namsdec/releases/latest"),
-            "docs/{nom} : le téléchargement n'est pas dans la barre toujours visible"
+            barre.contains(&binaire),
+            "docs/{nom} : la barre ne mène pas au binaire de cette version.\n\
+             Attendu : {binaire}\n\
+             Les deux pages se remettent à jour par `python3 docs/maj-telechargement.py`"
         );
         assert!(
             barre.contains("https://github.com/fredza/namsdec\""),
             "docs/{nom} : le lien du dépôt n'est pas dans la barre toujours visible"
         );
-        // `releases/latest` et non un numéro : GitHub redirige vers la
-        // dernière publiée, donc le lien ne vieillit jamais. Écrire
-        // « v1.0.0-beta.666 » dans un bouton serait un numéro de plus à
-        // tenir à jour, et celui qu'on oublierait.
+        // LA SOMME DE CONTRÔLE, et de quoi la copier. Un binaire qu'on
+        // télécharge sans pouvoir le vérifier n'est pas vérifiable, et
+        // soixante-quatre caractères ne se retapent pas à la main.
+        let somme = page
+            .split("id=\"sha256\">")
+            .nth(1)
+            .and_then(|reste| reste.split('<').next())
+            .unwrap_or_default()
+            .trim()
+            .to_owned();
+        assert_eq!(
+            somme.len(),
+            64,
+            "docs/{nom} : la somme SHA-256 fait {} caractères et non 64",
+            somme.len()
+        );
         assert!(
-            !barre.contains(env!("CARGO_PKG_VERSION")),
-            "docs/{nom} : la barre écrit un numéro de version, qui vieillira"
+            somme.chars().all(|c| c.is_ascii_hexdigit()),
+            "docs/{nom} : la somme n'est pas hexadécimale"
+        );
+        assert!(
+            page.contains("data-pour=\"sha256\""),
+            "docs/{nom} : la somme s'affiche mais rien ne la copie"
+        );
+        // Et le nom du fichier qu'elle vérifie est celui de la version.
+        assert!(
+            page.contains(&format!(
+                "namsdec-{}-x86_64-linux",
+                env!("CARGO_PKG_VERSION")
+            )),
+            "docs/{nom} : la somme ne dit pas de quel fichier elle est"
+        );
+
+        // LES CAPTURES SE REPLIENT. `<details>` et non un bouton : le
+        // navigateur sait déjà plier, au clavier comme à la souris, et
+        // la page garde son sens sans script.
+        assert!(
+            page.matches("<details class=\"capture\"").count() >= 4,
+            "docs/{nom} : les captures ne se replient pas"
+        );
+
+        // ET L'INSTALLATION DIT QU'ELLE NE VAUT QUE DEPUIS LES SOURCES.
+        // Qui vient de télécharger le binaire n'a rien à compiler, et
+        // lui faire installer Rust pour rien est le meilleur moyen de
+        // le perdre.
+        assert!(
+            page.contains("chmod +x"),
+            "docs/{nom} : rien ne dit que la section d'installation est pour les sources"
         );
     }
 
     assert!(docs.join("style.css").is_file(), "docs/style.css est là");
     assert!(docs.join("theme.js").is_file(), "docs/theme.js est là");
+    // ET LE LOGO EST LA COPIE EXACTE de l'icône du programme. Deux
+    // dessins qui se ressemblent finissent par ne plus se ressembler :
+    // celui-ci se recopie, il ne se redessine pas.
+    let icône = racine_du_dépôt.join("assets/namsdec.svg");
+    let copie = docs.join("logo.svg");
+    assert!(copie.is_file(), "docs/logo.svg est là");
+    assert_eq!(
+        std::fs::read(&icône).ok(),
+        std::fs::read(&copie).ok(),
+        "docs/logo.svg a divergé de assets/namsdec.svg — recopiez-le"
+    );
     // Les deux thèmes sont définis : sans le bloc clair, l'interrupteur
     // bascule un attribut que personne ne lit.
     let css = std::fs::read_to_string(docs.join("style.css")).expect("style.css");
@@ -1158,11 +1245,29 @@ fn les_deux_pages_du_readme_disent_la_meme_chose() {
         en.contains(&format!("{fiches} instructions")),
         "la page anglaise annonce un autre nombre de fiches que les {fiches} existantes"
     );
-    let guide = format!("docs/guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION"));
-    for (nom, page) in [("français", &fr), ("anglais", &en)] {
+    // CHAQUE LANGUE MÈNE À SON GUIDE. Le manuel anglais n'est pas une
+    // traduction du français mais un guide à lui — mêmes chapitres,
+    // écrits pour son lecteur —, et il porte donc son propre fichier.
+    for (nom, page, pdf) in [
+        (
+            "français",
+            &fr,
+            format!("docs/guide-namsdec-{}.pdf", env!("CARGO_PKG_VERSION")),
+        ),
+        (
+            "anglais",
+            &en,
+            format!("docs/guide-namsdec-{}-en.pdf", env!("CARGO_PKG_VERSION")),
+        ),
+    ] {
         assert!(
-            page.contains(&guide),
-            "le README {nom} n'annonce pas « {guide} »"
+            page.contains(&pdf),
+            "le README {nom} n'annonce pas « {pdf} »"
+        );
+        assert!(
+            racine.join(&pdf).is_file(),
+            "« {pdf} » est annoncé et n'existe pas. Il s'écrit par \
+             `python3 docs/guide.py`, avec `--lang en` pour l'anglais"
         );
     }
 
@@ -2346,19 +2451,29 @@ fn the_guide_the_readme_points_to_is_the_one_of_this_version() {
         racine.join(&attendu).is_file(),
         "{attendu} doit exister — régénérez-le avec `python3 docs/guide.py`"
     );
-    // Aucun autre guide ne traîne : deux PDF dans le dossier, et l'on ne
-    // sait plus lequel décrit ce qu'on a sous les yeux.
+    // DEUX GUIDES, PAS UN DE PLUS : le français et l'anglais de CETTE
+    // version. Un PDF d'une version passée traîne sans qu'on le voie,
+    // et l'on ne sait plus lequel décrit ce qu'on a sous les yeux.
+    let anglais = format!("docs/guide-namsdec-{}-en.pdf", env!("CARGO_PKG_VERSION"));
+    assert!(
+        racine.join(&anglais).is_file(),
+        "{anglais} doit exister — écrivez-le par `python3 docs/guide.py --lang en`"
+    );
+    let attendus = [
+        attendu.rsplit('/').next().unwrap_or_default().to_owned(),
+        anglais.rsplit('/').next().unwrap_or_default().to_owned(),
+    ];
     let autres: Vec<String> = std::fs::read_dir(racine.join("docs"))
         .into_iter()
         .flatten()
         .flatten()
         .map(|entrée| entrée.file_name().to_string_lossy().into_owned())
         .filter(|nom| nom.starts_with("guide-namsdec-") && nom.ends_with(".pdf"))
-        .filter(|nom| !attendu.ends_with(nom.as_str()))
+        .filter(|nom| !attendus.contains(nom))
         .collect();
     assert!(
         autres.is_empty(),
-        "un seul guide à la fois : {autres:?} décrivent une autre version"
+        "les guides de cette version sont {attendus:?} ; {autres:?} décrivent autre chose"
     );
 }
 

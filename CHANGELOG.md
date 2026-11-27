@@ -6,6 +6,33 @@ entrée par version, et ce qui change pour qui s'en sert.
 
 ## 1.0.0-beta.666 — 26 novembre 2026
 
+**Un manuel anglais, et un site qui se télécharge**
+
+- **Le manuel existe en anglais** : vingt et un chapitres, autant que le
+  français, écrits pour leur lecteur plutôt que traduits — quarante
+  mille mots rendus un à un donneraient deux textes à tenir à jour, et
+  le second vieillirait le premier. `python3 docs/guide.py --lang en`
+  l'écrit ; le cadre, les nombres et la table des raccourcis viennent du
+  dépôt comme en français.
+- **Le bouton « Télécharger » mène au binaire**, et non à une page où il
+  faut encore chercher. Avec lui, la **somme SHA-256** attendue et un
+  bouton qui la copie : soixante-quatre caractères ne se retapent pas, et
+  une sélection à la souris en oublie toujours un bout.
+- Le lien et la somme portent un numéro de version, donc ils
+  vieilliraient : `python3 docs/maj-telechargement.py` les remet d'une
+  commande après chaque publication, en allant lire la somme sur
+  GitHub. Un contrôle refuse que le lien désigne une autre version que
+  celle qu'on compile.
+- **La section d'installation dit qu'elle ne vaut que depuis les
+  sources.** Qui vient de prendre le binaire n'a rien à compiler, et lui
+  faire installer Rust pour rien est le meilleur moyen de le perdre.
+- **Les captures se replient d'un clic**, dans les deux langues.
+  `<details>` et non un bouton : le navigateur sait déjà plier, au
+  clavier comme à la souris, et la page garde son sens sans script.
+- **Le logo est l'icône du programme**, copiée et non redessinée — une
+  marque qui diffère de celle qu'on voit dans sa barre des tâches n'est
+  pas une marque. Un contrôle refuse qu'elle diverge.
+
 **Les deux contrôles qui lisaient la machine**
 
 - **Le détour mesurait la version de `ld`.** Il cherchait du bourrage

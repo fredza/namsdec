@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <title>namsdec</title>
+  <desc>Un engrenage au-dessus d'un convoyeur : l'atelier d'assemblage.</desc>
+  <defs>
+    <!-- L'engrenage et le dôme sont tranchés net à l'horizontale, là où
+         commence le plan de travail. -->
+    <clipPath id="above-belt"><rect x="0" y="0" width="512" height="282"/></clipPath>
+  </defs>
+
+  <g clip-path="url(#above-belt)">
+    <path d="M218.5,19.0 A240.0,240.0 0 0 1 293.5,19.0 A68.1,68.1 0 0 0 397.1,61.8 L397.1,61.8 A240.0,240.0 0 0 1 450.2,114.9 A68.1,68.1 0 0 0 493.0,218.5 L493.0,218.5 A240.0,240.0 0 0 1 493.0,293.5 A68.1,68.1 0 0 0 450.2,397.1 L450.2,397.1 A240.0,240.0 0 0 1 397.1,450.2 A68.1,68.1 0 0 0 293.5,493.0 L293.5,493.0 A240.0,240.0 0 0 1 218.5,493.0 A68.1,68.1 0 0 0 114.9,450.2 L114.9,450.2 A240.0,240.0 0 0 1 61.8,397.1 A68.1,68.1 0 0 0 19.0,293.5 L19.0,293.5 A240.0,240.0 0 0 1 19.0,218.5 A68.1,68.1 0 0 0 61.8,114.9 L61.8,114.9 A240.0,240.0 0 0 1 114.9,61.8 A68.1,68.1 0 0 0 218.5,19.0 Z" fill="#5a9fd8" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+    <!-- Le trait qui referme l'engrenage sur sa coupe. -->
+    <path d="M10,275 H502" stroke="#1f4571" stroke-width="14"/>
+    <!-- Le dôme : un demi-disque évidé, posé sur la même ligne. -->
+    <path d="M131,282 A125,125 0 0 1 381,282" fill="#ffffff" stroke="#1f4571" stroke-width="14"/>
+    <circle cx="151" cy="240" r="30" fill="#ffffff" stroke="#1f4571" stroke-width="14"/>
+  </g>
+
+  <!-- Deux cartons sur le tapis. -->
+  <rect x="234" y="276" width="90" height="92" fill="#ffffff" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M265.0,276 v24 h28 v-24" fill="#ffffff" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+  <rect x="358" y="276" width="90" height="92" fill="#ffffff" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+  <path d="M389.0,276 v24 h28 v-24" fill="#ffffff" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- Une pièce en cours, sous le dôme. -->
+  <path d="M69,368 A68,68 0 0 1 205,368" fill="#5a9fd8" stroke="#1f4571" stroke-width="14"/>
+
+  <!-- Le socle, sous le tapis. -->
+  <rect x="69" y="466" width="374" height="36" rx="6" fill="#5a9fd8" stroke="#1f4571" stroke-width="14" stroke-linejoin="round"/>
+
+  <!-- Le tapis lui-même, par-dessus tout ce qu'il porte. -->
+  <rect x="16" y="368" width="480" height="102" rx="51" fill="#ffffff" stroke="#1f4571" stroke-width="14"/>
+  <circle cx="69" cy="419" r="31" fill="#5a9fd8" stroke="#1f4571" stroke-width="14"/>
+  <circle cx="69" cy="419" r="10" fill="#1f4571"/>
+  <circle cx="193" cy="419" r="31" fill="#5a9fd8" stroke="#1f4571" stroke-width="14"/>
+  <circle cx="193" cy="419" r="10" fill="#1f4571"/>
+  <circle cx="318" cy="419" r="31" fill="#5a9fd8" stroke="#1f4571" stroke-width="14"/>
+  <circle cx="318" cy="419" r="10" fill="#1f4571"/>
+  <circle cx="442" cy="419" r="31" fill="#5a9fd8" stroke="#1f4571" stroke-width="14"/>
+  <circle cx="442" cy="419" r="10" fill="#1f4571"/>
+</svg>
