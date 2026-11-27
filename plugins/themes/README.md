@@ -26,8 +26,9 @@ Le thème apparaît au lancement suivant. Pour le retirer : le bouton
 | `ardoise.json` | Ardoise | sombre, bleuté, contrasté |
 | `solarise-clair.json` | Solarisé clair | clair, d'après la palette Solarized |
 
-namsdec en porte trois autres, compilés dans le programme : VS Code
-Dark+, un clair et un à fort contraste. Ceux-là ne se retirent pas.
+namsdec en porte quatre autres, compilés dans le programme : VS Code
+Dark+, VS Code Light+, Tokyo Night et Noël — ce dernier sombre et
+sobre, épicéa et or de bougie. Ceux-là ne se retirent pas.
 
 ## Le format
 

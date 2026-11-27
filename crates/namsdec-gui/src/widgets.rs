@@ -610,6 +610,19 @@ pub(crate) fn hauteur_d_un_bouton_encadré(ui: &egui::Ui) -> f32 {
         .max(texte + 2.0 * ui.spacing().button_padding.y + 2.0 * FILET_DU_BOUTON)
 }
 
+/// LA TAILLE DE LA VIGNETTE D'UN THÈME, et la marge qui la précède.
+///
+/// Elles sont ici, et non écrites deux fois : `theme_card` peint
+/// dedans, `theme_card_width` compte avec. Une vignette agrandie d'un
+/// côté seulement décalerait tous les boutons « Retirer ».
+///
+/// Quatre-vingt-quatre sur trente, là où l'ancienne faisait
+/// cinquante-huit sur vingt-huit : il faut la place d'un vrai portrait
+/// — une gouttière, quatre lignes de code et le panneau de droite —,
+/// et quatre pastilles de couleur n'en demandaient aucune.
+const VIGNETTE: egui::Vec2 = egui::vec2(84.0, 30.0);
+const MARGE_DE_LA_VIGNETTE: f32 = 8.0;
+
 /// La vignette d'un thème, de largeur imposée.
 ///
 /// Imposée, et non « toute la place » : les boutons « Retirer » qui la
@@ -637,28 +650,101 @@ pub(crate) fn theme_card(
         );
 
         let preview = egui::Rect::from_min_size(
-            egui::pos2(rect.left() + 8.0, rect.center().y - 14.0),
-            egui::vec2(58.0, 28.0),
+            egui::pos2(
+                rect.left() + MARGE_DE_LA_VIGNETTE,
+                rect.center().y - VIGNETTE.y / 2.0,
+            ),
+            VIGNETTE,
         );
-        painter.rect_filled(preview, 4, theme.bg);
+        painter.rect_filled(preview, 0, theme.bg);
+
+        // La gouttière des numéros de ligne, et le panneau de droite :
+        // les deux fonds que l'application pose à côté de l'éditeur.
+        // Carrés, et non arrondis : un coin rond posé sur le coin rond
+        // de la vignette laisse un ergot d'un pixel, et une vignette
+        // de trente pixels n'a pas de place pour un défaut.
+        let gouttière = egui::Rect::from_min_size(preview.min, egui::vec2(8.0, preview.height()));
+        painter.rect_filled(gouttière, 0, theme.panel);
+        let panneau = egui::Rect::from_min_max(
+            egui::pos2(preview.right() - 26.0, preview.top()),
+            preview.max,
+        );
+        painter.rect_filled(panneau, 0, theme.panel);
+
+        // Les quatre lignes de code. Chaque barre est un jeton : une
+        // étiquette seule, puis des instructions — mnémonique,
+        // registre, nombre, commentaire —, puis une directive et sa
+        // chaîne. C'est l'ordre d'un vrai programme, et ce sont les
+        // couleurs qu'on lit toute la journée.
+        let gauche = gouttière.right() + 2.0;
+        let ligne = |rang: f32| preview.top() + 4.5 + rang * 6.0;
+        let barre = |x: f32, rang: f32, largeur: f32, couleur: egui::Color32| {
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(gauche + x, ligne(rang)),
+                    egui::vec2(largeur, 3.0),
+                ),
+                1,
+                couleur,
+            );
+        };
+
+        // La ligne sous le curseur, peinte AVANT ses jetons : c'est la
+        // couleur de sélection, et elle n'apparaissait nulle part sur
+        // l'ancienne vignette alors qu'elle est sous les yeux à chaque
+        // clic.
         painter.rect_filled(
-            egui::Rect::from_min_size(preview.min, egui::vec2(14.0, preview.height())),
-            4,
-            theme.panel,
+            egui::Rect::from_min_max(
+                egui::pos2(gouttière.right(), ligne(2.0) - 1.5),
+                egui::pos2(panneau.left(), ligne(2.0) + 4.5),
+            ),
+            0,
+            theme.selection,
         );
-        for (i, color) in [theme.accent, theme.good, theme.warn, theme.bad]
-            .iter()
-            .enumerate()
-        {
+
+        barre(0.0, 0.0, 14.0, theme.label);
+        barre(4.0, 1.0, 9.0, theme.mnemonic);
+        barre(15.0, 1.0, 11.0, theme.register);
+        barre(28.0, 1.0, 6.0, theme.number);
+        barre(4.0, 2.0, 8.0, theme.mnemonic);
+        barre(14.0, 2.0, 10.0, theme.register);
+        barre(26.0, 2.0, 12.0, theme.comment);
+        barre(0.0, 3.0, 10.0, theme.directive);
+        barre(12.0, 3.0, 13.0, theme.string);
+
+        // Le panneau de droite dit ce qu'il dit dans l'application :
+        // l'onglet actif porte l'accent, une valeur figée est en
+        // texte ordinaire, et celle qui vient de changer a sa couleur
+        // à elle — c'est la seule qu'on cherche du coin de l'œil, et
+        // la seule qu'on ne pouvait pas voir avant de choisir.
+        let barre_du_panneau = |rang: f32, largeur: f32, couleur: egui::Color32| {
+            painter.rect_filled(
+                egui::Rect::from_min_size(
+                    egui::pos2(panneau.left() + 4.0, ligne(rang)),
+                    egui::vec2(largeur, 3.0),
+                ),
+                1,
+                couleur,
+            );
+        };
+        barre_du_panneau(0.0, 14.0, theme.accent);
+        barre_du_panneau(1.0, 16.0, theme.text);
+        barre_du_panneau(2.0, 10.0, theme.changed);
+
+        // Et l'état, qui n'est pas du code : sain, alerte, panne. Trois
+        // points plutôt que trois barres, pour qu'on ne les lise pas
+        // comme une quatrième ligne de programme.
+        for (i, couleur) in [theme.good, theme.warn, theme.bad].iter().enumerate() {
             painter.circle_filled(
-                egui::pos2(preview.left() + 23.0 + i as f32 * 9.0, preview.center().y),
-                3.0,
-                *color,
+                egui::pos2(panneau.left() + 6.0 + i as f32 * 7.0, ligne(3.0) + 1.5),
+                1.75,
+                *couleur,
             );
         }
+
         painter.rect_stroke(
             preview,
-            4,
+            0,
             egui::Stroke::new(1.0, theme.dim),
             egui::StrokeKind::Inside,
         );
@@ -705,8 +791,14 @@ pub(crate) fn theme_card_width(ui: &egui::Ui, themes: &[&Theme], active_word: &s
         .iter()
         .map(|theme| text_width(theme.name, 14.0))
         .fold(0.0_f32, f32::max);
-    // Vignette (8 + 58) + espace (10) + nom + espace + « actif » + marge.
-    76.0 + widest_name + 12.0 + text_width(active_word, 12.0) + 10.0
+    // Marge + vignette + espace + nom + espace + « actif » + marge.
+    MARGE_DE_LA_VIGNETTE
+        + VIGNETTE.x
+        + 10.0
+        + widest_name
+        + 12.0
+        + text_width(active_word, 12.0)
+        + 10.0
 }
 
 /// Le bouton d'agrandissement, posé dans le bandeau d'une fenêtre.

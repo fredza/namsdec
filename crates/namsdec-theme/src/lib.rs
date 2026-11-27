@@ -154,7 +154,7 @@ impl Theme {
         // contre 5,61 pour celui du thème.
         //
         // Dix sites de `namsdec-re` passent par ces deux couleurs, dans
-        // les trois thèmes livrés. Deux lignes ici les redressent tous,
+        // les thèmes livrés. Deux lignes ici les redressent tous,
         // là où dix corrections les auraient laissés diverger au
         // prochain module.
         visuals.warn_fg_color = self.warn;
@@ -264,9 +264,91 @@ pub static TOKYO_NIGHT: Theme = Theme {
     selection: Color32::from_rgb(0x3d, 0x59, 0xa1),
 };
 
+/// Noël — sombre et sobre : l'épicéa pour le fond, la neige pour
+/// l'encre, l'or d'une bougie pour ce qui attire l'œil.
+///
+/// Un thème de saison n'a pas le droit d'être moins lisible qu'un
+/// autre, et c'est tout l'exercice : le rouge et le vert sont les deux
+/// couleurs de Noël, et ce sont aussi celles de l'erreur et de la
+/// réussite. Trois décisions en découlent.
+///
+/// **Le fond est vert, pas le texte.** Trois strates d'épicéa presque
+/// noir (`#0e1512`, `#121b16`, `#18231d`) donnent la couleur du thème
+/// sans rien peindre en vert : les contrastes de l'encre restent ceux
+/// d'un thème sombre ordinaire — 14,8 pour le texte, 5,5 au plus bas
+/// pour un mnémonique.
+///
+/// **Deux rouges, et on les sépare autant qu'on peut.** Le mnémonique
+/// prend le rouge-rose du houx (`#df6378`) ; l'erreur garde le rouge,
+/// parce qu'aucune autre couleur ne dit « erreur ». Deux rouges ne
+/// s'éloignent pas beaucoup : le vermillon saturé `#ef5350` en met 72
+/// — contre 44 pour le rouge tiède qu'on avait d'abord écrit, où
+/// `mov` et un message d'échec avaient exactement la même encre. Et
+/// c'est mesuré, non supposé : la première rédaction de ce
+/// commentaire annonçait 113, qui était l'écart du mnémonique à la
+/// CHAÎNE, pas à l'erreur.
+///
+/// Là où les deux se rencontrent vraiment — une ligne du listing en
+/// erreur, dont le fond est l'erreur à 18 % —, le mnémonique garde
+/// 4,5 de contraste : la ligne se signale par son fond, et le code
+/// reste lisible dessus.
+///
+/// **L'or de l'accent n'est pas celui de l'avertissement.** Les deux
+/// sont chauds, et la vignette du thème les montre côte à côte. À
+/// `#e0a94f` il n'y avait que 71 d'écart entre eux — moins que les
+/// deux rôles les plus serrés de n'importe quel thème livré ; l'or de
+/// braise `#e8a33d` en met 102, sans quitter la couleur de bougie ;
+/// l'avertissement et le nombre, eux, restent à 61 l'un de l'autre —
+/// exactement où VS Code Dark+ (71) et Tokyo Night (63) les laissent.
+///
+/// **Ce qui vient de changer n'est ni or ni rouge.** L'or est déjà
+/// l'accent (RIP, les liens, le bouton choisi) et le rouge est déjà
+/// l'erreur ; un registre modifié peint dans l'une des deux se
+/// confondrait avec un rôle d'interface. D'où le vert de givre
+/// (`#22e6a1`) : 376 d'écart avec l'accent, autant avec l'erreur, 321
+/// avec le texte — c'est l'étincelle, et elle n'appartient qu'à elle.
+pub static NOEL: Theme = Theme {
+    id: "noel",
+    name: "Noël",
+    dark: true,
+    bg: Color32::from_rgb(0x0e, 0x15, 0x12),
+    panel: Color32::from_rgb(0x12, 0x1b, 0x16),
+    surface: Color32::from_rgb(0x18, 0x23, 0x1d),
+    text: Color32::from_rgb(0xe3, 0xe7, 0xe0),
+    dim: Color32::from_rgb(0x8d, 0x9b, 0x91),
+    accent: Color32::from_rgb(0xe8, 0xa3, 0x3d),
+    good: Color32::from_rgb(0x79, 0xb8, 0x6a),
+    warn: Color32::from_rgb(0xd8, 0xb4, 0x7c),
+    bad: Color32::from_rgb(0xef, 0x53, 0x50),
+    changed: Color32::from_rgb(0x22, 0xe6, 0xa1),
+    mnemonic: Color32::from_rgb(0xdf, 0x63, 0x78),
+    number: Color32::from_rgb(0xe0, 0xcd, 0x92),
+    label: Color32::from_rgb(0x74, 0xc3, 0x9c),
+    // Plus clair que le vert sourd qu'il serait tentant de prendre :
+    // un commentaire posé sur une ligne SÉLECTIONNÉE doit encore se
+    // lire, et la sélection de ce thème est verte comme lui. À
+    // `#6f8f7b` il n'en restait que 3,13 de contraste, au ras du
+    // plancher du banc ; à `#75967f`, 3,42, et il garde ses 101 d'écart
+    // avec l'étiquette.
+    comment: Color32::from_rgb(0x75, 0x96, 0x7f),
+    register: Color32::from_rgb(0xa9, 0xc9, 0xdb),
+    string: Color32::from_rgb(0xcf, 0x9a, 0x74),
+    directive: Color32::from_rgb(0xc2, 0x94, 0xcf),
+    folder: Color32::from_rgb(0xa9, 0xc9, 0xdb),
+    folder_open: Color32::from_rgb(0xcf, 0xe3, 0xef),
+    folder_text: Color32::from_rgb(0xcf, 0xd8, 0xcf),
+    header: Color32::from_rgb(0xe8, 0xa3, 0x3d),
+    // Un vert de houppier, assez foncé pour que le mnémonique rouge
+    // (3,48) et le commentaire (3,61) se lisent par-dessus. Son
+    // contraste avec le panneau — 1,49 — est du même ordre que celui
+    // de VS Code Light+ (1,37) : une bande qu'on voit sans qu'elle
+    // crève l'écran.
+    selection: Color32::from_rgb(0x24, 0x3d, 0x2c),
+};
+
 /// Les thèmes fournis avec l'application. Un thème installé ensuite
 /// viendra simplement s'ajouter à cette liste.
-pub static BUILT_IN: &[&Theme] = &[&VSCODE_DARK, &VSCODE_LIGHT, &TOKYO_NIGHT];
+pub static BUILT_IN: &[&Theme] = &[&VSCODE_DARK, &VSCODE_LIGHT, &TOKYO_NIGHT, &NOEL];
 
 /// À quel point deux couleurs se distinguent à l'œil, sur 0 à ~765.
 ///
@@ -368,7 +450,7 @@ pub fn install(theme: Theme) -> Result<&'static Theme, PluginError> {
 
 /// Retire un thème installé de la liste. Rend `false` s'il n'y était pas.
 ///
-/// Les trois thèmes d'origine ne sont pas concernés : ils ne sont pas
+/// Les quatre thèmes d'origine ne sont pas concernés : ils ne sont pas
 /// dans cette liste-là, et rien ne peut les en retirer.
 ///
 /// La palette elle-même reste en mémoire jusqu'à la fermeture — elle a
@@ -541,13 +623,58 @@ mod tests {
         assert_eq!(all().len(), before);
     }
 
-    /// Les trois thèmes d'origine tiennent la même exigence que celle
+    /// Les quatre thèmes d'origine tiennent la même exigence que celle
     /// qu'on impose aux thèmes installés.
     #[test]
     fn every_built_in_theme_tells_the_code_apart() {
         for theme in BUILT_IN {
             check_code_colours(theme);
         }
+    }
+
+    /// Les thèmes livrés **en fichier** tiennent la même exigence que
+    /// ceux qui sont compilés dans le programme.
+    ///
+    /// `plugins/themes/` en porte, et personne ne les lisait : aucun
+    /// contrôle ne les ouvrait, aucun ne mesurait leurs couleurs. Un
+    /// thème du dépôt pouvait donc être illisible — ou ne même plus se
+    /// lire du tout si le format changeait — et c'est l'utilisateur qui
+    /// l'aurait découvert en l'installant. Celui-ci les ouvre tous et
+    /// leur applique les deux mesures des thèmes d'origine.
+    ///
+    /// Le test lit le dépôt, pas la machine : le chemin part de
+    /// `CARGO_MANIFEST_DIR`, donc des sources qu'on compile, et non
+    /// d'un répertoire d'installation. Un dossier absent n'est pas une
+    /// faute silencieuse — il est dit.
+    #[test]
+    fn every_theme_shipped_as_a_file_tells_the_code_apart() {
+        let dossier = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../plugins/themes")
+            .canonicalize()
+            .expect("le dossier plugins/themes du dépôt");
+        let mut lus = 0;
+        for entrée in std::fs::read_dir(&dossier).expect("lire plugins/themes") {
+            let chemin = entrée.expect("une entrée du dossier").path();
+            if chemin.extension().is_none_or(|e| e != "json") {
+                continue;
+            }
+            let nom = chemin.file_name().expect("un nom de fichier").to_owned();
+            let theme = plugin::read(&chemin)
+                .unwrap_or_else(|e| panic!("{} ne se lit pas : {e}", nom.display()));
+            check_code_colours(&theme);
+            let from_text = perceptual_distance(theme.changed, theme.text);
+            assert!(
+                from_text > CHANGED_APART_FROM_TEXT,
+                "{} : le changement doit se distinguer du texte ({from_text:.0})",
+                nom.display()
+            );
+            lus += 1;
+        }
+        assert!(
+            lus >= 2,
+            "{} ne contient plus de thème : le contrôle ne prouverait rien",
+            dossier.display()
+        );
     }
 
     #[test]

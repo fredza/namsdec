@@ -695,7 +695,7 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
         ("p",
          "Les couleurs sont tenues à un <b>plancher de contraste</b> : tout texte actif "
          "se détache de son fond d’au moins 3 pour 1, la mesure des recommandations "
-         "d’accessibilité, dans chacun des trois thèmes livrés. Une commande "
+         "d’accessibilité, dans chacun des quatre thèmes livrés. Une commande "
          "inactive descend plus bas — c’est ce que « grisé » veut dire — mais reste "
          "visible. Ce n’est pas une intention : un test mesure ce qui est peint, "
          "compose chaque texte avec le fond qu’il a réellement sous lui, et refuse "
@@ -3934,6 +3934,24 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "<font face='Courier'>~/.local/share/namsdec/</font>. Un désassembleur externe est "
          "un <i>programme</i> : il ne s'exécute que sur demande, et le panneau annonce la "
          "commande avant de la lancer."),
+        ("p",
+         "<b>Quatre thèmes sont livrés</b> : VS Code Dark+, VS Code Light+, Tokyo Night "
+         "et <b>Noël</b>. Ce dernier est sombre et sobre — trois strates d'épicéa presque "
+         "noir pour les fonds, la neige pour l'encre, l'or d'une bougie pour l'accent. "
+         "Le rouge et le vert de Noël sont aussi ceux de l'erreur et de la réussite : "
+         "le mnémonique y prend un rouge de houx distinct de celui des erreurs, et ce qui "
+         "vient de changer — un registre qu'une instruction a modifié — est peint d'un "
+         "vert de givre qui n'appartient qu'à lui. Il tient le même plancher de contraste "
+         "que les trois autres, mesuré sur chaque onglet."),
+        ("p",
+         "<b>La vignette d’un thème est un éditeur en réduction</b> : la gouttière, "
+         "quatre lignes de code avec les couleurs de leurs jetons — étiquette, "
+         "mnémonique, registre, nombre, commentaire, directive, chaîne —, la ligne "
+         "sous le curseur, et le panneau de droite avec l’accent, une valeur figée et "
+         "une valeur qui vient de changer. L’état garde ses trois points : sain, "
+         "alerte, panne. Elle portait naguère quatre pastilles de couleur, dont aucune "
+         "n’était celle du code qu’on allait lire — et sur « Noël », deux de ces quatre "
+         "étaient deux ors presque identiques."),
 
         ("h2", "Reprendre son travail"),
         ("p",
@@ -4125,7 +4143,7 @@ CADRE = {
         "version": "version <b>%s</b> &nbsp;·&nbsp; %s",
         "promesse": "Apprendre l'assembleur x86-64 sous Linux,<br/>et lire les binaires "
                     "qu'on n'a pas écrits.",
-        "licence": "Logiciel libre, licence MIT &nbsp;·&nbsp; namsdec.io",
+        "licence": "Logiciel libre, licence MIT &nbsp;·&nbsp; fredza.github.io/namsdec",
         "sommaire": "Sommaire",
         "page": "page %d",
         "sujet": "Atelier d'assembleur x86-64 et de rétro-ingénierie",
@@ -4137,7 +4155,7 @@ CADRE = {
         "version": "version <b>%s</b> &nbsp;·&nbsp; %s",
         "promesse": "Learning x86-64 assembly on Linux,<br/>and reading the binaries "
                     "other people wrote.",
-        "licence": "Free software, MIT licence &nbsp;·&nbsp; namsdec.io",
+        "licence": "Free software, MIT licence &nbsp;·&nbsp; fredza.github.io/namsdec",
         "sommaire": "Contents",
         "page": "page %d",
         "sujet": "An x86-64 assembly and reverse-engineering workbench",
@@ -4164,7 +4182,7 @@ def rendre(chemin, v, blocs, lang="fr"):
             canvas.setLineWidth(0.4)
             canvas.line(20 * mm, hauteur - 14 * mm, largeur - 20 * mm, hauteur - 14 * mm)
             canvas.line(20 * mm, 15 * mm, largeur - 20 * mm, 15 * mm)
-            canvas.drawString(20 * mm, 11 * mm, "namsdec.io")
+            canvas.drawString(20 * mm, 11 * mm, "fredza.github.io/namsdec")
             canvas.drawRightString(largeur - 20 * mm, 11 * mm, mots["page"] % doc.page)
         canvas.restoreState()
 
@@ -4459,7 +4477,7 @@ def main():
             "vers la dernière version publiée, pour la comparer ou y revenir."))
         blocs.append(("p",
             "namsdec est publié sous licence <b>MIT</b> : ce que vous comprenez ici est fait "
-            "pour être transmis. Le site est <b>namsdec.io</b>, le code et les tickets sont sur "
+            "pour être transmis. Le site est <b>fredza.github.io/namsdec</b>, le code et les tickets sont sur "
             "GitHub, et la boîte « À propos » mène aux deux ainsi qu'au salon Discord."))
         blocs.append(("p",
             "La même boîte porte une image — un café et un hamburger — qui ouvre une page de "

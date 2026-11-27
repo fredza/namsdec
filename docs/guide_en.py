@@ -662,7 +662,7 @@ def queue():
         ("p",
          "namsdec is written by <b>Frédéric Zawalski</b> and published under the "
          "<b>MIT</b> licence: what you understand here is meant to be passed on. The "
-         "site is <b>namsdec.io</b>, the code and the issues are on GitHub, and the "
+         "site is <b>fredza.github.io/namsdec</b>, the code and the issues are on GitHub, and the "
          "About box leads to both as well as to the Discord room."),
     ]
 
@@ -741,10 +741,26 @@ def _interface():
 
         ("h2", "Themes"),
         ("p",
-         "Three themes ship with the program, and a fourth is whatever you install: a "
+         "Four themes ship with the program — VS Code Dark+, VS Code Light+, Tokyo Night "
+         "and <b>Noël</b> — and a fifth is whatever you install: a "
          "JSON file in <font face='Courier'>~/.local/share/namsdec/themes/</font>, "
          "colours and nothing else — a theme does not execute. Preferences › General "
-         "lists them with a swatch each."),
+         "lists them, each with a thumbnail."),
+        ("p",
+         "<b>A theme's thumbnail is an editor in miniature</b>: the gutter, four lines "
+         "of code in the colours of their tokens — label, mnemonic, register, number, "
+         "comment, directive, string —, the line under the cursor, and the side panel "
+         "with the accent, a settled value and one that has just changed. Status keeps "
+         "its three dots: healthy, warning, broken. It used to be four coloured dots, "
+         "none of which was a colour of the code you were about to read — and on "
+         "Noël, two of those four were near-identical golds."),
+        ("p",
+         "<b>Noël</b> is the dark, understated one: three layers of near-black spruce for "
+         "the backgrounds, snow for the ink, candle gold for the accent. Christmas red and "
+         "green are also the colours of an error and of a success, so the mnemonic takes a "
+         "holly red kept clear of the error red, and what has just changed — a register an "
+         "instruction wrote to — gets a frost green of its own. It holds the same contrast "
+         "floor as the other three, measured on every tab."),
         ("note",
          "The shipped themes hold a <b>contrast floor</b>: every active text stands out "
          "from its background by at least 3:1, the accessibility recommendation. That is "

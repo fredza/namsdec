@@ -6,8 +6,8 @@ retiré — reste dans `AMELIORATIONS.txt`, qui ne bouge pas de rôle : une
 seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
-Tenue à jour au fil des séances. Dernière mise à jour : **23 novembre
-2026**, version 1.0.0-beta.666.
+Tenue à jour au fil des séances. Dernière mise à jour : **27 novembre
+2026**, version 1.0.1-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -2726,6 +2726,62 @@ trancher. Neuf écarts, **six contrôles nouveaux**, deux élargis.
       Trouvé en cherchant pourquoi le seul texte en 14 pt de
       l'application n'était peint nulle part. Contrôle :
       `chaque_scene_d_onglet_montre_bien_son_onglet`.
+- [x] **Un quatrième thème livré : Noël** (27 novembre 2026) — sombre
+      et sobre : trois strates d'épicéa presque noir pour les fonds, la
+      neige pour l'encre, l'or de bougie pour l'accent. L'exercice n'est
+      pas décoratif : **le rouge et le vert de Noël sont déjà ceux de
+      l'erreur et de la réussite**, et une palette de saison n'a pas le
+      droit d'être moins lisible qu'une autre. Trois décisions, chacune
+      mesurée avant d'être écrite — le fond est vert mais rien du texte
+      ne l'est ; le mnémonique prend le rouge-rose du houx et l'erreur
+      le vermillon, **72 d'écart perceptuel** quand la première
+      rédaction n'en mettait que 44 (`mov` et un message d'échec
+      avaient la même encre) ; et ce qui vient de changer n'est **ni or
+      ni rouge**, puisque les deux sont pris — d'où le vert de givre,
+      376 de l'accent comme de l'erreur. L'accent est passé de `#e0a94f`
+      à l'or de braise `#e8a33d` parce que la vignette du thème montre
+      l'accent et l'avertissement côte à côte, et qu'il n'y avait que
+      71 entre eux. Contrôles : les deux du crate passent sur les
+      quatre thèmes, et le balayage du banc
+      (`every_text_stands_out_from_its_background`) mesure le nouveau
+      thème sur chaque onglet. Regardé aussi, et pas seulement mesuré :
+      captures de l'onglet Processeur, de l'Établi en erreur et de la
+      page Plugins.
+- [x] **La vignette d'un thème montre le CODE** (27 novembre 2026) —
+      elle portait quatre pastilles : accent, sain, alerte, panne.
+      Quatre couleurs d'ÉTAT, dont aucune ne dit à quoi ressemblera le
+      programme qu'on va lire toute la journée — et sur « Noël », deux
+      de ces quatre étaient deux ors presque identiques : la vignette
+      ne portraiturait même pas les quatre rôles qu'elle montrait.
+      C'est en la regardant sur capture qu'on l'a vu, pas en la
+      mesurant. Elle est maintenant un éditeur en réduction, 84 × 30 au
+      lieu de 58 × 28 : la gouttière, la ligne sous le curseur, quatre
+      lignes de jetons (étiquette, mnémonique, registre, nombre,
+      commentaire, directive, chaîne) et le panneau de droite avec
+      l'accent, une valeur figée et une qui vient de changer. L'état
+      garde ses trois points, en points justement, pour qu'on ne les
+      lise pas comme une cinquième ligne de programme. Seize des
+      vingt-deux couleurs d'un thème sont désormais visibles avant de
+      cliquer. Contrôle :
+      `a_theme_card_shows_the_colours_of_the_code` — il exige chaque
+      rôle, vérifie que rien ne déborde de la largeur commune et que
+      deux jetons ne se recouvrent pas. Éprouvé en remettant le
+      défaut : sans les barres, il nomme les sept rôles disparus.
+- [x] **Les thèmes livrés EN FICHIER n'étaient mesurés par personne** —
+      `plugins/themes/` en porte deux, et aucun contrôle ne les
+      ouvrait : un thème du dépôt pouvait être illisible, ou ne plus se
+      lire du tout si le format changeait, et c'est l'utilisateur qui
+      l'aurait découvert en l'installant. Ils passent maintenant les
+      deux mêmes mesures que les thèmes compilés. Contrôle :
+      `every_theme_shipped_as_a_file_tells_the_code_apart`.
+- [x] **Le banc de captures ne savait rendre qu'un seul thème** — les
+      scènes partent d'un profil neuf, donc d'une seule palette, et
+      l'on mesurait les contrastes des autres sans jamais les
+      REGARDER. `CAPTURES_THEME=<id>` rend n'importe quelle scène dans
+      n'importe quel thème ; un identifiant inconnu est refusé plutôt
+      que remplacé en silence, parce que `by_id` retombe sur le thème
+      par défaut et qu'on jugerait alors une autre palette que celle
+      qu'on croit voir.
 - [x] **Le thème ne posait ni l'alerte ni l'erreur d'egui** — dix sites
       de `namsdec-re` peignaient donc l'orange vif (#FF8F00) et le rouge
       pur d'egui au milieu de fenêtres où tout le reste suit la palette.
@@ -5250,6 +5306,26 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       oublié un `Option` lu sur trois lignes. Le relevé compacte
       désormais les blancs ; éprouvé en retirant l'écriture, il tombe.
 
+- [x] **Version 1.0.1-beta.1** (27 novembre 2026) — demandée, pour
+      **éprouver le système de mise à jour** : il faut une version
+      publiée plus récente que celle qu'on a installée, sans quoi la
+      recherche ne peut rien trouver. Montée du correctif, et préversion
+      — l'étiquette porte un tiret, donc `release.yml` la marque comme
+      telle et seul qui a coché les préversions se la verra proposer.
+      Le train complet : `Cargo.toml` et `Cargo.lock`, section neuve du
+      changelog, les deux PDF régénérés sous leur nouveau nom et les
+      anciens retirés, les liens des deux README et des deux pages du
+      site, le lien de téléchargement et le numéro qui casse le cache
+      (`python3 docs/maj-telechargement.py --hors-ligne`). La somme
+      SHA-256 vient après la publication : elle n'existe qu'une fois le
+      binaire bâti par la CI.
+- [x] **L'adresse du site était morte** — la boîte « À propos » menait
+      à `https://namsdec.io`, un domaine qui n'existe pas. C'est
+      `https://fredza.github.io/namsdec`, là où les pages sont
+      réellement servies. Changé dans la constante, dans l'infobulle
+      des deux langues, dans le pied des deux manuels et dans leur
+      chapitre « Où en parler ». Le contrôle qui nomme l'adresse
+      attendue (`fenetres.rs`) la nomme désormais juste.
 - [x] **Version 1.0.0-beta.666** (A 9.108) — demandée, et c'est la
       version PRINCIPALE qui monte : 0.4.2 → 1.0.0. Changelog (section
       neuve, l'entrée de la montée egui 0.37 dedans), PDF renommé et

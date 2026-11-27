@@ -43,6 +43,132 @@ fn theme_cards_share_a_width_set_by_the_longest_name() {
     output.textures_delta.clear();
 }
 
+/// LA VIGNETTE D'UN THÈME MONTRE LE CODE, et non quatre pastilles.
+///
+/// Elle portait l'accent, le bon, l'alerte et la panne : quatre
+/// couleurs d'ÉTAT, dont aucune ne dit à quoi ressemblera le
+/// programme qu'on va lire toute la journée. Sur « Noël », deux de ces
+/// quatre pastilles étaient deux ors presque identiques — la vignette
+/// ne portraiturait donc même pas les quatre rôles qu'elle montrait.
+///
+/// Elle montre maintenant un éditeur en réduction : la gouttière, la
+/// ligne sous le curseur, quatre lignes de jetons — étiquette,
+/// mnémonique, registre, nombre, commentaire, directive, chaîne —, et
+/// le panneau de droite avec l'accent, une valeur figée et une valeur
+/// qui vient de changer. L'état garde ses trois points.
+///
+/// Le contrôle exige la présence de CHAQUE couleur. C'est ce qui
+/// retient le retour en arrière : revenir aux quatre pastilles fait
+/// disparaître sept rôles d'un coup, et le message les nomme.
+#[test]
+fn a_theme_card_shows_the_colours_of_the_code() {
+    for theme in namsdec_theme::BUILT_IN {
+        let ctx = egui::Context::default();
+        // LE STYLE DE L'APPLICATION, POSÉ AVANT DE MESURER : la
+        // vignette prend son fond dans `interact_selectable`, qui lit
+        // les `Visuals`. Sous le style d'egui, on mesurerait une
+        // vignette qui n'existe nulle part.
+        NamsdecApp {
+            theme,
+            ..Default::default()
+        }
+        .apply_theme(&ctx);
+        let mut carte = egui::Rect::NOTHING;
+        let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
+            let largeur = theme_card_width(ui, &[*theme], "actif");
+            carte = theme_card(ui, theme, true, "actif", largeur).rect;
+        });
+        let formes = std::mem::take(&mut output.shapes);
+        output.textures_delta.clear();
+
+        // Les aplats peints, rectangles comme points : c'est de la
+        // COULEUR POSÉE qu'il s'agit, pas du code qui la demande.
+        let mut peints: Vec<(egui::Color32, egui::Rect)> = Vec::new();
+        for clipped in &formes {
+            match &clipped.shape {
+                egui::Shape::Rect(r) if r.fill.a() > 0 => peints.push((r.fill, r.rect)),
+                egui::Shape::Circle(c) if c.fill.a() > 0 => peints.push((
+                    c.fill,
+                    egui::Rect::from_center_size(c.center, egui::Vec2::splat(c.radius * 2.0)),
+                )),
+                _ => {}
+            }
+        }
+        assert!(
+            peints.len() > 10,
+            "{} : la vignette ne peint presque rien ({})",
+            theme.id,
+            peints.len()
+        );
+
+        let mut manquants = Vec::new();
+        let mut attendu = vec![
+            ("le fond de l'éditeur", theme.bg),
+            ("le fond des panneaux", theme.panel),
+            ("la ligne sous le curseur", theme.selection),
+            ("l'accent", theme.accent),
+            ("ce qui vient de changer", theme.changed),
+            ("l'état sain", theme.good),
+            ("l'alerte", theme.warn),
+            ("la panne", theme.bad),
+        ];
+        attendu.extend(namsdec_theme::code_colours(theme));
+        for (rôle, couleur) in attendu {
+            if !peints.iter().any(|(peinte, _)| *peinte == couleur) {
+                manquants.push(rôle);
+            }
+        }
+        assert!(
+            manquants.is_empty(),
+            "{} : la vignette ne montre pas {}",
+            theme.id,
+            manquants.join(", ")
+        );
+
+        // ET TOUT TIENT DANS LA LARGEUR IMPOSÉE. Une vignette qui
+        // déborde décale les boutons « Retirer » qui la suivent, et
+        // c'est précisément ce que cette largeur commune existe pour
+        // empêcher.
+        for (couleur, place) in &peints {
+            assert!(
+                carte.expand(0.5).contains_rect(*place),
+                "{} : un aplat {couleur:?} sort de la vignette ({place:?} hors de {carte:?})",
+                theme.id
+            );
+        }
+
+        // Et les jetons du code ne se recouvrent pas : une barre
+        // peinte sur une autre ferait une tache, pas une ligne de
+        // programme. La ligne sélectionnée passe DESSOUS, et n'est pas
+        // de la partie — sa couleur n'est pas celle d'un rôle du code.
+        let rôles: Vec<egui::Color32> = namsdec_theme::code_colours(theme)
+            .into_iter()
+            .map(|(_, couleur)| couleur)
+            .collect();
+        let jetons: Vec<egui::Rect> = peints
+            .iter()
+            .filter(|(couleur, _)| rôles.contains(couleur))
+            .map(|(_, place)| *place)
+            .collect();
+        assert!(
+            jetons.len() >= rôles.len(),
+            "{} : {} jeton(s) peint(s) pour {} rôles",
+            theme.id,
+            jetons.len(),
+            rôles.len()
+        );
+        for (i, a) in jetons.iter().enumerate() {
+            for b in &jetons[i + 1..] {
+                assert!(
+                    !a.intersects(*b),
+                    "{} : deux jetons du code se recouvrent ({a:?} et {b:?})",
+                    theme.id
+                );
+            }
+        }
+    }
+}
+
 /// Les boutons « Retirer » tombent les uns sous les autres, quelle
 /// que soit la longueur des noms — c'est ce qu'on attend d'une liste,
 /// et ce qu'un nom court aurait défait si la vignette s'y ajustait.

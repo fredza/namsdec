@@ -3831,7 +3831,7 @@ fn a_fresh_profile_opens_on_the_tab_the_code_announces() {
 /// Sur la page Plugins, ce qui parle des thèmes est écrit avec les
 /// thèmes.
 ///
-/// « Aucun thème installé pour l'instant — les trois thèmes d'origine
+/// « Aucun thème installé pour l'instant — les quatre thèmes d'origine
 /// ne se retirent pas. » était peinte en DERNIER, sous le titre
 /// « Séries d'exercices » et sous l'explication du fichier d'une série.
 /// Une phrase rangée sous la mauvaise section ne se mesure pas : elle
@@ -3974,6 +3974,30 @@ fn captures_de_toutes_les_scenes() {
     // Sans la variable, tout est rendu — un filtre qui s'oublierait
     // ferait un banc qui ne regarde plus rien.
     let filtre = std::env::var("CAPTURES").unwrap_or_default();
+    // ET LE THÈME SE DEMANDE AUSSI.
+    //
+    // Les scènes rendent l'application telle qu'un profil neuf la
+    // porte, donc dans un seul thème. Or une palette ne se juge pas
+    // sur ses nombres : le banc mesure les contrastes de chaque thème
+    // sur chaque onglet, et il a raison, mais il ne dit rien de ce que
+    // l'œil reçoit — un vert de givre au milieu de seize registres, ou
+    // deux ors qui se ressemblent une fois peints côte à côte.
+    //
+    // ```text
+    // CAPTURES_THEME=noel CAPTURES=établi cargo test -p namsdec-gui -- --ignored --nocapture captures_de_toutes_les_scenes
+    // ```
+    //
+    // Un identifiant inconnu est REFUSÉ plutôt que remplacé : `by_id`
+    // retombe sur le thème par défaut, et l'on jugerait alors une
+    // autre palette que celle qu'on croit regarder.
+    let thème_demandé = std::env::var("CAPTURES_THEME").unwrap_or_default();
+    if !thème_demandé.is_empty() {
+        assert_eq!(
+            namsdec_theme::by_id(&thème_demandé).id,
+            thème_demandé,
+            "CAPTURES_THEME : « {thème_demandé} » n'est pas un thème connu"
+        );
+    }
 
     let mut écrites = 0;
     let mut refusées = Vec::new();
@@ -4005,6 +4029,9 @@ fn captures_de_toutes_les_scenes() {
         // banc compare des MISES EN PAGE, pas des animations à
         // mi-course.
         app.values_changed_at = None;
+        if !thème_demandé.is_empty() {
+            app.theme = namsdec_theme::by_id(&thème_demandé);
+        }
         // Relevé AVANT le déplacement d'`app` : `theme` est un
         // `&'static Theme`, donc il survit à la closure.
         let attendu = app.theme;

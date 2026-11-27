@@ -235,7 +235,7 @@ const MIT_LICENSE_URL: &str = "https://opensource.org/license/mit";
 /// Trois adresses et pas une de plus : le site, le salon, le dépôt.
 /// Une boîte « À propos » qui aligne dix liens ne dit plus lequel
 /// compte.
-const SITE_URL: &str = "https://namsdec.io";
+const SITE_URL: &str = "https://fredza.github.io/namsdec";
 const DISCORD_URL: &str = "https://discord.gg/pv6pHkzB5";
 const GITHUB_URL: &str = "https://github.com/fredza/namsdec";
 /// Où mène le bouton de don, **quand rien n'est réglé**.

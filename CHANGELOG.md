@@ -4,6 +4,38 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 1.0.1-beta.1 — 27 novembre 2026
+
+**Un thème de Noël, et les thèmes livrés enfin mesurés**
+
+- **Un quatrième thème : Noël**, sombre et sobre — l'épicéa pour les
+  fonds, la neige pour l'encre, l'or d'une bougie pour ce qui attire
+  l'œil. Préférences ▸ Plugins, ou la palette de commandes.
+- Le rouge et le vert de Noël sont **aussi** ceux de l'erreur et de la
+  réussite, et c'est tout l'exercice : le mnémonique prend le rouge-rose
+  du houx, l'erreur le vermillon — assez loin l'un de l'autre pour que
+  `mov` n'ait pas l'air d'une alerte —, et ce qui vient de changer est
+  peint d'un vert de givre qui n'appartient qu'à lui, puisque l'or et le
+  rouge sont déjà pris.
+- Il tient le **même plancher de contraste** que les trois autres, sur
+  chaque onglet : le banc le mesure comme eux.
+- **La vignette d'un thème est devenue un éditeur en réduction** : la
+  gouttière, quatre lignes de code avec les couleurs de leurs jetons, la
+  ligne sous le curseur, et le panneau de droite avec l'accent et ce qui
+  vient de changer. Elle montrait quatre pastilles d'état, dont aucune
+  n'était une couleur du code — on choisissait un thème sans voir à quoi
+  ressemblerait le programme.
+- **Les deux thèmes livrés en fichier** (`plugins/themes/`) sont
+  mesurés à leur tour. Personne ne les ouvrait : un thème du dépôt
+  pouvait être illisible sans que rien ne le dise.
+- **Les captures se demandent dans le thème qu'on veut voir**
+  (`CAPTURES_THEME=noel`). Les contrastes d'une palette se mesuraient
+  sans jamais la regarder.
+- **La boîte « À propos » mène au vrai site** :
+  `https://fredza.github.io/namsdec`. Elle pointait vers un domaine qui
+  n'existe pas — un lien mort à l'endroit même où l'on va chercher où
+  trouver le programme.
+
 ## 1.0.0-beta.666 — 26 novembre 2026
 
 **Un manuel anglais, et un site qui se télécharge**

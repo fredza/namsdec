@@ -756,7 +756,7 @@ impl NamsdecApp {
                             self.apply_theme(&ctx);
                         }
                         // Seuls les thèmes venus d'un fichier se
-                        // retirent : les trois d'origine ne figurent pas
+                        // retirent : les quatre d'origine ne figurent pas
                         // dans cette table, aucun bouton ne les propose
                         // donc. Et comme les vignettes ont toutes la même
                         // largeur, les boutons tombent les uns sous les

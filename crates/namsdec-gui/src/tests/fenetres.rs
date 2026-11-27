@@ -292,7 +292,7 @@ fn the_about_box_opens_the_three_doors_of_the_project() {
         assert!(url.starts_with("https://"), "{url}");
         assert!(!url.ends_with('/'), "{url}");
     }
-    assert_eq!(SITE_URL, "https://namsdec.io");
+    assert_eq!(SITE_URL, "https://fredza.github.io/namsdec");
     assert!(DISCORD_URL.starts_with("https://discord.gg/"));
     assert_eq!(GITHUB_URL, "https://github.com/fredza/namsdec");
     // Le dépôt des liens et celui qu'interroge la recherche de mise à
