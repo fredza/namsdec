@@ -30,6 +30,26 @@ namsdec en porte quatre autres, compilés dans le programme : VS Code
 Dark+, VS Code Light+, Tokyo Night et Noël — ce dernier sombre et
 sobre, épicéa et or de bougie. Ceux-là ne se retirent pas.
 
+## Un thème qui bouge
+
+`"festif": true` donne au thème une petite animation : une douzaine de
+flocons qui descendent, en gris très pâle, et par moments une boule
+creuse — un cerceau, pour qu'on puisse lire au travers — dans le rouge,
+l'or et le vert du thème. C'est fait pour se voir du coin de l'œil et
+pas davantage.
+
+Deux choses à savoir avant de le mettre :
+
+- **L'utilisateur a le dernier mot.** Préférences ▸ Général porte une
+  case « Animer les thèmes qui le proposent » ; décochée, aucun thème
+  ne bouge.
+- **Tant qu'une animation tourne, la fenêtre se redessine trente fois
+  par seconde.** C'est le prix de toute animation. Un thème destiné à
+  une machine sur batterie fait mieux de laisser ce champ à `false`.
+
+Le champ est facultatif : un thème écrit avant qu'il existe reste
+valide, et ne se met pas à bouger tout seul.
+
 ## Le format
 
 ```json
@@ -37,6 +57,8 @@ sobre, épicéa et or de bougie. Ceux-là ne se retirent pas.
   "id": "mon-theme",          identifiant : lettres, chiffres, tirets
   "name": "Mon thème",        ce qui s'affiche dans la liste
   "dark": true,               sombre ou clair — décide du contraste des cadres
+  "festif": false,            facultatif : quelques flocons et, de loin
+                              en loin, une boule. Voir plus bas.
 
   "bg":        "#12151c",     le fond de l'éditeur
   "panel":     "#181c26",     les panneaux et les barres

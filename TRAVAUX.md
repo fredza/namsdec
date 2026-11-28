@@ -7,7 +7,7 @@ seule source pour le raisonnement, une seule pour l'état. Les renvois
 `(A 4.14)` pointent vers l'entrée correspondante de ce fichier-là.
 
 Tenue à jour au fil des séances. Dernière mise à jour : **27 novembre
-2026**, version 1.0.2-beta.1.
+2026**, version 1.0.3-beta.1.
 
 - `[x]` fait et vérifié — un contrôle le retient
 - `[~]` commencé, le reste est écrit sous l'entrée
@@ -5306,6 +5306,50 @@ le code binaire et le pseudo-code. Un seul module neuf les réunit.
       oublié un `Option` lu sur trois lignes. Le relevé compacte
       désormais les blancs ; éprouvé en retirant l'écriture, il tombe.
 
+- [x] **Le thème de Noël bouge un peu** (28 novembre 2026, demandé) —
+      une douzaine de flocons et, de loin en loin, une boule. Trois
+      décisions valent d'être retenues.
+
+      **L'animation est une DONNÉE DU THÈME** (`festif: bool`), et non
+      un `if theme.id == "noel"` écrit dans le rendu : c'est tout ce
+      que le crate des thèmes existe pour éviter, et un thème installé
+      depuis un fichier peut la demander par `"festif": true`. Le champ
+      est facultatif — un thème écrit avant ne se met pas à bouger.
+
+      **Tout se calcule à partir de l'horloge**, et de rien d'autre :
+      la place d'un flocon à l'instant `t` est une fonction de `t` et
+      de son numéro. Aucun générateur n'a d'état, rien n'est gardé
+      d'une image à l'autre. Ce n'est pas de l'élégance : le banc rend
+      chaque scène deux fois et compare les images, et une neige tirée
+      au sort ferait échouer `aucune_capture_ne_depend_de_celle_d_avant`
+      — ou, pire, un jour sur dix.
+
+      **La boule est creuse, et c'est la capture qui l'a exigé.**
+      Peinte en disque à un cinquième d'opacité, la première version
+      s'est posée sur « _start: » comme une tache brune : ce qu'on
+      voyait n'était pas une décoration mais un défaut d'affichage. Un
+      cerceau d'un pixel laisse lire au travers. Mesuré nulle part,
+      vu tout de suite — le troisième endroit où mesurer, celui qui
+      répond aux questions qu'on n'a pas posées.
+
+      Le réglage est dans `settings.json` dès son apparition à l'écran
+      (Préférences › Général, « Animer les thèmes qui le proposent »),
+      et le prix est dit plutôt que caché : trente images par seconde
+      tant qu'une animation tourne. Décoché, rien n'est peint **et
+      aucune image n'est demandée**.
+
+      **Contrôles** : quatre dans `festif.rs` (la même seconde donne la
+      même neige ; les flocons restent dans la fenêtre et pâles ; les
+      boules sont rares et hors du milieu ; une fenêtre sans taille ne
+      fait rien peindre) et un dans l'interface, qui cherche les
+      flocons **à la place exacte** que le module annonce, sous les
+      trois cas : thème festif coché, décoché, thème ordinaire.
+      Éprouvé en remettant le défaut — l'animation qui ignore le
+      réglage —, il tombe sur « décochée, rien ne doit bouger ».
+- [x] **Version 1.0.3-beta.1** (28 novembre 2026) — demandée, pour
+      publier l'animation et poursuivre l'essai de la mise à jour :
+      c'est elle qui donne au binaire 1.0.2-beta.1 quelque chose de
+      plus récent à proposer.
 - [x] **Version 1.0.2-beta.1** (28 novembre 2026) — demandée, pour
       éprouver dans la vraie fenêtre la mise à jour qui s'installe : le
       binaire qu'on compile portait déjà 1.0.1-beta.1, c'est-à-dire la

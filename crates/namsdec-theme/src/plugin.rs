@@ -43,6 +43,11 @@ struct ThemeFile {
     id: String,
     name: String,
     dark: bool,
+    /// Facultatif, et faux par défaut : les thèmes écrits avant que
+    /// l'animation existe restent valides, et un thème ne se met pas à
+    /// bouger parce qu'il a changé de version.
+    #[serde(default)]
+    festif: bool,
     bg: String,
     panel: String,
     surface: String,
@@ -105,6 +110,7 @@ pub fn parse(text: &str) -> Result<Theme, PluginError> {
         id: file.id.leak(),
         name: file.name.leak(),
         dark: file.dark,
+        festif: file.festif,
         bg: colour("bg", &file.bg)?,
         panel: colour("panel", &file.panel)?,
         surface: colour("surface", &file.surface)?,

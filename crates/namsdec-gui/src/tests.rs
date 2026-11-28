@@ -107,6 +107,7 @@ const SOURCES_DE_L_INTERFACE: &[(&str, &str)] = &[
     ("errors.rs", include_str!("errors.rs")),
     ("exercises.rs", include_str!("exercises.rs")),
     ("exports.rs", include_str!("exports.rs")),
+    ("festif.rs", include_str!("festif.rs")),
     ("fixes.rs", include_str!("fixes.rs")),
     ("files.rs", include_str!("files.rs")),
     ("flow.rs", include_str!("flow.rs")),

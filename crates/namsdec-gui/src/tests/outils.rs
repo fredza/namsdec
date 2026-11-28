@@ -108,6 +108,88 @@ fn the_update_check_is_wired_and_installs_nothing() {
     assert!(app.update_result.is_none());
 }
 
+/// LE THÈME NE BOUGE QUE S'IL LE PROPOSE, ET QU'ON L'A VOULU.
+///
+/// Deux conditions, et le contrôle vérifie les deux en cherchant les
+/// flocons **à la place exacte** où `festif::flocons` dit qu'ils
+/// seront. C'est plus fort que de compter des ronds : si l'animation
+/// se décalait d'une image, ou peignait autre chose, on le verrait.
+///
+/// Les deux refus comptent autant que l'acceptation : un thème
+/// ordinaire ne doit pas neiger, et une case décochée doit tout
+/// arrêter — y compris, et surtout, la demande d'image suivante, qui
+/// est la seule dépense réelle de l'affaire.
+#[test]
+fn le_theme_ne_bouge_que_s_il_le_propose_et_qu_on_l_a_voulu() {
+    /// Les ronds peints par cette image, avec leur place.
+    fn ronds(formes: &[egui::epaint::ClippedShape]) -> Vec<(egui::Pos2, egui::Color32)> {
+        formes
+            .iter()
+            .filter_map(|clipped| match &clipped.shape {
+                egui::Shape::Circle(c) => Some((c.center, c.fill)),
+                _ => None,
+            })
+            .collect()
+    }
+
+    let rendu = |theme: &'static namsdec_theme::Theme, animation: bool| {
+        let ctx = egui::Context::default();
+        let mut app = NamsdecApp {
+            theme,
+            theme_animation: animation,
+            ..Default::default()
+        };
+        app.apply_theme(&ctx);
+        let entrée = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1280.0, 900.0),
+            )),
+            predicted_dt: 0.5,
+            ..Default::default()
+        };
+        let mut formes = Vec::new();
+        for _ in 0..3 {
+            let mut sortie = ctx.run_ui(entrée.clone(), |ui| app.draw(ui));
+            formes = std::mem::take(&mut sortie.shapes);
+            sortie.textures_delta.clear();
+        }
+        let t = ctx.input(|i| i.time) as f32;
+        let attendus = crate::festif::flocons(ctx.viewport_rect(), t, theme);
+        let peints = ronds(&formes);
+        let trouvés = attendus
+            .iter()
+            .filter(|flocon| {
+                peints.iter().any(|(place, encre)| {
+                    (place.x - flocon.place.x).abs() < 0.01
+                        && (place.y - flocon.place.y).abs() < 0.01
+                        && *encre == flocon.encre
+                })
+            })
+            .count();
+        (trouvés, attendus.len())
+    };
+
+    // Le thème festif, case cochée : tous les flocons sont là.
+    let (trouvés, attendus) = rendu(&namsdec_theme::NOEL, true);
+    assert_eq!(
+        trouvés, attendus,
+        "« Noël » doit peindre ses {attendus} flocons, et aux places qu'il annonce"
+    );
+    assert!(attendus >= crate::festif::FLOCONS);
+
+    // La même, décochée : aucun.
+    let (trouvés, _) = rendu(&namsdec_theme::NOEL, false);
+    assert_eq!(trouvés, 0, "décochée, rien ne doit bouger");
+
+    // Et un thème qui ne se déclare pas festif ne neige pas, même
+    // cochée : l'animation est une propriété du THÈME, et le réglage
+    // ne fait que l'autoriser.
+    assert!(!namsdec_theme::VSCODE_DARK.festif);
+    let (trouvés, _) = rendu(&namsdec_theme::VSCODE_DARK, true);
+    assert_eq!(trouvés, 0, "un thème ordinaire ne neige pas");
+}
+
 /// LA MISE À JOUR SE PROPOSE, ET RIEN NE PART AVANT UN OUI.
 ///
 /// C'est la promesse entière, et elle se vérifie en trois temps :

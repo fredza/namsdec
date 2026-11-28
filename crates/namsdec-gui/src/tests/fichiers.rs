@@ -1012,6 +1012,7 @@ fn every_setting_that_is_written_is_read_back() {
         show_console: false,
         show_explorer: true,
         show_tooltips: false,
+        theme_animation: false,
         flow_pseudo: true,
         completion: false,
         // Faux : le défaut est VRAI, et ce contrôle n'accepte que des

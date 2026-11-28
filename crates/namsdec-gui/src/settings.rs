@@ -94,6 +94,10 @@ pub struct Settings {
     /// Les infobulles au survol. Certains les veulent, d'autres les
     /// trouvent envahissantes — d'où un réglage plutôt qu'un choix imposé.
     pub show_tooltips: bool,
+    /// Le thème a-t-il le droit de bouger — flocons et boules des
+    /// thèmes qui se déclarent festifs.
+    #[serde(default = "vrai")]
+    pub theme_animation: bool,
     /// Le déroulement montre-t-il le pseudo-code plutôt que le graphe ?
     ///
     /// Deux façons de lire la même fonction : la forme d'un côté, le
@@ -484,6 +488,7 @@ impl Default for Settings {
             show_console: false,
             show_explorer: false,
             show_tooltips: true,
+            theme_animation: true,
             // Vrai : voir le champ, et la raison — un outil qui sert à
             // apprendre s'ouvre sur ce qui s'apprend.
             debutant: true,

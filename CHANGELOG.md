@@ -4,6 +4,29 @@ Les dates sont celles des commits ; le format suit [Keep a
 Changelog](https://keepachangelog.com/fr/1.1.0/) d'assez loin — une
 entrée par version, et ce qui change pour qui s'en sert.
 
+## 1.0.3-beta.1 — 28 novembre 2026
+
+**Le thème de Noël bouge un peu**
+
+- **Une douzaine de flocons** descendent lentement sur l'atelier, en
+  gris très pâle : un à deux pixels, entre un dixième et un cinquième
+  d'opacité. On les voit du coin de l'œil, et pas davantage.
+- **De loin en loin, une boule** paraît quelques secondes puis
+  s'efface. Elle est *creuse* — un cerceau, et non un disque — pour
+  qu'on lise le code au travers.
+- Tout se calcule à partir de **l'horloge** : rien n'est tiré au sort
+  en route, rien n'est gardé d'une image à l'autre. Deux rendus de la
+  même scène donnent deux images identiques, ce dont le banc de
+  captures a besoin.
+- **Préférences ▸ Général : « Animer les thèmes qui le proposent ».**
+  Décochée, aucun thème ne bouge. Le réglage est gardé d'une séance à
+  l'autre, comme les autres.
+- Un thème installé depuis un fichier peut demander la même chose, par
+  `"festif": true` : l'animation est une **donnée du thème**, pas un
+  cas particulier écrit dans le rendu.
+- Le prix est dit plutôt que caché : tant qu'une animation tourne, la
+  fenêtre se redessine trente fois par seconde.
+
 ## 1.0.2-beta.1 — 28 novembre 2026
 
 **namsdec sait s'installer lui-même, après votre accord**

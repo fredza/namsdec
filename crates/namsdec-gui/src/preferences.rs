@@ -63,6 +63,7 @@ impl NamsdecApp {
                 decompiler_module: self.show_decompiler_module,
                 installer_module: self.show_installer_module,
                 show_tooltips: self.show_tooltips,
+                theme_animation: self.theme_animation,
                 keybindings: self.keybindings.clone(),
             });
         }
@@ -86,6 +87,7 @@ impl NamsdecApp {
             self.show_decompiler_module = snapshot.decompiler_module;
             self.show_installer_module = snapshot.installer_module;
             self.show_tooltips = snapshot.show_tooltips;
+            self.theme_animation = snapshot.theme_animation;
             self.keybindings = snapshot.keybindings;
             self.apply_theme(ctx);
         }
@@ -241,6 +243,10 @@ impl NamsdecApp {
             ui.strong(self.theme.name);
         });
         ui.weak(s.preferences_theme_in_plugins);
+
+        ui.add_space(6.0);
+        ui.checkbox(&mut self.theme_animation, s.preferences_theme_animation);
+        ui.weak(s.preferences_theme_animation_hint);
 
         ui.separator();
 

@@ -3944,6 +3944,28 @@ def contenu(v, total_exos, avec_but, paliers, nb_fiches, nb_tests, nb_fonctions,
          "vert de givre qui n'appartient qu'à lui. Il tient le même plancher de contraste "
          "que les trois autres, mesuré sur chaque onglet."),
         ("p",
+         "<b>Et il bouge un peu.</b> Une douzaine de flocons descendent lentement, en gris "
+         "très pâle — un à deux pixels, entre un dixième et un cinquième d'opacité —, et de "
+         "loin en loin une boule paraît quelques secondes puis s'efface. Elle est "
+         "<i>creuse</i> : un cerceau, et non un disque, pour qu'on lise le code au travers. "
+         "La première version la peignait pleine, et elle s'est posée sur une étiquette "
+         "comme une tache brune — on ne voyait pas une décoration mais un défaut "
+         "d'affichage."),
+        ("p",
+         "Tout cela se calcule à partir de <b>l'horloge</b>, et de rien d'autre : la place "
+         "d'un flocon à un instant donné est une fonction de cet instant et de son numéro. "
+         "Rien n'est tiré au sort en route, rien n'est gardé d'une image à l'autre — c'est "
+         "ce qui permet au banc de rendre deux fois la même scène et d'obtenir deux images "
+         "identiques. Une neige qui bougerait toute seule ferait douter de toutes les "
+         "autres captures."),
+        ("note",
+         "<b>Préférences › Général : « Animer les thèmes qui le proposent ».</b> Décochée, "
+         "aucun thème ne bouge. Tant qu'une animation tourne, la fenêtre se redessine "
+         "trente fois par seconde — c'est le prix de toute animation, et c'est pourquoi le "
+         "réglage existe. Un thème installé depuis un fichier peut la demander aussi, par "
+         "<font face='Courier'>\"festif\": true</font> ; le réglage de l'utilisateur passe "
+         "avant."),
+        ("p",
          "<b>La vignette d’un thème est un éditeur en réduction</b> : la gouttière, "
          "quatre lignes de code avec les couleurs de leurs jetons — étiquette, "
          "mnémonique, registre, nombre, commentaire, directive, chaîne —, la ligne "

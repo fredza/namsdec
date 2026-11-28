@@ -1436,6 +1436,8 @@ pub struct Strings {
     pub preferences_tab_plugins: &'static str,
     pub preferences_theme: &'static str,
     pub preferences_theme_in_plugins: &'static str,
+    pub preferences_theme_animation: &'static str,
+    pub preferences_theme_animation_hint: &'static str,
     pub preferences_language: &'static str,
 
     // Onglet Plugins (point d'extension : les thèmes en sont le premier
@@ -2572,6 +2574,8 @@ déclenchera jamais.",
     preferences_tab_plugins: "Plugins",
     preferences_theme: "Thème",
     preferences_theme_in_plugins: "Le thème se choisit dans l'onglet Plugins.",
+    preferences_theme_animation: "Animer les thèmes qui le proposent",
+    preferences_theme_animation_hint: "Quelques flocons, et de loin en loin une boule. Seul le thème « Noël » le propose pour l'instant ; les autres ne bougent pas, cochée ou non. Tant qu'une animation tourne, la fenêtre se redessine trente fois par seconde — sur batterie, décochez.",
     preferences_language: "Langue",
 
     plugins_themes: "Thèmes",
@@ -3657,6 +3661,8 @@ other is there to compare — that is how gaps and clashes become visible.",
     preferences_tab_plugins: "Plugins",
     preferences_theme: "Theme",
     preferences_theme_in_plugins: "Pick a theme in the Plugins tab.",
+    preferences_theme_animation: "Animate themes that offer it",
+    preferences_theme_animation_hint: "A few snowflakes, and now and then a bauble. Only the \"Noël\" theme offers it for now; the others do not move, ticked or not. While an animation runs the window redraws thirty times a second — on battery, untick.",
     preferences_language: "Language",
 
     plugins_themes: "Themes",

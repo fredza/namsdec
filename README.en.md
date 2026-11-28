@@ -329,7 +329,7 @@ request, and writes the full command out before running it.
 ## The guide
 
 A **PDF user guide** ships with every release:
-[`docs/guide-namsdec-1.0.2-beta.1-en.pdf`](docs/guide-namsdec-1.0.2-beta.1-en.pdf)
+[`docs/guide-namsdec-1.0.3-beta.1-en.pdf`](docs/guide-namsdec-1.0.3-beta.1-en.pdf)
 — installing, getting started, every panel, stepping, memory, the
 manual, the flow graph, the exercise path, reverse engineering, the
 shortcuts and the known limits.

@@ -28,6 +28,20 @@ pub struct Theme {
     pub id: &'static str,
     pub name: &'static str,
     pub dark: bool,
+    /// Ce thème a-t-il une animation ?
+    ///
+    /// UNE DONNÉE, ET NON UN CAS PARTICULIER DANS LE RENDU. Le premier
+    /// réflexe était d'écrire `if theme.id == "noel"` dans l'interface ;
+    /// c'est exactement ce que ce crate existe pour éviter — un thème
+    /// est une palette qu'on peut écrire dans un fichier, et le jour
+    /// où quelqu'un en installe un pour le Nouvel An, il doit pouvoir
+    /// demander la même chose sans toucher au code.
+    ///
+    /// Ce que cela donne est décrit dans `festif.rs` de l'interface :
+    /// une douzaine de flocons et, de loin en loin, une boule. Le
+    /// réglage de l'utilisateur passe avant : décoché, aucun thème ne
+    /// bouge.
+    pub festif: bool,
 
     /// Fond de l'éditeur et des zones de saisie.
     pub bg: Color32,
@@ -169,6 +183,7 @@ pub static VSCODE_DARK: Theme = Theme {
     id: "vscode-dark",
     name: "VS Code Dark+",
     dark: true,
+    festif: false,
     bg: Color32::from_rgb(0x1e, 0x1e, 0x1e),
     panel: Color32::from_rgb(0x25, 0x25, 0x26),
     surface: Color32::from_rgb(0x2d, 0x2d, 0x2d),
@@ -202,6 +217,7 @@ pub static VSCODE_LIGHT: Theme = Theme {
     id: "vscode-light",
     name: "VS Code Light+",
     dark: false,
+    festif: false,
     bg: Color32::WHITE,
     panel: Color32::from_rgb(0xf3, 0xf3, 0xf3),
     surface: Color32::from_rgb(0xe8, 0xe8, 0xe8),
@@ -234,6 +250,7 @@ pub static TOKYO_NIGHT: Theme = Theme {
     id: "tokyo-night",
     name: "Tokyo Night",
     dark: true,
+    festif: false,
     bg: Color32::from_rgb(0x1a, 0x1b, 0x26),
     panel: Color32::from_rgb(0x1f, 0x23, 0x35),
     surface: Color32::from_rgb(0x24, 0x28, 0x3b),
@@ -311,6 +328,7 @@ pub static NOEL: Theme = Theme {
     id: "noel",
     name: "Noël",
     dark: true,
+    festif: true,
     bg: Color32::from_rgb(0x0e, 0x15, 0x12),
     panel: Color32::from_rgb(0x12, 0x1b, 0x16),
     surface: Color32::from_rgb(0x18, 0x23, 0x1d),

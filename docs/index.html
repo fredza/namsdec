@@ -24,8 +24,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>namsdec — apprendre l'assembleur x86-64, et lire les binaires des autres</title>
 <meta name="description" content="Un atelier libre pour apprendre l'assembleur NASM x86-64 sur Linux : il exécute votre programme pas à pas et explique, à chaque instruction, ce que la machine fait.">
-<link rel="stylesheet" href="style.css?v=1.0.2-beta.1">
-<script src="theme.js?v=1.0.2-beta.1"></script>
+<link rel="stylesheet" href="style.css?v=1.0.3-beta.1">
+<script src="theme.js?v=1.0.3-beta.1"></script>
 </head>
 <body>
 
@@ -47,7 +47,7 @@
       <button id="bascule-theme" type="button"
               data-clair="Passer au thème clair" data-sombre="Passer au thème sombre">☀</button>
       <a class="bouton mini depot" href="https://github.com/fredza/namsdec">Dépôt</a>
-      <a class="bouton mini fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.2-beta.1/namsdec-1.0.2-beta.1-x86_64-linux">Télécharger</a>
+      <a class="bouton mini fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.3-beta.1/namsdec-1.0.3-beta.1-x86_64-linux">Télécharger</a>
       <a class="langue" href="en.html" aria-label="Read in English">EN</a>
     </div>
   </div>
@@ -64,9 +64,9 @@
       faire. Il ne se contente pas d'afficher des registres : il explique.
       Linux, ELF64, syntaxe NASM. Licence MIT.</p>
     <div class="boutons">
-      <a class="bouton fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.2-beta.1/namsdec-1.0.2-beta.1-x86_64-linux">Télécharger la dernière version</a>
+      <a class="bouton fort" data-somme="Somme SHA-256 du fichier" data-copie="<b>La somme SHA-256 est dans votre presse-papiers.</b> Comparez-la à ce que <code style='display:inline;font-size:.8rem'>sha256sum</code> rend sur le fichier téléchargé." data-sans-copie="<b>Voici la somme SHA-256 à vérifier</b> — le presse-papiers n'a pas pu être atteint, sélectionnez-la à la main." href="https://github.com/fredza/namsdec/releases/download/v1.0.3-beta.1/namsdec-1.0.3-beta.1-x86_64-linux">Télécharger la dernière version</a>
       <a class="bouton" href="https://github.com/fredza/namsdec">Le code sur GitHub</a>
-      <a class="bouton" href="guide-namsdec-1.0.2-beta.1.pdf">Le guide en PDF</a>
+      <a class="bouton" href="guide-namsdec-1.0.3-beta.1.pdf">Le guide en PDF</a>
     </div>
 
     <!-- LA SOMME DE CONTRÔLE, à côté du bouton qui télécharge. Elle est
@@ -74,13 +74,13 @@
          cacher. Le bouton la copie : soixante-quatre caractères ne se
          retapent pas, et une sélection à la souris en oublie un bout. -->
     <div class="somme">
-      <p class="quoi">Somme SHA-256 attendue pour <code>namsdec-1.0.2-beta.1-x86_64-linux</code> — vérifiez-la avant de lancer le fichier :</p>
+      <p class="quoi">Somme SHA-256 attendue pour <code>namsdec-1.0.3-beta.1-x86_64-linux</code> — vérifiez-la avant de lancer le fichier :</p>
       <div class="ligne">
         <code id="sha256">a8de07b22dd441b5e9c2ac49f6b1c7b576e295950e9c56ea33174f2cd15d2066</code>
         <button class="copier" type="button" data-pour="sha256"
                 data-fini="Copié" data-selection="Sélectionné">Copier</button>
       </div>
-      <p class="quoi" style="margin:.55rem 0 0"><code>sha256sum namsdec-1.0.2-beta.1-x86_64-linux</code> doit rendre exactement cette ligne.</p>
+      <p class="quoi" style="margin:.55rem 0 0"><code>sha256sum namsdec-1.0.3-beta.1-x86_64-linux</code> doit rendre exactement cette ligne.</p>
     </div>
   </section>
 
@@ -238,7 +238,7 @@ cd namsdec
 
   <p>Relancer le script est une <strong>mise à jour</strong>, pas une réinstallation :
     vos réglages, vos séries et vos points d'arrêt restent où ils sont. Le
-    <a href="guide-namsdec-1.0.2-beta.1.pdf">guide en PDF</a> reprend tout cela en
+    <a href="guide-namsdec-1.0.3-beta.1.pdf">guide en PDF</a> reprend tout cela en
     détail, et il est produit depuis le dépôt — la version, le nombre d'exercices et la
     table des raccourcis viennent des sources, jamais d'une copie qui vieillirait.</p>
 

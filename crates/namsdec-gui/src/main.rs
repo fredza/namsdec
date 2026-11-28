@@ -20,6 +20,7 @@ mod errors;
 mod etabli;
 mod exercises;
 mod exports;
+mod festif;
 mod files;
 mod fixes;
 mod flow;
@@ -1769,6 +1770,13 @@ struct NamsdecApp {
     show_console: bool,
     /// Les infobulles au survol (réglage Préférences > Général).
     show_tooltips: bool,
+    /// Le thème a-t-il le droit de bouger ?
+    ///
+    /// Un seul réglage pour tous les thèmes, et non un par thème :
+    /// c'est une préférence sur ce que l'écran fait pendant qu'on lit,
+    /// pas sur une palette. Décoché, aucun thème ne s'anime — même
+    /// celui qui se déclare festif.
+    theme_animation: bool,
     /// L'autocomplétion de l'éditeur (réglage Préférences > Général).
     completion: bool,
     /// Entrée garde l'indentation de la ligne qu'on quitte.
@@ -2179,6 +2187,7 @@ struct PreferencesSnapshot {
     prevoir: bool,
     exercises: bool,
     show_tooltips: bool,
+    theme_animation: bool,
     keybindings: KeyBindings,
 }
 
@@ -2664,6 +2673,7 @@ impl Default for NamsdecApp {
             show_statusbar: true,
             show_console: true,
             show_tooltips: true,
+            theme_animation: true,
             completion: true,
             auto_indent: true,
             auto_pairs: true,
@@ -4393,6 +4403,17 @@ impl NamsdecApp {
         //
         // Le cache de mise en page compte ses poses : il sait, lui, s'il
         // a payé.
+        // LE THÈME QUI BOUGE, EN DERNIER. Après les panneaux, pour
+        // que la neige passe devant eux ; dans la couche du fond, pour
+        // qu'elle reste derrière les fenêtres et les menus. Et sous
+        // deux conditions seulement : le thème se déclare festif, et
+        // l'utilisateur n'a pas décoché. Hors de là, pas un pixel
+        // peint et **pas une image demandée** — une animation qu'on
+        // n'a pas voulue ne doit rien coûter.
+        if self.theme.festif && self.theme_animation {
+            festif::peindre(&ctx, self.theme);
+        }
+
         let posé = editor::poses_du_texte() != self.poses_au_début;
         self.poses_au_début = editor::poses_du_texte();
         report_slow_frame(frame_start.elapsed(), &spans, posé);

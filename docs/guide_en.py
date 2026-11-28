@@ -788,6 +788,25 @@ def _interface():
          "holly red kept clear of the error red, and what has just changed — a register an "
          "instruction wrote to — gets a frost green of its own. It holds the same contrast "
          "floor as the other three, measured on every tab."),
+        ("p",
+         "<b>And it moves a little.</b> A dozen snowflakes drift down in very pale grey — "
+         "one to two pixels, between a tenth and a fifth of opacity — and now and then a "
+         "bauble appears for a few seconds and fades. It is <i>hollow</i>: a ring rather "
+         "than a disc, so that the code reads through it. The first version painted it "
+         "solid, and it landed on a label like a brown smudge — what you saw was not a "
+         "decoration but a display fault."),
+        ("p",
+         "All of it is computed from <b>the clock</b> and nothing else: where a flake is "
+         "at a given instant is a function of that instant and of its number. Nothing is "
+         "drawn at random along the way, nothing is kept between frames — which is what "
+         "lets the bench render the same scene twice and get two identical images. Snow "
+         "that moved on its own would cast doubt on every other capture."),
+        ("note",
+         "<b>Preferences › General: \"Animate themes that offer it\".</b> Unticked, no "
+         "theme moves. While an animation runs the window redraws thirty times a second — "
+         "the price of any animation, and the reason the setting exists. A theme installed "
+         "from a file can ask for it too, with <font face='Courier'>\"festif\": true</font>; "
+         "the user's setting comes first."),
         ("note",
          "The shipped themes hold a <b>contrast floor</b>: every active text stands out "
          "from its background by at least 3:1, the accessibility recommendation. That is "
